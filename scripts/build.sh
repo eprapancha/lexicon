@@ -6,10 +6,15 @@ set -e
 
 echo "Building Lexicon..."
 
-# Build WebAssembly core
-echo "Building WebAssembly core..."
+# Build Rust WebAssembly core
+echo "Building Rust WebAssembly core..."
 cd packages/core-wasm
-npm run asbuild
+if command -v wasm-pack &> /dev/null; then
+    wasm-pack build --target web
+else
+    echo "Warning: wasm-pack not found. Skipping WASM build."
+    echo "Install wasm-pack: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh"
+fi
 
 # Build Tree-sitter grammars
 echo "Building Tree-sitter grammars..."

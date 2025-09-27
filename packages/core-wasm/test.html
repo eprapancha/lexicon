@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Lexicon Core WASM Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .result {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 3px;
+            margin-top: 10px;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Lexicon Core WASM - Piece Tree Test</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Basic Initialization</h2>
+        <div id="test1-result" class="result">Loading...</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: Text Insertion</h2>
+        <div id="test2-result" class="result">Loading...</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 3: Text Retrieval</h2>
+        <div id="test3-result" class="result">Loading...</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 4: Line Operations</h2>
+        <div id="test4-result" class="result">Loading...</div>
+    </div>
+
+    <script type="module">
+        import init, { PieceTree } from './pkg/core_wasm.js';
+
+        async function runTests() {
+            try {
+                // Initialize the wasm module
+                await init();
+                
+                // Test 1: Basic Initialization
+                try {
+                    const tree = new PieceTree("Hello, World!");
+                    const length = tree.length();
+                    const lineCount = tree.line_count();
+                    
+                    document.getElementById('test1-result').innerHTML = `
+                        <span class="success">✓ PASS</span><br>
+                        Initial text length: ${length}<br>
+                        Line count: ${lineCount}
+                    `;
+                } catch (error) {
+                    document.getElementById('test1-result').innerHTML = `
+                        <span class="error">✗ FAIL</span><br>
+                        Error: ${error.message}
+                    `;
+                }
+                
+                // Test 2: Text Insertion
+                try {
+                    const tree = new PieceTree("Hello, World!");
+                    tree.insert(7, "Amazing ");
+                    const newLength = tree.length();
+                    
+                    document.getElementById('test2-result').innerHTML = `
+                        <span class="success">✓ PASS</span><br>
+                        Length after insertion: ${newLength}<br>
+                        Expected: ${13 + 8} characters
+                    `;
+                } catch (error) {
+                    document.getElementById('test2-result').innerHTML = `
+                        <span class="error">✗ FAIL</span><br>
+                        Error: ${error.message}
+                    `;
+                }
+                
+                // Test 3: Text Retrieval
+                try {
+                    const tree = new PieceTree("Hello, World!");
+                    tree.insert(7, "Amazing ");
+                    const text = tree.get_text();
+                    
+                    document.getElementById('test3-result').innerHTML = `
+                        <span class="success">✓ PASS</span><br>
+                        Retrieved text: "${text}"<br>
+                        Expected: "Hello, Amazing World!"
+                    `;
+                } catch (error) {
+                    document.getElementById('test3-result').innerHTML = `
+                        <span class="error">✗ FAIL</span><br>
+                        Error: ${error.message}
+                    `;
+                }
+                
+                // Test 4: Line Operations
+                try {
+                    const tree = new PieceTree("Line 1\nLine 2\nLine 3");
+                    const lineCount = tree.line_count();
+                    tree.insert(7, "New ");
+                    const newText = tree.get_text();
+                    
+                    document.getElementById('test4-result').innerHTML = `
+                        <span class="success">✓ PASS</span><br>
+                        Original line count: ${lineCount}<br>
+                        Text after insertion: "${newText}"
+                    `;
+                } catch (error) {
+                    document.getElementById('test4-result').innerHTML = `
+                        <span class="error">✗ FAIL</span><br>
+                        Error: ${error.message}
+                    `;
+                }
+                
+            } catch (error) {
+                document.body.innerHTML = `
+                    <h1>Failed to load WASM module</h1>
+                    <p class="error">Error: ${error.message}</p>
+                    <p>Make sure to build the WASM module first with:</p>
+                    <pre>cd packages/core-wasm && wasm-pack build --target web</pre>
+                `;
+            }
+        }
+
+        runTests();
+    </script>
+</body>
+</html>
