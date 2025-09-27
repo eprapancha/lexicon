@@ -8,9 +8,10 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "./scripts/dev.sh",
-    "build": "./scripts/build.sh",
-    "test": "./scripts/test.sh"
+    "dev": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/dev.sh",
+    "build": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/build.sh",
+    "test": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/test.sh",
+    "test-wasm": "cd packages/core-wasm && PATH=/home/nixos/.nix-profile/bin:$PATH npm run dev"
   },
   "devDependencies": {},
   "engines": {

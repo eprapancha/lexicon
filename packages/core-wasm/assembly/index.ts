@@ -1,24 +1,56 @@
 // Core WebAssembly module for Lexicon editor
-// This will implement the Rope data structure and custom memory management
+// High-performance text engine with custom memory management and Rope data structure
+
+import { initMemoryManager } from "./memory";
+import { 
+  initRope, 
+  insertText, 
+  deleteText, 
+  getRopeLength, 
+  getAllRopeText,
+  getRopeText 
+} from "./rope";
 
 export function init(): void {
-  // Initialize the text buffer
+  // Initialize the memory management system
+  initMemoryManager();
+  
+  // Initialize the rope data structure
+  initRope();
 }
 
+// Re-export memory management functions for testing
+export { 
+  allocBlock, 
+  freeBlock, 
+  allocRopeNode, 
+  freeRopeNode 
+} from "./memory";
+
+// Re-export rope functions for testing
+export {
+  insertText,
+  deleteText,
+  getRopeLength,
+  getAllRopeText,
+  getRopeText
+} from "./rope";
+
 export function insert(pos: i32, text: string): void {
-  // Insert text at the given position
+  insertText(pos as u32, text);
 }
 
 export function delete(start: i32, end: i32): void {
-  // Delete text in the given range
+  const length = end - start;
+  if (length > 0) {
+    deleteText(start as u32, length as u32);
+  }
 }
 
 export function getText(): string {
-  // Return the current document text
-  return "";
+  return getAllRopeText();
 }
 
 export function getLength(): i32 {
-  // Return the current document length
-  return 0;
+  return getRopeLength() as i32;
 }

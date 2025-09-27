@@ -13,7 +13,9 @@
       "optimizeLevel": 3,
       "shrinkLevel": 0,
       "converge": false,
-      "noAssert": false
+      "noAssert": false,
+      "runtime": "stub",
+      "memoryBase": 1024
     }
   },
   "options": {
