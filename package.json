@@ -1,0 +1,19 @@
+{
+  "name": "lexicon",
+  "version": "0.1.0",
+  "description": "A modern, browser-based code editor inspired by Emacs",
+  "license": "MIT",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "./scripts/dev.sh",
+    "build": "./scripts/build.sh",
+    "test": "./scripts/test.sh"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: Setup Clojure
+      uses: DeLaGuardo/setup-clojure@12.1
+      with:
+        cli: latest
+    
+    - name: Install dependencies
+      run: npm install
+    
+    - name: Build WebAssembly core
+      run: |
+        cd packages/core-wasm
+        npm run asbuild
+    
+    - name: Build Tree-sitter grammars
+      run: |
+        cd packages/language-grammars
+        ./build-grammars.sh
+    
+    - name: Build ClojureScript frontend
+      run: |
+        cd packages/editor-cljs
+        npx shadow-cljs release app
+    
+    - name: Run tests
+      run: npm run test

@@ -1,0 +1,4 @@
+{:server {:port 3000
+          :host "localhost"}
+ :database {:url "jdbc:sqlite:lexicon.db"}
+ :logging {:level :info}}

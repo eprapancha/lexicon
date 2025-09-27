@@ -1,0 +1,11 @@
+{
+  "name": "@lexicon/javascript-grammar",
+  "version": "0.1.0",
+  "description": "Tree-sitter JavaScript grammar for Lexicon",
+  "scripts": {
+    "build": "tree-sitter build --wasm"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.20.8"
+  }
+}
