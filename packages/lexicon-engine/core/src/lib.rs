@@ -1,24 +1,4 @@
-use wasm_bindgen::prelude::*;
-use std::cmp::Ordering;
-use std::collections::VecDeque;
-use serde::{Deserialize, Serialize};
-
-#[wasm_bindgen]
-extern "C" {
-    fn alert(s: &str);
-    
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-}
-
-macro_rules! console_log {
-    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
-}
-
-#[wasm_bindgen(start)]
-pub fn main() {
-    console_error_panic_hook::set_once();
-}
+// Core data structures for the text editor
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BufferType {
@@ -28,9 +8,9 @@ pub enum BufferType {
 
 #[derive(Debug, Clone)]
 pub struct Piece {
-    buffer_type: BufferType,
-    start: usize,
-    length: usize,
+    pub buffer_type: BufferType,
+    pub start: usize,
+    pub length: usize,
 }
 
 impl Piece {
@@ -45,10 +25,10 @@ impl Piece {
 
 #[derive(Debug, Clone)]
 pub struct NodeMetadata {
-    char_count: usize,
-    line_count: usize,
-    left_char_count: usize,
-    left_line_count: usize,
+    pub char_count: usize,
+    pub line_count: usize,
+    pub left_char_count: usize,
+    pub left_line_count: usize,
 }
 
 impl NodeMetadata {
@@ -82,11 +62,11 @@ pub enum Color {
 
 #[derive(Debug, Clone)]
 pub struct RBNode {
-    piece: Option<Piece>,
-    metadata: NodeMetadata,
-    color: Color,
-    left: Option<Box<RBNode>>,
-    right: Option<Box<RBNode>>,
+    pub piece: Option<Piece>,
+    pub metadata: NodeMetadata,
+    pub color: Color,
+    pub left: Option<Box<RBNode>>,
+    pub right: Option<Box<RBNode>>,
 }
 
 impl RBNode {
@@ -149,17 +129,14 @@ impl RBNode {
     }
 }
 
-#[wasm_bindgen]
 #[derive(Clone)]
 pub struct PieceTree {
-    original_buffer: String,
-    add_buffer: String,
-    root: Option<Box<RBNode>>,
+    pub original_buffer: String,
+    pub add_buffer: String,
+    pub root: Option<Box<RBNode>>,
 }
 
-#[wasm_bindgen]
 impl PieceTree {
-    #[wasm_bindgen(constructor)]
     pub fn new(initial_text: &str) -> PieceTree {
         let mut tree = PieceTree {
             original_buffer: initial_text.to_string(),
@@ -176,17 +153,14 @@ impl PieceTree {
         tree
     }
     
-    #[wasm_bindgen]
     pub fn length(&self) -> usize {
         self.root.as_ref().map_or(0, |node| node.metadata.char_count)
     }
     
-    #[wasm_bindgen]
     pub fn line_count(&self) -> usize {
         self.root.as_ref().map_or(1, |node| node.metadata.line_count + 1)
     }
     
-    #[wasm_bindgen]
     pub fn insert(&mut self, position: usize, text: &str) {
         if text.is_empty() {
             return;
@@ -301,7 +275,6 @@ impl PieceTree {
         }
     }
     
-    #[wasm_bindgen]
     pub fn get_text(&self) -> String {
         let mut result = String::new();
         self.collect_text(&self.root, &mut result);
@@ -322,7 +295,6 @@ impl PieceTree {
         }
     }
     
-    #[wasm_bindgen]
     pub fn get_text_range(&self, from: usize, to: usize) -> String {
         if from >= to || from >= self.length() {
             return String::new();
@@ -369,9 +341,8 @@ impl PieceTree {
         *self = PieceTree::new(&new_text);
     }
     
-    #[wasm_bindgen]
     pub fn get_line(&self, line_number: usize) -> String {
-        if let Some(line_info) = self.find_line(line_number) {
+        if let Some(_line_info) = self.find_line(line_number) {
             let text = self.get_text();
             let lines: Vec<&str> = text.lines().collect();
             if line_number < lines.len() {
@@ -439,25 +410,25 @@ impl PieceTree {
 }
 
 #[derive(Debug, Clone)]
-struct PieceInfo {
-    piece: Piece,
-    piece_start: usize,
+pub struct PieceInfo {
+    pub piece: Piece,
+    pub piece_start: usize,
 }
 
 #[derive(Debug, Clone)]
-struct LineInfo {
-    line_start: usize,
-    line_end: usize,
+pub struct LineInfo {
+    pub line_start: usize,
+    pub line_end: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Change {
     pub from: usize,
     pub to: usize,
     pub insert: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Transaction {
     pub changes: Vec<Change>,
 }
@@ -494,15 +465,12 @@ impl Transaction {
     }
 }
 
-#[wasm_bindgen]
 pub struct EditorState {
-    piece_tree: PieceTree,
-    version: u64,
+    pub piece_tree: PieceTree,
+    pub version: u64,
 }
 
-#[wasm_bindgen]
 impl EditorState {
-    #[wasm_bindgen(constructor)]
     pub fn new(initial_text: &str) -> EditorState {
         EditorState {
             piece_tree: PieceTree::new(initial_text),
@@ -510,15 +478,11 @@ impl EditorState {
         }
     }
     
-    #[wasm_bindgen]
-    pub fn apply_transaction(&self, transaction_json: &str) -> Result<EditorState, JsValue> {
-        let transaction: Transaction = serde_json::from_str(transaction_json)
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse transaction: {}", e)))?;
-        
+    pub fn apply_transaction(&self, transaction: &Transaction) -> EditorState {
         let mut new_tree = self.piece_tree.clone();
         
         // Apply changes in reverse order to maintain position validity
-        let mut changes = transaction.changes;
+        let mut changes = transaction.changes.clone();
         changes.sort_by(|a, b| b.from.cmp(&a.from));
         
         for change in changes {
@@ -533,33 +497,28 @@ impl EditorState {
             }
         }
         
-        Ok(EditorState {
+        EditorState {
             piece_tree: new_tree,
             version: self.version + 1,
-        })
+        }
     }
     
-    #[wasm_bindgen]
     pub fn get_text_range(&self, from: usize, to: usize) -> String {
         self.piece_tree.get_text_range(from, to)
     }
     
-    #[wasm_bindgen]
     pub fn get_text(&self) -> String {
         self.piece_tree.get_text()
     }
     
-    #[wasm_bindgen]
     pub fn length(&self) -> usize {
         self.piece_tree.length()
     }
     
-    #[wasm_bindgen]
     pub fn line_count(&self) -> usize {
         self.piece_tree.line_count()
     }
     
-    #[wasm_bindgen]
     pub fn version(&self) -> u64 {
         self.version
     }
@@ -571,188 +530,6 @@ impl Clone for EditorState {
             piece_tree: self.piece_tree.clone(),
             version: self.version,
         }
-    }
-}
-
-// Compatibility layer for ClojureScript API expectations
-#[wasm_bindgen]
-pub struct WasmEditorCore {
-    current_state: EditorState,
-    last_result: String,
-    last_error: String,
-}
-
-#[wasm_bindgen]
-impl WasmEditorCore {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> WasmEditorCore {
-        WasmEditorCore {
-            current_state: EditorState::new(""),
-            last_result: String::new(),
-            last_error: String::new(),
-        }
-    }
-    
-    #[wasm_bindgen]
-    pub fn init(&mut self, initial_text: &str) {
-        self.current_state = EditorState::new(initial_text);
-        self.last_result.clear();
-        self.last_error.clear();
-    }
-    
-    // ClojureScript expects: applyTransaction(json) -> number (0 = success)
-    #[wasm_bindgen(js_name = applyTransaction)]
-    pub fn apply_transaction(&mut self, transaction_json: &str) -> i32 {
-        // Convert ClojureScript transaction format to internal format
-        match self.convert_cljs_transaction(transaction_json) {
-            Ok(internal_json) => {
-                match self.current_state.apply_transaction(&internal_json) {
-                    Ok(new_state) => {
-                        self.current_state = new_state;
-                        self.last_result = format!(
-                            r#"{{"success": true, "version": {}, "length": {}}}"#,
-                            self.current_state.version(),
-                            self.current_state.length()
-                        );
-                        self.last_error.clear();
-                        0 // Success
-                    }
-                    Err(e) => {
-                        self.last_error = format!("Transaction failed: {}", e.as_string().unwrap_or_else(|| "Unknown error".to_string()));
-                        self.last_result.clear();
-                        1 // Error
-                    }
-                }
-            }
-            Err(e) => {
-                self.last_error = format!("Invalid transaction format: {}", e);
-                self.last_result.clear();
-                2 // Parse error
-            }
-        }
-    }
-    
-    #[wasm_bindgen(js_name = getLastResult)]
-    pub fn get_last_result(&self) -> String {
-        self.last_result.clone()
-    }
-    
-    #[wasm_bindgen(js_name = getLastErrorMessage)]
-    pub fn get_last_error_message(&self) -> String {
-        self.last_error.clone()
-    }
-    
-    #[wasm_bindgen(js_name = getText)]
-    pub fn get_text(&self) -> String {
-        self.current_state.get_text()
-    }
-    
-    #[wasm_bindgen(js_name = getLength)]
-    pub fn get_length(&self) -> usize {
-        self.current_state.length()
-    }
-    
-    #[wasm_bindgen(js_name = getTextInRange)]
-    pub fn get_text_in_range(&self, start: usize, end: usize) -> String {
-        self.current_state.get_text_range(start, end)
-    }
-    
-    #[wasm_bindgen(js_name = getCharacterAt)]
-    pub fn get_character_at(&self, position: usize) -> String {
-        let text = self.current_state.get_text();
-        let chars: Vec<char> = text.chars().collect();
-        if position < chars.len() {
-            chars[position].to_string()
-        } else {
-            String::new()
-        }
-    }
-    
-    #[wasm_bindgen(js_name = deleteText)]
-    pub fn delete_text(&mut self, start: usize, length: usize) -> i32 {
-        let transaction_json = format!(
-            r#"{{"changes": [{{"from": {}, "to": {}, "insert": ""}}]}}"#,
-            start,
-            start + length
-        );
-        
-        match self.current_state.apply_transaction(&transaction_json) {
-            Ok(new_state) => {
-                self.current_state = new_state;
-                0
-            }
-            Err(_) => 1
-        }
-    }
-    
-    #[wasm_bindgen(js_name = insertText)]
-    pub fn insert_text(&mut self, position: usize, text: &str) -> i32 {
-        let escaped_text = text.replace('\\', "\\\\").replace('"', "\\\"");
-        let transaction_json = format!(
-            r#"{{"changes": [{{"from": {}, "to": {}, "insert": "{}"}}]}}"#,
-            position,
-            position,
-            escaped_text
-        );
-        
-        match self.current_state.apply_transaction(&transaction_json) {
-            Ok(new_state) => {
-                self.current_state = new_state;
-                0
-            }
-            Err(_) => 1
-        }
-    }
-    
-    // Convert ClojureScript transaction format to internal format
-    fn convert_cljs_transaction(&self, cljs_json: &str) -> Result<String, String> {
-        #[derive(Deserialize)]
-        struct ClojureScriptTransaction {
-            #[serde(rename = "type")]
-            transaction_type: i32,
-            position: usize,
-            text: Option<String>,
-            length: Option<usize>,
-        }
-        
-        let cljs_transaction: ClojureScriptTransaction = serde_json::from_str(cljs_json)
-            .map_err(|e| format!("Failed to parse ClojureScript transaction: {}", e))?;
-        
-        let internal_format = match cljs_transaction.transaction_type {
-            0 => {
-                // Insert
-                let text = cljs_transaction.text.unwrap_or_default();
-                format!(
-                    r#"{{"changes": [{{"from": {}, "to": {}, "insert": "{}"}}]}}"#,
-                    cljs_transaction.position,
-                    cljs_transaction.position,
-                    text.replace('\\', "\\\\").replace('"', "\\\"")
-                )
-            }
-            1 => {
-                // Delete
-                let length = cljs_transaction.length.unwrap_or(0);
-                format!(
-                    r#"{{"changes": [{{"from": {}, "to": {}, "insert": ""}}]}}"#,
-                    cljs_transaction.position,
-                    cljs_transaction.position + length
-                )
-            }
-            2 => {
-                // Replace
-                let length = cljs_transaction.length.unwrap_or(0);
-                let text = cljs_transaction.text.unwrap_or_default();
-                format!(
-                    r#"{{"changes": [{{"from": {}, "to": {}, "insert": "{}"}}]}}"#,
-                    cljs_transaction.position,
-                    cljs_transaction.position + length,
-                    text.replace('\\', "\\\\").replace('"', "\\\"")
-                )
-            }
-            _ => return Err(format!("Unknown transaction type: {}", cljs_transaction.transaction_type)),
-        };
-        
-        Ok(internal_format)
     }
 }
 
@@ -802,9 +579,11 @@ mod tests {
     #[test]
     fn test_editor_state_insert_transaction() {
         let state = EditorState::new("AC");
-        let transaction_json = r#"{"changes": [{"from": 1, "to": 1, "insert": "B"}]}"#;
+        let transaction = Transaction {
+            changes: vec![Change { from: 1, to: 1, insert: "B".to_string() }]
+        };
         
-        let new_state = state.apply_transaction(transaction_json).unwrap();
+        let new_state = state.apply_transaction(&transaction);
         assert_eq!(new_state.get_text(), "ABC");
         assert_eq!(new_state.length(), 3);
         assert_eq!(new_state.version(), 1);
@@ -817,9 +596,11 @@ mod tests {
     #[test]
     fn test_editor_state_delete_transaction() {
         let state = EditorState::new("ABCD");
-        let transaction_json = r#"{"changes": [{"from": 1, "to": 3, "insert": ""}]}"#;
+        let transaction = Transaction {
+            changes: vec![Change { from: 1, to: 3, insert: "".to_string() }]
+        };
         
-        let new_state = state.apply_transaction(transaction_json).unwrap();
+        let new_state = state.apply_transaction(&transaction);
         assert_eq!(new_state.get_text(), "AD");
         assert_eq!(new_state.length(), 2);
         assert_eq!(new_state.version(), 1);
@@ -828,9 +609,11 @@ mod tests {
     #[test]
     fn test_editor_state_replace_transaction() {
         let state = EditorState::new("Hello, World!");
-        let transaction_json = r#"{"changes": [{"from": 7, "to": 12, "insert": "Rust"}]}"#;
+        let transaction = Transaction {
+            changes: vec![Change { from: 7, to: 12, insert: "Rust".to_string() }]
+        };
         
-        let new_state = state.apply_transaction(transaction_json).unwrap();
+        let new_state = state.apply_transaction(&transaction);
         assert_eq!(new_state.get_text(), "Hello, Rust!");
         assert_eq!(new_state.length(), 13);
         assert_eq!(new_state.version(), 1);
@@ -839,12 +622,14 @@ mod tests {
     #[test]
     fn test_editor_state_multiple_changes() {
         let state = EditorState::new("ABCD");
-        let transaction_json = r#"{"changes": [
-            {"from": 1, "to": 1, "insert": "X"},
-            {"from": 3, "to": 3, "insert": "Y"}
-        ]}"#;
+        let transaction = Transaction {
+            changes: vec![
+                Change { from: 1, to: 1, insert: "X".to_string() },
+                Change { from: 3, to: 3, insert: "Y".to_string() }
+            ]
+        };
         
-        let new_state = state.apply_transaction(transaction_json).unwrap();
+        let new_state = state.apply_transaction(&transaction);
         // Changes applied in reverse order: position 3 first, then position 1
         assert_eq!(new_state.get_text(), "AXBYCXD");
     }
@@ -860,12 +645,16 @@ mod tests {
     #[test]
     fn test_editor_state_sequential_transactions() {
         let state1 = EditorState::new("AC");
-        let transaction1 = r#"{"changes": [{"from": 1, "to": 1, "insert": "B"}]}"#;
-        let state2 = state1.apply_transaction(transaction1).unwrap();
+        let transaction1 = Transaction {
+            changes: vec![Change { from: 1, to: 1, insert: "B".to_string() }]
+        };
+        let state2 = state1.apply_transaction(&transaction1);
         assert_eq!(state2.get_text(), "ABC");
 
-        let transaction2 = r#"{"changes": [{"from": 3, "to": 3, "insert": "D"}]}"#;
-        let state3 = state2.apply_transaction(transaction2).unwrap();
+        let transaction2 = Transaction {
+            changes: vec![Change { from: 3, to: 3, insert: "D".to_string() }]
+        };
+        let state3 = state2.apply_transaction(&transaction2);
         assert_eq!(state3.get_text(), "ABCD");
         assert_eq!(state3.version(), 2);
     }
@@ -875,18 +664,11 @@ mod tests {
         let state = EditorState::new("Line 1\nLine 2\nLine 3");
         assert_eq!(state.line_count(), 3);
         
-        let transaction = r#"{"changes": [{"from": 7, "to": 7, "insert": "New "}]}"#;
-        let new_state = state.apply_transaction(transaction).unwrap();
+        let transaction = Transaction {
+            changes: vec![Change { from: 7, to: 7, insert: "New ".to_string() }]
+        };
+        let new_state = state.apply_transaction(&transaction);
         assert_eq!(new_state.get_text(), "Line 1\nNew Line 2\nLine 3");
-    }
-
-    #[test]
-    fn test_invalid_transaction_json() {
-        let state = EditorState::new("AC");
-        let invalid_json = r#"{"invalid": "json"}"#;
-        
-        let result = state.apply_transaction(invalid_json);
-        assert!(result.is_err());
     }
 
     #[test]
@@ -895,96 +677,11 @@ mod tests {
         assert_eq!(state.length(), 0);
         assert_eq!(state.get_text(), "");
         
-        let transaction = r#"{"changes": [{"from": 0, "to": 0, "insert": "Hello"}]}"#;
-        let new_state = state.apply_transaction(transaction).unwrap();
+        let transaction = Transaction {
+            changes: vec![Change { from: 0, to: 0, insert: "Hello".to_string() }]
+        };
+        let new_state = state.apply_transaction(&transaction);
         assert_eq!(new_state.get_text(), "Hello");
         assert_eq!(new_state.length(), 5);
-    }
-
-    // Tests for ClojureScript compatibility layer
-    #[test]
-    fn test_wasm_editor_core_initialization() {
-        let mut core = WasmEditorCore::new();
-        core.init("Hello, World!");
-        assert_eq!(core.get_text(), "Hello, World!");
-        assert_eq!(core.get_length(), 13);
-    }
-
-    #[test]
-    fn test_cljs_insert_transaction() {
-        let mut core = WasmEditorCore::new();
-        core.init("AC");
-        
-        let cljs_transaction = r#"{"type": 0, "position": 1, "text": "B"}"#;
-        let result = core.apply_transaction(cljs_transaction);
-        
-        assert_eq!(result, 0); // Success
-        assert_eq!(core.get_text(), "ABC");
-        assert!(!core.get_last_result().is_empty());
-        assert!(core.get_last_error_message().is_empty());
-    }
-
-    #[test]
-    fn test_cljs_delete_transaction() {
-        let mut core = WasmEditorCore::new();
-        core.init("ABCD");
-        
-        let cljs_transaction = r#"{"type": 1, "position": 1, "length": 2}"#;
-        let result = core.apply_transaction(cljs_transaction);
-        
-        assert_eq!(result, 0); // Success
-        assert_eq!(core.get_text(), "AD");
-    }
-
-    #[test]
-    fn test_cljs_replace_transaction() {
-        let mut core = WasmEditorCore::new();
-        core.init("Hello, World!");
-        
-        let cljs_transaction = r#"{"type": 2, "position": 7, "length": 5, "text": "Rust"}"#;
-        let result = core.apply_transaction(cljs_transaction);
-        
-        assert_eq!(result, 0); // Success
-        assert_eq!(core.get_text(), "Hello, Rust!");
-    }
-
-    #[test]
-    fn test_direct_mutation_methods() {
-        let mut core = WasmEditorCore::new();
-        core.init("Hello, World!");
-        
-        // Test insertText
-        let result = core.insert_text(7, "Amazing ");
-        assert_eq!(result, 0);
-        assert_eq!(core.get_text(), "Hello, Amazing World!");
-        
-        // Test deleteText
-        let result = core.delete_text(7, 8); // Remove "Amazing "
-        assert_eq!(result, 0);
-        assert_eq!(core.get_text(), "Hello, World!");
-    }
-
-    #[test]
-    fn test_text_access_methods() {
-        let mut core = WasmEditorCore::new();
-        core.init("Hello, World!");
-        
-        assert_eq!(core.get_text_in_range(0, 5), "Hello");
-        assert_eq!(core.get_text_in_range(7, 12), "World");
-        assert_eq!(core.get_character_at(0), "H");
-        assert_eq!(core.get_character_at(7), "W");
-    }
-
-    #[test]
-    fn test_invalid_cljs_transaction() {
-        let mut core = WasmEditorCore::new();
-        core.init("Hello");
-        
-        let invalid_transaction = r#"{"invalid": "format"}"#;
-        let result = core.apply_transaction(invalid_transaction);
-        
-        assert_ne!(result, 0); // Should fail
-        assert!(!core.get_last_error_message().is_empty());
-        assert!(core.get_last_result().is_empty());
     }
 }
