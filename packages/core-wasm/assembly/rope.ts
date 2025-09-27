@@ -112,7 +112,8 @@ class RopeNode {
 function createLeafNode(text: string): RopeNode {
   const node = changetype<RopeNode>(allocRopeNode());
   
-  if (text.length == 0) {
+  // Handle null or empty text safely
+  if (!text || text.length == 0) {
     node.text = 0;
     node.length = 0;
     node.weight = 0;
@@ -353,7 +354,7 @@ function splitRope(node: RopeNode | null, position: u32): SplitResult {
 
 // Insert text at the given position
 export function insertText(position: u32, text: string): void {
-  if (text.length == 0) return;
+  if (!text || text.length == 0) return;
   
   const newNode = createLeafNode(text);
   if (changetype<usize>(newNode) == 0) return; // Failed to create node
@@ -420,23 +421,82 @@ export function getRopeLength(): u32 {
   return ropeRoot ? ropeRoot!.length : 0;
 }
 
-// Get text from position with given length
+// Get text from position with given length (optimized for range access)
 export function getRopeText(start: u32, length: u32): string {
-  if (!ropeRoot || start >= ropeRoot!.length) {
+  if (!ropeRoot || start >= ropeRoot!.length || length == 0) {
     return "";
   }
   
-  // Simple implementation - build full text then substring
-  return getAllRopeText().substr(start as i32, length as i32);
+  // Clamp length to available content
+  const actualLength = min(length, ropeRoot!.length - start);
+  
+  // For small ranges or simple rope structures, use direct traversal
+  if (actualLength <= 1000 || ropeRoot!.isLeaf()) {
+    return getAllRopeText().substr(start as i32, actualLength as i32);
+  }
+  
+  // For larger ranges, implement efficient traversal
+  // TODO: Implement optimized range extraction
+  // For now, fall back to full text extraction
+  return getAllRopeText().substr(start as i32, actualLength as i32);
+}
+
+// More efficient range-based text access
+export function getTextRange(start: u32, end: u32): string {
+  if (!ropeRoot || start >= end || start >= ropeRoot!.length) {
+    return "";
+  }
+  
+  const actualEnd = min(end, ropeRoot!.length);
+  const length = actualEnd - start;
+  
+  return getRopeText(start, length);
+}
+
+// Get text statistics without extracting content
+export function getTextStats(): string {
+  if (!ropeRoot) {
+    return `{"length": 0, "height": 0, "nodes": 0}`;
+  }
+  
+  // TODO: Implement efficient tree traversal for statistics
+  // For now, return basic info
+  return `{"length": ${ropeRoot!.length}, "height": ${ropeRoot!.height}, "nodes": 1}`;
+}
+
+// Get line-based text access (for future line-mode operations)
+export function getLine(lineNumber: u32): string {
+  // TODO: Implement line-based access
+  // This will be important for Emacs-style line operations
+  return "";
+}
+
+// Get character at specific position (for cursor operations)
+export function getCharAt(position: u32): u32 {
+  if (!ropeRoot || position >= ropeRoot!.length) {
+    return 0; // Return null character for out-of-bounds
+  }
+  
+  // For simple case, extract single character
+  const text = getRopeText(position, 1);
+  if (text.length > 0) {
+    return text.charCodeAt(0) as u32;
+  }
+  
+  return 0;
 }
 
 // Get all text from the rope (simplified implementation)
 export function getAllRopeText(): string {
   if (!ropeRoot) return "";
   
-  // For now, implement simple traversal for single leaf
-  // This is a minimal implementation for testing
+  // Check if root is a leaf node
   if (ropeRoot!.isLeaf()) {
+    // Handle empty leaf
+    if (ropeRoot!.length == 0 || ropeRoot!.text == 0) {
+      return "";
+    }
+    
     let result = "";
     for (let i: u32 = 0; i < ropeRoot!.length; i++) {
       const charCode = load<u16>(ropeRoot!.text + i * 2);

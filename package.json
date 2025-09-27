@@ -11,7 +11,10 @@
     "dev": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/dev.sh",
     "build": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/build.sh",
     "test": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/test.sh",
-    "test-wasm": "cd packages/core-wasm && PATH=/home/nixos/.nix-profile/bin:$PATH npm run dev"
+    "test-wasm": "cd packages/core-wasm && PATH=/home/nixos/.nix-profile/bin:$PATH npm run dev",
+    "test-integration": "PATH=/home/nixos/.nix-profile/bin:$PATH ./test-integration.sh",
+    "dev-editor": "cd packages/editor-cljs && PATH=/home/nixos/.nix-profile/bin:$PATH npm run dev",
+    "dev-server": "cd packages/editor-cljs && PATH=/home/nixos/.nix-profile/bin:$PATH npm run dev-server"
   },
   "devDependencies": {},
   "engines": {
