@@ -75,7 +75,40 @@ Open `test.html` in a web browser to run basic functionality tests. The test fil
 
 ## Integration
 
-The API is designed to be identical to the previous AssemblyScript implementation, enabling seamless integration with the existing ClojureScript "Userspace" layer.
+### ClojureScript Compatibility
+
+The WASM module provides two API levels for maximum compatibility:
+
+1. **Modern API** (`EditorState` class):
+   - Immutable, functional design with `apply_transaction(json)`
+   - Uses CodeMirror-style transaction format: `{"changes": [{"from": N, "to": M, "insert": "text"}]}`
+   - Returns `Result<EditorState, JsValue>` for robust error handling
+
+2. **Legacy Compatibility API** (`WasmEditorCore` class):
+   - Designed for seamless integration with existing ClojureScript code
+   - Mutable interface matching original AssemblyScript expectations
+   - Methods: `init()`, `applyTransaction()`, `getLastResult()`, `getLastErrorMessage()`
+   - Transaction format: `{"type": 0, "position": N, "text": "..."}`  (insert)
+   - Transaction format: `{"type": 1, "position": N, "length": M}`     (delete)
+   - Transaction format: `{"type": 2, "position": N, "length": M, "text": "..."}`  (replace)
+   - Direct mutation methods: `insertText()`, `deleteText()`, `getText()`, etc.
+   - Error handling via return codes (0 = success) and separate error message retrieval
+
+### Migration Path
+
+For existing ClojureScript applications:
+1. **No Changes Required**: Use `WasmEditorCore` for drop-in compatibility
+2. **Future Enhancement**: Gradually migrate to `EditorState` for better performance and immutability
+
+### WASM Loading
+
+```javascript
+import init, { WasmEditorCore } from './pkg/core_wasm.js';
+
+await init();
+const editor = new WasmEditorCore();
+editor.init("Initial text content");
+```
 
 ## Performance Characteristics
 

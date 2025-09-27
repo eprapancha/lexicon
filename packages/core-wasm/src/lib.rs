@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
+use serde::{Deserialize, Serialize};
 
 #[wasm_bindgen]
 extern "C" {
@@ -149,6 +150,7 @@ impl RBNode {
 }
 
 #[wasm_bindgen]
+#[derive(Clone)]
 pub struct PieceTree {
     original_buffer: String,
     add_buffer: String,
@@ -321,6 +323,53 @@ impl PieceTree {
     }
     
     #[wasm_bindgen]
+    pub fn get_text_range(&self, from: usize, to: usize) -> String {
+        if from >= to || from >= self.length() {
+            return String::new();
+        }
+        
+        let end = to.min(self.length());
+        let full_text = self.get_text();
+        
+        // Convert byte positions to character positions for proper UTF-8 handling
+        let chars: Vec<char> = full_text.chars().collect();
+        if from >= chars.len() {
+            return String::new();
+        }
+        
+        let end_char = end.min(chars.len());
+        chars[from..end_char].iter().collect()
+    }
+    
+    pub fn delete_range(&mut self, from: usize, to: usize) {
+        if from >= to || from >= self.length() {
+            return;
+        }
+        
+        let end = to.min(self.length());
+        
+        // For now, implement deletion by rebuilding the tree
+        // This is not optimal but works correctly
+        let full_text = self.get_text();
+        let chars: Vec<char> = full_text.chars().collect();
+        
+        if from >= chars.len() {
+            return;
+        }
+        
+        let end_char = end.min(chars.len());
+        let mut new_text = String::new();
+        
+        // Add text before deletion
+        new_text.extend(chars[..from].iter());
+        // Add text after deletion
+        new_text.extend(chars[end_char..].iter());
+        
+        // Rebuild the tree with new text
+        *self = PieceTree::new(&new_text);
+    }
+    
+    #[wasm_bindgen]
     pub fn get_line(&self, line_number: usize) -> String {
         if let Some(line_info) = self.find_line(line_number) {
             let text = self.get_text();
@@ -399,4 +448,543 @@ struct PieceInfo {
 struct LineInfo {
     line_start: usize,
     line_end: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Change {
+    pub from: usize,
+    pub to: usize,
+    pub insert: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Transaction {
+    pub changes: Vec<Change>,
+}
+
+impl Transaction {
+    pub fn new_insert(position: usize, text: String) -> Self {
+        Transaction {
+            changes: vec![Change {
+                from: position,
+                to: position,
+                insert: text,
+            }],
+        }
+    }
+    
+    pub fn new_delete(from: usize, to: usize) -> Self {
+        Transaction {
+            changes: vec![Change {
+                from,
+                to,
+                insert: String::new(),
+            }],
+        }
+    }
+    
+    pub fn new_replace(from: usize, to: usize, text: String) -> Self {
+        Transaction {
+            changes: vec![Change {
+                from,
+                to,
+                insert: text,
+            }],
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub struct EditorState {
+    piece_tree: PieceTree,
+    version: u64,
+}
+
+#[wasm_bindgen]
+impl EditorState {
+    #[wasm_bindgen(constructor)]
+    pub fn new(initial_text: &str) -> EditorState {
+        EditorState {
+            piece_tree: PieceTree::new(initial_text),
+            version: 0,
+        }
+    }
+    
+    #[wasm_bindgen]
+    pub fn apply_transaction(&self, transaction_json: &str) -> Result<EditorState, JsValue> {
+        let transaction: Transaction = serde_json::from_str(transaction_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse transaction: {}", e)))?;
+        
+        let mut new_tree = self.piece_tree.clone();
+        
+        // Apply changes in reverse order to maintain position validity
+        let mut changes = transaction.changes;
+        changes.sort_by(|a, b| b.from.cmp(&a.from));
+        
+        for change in changes {
+            // First delete the range if needed
+            if change.to > change.from {
+                new_tree.delete_range(change.from, change.to);
+            }
+            
+            // Then insert new text if any
+            if !change.insert.is_empty() {
+                new_tree.insert(change.from, &change.insert);
+            }
+        }
+        
+        Ok(EditorState {
+            piece_tree: new_tree,
+            version: self.version + 1,
+        })
+    }
+    
+    #[wasm_bindgen]
+    pub fn get_text_range(&self, from: usize, to: usize) -> String {
+        self.piece_tree.get_text_range(from, to)
+    }
+    
+    #[wasm_bindgen]
+    pub fn get_text(&self) -> String {
+        self.piece_tree.get_text()
+    }
+    
+    #[wasm_bindgen]
+    pub fn length(&self) -> usize {
+        self.piece_tree.length()
+    }
+    
+    #[wasm_bindgen]
+    pub fn line_count(&self) -> usize {
+        self.piece_tree.line_count()
+    }
+    
+    #[wasm_bindgen]
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+}
+
+impl Clone for EditorState {
+    fn clone(&self) -> Self {
+        EditorState {
+            piece_tree: self.piece_tree.clone(),
+            version: self.version,
+        }
+    }
+}
+
+// Compatibility layer for ClojureScript API expectations
+#[wasm_bindgen]
+pub struct WasmEditorCore {
+    current_state: EditorState,
+    last_result: String,
+    last_error: String,
+}
+
+#[wasm_bindgen]
+impl WasmEditorCore {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> WasmEditorCore {
+        WasmEditorCore {
+            current_state: EditorState::new(""),
+            last_result: String::new(),
+            last_error: String::new(),
+        }
+    }
+    
+    #[wasm_bindgen]
+    pub fn init(&mut self, initial_text: &str) {
+        self.current_state = EditorState::new(initial_text);
+        self.last_result.clear();
+        self.last_error.clear();
+    }
+    
+    // ClojureScript expects: applyTransaction(json) -> number (0 = success)
+    #[wasm_bindgen(js_name = applyTransaction)]
+    pub fn apply_transaction(&mut self, transaction_json: &str) -> i32 {
+        // Convert ClojureScript transaction format to internal format
+        match self.convert_cljs_transaction(transaction_json) {
+            Ok(internal_json) => {
+                match self.current_state.apply_transaction(&internal_json) {
+                    Ok(new_state) => {
+                        self.current_state = new_state;
+                        self.last_result = format!(
+                            r#"{{"success": true, "version": {}, "length": {}}}"#,
+                            self.current_state.version(),
+                            self.current_state.length()
+                        );
+                        self.last_error.clear();
+                        0 // Success
+                    }
+                    Err(e) => {
+                        self.last_error = format!("Transaction failed: {}", e.as_string().unwrap_or_else(|| "Unknown error".to_string()));
+                        self.last_result.clear();
+                        1 // Error
+                    }
+                }
+            }
+            Err(e) => {
+                self.last_error = format!("Invalid transaction format: {}", e);
+                self.last_result.clear();
+                2 // Parse error
+            }
+        }
+    }
+    
+    #[wasm_bindgen(js_name = getLastResult)]
+    pub fn get_last_result(&self) -> String {
+        self.last_result.clone()
+    }
+    
+    #[wasm_bindgen(js_name = getLastErrorMessage)]
+    pub fn get_last_error_message(&self) -> String {
+        self.last_error.clone()
+    }
+    
+    #[wasm_bindgen(js_name = getText)]
+    pub fn get_text(&self) -> String {
+        self.current_state.get_text()
+    }
+    
+    #[wasm_bindgen(js_name = getLength)]
+    pub fn get_length(&self) -> usize {
+        self.current_state.length()
+    }
+    
+    #[wasm_bindgen(js_name = getTextInRange)]
+    pub fn get_text_in_range(&self, start: usize, end: usize) -> String {
+        self.current_state.get_text_range(start, end)
+    }
+    
+    #[wasm_bindgen(js_name = getCharacterAt)]
+    pub fn get_character_at(&self, position: usize) -> String {
+        let text = self.current_state.get_text();
+        let chars: Vec<char> = text.chars().collect();
+        if position < chars.len() {
+            chars[position].to_string()
+        } else {
+            String::new()
+        }
+    }
+    
+    #[wasm_bindgen(js_name = deleteText)]
+    pub fn delete_text(&mut self, start: usize, length: usize) -> i32 {
+        let transaction_json = format!(
+            r#"{{"changes": [{{"from": {}, "to": {}, "insert": ""}}]}}"#,
+            start,
+            start + length
+        );
+        
+        match self.current_state.apply_transaction(&transaction_json) {
+            Ok(new_state) => {
+                self.current_state = new_state;
+                0
+            }
+            Err(_) => 1
+        }
+    }
+    
+    #[wasm_bindgen(js_name = insertText)]
+    pub fn insert_text(&mut self, position: usize, text: &str) -> i32 {
+        let escaped_text = text.replace('\\', "\\\\").replace('"', "\\\"");
+        let transaction_json = format!(
+            r#"{{"changes": [{{"from": {}, "to": {}, "insert": "{}"}}]}}"#,
+            position,
+            position,
+            escaped_text
+        );
+        
+        match self.current_state.apply_transaction(&transaction_json) {
+            Ok(new_state) => {
+                self.current_state = new_state;
+                0
+            }
+            Err(_) => 1
+        }
+    }
+    
+    // Convert ClojureScript transaction format to internal format
+    fn convert_cljs_transaction(&self, cljs_json: &str) -> Result<String, String> {
+        #[derive(Deserialize)]
+        struct ClojureScriptTransaction {
+            #[serde(rename = "type")]
+            transaction_type: i32,
+            position: usize,
+            text: Option<String>,
+            length: Option<usize>,
+        }
+        
+        let cljs_transaction: ClojureScriptTransaction = serde_json::from_str(cljs_json)
+            .map_err(|e| format!("Failed to parse ClojureScript transaction: {}", e))?;
+        
+        let internal_format = match cljs_transaction.transaction_type {
+            0 => {
+                // Insert
+                let text = cljs_transaction.text.unwrap_or_default();
+                format!(
+                    r#"{{"changes": [{{"from": {}, "to": {}, "insert": "{}"}}]}}"#,
+                    cljs_transaction.position,
+                    cljs_transaction.position,
+                    text.replace('\\', "\\\\").replace('"', "\\\"")
+                )
+            }
+            1 => {
+                // Delete
+                let length = cljs_transaction.length.unwrap_or(0);
+                format!(
+                    r#"{{"changes": [{{"from": {}, "to": {}, "insert": ""}}]}}"#,
+                    cljs_transaction.position,
+                    cljs_transaction.position + length
+                )
+            }
+            2 => {
+                // Replace
+                let length = cljs_transaction.length.unwrap_or(0);
+                let text = cljs_transaction.text.unwrap_or_default();
+                format!(
+                    r#"{{"changes": [{{"from": {}, "to": {}, "insert": "{}"}}]}}"#,
+                    cljs_transaction.position,
+                    cljs_transaction.position + length,
+                    text.replace('\\', "\\\\").replace('"', "\\\"")
+                )
+            }
+            _ => return Err(format!("Unknown transaction type: {}", cljs_transaction.transaction_type)),
+        };
+        
+        Ok(internal_format)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_basic_piece_tree() {
+        let tree = PieceTree::new("Hello");
+        assert_eq!(tree.get_text(), "Hello");
+        assert_eq!(tree.length(), 5);
+    }
+
+    #[test]
+    fn test_piece_tree_insert() {
+        let mut tree = PieceTree::new("AC");
+        tree.insert(1, "B");
+        assert_eq!(tree.get_text(), "ABC");
+        assert_eq!(tree.length(), 3);
+    }
+
+    #[test]
+    fn test_piece_tree_get_text_range() {
+        let tree = PieceTree::new("Hello, World!");
+        assert_eq!(tree.get_text_range(0, 5), "Hello");
+        assert_eq!(tree.get_text_range(7, 12), "World");
+        assert_eq!(tree.get_text_range(0, 13), "Hello, World!");
+    }
+
+    #[test]
+    fn test_piece_tree_delete_range() {
+        let mut tree = PieceTree::new("Hello, World!");
+        tree.delete_range(5, 7); // Remove ", "
+        assert_eq!(tree.get_text(), "HelloWorld!");
+        assert_eq!(tree.length(), 11);
+    }
+
+    #[test]
+    fn test_editor_state_initialization() {
+        let state = EditorState::new("AC");
+        assert_eq!(state.get_text(), "AC");
+        assert_eq!(state.length(), 2);
+        assert_eq!(state.version(), 0);
+    }
+
+    #[test]
+    fn test_editor_state_insert_transaction() {
+        let state = EditorState::new("AC");
+        let transaction_json = r#"{"changes": [{"from": 1, "to": 1, "insert": "B"}]}"#;
+        
+        let new_state = state.apply_transaction(transaction_json).unwrap();
+        assert_eq!(new_state.get_text(), "ABC");
+        assert_eq!(new_state.length(), 3);
+        assert_eq!(new_state.version(), 1);
+        
+        // Original state should be unchanged
+        assert_eq!(state.get_text(), "AC");
+        assert_eq!(state.version(), 0);
+    }
+
+    #[test]
+    fn test_editor_state_delete_transaction() {
+        let state = EditorState::new("ABCD");
+        let transaction_json = r#"{"changes": [{"from": 1, "to": 3, "insert": ""}]}"#;
+        
+        let new_state = state.apply_transaction(transaction_json).unwrap();
+        assert_eq!(new_state.get_text(), "AD");
+        assert_eq!(new_state.length(), 2);
+        assert_eq!(new_state.version(), 1);
+    }
+
+    #[test]
+    fn test_editor_state_replace_transaction() {
+        let state = EditorState::new("Hello, World!");
+        let transaction_json = r#"{"changes": [{"from": 7, "to": 12, "insert": "Rust"}]}"#;
+        
+        let new_state = state.apply_transaction(transaction_json).unwrap();
+        assert_eq!(new_state.get_text(), "Hello, Rust!");
+        assert_eq!(new_state.length(), 13);
+        assert_eq!(new_state.version(), 1);
+    }
+
+    #[test]
+    fn test_editor_state_multiple_changes() {
+        let state = EditorState::new("ABCD");
+        let transaction_json = r#"{"changes": [
+            {"from": 1, "to": 1, "insert": "X"},
+            {"from": 3, "to": 3, "insert": "Y"}
+        ]}"#;
+        
+        let new_state = state.apply_transaction(transaction_json).unwrap();
+        // Changes applied in reverse order: position 3 first, then position 1
+        assert_eq!(new_state.get_text(), "AXBYCXD");
+    }
+
+    #[test]
+    fn test_editor_state_get_text_range() {
+        let state = EditorState::new("Hello, World!");
+        assert_eq!(state.get_text_range(0, 5), "Hello");
+        assert_eq!(state.get_text_range(7, 12), "World");
+        assert_eq!(state.get_text_range(0, 13), "Hello, World!");
+    }
+
+    #[test]
+    fn test_editor_state_sequential_transactions() {
+        let state1 = EditorState::new("AC");
+        let transaction1 = r#"{"changes": [{"from": 1, "to": 1, "insert": "B"}]}"#;
+        let state2 = state1.apply_transaction(transaction1).unwrap();
+        assert_eq!(state2.get_text(), "ABC");
+
+        let transaction2 = r#"{"changes": [{"from": 3, "to": 3, "insert": "D"}]}"#;
+        let state3 = state2.apply_transaction(transaction2).unwrap();
+        assert_eq!(state3.get_text(), "ABCD");
+        assert_eq!(state3.version(), 2);
+    }
+
+    #[test]
+    fn test_line_operations() {
+        let state = EditorState::new("Line 1\nLine 2\nLine 3");
+        assert_eq!(state.line_count(), 3);
+        
+        let transaction = r#"{"changes": [{"from": 7, "to": 7, "insert": "New "}]}"#;
+        let new_state = state.apply_transaction(transaction).unwrap();
+        assert_eq!(new_state.get_text(), "Line 1\nNew Line 2\nLine 3");
+    }
+
+    #[test]
+    fn test_invalid_transaction_json() {
+        let state = EditorState::new("AC");
+        let invalid_json = r#"{"invalid": "json"}"#;
+        
+        let result = state.apply_transaction(invalid_json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_text_operations() {
+        let state = EditorState::new("");
+        assert_eq!(state.length(), 0);
+        assert_eq!(state.get_text(), "");
+        
+        let transaction = r#"{"changes": [{"from": 0, "to": 0, "insert": "Hello"}]}"#;
+        let new_state = state.apply_transaction(transaction).unwrap();
+        assert_eq!(new_state.get_text(), "Hello");
+        assert_eq!(new_state.length(), 5);
+    }
+
+    // Tests for ClojureScript compatibility layer
+    #[test]
+    fn test_wasm_editor_core_initialization() {
+        let mut core = WasmEditorCore::new();
+        core.init("Hello, World!");
+        assert_eq!(core.get_text(), "Hello, World!");
+        assert_eq!(core.get_length(), 13);
+    }
+
+    #[test]
+    fn test_cljs_insert_transaction() {
+        let mut core = WasmEditorCore::new();
+        core.init("AC");
+        
+        let cljs_transaction = r#"{"type": 0, "position": 1, "text": "B"}"#;
+        let result = core.apply_transaction(cljs_transaction);
+        
+        assert_eq!(result, 0); // Success
+        assert_eq!(core.get_text(), "ABC");
+        assert!(!core.get_last_result().is_empty());
+        assert!(core.get_last_error_message().is_empty());
+    }
+
+    #[test]
+    fn test_cljs_delete_transaction() {
+        let mut core = WasmEditorCore::new();
+        core.init("ABCD");
+        
+        let cljs_transaction = r#"{"type": 1, "position": 1, "length": 2}"#;
+        let result = core.apply_transaction(cljs_transaction);
+        
+        assert_eq!(result, 0); // Success
+        assert_eq!(core.get_text(), "AD");
+    }
+
+    #[test]
+    fn test_cljs_replace_transaction() {
+        let mut core = WasmEditorCore::new();
+        core.init("Hello, World!");
+        
+        let cljs_transaction = r#"{"type": 2, "position": 7, "length": 5, "text": "Rust"}"#;
+        let result = core.apply_transaction(cljs_transaction);
+        
+        assert_eq!(result, 0); // Success
+        assert_eq!(core.get_text(), "Hello, Rust!");
+    }
+
+    #[test]
+    fn test_direct_mutation_methods() {
+        let mut core = WasmEditorCore::new();
+        core.init("Hello, World!");
+        
+        // Test insertText
+        let result = core.insert_text(7, "Amazing ");
+        assert_eq!(result, 0);
+        assert_eq!(core.get_text(), "Hello, Amazing World!");
+        
+        // Test deleteText
+        let result = core.delete_text(7, 8); // Remove "Amazing "
+        assert_eq!(result, 0);
+        assert_eq!(core.get_text(), "Hello, World!");
+    }
+
+    #[test]
+    fn test_text_access_methods() {
+        let mut core = WasmEditorCore::new();
+        core.init("Hello, World!");
+        
+        assert_eq!(core.get_text_in_range(0, 5), "Hello");
+        assert_eq!(core.get_text_in_range(7, 12), "World");
+        assert_eq!(core.get_character_at(0), "H");
+        assert_eq!(core.get_character_at(7), "W");
+    }
+
+    #[test]
+    fn test_invalid_cljs_transaction() {
+        let mut core = WasmEditorCore::new();
+        core.init("Hello");
+        
+        let invalid_transaction = r#"{"invalid": "format"}"#;
+        let result = core.apply_transaction(invalid_transaction);
+        
+        assert_ne!(result, 0); // Should fail
+        assert!(!core.get_last_error_message().is_empty());
+        assert!(core.get_last_result().is_empty());
+    }
 }
