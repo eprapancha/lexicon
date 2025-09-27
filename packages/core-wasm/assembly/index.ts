@@ -12,6 +12,13 @@ export function init(): void {
   initRope();
 }
 
+// TEMPORARY: Reset function to clear corrupted state
+export function resetSystem(): void {
+  // Reinitialize everything to clear corrupted memory state
+  initMemoryManager();
+  initRope();
+}
+
 // Re-export memory management functions for testing
 export { 
   allocBlock, 
@@ -125,6 +132,32 @@ import {
   ErrorCode,
   TransactionType
 } from "./transactions";
+
+// String allocation for JavaScript interface
+export function allocateString(length: i32): usize {
+  return allocBlock((length * 2 + 4) as u32); // UTF-16 + padding
+}
+
+export function setStringChar(ptr: usize, index: i32, charCode: i32): void {
+  store<u16>(ptr + index * 2, charCode as u16);
+}
+
+// Safe transaction function that takes allocated string
+export function applyTransactionFromPtr(jsonPtr: usize, jsonLength: i32): u32 {
+  if (jsonPtr == 0 || jsonLength <= 0) {
+    return 9; // INVALID_PARAMETER
+  }
+  
+  // Convert memory to string
+  let jsonStr = "";
+  for (let i = 0; i < jsonLength; i++) {
+    const charCode = load<u16>(jsonPtr + i * 2);
+    if (charCode == 0) break; // Null terminator
+    jsonStr += String.fromCharCode(charCode);
+  }
+  
+  return applyTransaction(jsonStr);
+}
 
 // Export transaction functions
 export { applyTransaction, applySimpleInsert, applyHardcodedInsert, getLastResult, getLastErrorMessage };

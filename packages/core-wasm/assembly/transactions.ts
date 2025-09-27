@@ -95,9 +95,11 @@ function validateTransactionOp(op: TransactionOp): ErrorCode {
   switch (op.type) {
     case TransactionType.INSERT:
       if (op.position > currentLength) {
+        setErrorMessage(`Invalid insert position ${op.position}, max allowed: ${currentLength}`);
         return ErrorCode.INVALID_POSITION;
       }
       if (op.textPtr == 0 && op.textLength > 0) {
+        setErrorMessage("Text pointer is null but text length > 0");
         return ErrorCode.INVALID_UTF16;
       }
       break;
@@ -138,6 +140,12 @@ function validateTransactionOp(op: TransactionOp): ErrorCode {
 
 // Apply a single transaction operation
 function applySingleOp(op: TransactionOp): ErrorCode {
+  // Quick sanity check on the parsed operation
+  if (op.type > 3) { // We only have INSERT(0), DELETE(1), REPLACE(2), COMPOUND(3)
+    setErrorMessage(`Invalid transaction type: ${op.type}`);
+    return ErrorCode.INVALID_TRANSACTION;
+  }
+  
   // Validate operation first
   const validationResult = validateTransactionOp(op);
   if (validationResult != ErrorCode.SUCCESS) {
@@ -417,6 +425,13 @@ export function applyTransaction(transactionJson: string): u32 {
   if (!op) {
     lastResult.errorCode = ErrorCode.INVALID_JSON;
     setErrorMessage("Failed to parse transaction JSON");
+    return ErrorCode.INVALID_JSON;
+  }
+  
+  // Debug: Check if op is valid
+  if (changetype<usize>(op) == 0) {
+    lastResult.errorCode = ErrorCode.INVALID_JSON;
+    setErrorMessage("Transaction operation is null");
     return ErrorCode.INVALID_JSON;
   }
   
