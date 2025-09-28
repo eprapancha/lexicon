@@ -44,3 +44,5 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+/packages/editor-cljs/syntax-test.cljs
+/packages/editor-cljs/out/
