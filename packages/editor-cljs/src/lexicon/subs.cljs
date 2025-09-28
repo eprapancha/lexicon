@@ -58,7 +58,7 @@
 (rf/reg-sub
  :buffer-content
  :<- [:active-wasm-instance]
- (fn [wasm-instance _]
+ (fn [^js wasm-instance _]
    "Get the content of the active buffer from WASM"
    (if wasm-instance
      (.getText wasm-instance)
@@ -68,7 +68,7 @@
  :visible-content
  :<- [:active-wasm-instance]
  :<- [:ui]
- (fn [[wasm-instance ui] [_ start end]]
+ (fn [[^js wasm-instance ui] [_ start end]]
    "Get visible text range with caching"
    (if wasm-instance
      (let [cache (:text-cache ui)
@@ -81,7 +81,7 @@
 (rf/reg-sub
  :text-range
  :<- [:active-wasm-instance]
- (fn [wasm-instance [_ start end]]
+ (fn [^js wasm-instance [_ start end]]
    "Get specific text range without caching (for small ranges)"
    (if wasm-instance
      (first (wasm/get-text-range-safe wasm-instance start end))
@@ -102,7 +102,7 @@
 (rf/reg-sub
  :buffer-length
  :<- [:active-wasm-instance]
- (fn [wasm-instance _]
+ (fn [^js wasm-instance _]
    "Get the length of the active buffer from WASM"
    (if wasm-instance
      (.getLength wasm-instance)

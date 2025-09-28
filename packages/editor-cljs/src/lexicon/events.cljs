@@ -63,11 +63,11 @@
              transaction-json (js/JSON.stringify (clj->js wasm-transaction))
              
              ;; Apply transaction via WASM
-             error-code (.applyTransaction wasm-instance transaction-json)]
+             error-code (.applyTransaction ^js wasm-instance transaction-json)]
          
          (if (= error-code 0) ; SUCCESS
            ;; Transaction successful
-           (let [result-json (.getLastResult wasm-instance)
+           (let [result-json (.getLastResult ^js wasm-instance)
                  result (js->clj (js/JSON.parse result-json) :keywordize-keys true)
                  new-cursor (:cursorPosition result)
                  new-length (:length result)
@@ -96,7 +96,7 @@
                       (assoc-in [:buffers active-buffer-id :is-modified?] true))})
            
            ;; Transaction failed
-           (let [error-message (.getLastErrorMessage wasm-instance)]
+           (let [error-message (.getLastErrorMessage ^js wasm-instance)]
              (println "Transaction failed:" error-message)
              {:db (assoc-in db [:system :last-error] error-message)
               :fx [[:dispatch [:show-error error-message]]]})))
@@ -115,13 +115,13 @@
      (if wasm-instance
        (let [compound-transaction {:type 3 :operations operations}
              transaction-json (js/JSON.stringify (clj->js compound-transaction))
-             error-code (.applyTransaction wasm-instance transaction-json)]
+             error-code (.applyTransaction ^js wasm-instance transaction-json)]
          
          (if (= error-code 0)
            ;; Success - update state similar to single transaction
            (rf/dispatch [:transaction-completed])
            ;; Error - handle appropriately
-           (rf/dispatch [:transaction-failed (.getLastErrorMessage wasm-instance)])))
+           (rf/dispatch [:transaction-failed (.getLastErrorMessage ^js wasm-instance)])))
        
        {:db db}))))
 
@@ -187,8 +187,8 @@
      (when wasm-instance
        ;; TODO: Implement text diffing algorithm
        ;; For now, replace entire content
-       (.deleteText wasm-instance 0 (.getLength wasm-instance))
-       (.insertText wasm-instance 0 dom-content))
+       (.deleteText ^js wasm-instance 0 (.getLength ^js wasm-instance))
+       (.insertText ^js wasm-instance 0 dom-content))
      
      {:db (assoc-in db [:ui :view-needs-update?] true)})))
 
@@ -219,7 +219,7 @@
          file-handle (:file-handle active-buffer)]
      
      (if wasm-instance
-       (let [content (.getText wasm-instance)]
+       (let [content (.getText ^js wasm-instance)]
          (if file-handle
            ;; Save to existing file
            {:fx [[:save-to-file-handle {:file-handle file-handle
@@ -280,7 +280,7 @@
  :find-file
  (fn [{:keys [db]} [_]]
    "Open a file from disk"
-   {:fx [[:open-file-picker]]})
+   {:fx [[:open-file-picker]]}))
 
 (rf/reg-fx
  :open-file-picker
@@ -330,7 +330,7 @@
                        :mark-position nil}]
        {:db (-> db
                 (assoc-in [:buffers buffer-id] new-buffer)
-                (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))})))
+                (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))))
 
 (rf/reg-event-db
  :file-read-failure
@@ -359,7 +359,7 @@
          
          ;; Free the WASM instance memory
          (when wasm-instance
-           (.free wasm-instance))
+           (.free ^js wasm-instance))
          
          (if (empty? remaining-buffer-ids)
            ;; No buffers left - create a new default *scratch* buffer
@@ -415,7 +415,7 @@
              end (max cursor-pos mark-position)
              length (- end start)]
          (if (> length 0)
-           (let [killed-text (.getTextInRange wasm-instance start end)
+           (let [killed-text (.getTextInRange ^js wasm-instance start end)
                  kill-ring (:kill-ring db)
                  updated-kill-ring (take 60 (cons killed-text kill-ring))]
              {:db (-> db

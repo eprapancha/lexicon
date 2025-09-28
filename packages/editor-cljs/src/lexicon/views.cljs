@@ -1,6 +1,7 @@
 (ns lexicon.views
   (:require [re-frame.core :as rf]
-            [reagent.core :as r]))
+            [reagent.core :as r]
+            [reagent.dom :as rdom]))
 
 ;; -- Input Event Handling --
 
@@ -97,12 +98,10 @@
                             (let [dom-content (.-textContent target-element)
                                   wasm-instance @(rf/subscribe [:active-wasm-instance])]
                               (when wasm-instance
-                                (let [expected-content (.getText wasm-instance)]
+                                (let [expected-content (.getText ^js wasm-instance)]
                                   (when (not= dom-content expected-content)
                                     (println "🔄 Reconciling DOM state")
-                                    (rf/dispatch [:reconcile-dom-state dom-content expected-content])))))))
-                    ;; Store observer reference
-                    (rf/dispatch [:set-mutation-observer observer]))))]
+                                    (rf/dispatch [:reconcile-dom-state dom-content expected-content])))))))))))]
     
     ;; Configure observer to watch for all changes
     (.observe observer target-element 
@@ -110,6 +109,9 @@
                    :subtree true
                    :characterData true
                    :characterDataOldValue true})
+    
+    ;; Store observer reference
+    (rf/dispatch [:set-mutation-observer observer])
     
     observer))
 
@@ -129,86 +131,80 @@
         ime-composing? @(rf/subscribe [:ime-composing?])
         ime-text @(rf/subscribe [:ime-composition-text])
         view-needs-update? @(rf/subscribe [:view-needs-update?])
-        editor-ref (r/atom nil)]
+        editor-ref (atom nil)]
     
-    (r/create-class
-     {:component-did-mount
-      (fn [this]
-        (let [element (r/dom-node this)]
-          (reset! editor-ref element)
-          
-          ;; Set up MutationObserver
-          (create-mutation-observer element)
-          
-          ;; Set up event listeners
-          (.addEventListener element "beforeinput" handle-beforeinput)
-          (.addEventListener element "compositionstart" handle-composition-start)
-          (.addEventListener element "compositionupdate" handle-composition-update)
-          (.addEventListener element "compositionend" handle-composition-end)))
+    (r/with-let [setup-element! (fn [element]
+                                  (when element
+                                    (reset! editor-ref element)
+                                    
+                                    ;; Set up MutationObserver
+                                    (create-mutation-observer element)
+                                    
+                                    ;; Set up event listeners
+                                    (.addEventListener element "beforeinput" handle-beforeinput)
+                                    (.addEventListener element "compositionstart" handle-composition-start)
+                                    (.addEventListener element "compositionupdate" handle-composition-update)
+                                    (.addEventListener element "compositionend" handle-composition-end)))
+                 cleanup-element! (fn []
+                                    (when-let [element @editor-ref]
+                                      (.removeEventListener element "beforeinput" handle-beforeinput)
+                                      (.removeEventListener element "compositionstart" handle-composition-start)
+                                      (.removeEventListener element "compositionupdate" handle-composition-update)
+                                      (.removeEventListener element "compositionend" handle-composition-end))
+                                    
+                                    ;; Disconnect MutationObserver
+                                    (when-let [observer @(rf/subscribe [:mutation-observer])]
+                                      (.disconnect observer)))]
       
-      :component-will-unmount
-      (fn [this]
-        (when-let [element @editor-ref]
-          (.removeEventListener element "beforeinput" handle-beforeinput)
-          (.removeEventListener element "compositionstart" handle-composition-start)
-          (.removeEventListener element "compositionupdate" handle-composition-update)
-          (.removeEventListener element "compositionend" handle-composition-end))
+      ;; Update content effect
+      (r/track! (fn []
+                  (when view-needs-update?
+                    (when-let [element @editor-ref]
+                      (rf/dispatch [:set-reconciliation-active true])
+                      
+                      ;; Temporarily disconnect MutationObserver
+                      (when-let [observer @(rf/subscribe [:mutation-observer])]
+                        (.disconnect observer))
+                      
+                      ;; Update content
+                      (set! (.-textContent element) content)
+                      
+                      ;; Reconnect MutationObserver
+                      (when-let [observer @(rf/subscribe [:mutation-observer])]
+                        (.observe observer element 
+                                  #js {:childList true
+                                       :subtree true
+                                       :characterData true
+                                       :characterDataOldValue true}))
+                      
+                      (rf/dispatch [:set-reconciliation-active false])
+                      (rf/dispatch [:view-updated])))))
+      
+      [:div.editor-container
+       [:div.editor-content
+        {:ref setup-element!
+         :contentEditable true
+         :suppressContentEditableWarning true
+         :style {:min-height "100vh"
+                 :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
+                 :font-size "14px"
+                 :line-height "1.5"
+                 :padding "20px"
+                 :padding-top "52px"  ; Account for buffer tabs (32px) + margin
+                 :padding-bottom "44px"  ; Account for status bar (24px) + margin
+                 :outline "none"
+                 :white-space "pre-wrap"
+                 :background-color "#1e1e1e"
+                 :color "#d4d4d4"
+                 :border "none"}}
+        content
         
-        ;; Disconnect MutationObserver
-        (when-let [observer @(rf/subscribe [:mutation-observer])]
-          (.disconnect observer)))
-      
-      :component-did-update
-      (fn [this old-argv]
-        ;; Update DOM content when view needs update
-        (when view-needs-update?
-          (let [element @editor-ref]
-            (rf/dispatch [:set-reconciliation-active true])
-            
-            ;; Temporarily disconnect MutationObserver
-            (when-let [observer @(rf/subscribe [:mutation-observer])]
-              (.disconnect observer))
-            
-            ;; Update content
-            (set! (.-textContent element) content)
-            
-            ;; Reconnect MutationObserver
-            (when-let [observer @(rf/subscribe [:mutation-observer])]
-              (.observe observer element 
-                        #js {:childList true
-                             :subtree true
-                             :characterData true
-                             :characterDataOldValue true}))
-            
-            (rf/dispatch [:set-reconciliation-active false])
-            (rf/dispatch [:view-updated]))))
-      
-      :reagent-render
-      (fn []
-        [:div.editor-container
-         [:div.editor-content
-          {:contentEditable true
-           :suppressContentEditableWarning true
-           :style {:min-height "100vh"
-                   :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
-                   :font-size "14px"
-                   :line-height "1.5"
-                   :padding "20px"
-                   :padding-top "52px"  ; Account for buffer tabs (32px) + margin
-                   :padding-bottom "44px"  ; Account for status bar (24px) + margin
-                   :outline "none"
-                   :white-space "pre-wrap"
-                   :background-color "#1e1e1e"
-                   :color "#d4d4d4"
-                   :border "none"}}
-          content
-          
-          ;; Show IME composition text if active
-          (when ime-composing?
-            [:span.ime-composition
-             {:style {:background-color "rgba(255, 255, 0, 0.3)"
-                      :text-decoration "underline"}}
-             ime-text])]])})))
+        ;; Show IME composition text if active
+        (when ime-composing?
+          [:span.ime-composition
+           {:style {:background-color "rgba(255, 255, 0, 0.3)"
+                    :text-decoration "underline"}}
+           ime-text])]])))
 
 (defn buffer-tab
   "Display a single buffer tab with close button"

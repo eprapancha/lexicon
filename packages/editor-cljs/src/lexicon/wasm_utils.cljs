@@ -5,7 +5,7 @@
 (defn get-text-range-safe
   "Get text range from WASM with proper string marshalling.
    Returns [text-string success?] tuple."
-  [wasm-handle start end]
+  [^js wasm-handle start end]
   (try
     (let [length (.getLength wasm-handle)
           clamped-start (max 0 (min start length))
@@ -23,7 +23,7 @@
 ;; Enhanced character access
 (defn get-char-safe
   "Get character at position with error handling."
-  [wasm-handle position]
+  [^js wasm-handle position]
   (try
     (let [length (.getLength wasm-handle)]
       (if (and (>= position 0) (< position length))
@@ -36,7 +36,7 @@
 ;; Test if WASM instance is properly initialized
 (defn wasm-initialized?
   "Check if WASM instance is properly initialized and responsive."
-  [wasm-handle]
+  [^js wasm-handle]
   (try
     (and wasm-handle
          (>= (.getLength wasm-handle) 0))

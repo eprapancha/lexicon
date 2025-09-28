@@ -15,7 +15,7 @@
                (-> (.default wasm-module)
                    (.then (fn []
                             ;; Create a WasmEditorCore instance with initial content
-                            (let [WasmEditorCore (.-WasmEditorCore wasm-module)
+                            (let [WasmEditorCore (.-WasmEditorCore ^js wasm-module)
                                   wasm-instance (WasmEditorCore.)]
                               (.init wasm-instance "")
                               ;; Store in re-frame db
