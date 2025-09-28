@@ -1,7 +1,5 @@
 {:source-paths ["src"]
- :dependencies [[org.clojure/clojure "1.11.1"]
-                [org.clojure/clojurescript "1.11.60"]
-                [re-frame/re-frame "1.4.2"]
+ :dependencies [[re-frame/re-frame "1.4.2"]
                 [reagent/reagent "1.2.0"]
                 [binaryage/devtools "1.0.7"]]
  :dev-http {8080 "resources/public"}
