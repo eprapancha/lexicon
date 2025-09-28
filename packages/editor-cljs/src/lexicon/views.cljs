@@ -194,6 +194,8 @@
                    :font-size "14px"
                    :line-height "1.5"
                    :padding "20px"
+                   :padding-top "52px"  ; Account for buffer tabs (32px) + margin
+                   :padding-bottom "44px"  ; Account for status bar (24px) + margin
                    :outline "none"
                    :white-space "pre-wrap"
                    :background-color "#1e1e1e"
@@ -207,6 +209,66 @@
              {:style {:background-color "rgba(255, 255, 0, 0.3)"
                       :text-decoration "underline"}}
              ime-text])]])})))
+
+(defn buffer-tab
+  "Display a single buffer tab with close button"
+  [buffer is-active?]
+  [:div.buffer-tab
+   {:style {:display "inline-flex"
+            :align-items "center"
+            :padding "4px 8px"
+            :margin-right "4px"
+            :background-color (if is-active? "#4e4e50" "#2d2d30")
+            :border "1px solid #3e3e42"
+            :border-radius "4px 4px 0 0"
+            :font-size "12px"
+            :font-family "monospace"}}
+   
+   [:span.buffer-name
+    {:style {:margin-right "6px"}}
+    (str (:name buffer) (when (:is-modified? buffer) " •"))]
+   
+   [:button.buffer-close
+    {:style {:background "none"
+             :border "none"
+             :color "#cccccc"
+             :cursor "pointer"
+             :padding "0"
+             :margin "0"
+             :font-size "14px"
+             :line-height "1"
+             :width "16px"
+             :height "16px"
+             :display "flex"
+             :align-items "center"
+             :justify-content "center"}
+     :on-click (fn [e]
+                 (.stopPropagation e)
+                 (rf/dispatch [:close-buffer (:id buffer)]))}
+    "×"]])
+
+(defn buffer-tabs
+  "Display all open buffer tabs"
+  []
+  (let [buffers @(rf/subscribe [:buffers])
+        active-buffer @(rf/subscribe [:active-buffer])]
+    
+    [:div.buffer-tabs
+     {:style {:position "fixed"
+              :top "0"
+              :left "0"
+              :right "0"
+              :height "32px"
+              :background-color "#2d2d30"
+              :border-bottom "1px solid #3e3e42"
+              :display "flex"
+              :align-items "flex-end"
+              :padding "0 10px"
+              :overflow-x "auto"}}
+     
+     (for [buffer (vals buffers)]
+       ^{:key (:id buffer)}
+       [buffer-tab buffer (= (:id buffer) (:id active-buffer))])]))
 
 (defn status-bar
   "Display editor status information"
@@ -257,6 +319,7 @@
        
        editor-ready?
        [:<>
+        [buffer-tabs]
         [editor-view]
         [status-bar]]
        

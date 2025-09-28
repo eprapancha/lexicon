@@ -234,6 +234,14 @@ impl WasmEditorCore {
         Ok(self.current_state.apply_transaction(&core_transaction))
     }
     
+    // Explicit memory cleanup method
+    #[wasm_bindgen]
+    pub fn free(self) {
+        // The struct will be dropped here, releasing all memory
+        // This is an explicit cleanup method that can be called from ClojureScript
+        console_log!("WasmEditorCore instance freed");
+    }
+    
     // Convert ClojureScript transaction format to internal format
     fn convert_cljs_transaction(&self, cljs_json: &str) -> Result<String, String> {
         #[derive(Deserialize)]

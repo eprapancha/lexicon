@@ -280,11 +280,12 @@
  :find-file
  (fn [{:keys [db]} [_]]
    "Open a file from disk"
-   {:fx [[:open-file-picker]]}))
+   {:fx [[:open-file-picker]]})
 
 (rf/reg-fx
  :open-file-picker
  (fn [_]
+   "Handle file picker interaction and dispatch appropriate events"
    (-> (js/window.showOpenFilePicker)
        (.then (fn [file-handles]
                 (let [file-handle (first file-handles)]
@@ -292,50 +293,100 @@
                       (.then (fn [file]
                                (-> (.text file)
                                    (.then (fn [content]
-                                            (rf/dispatch [:file-opened 
+                                            (rf/dispatch [:file-read-success 
                                                          {:file-handle file-handle
                                                           :content content
                                                           :name (.-name file)}])))
                                    (.catch (fn [error]
-                                             (println "Failed to read file:" error))))))
+                                             (rf/dispatch [:file-read-failure 
+                                                          {:error error
+                                                           :message "Failed to read file content"}]))))))
                       (.catch (fn [error]
-                                (println "Failed to get file:" error)))))))
+                                (rf/dispatch [:file-read-failure 
+                                             {:error error
+                                              :message "Failed to access file"}])))))))
        (.catch (fn [error]
-                 (println "Open cancelled or failed:" error))))))
+                 ;; Don't dispatch error for user cancellation
+                 (when (not= (.-name error) "AbortError")
+                   (rf/dispatch [:file-read-failure 
+                                {:error error
+                                 :message "File picker failed"}])))))))
 
 (rf/reg-event-fx
- :file-opened
+ :file-read-success
  (fn [{:keys [db]} [_ {:keys [file-handle content name]}]]
-   "Create a new buffer with opened file content"
-   {:fx [[:create-wasm-instance {:content content
-                                 :file-handle file-handle
-                                 :name name}]]}))
-
-(rf/reg-fx
- :create-wasm-instance
- (fn [{:keys [content file-handle name]}]
-   ;; Create a new WasmEditorCore instance and initialize it with content
-   (let [wasm-instance (js/WasmEditorCore.)]
+   "Handle successful file read - create new buffer and switch to it"
+   (let [buffer-id (db/next-buffer-id (:buffers db))
+         wasm-instance (js/WasmEditorCore.)]
+     ;; Initialize WASM instance with file content
      (.init wasm-instance content)
-     (rf/dispatch [:buffer-created-with-file 
-                  {:wasm-instance wasm-instance
-                   :file-handle file-handle
-                   :name name}]))))
+     
+     ;; Create new buffer and update app state
+     (let [new-buffer {:id buffer-id
+                       :wasm-instance wasm-instance
+                       :file-handle file-handle
+                       :name name
+                       :is-modified? false
+                       :mark-position nil}]
+       {:db (-> db
+                (assoc-in [:buffers buffer-id] new-buffer)
+                (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))})))
 
 (rf/reg-event-db
- :buffer-created-with-file
- (fn [db [_ {:keys [wasm-instance file-handle name]}]]
-   "Add the new buffer to the app state and switch to it"
-   (let [buffer-id (db/next-buffer-id (:buffers db))
-         new-buffer {:id buffer-id
-                     :wasm-instance wasm-instance
-                     :file-handle file-handle
-                     :name name
-                     :is-modified? false
-                     :mark-position nil}]
-     (-> db
-         (assoc-in [:buffers buffer-id] new-buffer)
-         (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id)))))
+ :file-read-failure
+ (fn [db [_ {:keys [error message]}]]
+   "Handle file read failure"
+   (println "File read failed:" message error)
+   ;; Could add user notification here in the future
+   db))
+
+;; -- Buffer Lifecycle Events --
+
+(rf/reg-event-fx
+ :close-buffer
+ (fn [{:keys [db]} [_ buffer-id]]
+   "Close a buffer and free its WASM memory, with defensive logic"
+   (let [buffers (:buffers db)
+         buffer-to-close (get buffers buffer-id)
+         active-window-id (:active-window-id db)
+         active-window (get (:windows db) active-window-id)
+         currently-active-buffer-id (:buffer-id active-window)]
+     
+     (if buffer-to-close
+       (let [wasm-instance (:wasm-instance buffer-to-close)
+             remaining-buffers (dissoc buffers buffer-id)
+             remaining-buffer-ids (keys remaining-buffers)]
+         
+         ;; Free the WASM instance memory
+         (when wasm-instance
+           (.free wasm-instance))
+         
+         (if (empty? remaining-buffer-ids)
+           ;; No buffers left - create a new default *scratch* buffer
+           (let [new-buffer-id (inc (apply max 0 (keys buffers)))
+                 new-wasm-instance (js/WasmEditorCore.)]
+             (.init new-wasm-instance "")
+             {:db (-> db
+                      (assoc :buffers {new-buffer-id {:id new-buffer-id
+                                                      :wasm-instance new-wasm-instance
+                                                      :file-handle nil
+                                                      :name "*scratch*"
+                                                      :is-modified? false
+                                                      :mark-position nil}})
+                      (assoc-in [:windows active-window-id :buffer-id] new-buffer-id))})
+           
+           ;; Other buffers exist - switch to another buffer if necessary
+           (let [new-active-buffer-id (if (= buffer-id currently-active-buffer-id)
+                                        ;; Need to switch to a different buffer
+                                        (first remaining-buffer-ids)
+                                        ;; Keep current active buffer
+                                        currently-active-buffer-id)]
+             {:db (-> db
+                      (assoc :buffers remaining-buffers)
+                      (assoc-in [:windows active-window-id :buffer-id] new-active-buffer-id))})))
+       
+       ;; Buffer not found - no action needed
+       {:db db}))))
 
 ;; -- Region Selection and Kill Ring Events --
 
