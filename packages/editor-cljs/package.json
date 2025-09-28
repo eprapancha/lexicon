@@ -4,7 +4,8 @@
   "description": "ClojureScript frontend for Lexicon editor",
   "scripts": {
     "dev": "PATH=/home/nixos/.nix-profile/bin:$PATH shadow-cljs watch app",
-    "build": "PATH=/home/nixos/.nix-profile/bin:$PATH shadow-cljs release app",
+    "build": "npx shadow-cljs compile app",
+    "build:prod": "npx shadow-cljs release app",
     "test": "PATH=/home/nixos/.nix-profile/bin:$PATH shadow-cljs compile test",
     "dev-server": "PATH=/home/nixos/.nix-profile/bin:$PATH node dev-server.js"
   },
@@ -12,7 +13,9 @@
   "dependencies": {
     "@codemirror/state": "^6.3.3",
     "@codemirror/view": "^6.21.3",
-    "codemirror": "^6.0.1"
+    "codemirror": "^6.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "shadow-cljs": "^2.25.8"

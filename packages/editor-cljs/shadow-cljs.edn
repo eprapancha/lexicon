@@ -1,6 +1,6 @@
 {:source-paths ["src"]
- :dependencies [[org.clojure/clojure "1.11.1"]
-                [org.clojure/clojurescript "1.11.60"]
+ :dependencies [[re-frame/re-frame "1.4.2"]
+                [reagent/reagent "1.2.0"]
                 [binaryage/devtools "1.0.7"]]
  :dev-http {8080 "resources/public"}
  :builds
@@ -9,4 +9,5 @@
         :asset-path "/js"
         :modules {:main {:init-fn lexicon.core/main}}
         :devtools {:http-root "resources/public"
-                   :http-port 8080}}}}
+                   :http-port 8080}
+}}}

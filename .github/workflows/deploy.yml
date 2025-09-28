@@ -1,22 +1,28 @@
-name: CI
+name: Build and Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
 jobs:
-  test:
+  build-and-deploy:
     runs-on: ubuntu-latest
     
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
     
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
         cache: 'npm'
         cache-dependency-path: packages/editor-cljs/package.json
     
@@ -36,26 +42,87 @@ jobs:
       with:
         version: 'latest'
     
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          packages/lexicon-engine/wasm/target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+    
     - name: Build WASM module
+      working-directory: packages/lexicon-engine/wasm
       run: |
-        cd packages/lexicon-engine/wasm
         wasm-pack build --target web --out-dir pkg --release
         # Copy WASM files to ClojureScript public directory
         mkdir -p ../../editor-cljs/resources/public/lexicon-engine/wasm/
         cp -r pkg ../../editor-cljs/resources/public/lexicon-engine/wasm/
     
     - name: Install ClojureScript dependencies
+      working-directory: packages/editor-cljs
       run: |
-        cd packages/editor-cljs
         npm install --no-workspaces
         # Verify React is available
         ls -la node_modules/react/ || echo "React not found in node_modules"
         # Install shadow-cljs globally for reliable access
         npm install -g shadow-cljs
     
-    - name: Build ClojureScript frontend
+    - name: Build ClojureScript
+      working-directory: packages/editor-cljs
+      run: npm run build
+    
+    - name: Setup Pages
+      if: github.ref == 'refs/heads/main'
+      uses: actions/configure-pages@v4
+    
+    - name: Upload artifact
+      if: github.ref == 'refs/heads/main'
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: packages/editor-cljs/resources/public
+    
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/main'
+      id: deployment
+      uses: actions/deploy-pages@v4
+
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: packages/editor-cljs/package.json
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: Install dependencies
+      working-directory: packages/editor-cljs
       run: |
-        cd packages/editor-cljs
+        npm install --no-workspaces
+        # Verify React is available
+        ls -la node_modules/react/ || echo "React not found in node_modules"
+        # Install shadow-cljs globally for reliable access
+        npm install -g shadow-cljs
+    
+    - name: Run ClojureScript compilation check
+      working-directory: packages/editor-cljs
+      run: |
         # Test that compilation succeeds with 0 warnings
         echo "🔨 Starting ClojureScript compilation..."
         

@@ -29,7 +29,7 @@
         {start2 :start end2 :end} entry2]
     (not (or (>= start1 end2) (>= start2 end1)))))
 
-(defn merge-overlapping-entries [entry1 entry2 wasm-handle]
+(defn merge-overlapping-entries [entry1 entry2 ^js wasm-handle]
   "Merge two overlapping cache entries"
   (let [merged-start (min (:start entry1) (:start entry2))
         merged-end (max (:end entry1) (:end entry2))
@@ -105,7 +105,7 @@
           cache
           cache))
 
-(defn get-cached-text [cache wasm-handle start end]
+(defn get-cached-text [cache ^js wasm-handle start end]
   "Get text from cache or fetch from WASM if not cached"
   (cond
     ;; Check if we have a covering entry
@@ -125,9 +125,9 @@
     (let [[content success?] (wasm/get-text-range-safe wasm-handle start end)]
       (if success?
         [content (add-to-cache cache start end content)]
-        ["" cache])))))
+        ["" cache]))))
 
-(defn prefetch-ranges [cache wasm-handle start end]
+(defn prefetch-ranges [cache ^js wasm-handle start end]
   "Prefetch adjacent ranges for smooth scrolling"
   (let [chunk-size (:chunk-size cache-config)
         overlap (:overlap-size cache-config)
@@ -160,7 +160,7 @@
   "Create a new empty text cache"
   {})
 
-(defn get-text-range [cache wasm-handle start end & {:keys [prefetch?] :or {prefetch? true}}]
+(defn get-text-range [cache ^js wasm-handle start end & {:keys [prefetch?] :or {prefetch? true}}]
   "Get text range with caching - returns [text updated-cache]"
   (if-not wasm-handle
     ["" cache]

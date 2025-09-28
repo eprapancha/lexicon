@@ -1,0 +1,60 @@
+{
+  "name": "Lexicon Editor - Rust + ClojureScript Development",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-1-bullseye",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "18"
+    },
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "vadimcn.vscode-lldb",
+        "serayuzgur.crates",
+        "tamasfe.even-better-toml",
+        "betterthantomorrow.calva",
+        "ms-vscode.wasm-wasi-core",
+        "ms-vscode.hexeditor",
+        "bradlc.vscode-tailwindcss",
+        "esbenp.prettier-vscode",
+        "ms-vscode.vscode-json"
+      ],
+      "settings": {
+        "rust-analyzer.checkOnSave.command": "clippy",
+        "rust-analyzer.cargo.features": "all",
+        "calva.paredit.defaultKeyMap": "strict"
+      }
+    }
+  },
+
+  "postCreateCommand": "curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && rustup target add wasm32-unknown-unknown && rustup component add clippy rustfmt",
+
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspaces/lexicon",
+
+  "forwardPorts": [3000, 8080, 9630],
+  "portsAttributes": {
+    "3000": {
+      "label": "ClojureScript Dev Server",
+      "onAutoForward": "notify"
+    },
+    "8080": {
+      "label": "Shadow-CLJS Dev Server",
+      "onAutoForward": "notify"
+    },
+    "9630": {
+      "label": "Shadow-CLJS nREPL",
+      "onAutoForward": "ignore"
+    }
+  },
+
+  "mounts": [
+    "source=${localWorkspaceFolder}/.cargo,target=/home/vscode/.cargo,type=bind,consistency=cached"
+  ]
+}

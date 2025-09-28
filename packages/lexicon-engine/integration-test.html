@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Lexicon Integration Test - Typing Machine</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .editor-demo {
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .editor-content {
+            padding: 16px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            min-height: 200px;
+            outline: none;
+            white-space: pre-wrap;
+            background: #fafafa;
+        }
+        .status-bar {
+            background: #f0f0f0;
+            padding: 8px 16px;
+            font-size: 12px;
+            color: #666;
+            border-top: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+        }
+        .test-panel {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 16px;
+            margin: 20px 0;
+        }
+        .test-result {
+            margin: 8px 0;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #cce7f0;
+            color: #004085;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 4px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .metric {
+            background: white;
+            padding: 12px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Lexicon Integration Test: Milestone 1.1.4</h1>
+        <p><strong>Goal:</strong> Demonstrate the fully functional "Typing Machine" with complete WASM-ClojureScript integration.</p>
+        
+        <div class="test-panel">
+            <h2>📋 Test Status</h2>
+            <div id="test-status">Loading WASM module...</div>
+            
+            <div class="metrics">
+                <div class="metric">
+                    <div class="metric-value" id="char-count">0</div>
+                    <div class="metric-label">Characters</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="line-count">1</div>
+                    <div class="metric-label">Lines</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="version-count">0</div>
+                    <div class="metric-label">Version</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="transaction-count">0</div>
+                    <div class="metric-label">Transactions</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="editor-demo">
+            <div 
+                id="editor-content" 
+                class="editor-content" 
+                contenteditable="true"
+                spellcheck="false">Type here to test the editor...</div>
+            <div class="status-bar">
+                <span id="status-left">Ready</span>
+                <span id="status-right">Cursor: 0</span>
+            </div>
+        </div>
+
+        <div class="test-panel">
+            <h3>🧪 Automated Tests</h3>
+            <button onclick="runPerformanceTest()">Performance Test</button>
+            <button onclick="runTransactionTest()">Transaction Test</button>
+            <button onclick="runLargeDocumentTest()">Large Document Test</button>
+            <button onclick="clearEditor()">Clear Editor</button>
+            
+            <div id="automated-results" style="margin-top: 16px;"></div>
+        </div>
+
+        <div class="test-panel">
+            <h3>📊 Real-time Monitoring</h3>
+            <div id="monitoring-output"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, { WasmEditorCore } from './pkg/core_wasm.js';
+
+        let wasmCore = null;
+        let transactionCount = 0;
+        let lastCursorPosition = 0;
+        
+        function updateMetrics() {
+            if (!wasmCore) return;
+            
+            document.getElementById('char-count').textContent = wasmCore.getLength();
+            document.getElementById('line-count').textContent = wasmCore.getText().split('\n').length;
+            document.getElementById('transaction-count').textContent = transactionCount;
+        }
+        
+        function addTestResult(message, type = 'info') {
+            const container = document.getElementById('automated-results');
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.textContent = message;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function updateMonitoring(operation, duration, details = '') {
+            const container = document.getElementById('monitoring-output');
+            const div = document.createElement('div');
+            div.className = 'test-result info';
+            div.innerHTML = `
+                <strong>${operation}</strong> (${duration.toFixed(2)}ms)
+                ${details ? `<br>├─ ${details}` : ''}
+            `;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+            
+            // Keep only last 10 entries
+            while (container.children.length > 10) {
+                container.removeChild(container.firstChild);
+            }
+        }
+        
+        function setupEditor() {
+            const editor = document.getElementById('editor-content');
+            
+            // Prevent default behavior and handle all input through our system
+            editor.addEventListener('beforeinput', function(e) {
+                e.preventDefault();
+                const start = performance.now();
+                
+                const selection = window.getSelection();
+                const range = selection.getRangeAt(0);
+                const position = getTextPosition(range.startContainer, range.startOffset);
+                
+                let transaction = null;
+                let operationName = '';
+                
+                switch (e.inputType) {
+                    case 'insertText':
+                        transaction = `{"type": 0, "position": ${position}, "text": "${e.data}"}`;
+                        operationName = 'Insert Text';
+                        break;
+                    case 'deleteContentBackward':
+                        if (position > 0) {
+                            transaction = `{"type": 1, "position": ${position - 1}, "length": 1}`;
+                            operationName = 'Delete Backward';
+                        }
+                        break;
+                    case 'deleteContentForward':
+                        transaction = `{"type": 1, "position": ${position}, "length": 1}`;
+                        operationName = 'Delete Forward';
+                        break;
+                    case 'insertParagraph':
+                        transaction = `{"type": 0, "position": ${position}, "text": "\\n"}`;
+                        operationName = 'Insert Line Break';
+                        break;
+                }
+                
+                if (transaction) {
+                    const result = wasmCore.applyTransaction(transaction);
+                    if (result === 0) {
+                        transactionCount++;
+                        const newText = wasmCore.getText();
+                        editor.textContent = newText;
+                        
+                        // Restore cursor position
+                        const newPosition = operationName.includes('Delete') && operationName.includes('Backward') 
+                            ? Math.max(0, position - 1)
+                            : position + (e.data ? e.data.length : (operationName.includes('Line Break') ? 1 : 0));
+                        setCursorPosition(editor, newPosition);
+                        lastCursorPosition = newPosition;
+                        
+                        updateMetrics();
+                        document.getElementById('status-left').textContent = `Last: ${operationName}`;
+                        document.getElementById('status-right').textContent = `Cursor: ${newPosition}`;
+                        
+                        const duration = performance.now() - start;
+                        updateMonitoring(operationName, duration, `Position: ${position} → ${newPosition}`);
+                    } else {
+                        addTestResult(`Transaction failed: ${wasmCore.getLastErrorMessage()}`, 'error');
+                    }
+                }
+            });
+            
+            // Handle cursor movement
+            editor.addEventListener('selectionchange', function() {
+                const selection = window.getSelection();
+                if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    const position = getTextPosition(range.startContainer, range.startOffset);
+                    lastCursorPosition = position;
+                    document.getElementById('status-right').textContent = `Cursor: ${position}`;
+                }
+            });
+        }
+        
+        function getTextPosition(node, offset) {
+            const editor = document.getElementById('editor-content');
+            const range = document.createRange();
+            range.setStart(editor, 0);
+            range.setEnd(node, offset);
+            return range.toString().length;
+        }
+        
+        function setCursorPosition(element, position) {
+            const textNodes = getTextNodes(element);
+            let currentPos = 0;
+            
+            for (const node of textNodes) {
+                const nodeLength = node.textContent.length;
+                if (currentPos + nodeLength >= position) {
+                    const range = document.createRange();
+                    range.setStart(node, position - currentPos);
+                    range.collapse(true);
+                    
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    return;
+                }
+                currentPos += nodeLength;
+            }
+        }
+        
+        function getTextNodes(element) {
+            const textNodes = [];
+            const walker = document.createTreeWalker(
+                element,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+            
+            let node;
+            while (node = walker.nextNode()) {
+                textNodes.push(node);
+            }
+            return textNodes;
+        }
+        
+        // Global test functions
+        window.runPerformanceTest = function() {
+            addTestResult('Starting performance test...', 'info');
+            const iterations = 1000;
+            const start = performance.now();
+            
+            for (let i = 0; i < iterations; i++) {
+                const transaction = `{"type": 0, "position": ${wasmCore.getLength()}, "text": "x"}`;
+                wasmCore.applyTransaction(transaction);
+            }
+            
+            const duration = performance.now() - start;
+            const avgDuration = duration / iterations;
+            
+            addTestResult(`Performance test completed: ${iterations} insertions in ${duration.toFixed(2)}ms (avg: ${avgDuration.toFixed(3)}ms per operation)`, 'success');
+            
+            // Update display
+            document.getElementById('editor-content').textContent = wasmCore.getText();
+            updateMetrics();
+        };
+        
+        window.runTransactionTest = function() {
+            addTestResult('Testing all transaction types...', 'info');
+            
+            const tests = [
+                () => {
+                    const result = wasmCore.applyTransaction('{"type": 0, "position": 0, "text": "Hello, World!"}');
+                    return result === 0 && wasmCore.getText() === "Hello, World!";
+                },
+                () => {
+                    const result = wasmCore.applyTransaction('{"type": 1, "position": 5, "length": 2}');
+                    return result === 0 && wasmCore.getText() === "HelloWorld!";
+                },
+                () => {
+                    const result = wasmCore.applyTransaction('{"type": 2, "position": 5, "length": 5, "text": " Rust"}');
+                    return result === 0 && wasmCore.getText() === "Hello Rust!";
+                }
+            ];
+            
+            let passed = 0;
+            tests.forEach((test, i) => {
+                if (test()) {
+                    addTestResult(`✓ Transaction test ${i + 1} passed`, 'success');
+                    passed++;
+                } else {
+                    addTestResult(`✗ Transaction test ${i + 1} failed`, 'error');
+                }
+            });
+            
+            addTestResult(`Transaction tests: ${passed}/${tests.length} passed`, passed === tests.length ? 'success' : 'error');
+            
+            document.getElementById('editor-content').textContent = wasmCore.getText();
+            updateMetrics();
+        };
+        
+        window.runLargeDocumentTest = function() {
+            addTestResult('Testing large document handling...', 'info');
+            
+            // Create a large document
+            const lines = Array.from({length: 1000}, (_, i) => `Line ${i + 1}: This is a test line with some content.`);
+            const largeText = lines.join('\n');
+            
+            wasmCore.init(largeText);
+            const start = performance.now();
+            
+            // Test random insertions
+            for (let i = 0; i < 100; i++) {
+                const position = Math.floor(Math.random() * wasmCore.getLength());
+                wasmCore.applyTransaction(`{"type": 0, "position": ${position}, "text": " [EDIT] "}`);
+            }
+            
+            const duration = performance.now() - start;
+            addTestResult(`Large document test: 100 random insertions in ${duration.toFixed(2)}ms`, 'success');
+            addTestResult(`Final document length: ${wasmCore.getLength()} characters`, 'info');
+            
+            document.getElementById('editor-content').textContent = wasmCore.getText().substring(0, 1000) + '...[truncated]';
+            updateMetrics();
+        };
+        
+        window.clearEditor = function() {
+            wasmCore.init('');
+            document.getElementById('editor-content').textContent = '';
+            transactionCount = 0;
+            updateMetrics();
+            addTestResult('Editor cleared', 'info');
+        };
+        
+        // Initialize everything
+        async function initialize() {
+            try {
+                await init();
+                wasmCore = new WasmEditorCore();
+                wasmCore.init('Type here to test the editor...');
+                
+                setupEditor();
+                updateMetrics();
+                
+                document.getElementById('test-status').innerHTML = `
+                    <div class="test-result success">✅ WASM module loaded successfully</div>
+                    <div class="test-result success">✅ WasmEditorCore initialized</div>
+                    <div class="test-result success">✅ Event handlers attached</div>
+                    <div class="test-result success">✅ Typing Machine is ready!</div>
+                `;
+                
+                document.getElementById('status-left').textContent = 'Ready - Start typing!';
+                
+                addTestResult('Milestone 1.1.4 "Closing the Loop" - COMPLETE! 🎉', 'success');
+                addTestResult('The editor now functions as a complete Typing Machine', 'success');
+                
+            } catch (error) {
+                document.getElementById('test-status').innerHTML = `
+                    <div class="test-result error">❌ Failed to initialize: ${error.message}</div>
+                    <div class="test-result info">Make sure to build the WASM module first with: wasm-pack build --target web</div>
+                `;
+            }
+        }
+        
+        initialize();
+    </script>
+</body>
+</html>
