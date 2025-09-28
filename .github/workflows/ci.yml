@@ -39,6 +39,9 @@ jobs:
       run: |
         cd packages/lexicon-engine/wasm
         wasm-pack build --target web --out-dir pkg --release
+        # Copy WASM files to ClojureScript public directory
+        mkdir -p ../../editor-cljs/resources/public/lexicon-engine/wasm/
+        cp -r pkg ../../editor-cljs/resources/public/lexicon-engine/wasm/
     
     - name: Install ClojureScript dependencies
       run: |
@@ -51,9 +54,10 @@ jobs:
         # Test that compilation succeeds with 0 warnings
         OUTPUT=$(npm run build 2>&1)
         echo "$OUTPUT"
-        if echo "$OUTPUT" | grep -q "warnings"; then
-          echo "❌ Compilation warnings detected!"
+        # Check for ClojureScript compilation warnings in the format "Build completed. (X files, Y compiled, Z warnings, time)"
+        if echo "$OUTPUT" | grep -E "Build completed.*[1-9][0-9]* warnings"; then
+          echo "❌ ClojureScript compilation warnings detected!"
           exit 1
         else
-          echo "✅ Clean compilation with 0 warnings!"
+          echo "✅ Clean ClojureScript compilation with 0 warnings!"
         fi
