@@ -57,12 +57,28 @@ jobs:
       run: |
         cd packages/editor-cljs
         # Test that compilation succeeds with 0 warnings
-        OUTPUT=$(npm run build 2>&1)
-        echo "$OUTPUT"
-        # Check for ClojureScript compilation warnings in the format "Build completed. (X files, Y compiled, Z warnings, time)"
-        if echo "$OUTPUT" | grep -E "Build completed.*[1-9][0-9]* warnings"; then
-          echo "❌ ClojureScript compilation warnings detected!"
-          exit 1
+        echo "🔨 Starting ClojureScript compilation..."
+        
+        if npm run build; then
+          echo "✅ ClojureScript compilation succeeded!"
+          
+          # Check for warnings in the last build
+          if npx shadow-cljs compile app 2>&1 | grep -E "Build completed.*[1-9][0-9]* warnings"; then
+            echo "❌ ClojureScript compilation warnings detected!"
+            exit 1
+          else
+            echo "✅ Clean ClojureScript compilation with 0 warnings!"
+          fi
         else
-          echo "✅ Clean ClojureScript compilation with 0 warnings!"
+          echo "❌ ClojureScript compilation failed!"
+          echo "Debugging information:"
+          echo "Node modules React check:"
+          ls -la node_modules/react/ || echo "React not found"
+          echo "WASM files check:"
+          ls -la resources/public/lexicon-engine/wasm/ || echo "WASM files not found"
+          echo "Shadow-cljs version:"
+          npx shadow-cljs --version || echo "Shadow-cljs not available"
+          echo "Package.json dependencies:"
+          cat package.json | grep -A 10 dependencies
+          exit 1
         fi
