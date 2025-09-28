@@ -4,8 +4,8 @@
   "description": "ClojureScript frontend for Lexicon editor",
   "scripts": {
     "dev": "PATH=/home/nixos/.nix-profile/bin:$PATH shadow-cljs watch app",
-    "build": "shadow-cljs compile app",
-    "build:prod": "shadow-cljs release app",
+    "build": "npx shadow-cljs compile app",
+    "build:prod": "npx shadow-cljs release app",
     "test": "PATH=/home/nixos/.nix-profile/bin:$PATH shadow-cljs compile test",
     "dev-server": "PATH=/home/nixos/.nix-profile/bin:$PATH node dev-server.js"
   },

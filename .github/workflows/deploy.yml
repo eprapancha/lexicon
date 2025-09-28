@@ -24,7 +24,7 @@ jobs:
       with:
         node-version: '20'
         cache: 'npm'
-        cache-dependency-path: packages/editor-cljs/package-lock.json
+        cache-dependency-path: packages/editor-cljs/package.json
     
     - name: Setup Java
       uses: actions/setup-java@v4
@@ -65,7 +65,12 @@ jobs:
     
     - name: Install ClojureScript dependencies
       working-directory: packages/editor-cljs
-      run: npm ci
+      run: |
+        npm install --no-workspaces
+        # Verify React is available
+        ls -la node_modules/react/ || echo "React not found in node_modules"
+        # Install shadow-cljs globally for reliable access
+        npm install -g shadow-cljs
     
     - name: Build ClojureScript
       working-directory: packages/editor-cljs
@@ -98,7 +103,7 @@ jobs:
       with:
         node-version: '20'
         cache: 'npm'
-        cache-dependency-path: packages/editor-cljs/package-lock.json
+        cache-dependency-path: packages/editor-cljs/package.json
     
     - name: Setup Java
       uses: actions/setup-java@v4
