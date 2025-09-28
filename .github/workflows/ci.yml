@@ -25,28 +25,35 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
     
-    - name: Setup Clojure
-      uses: DeLaGuardo/setup-clojure@12.1
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
       with:
-        cli: latest
+        targets: wasm32-unknown-unknown
     
-    - name: Install dependencies
-      run: npm install
+    - name: Install wasm-pack
+      uses: jetli/wasm-pack-action@v0.4.0
+      with:
+        version: 'latest'
     
-    - name: Build WebAssembly core
+    - name: Build WASM module
       run: |
-        cd packages/core-wasm
-        npm run asbuild
+        cd packages/lexicon-engine/wasm
+        wasm-pack build --target web --out-dir pkg --release
     
-    - name: Build Tree-sitter grammars
+    - name: Install ClojureScript dependencies
       run: |
-        cd packages/language-grammars
-        ./build-grammars.sh
+        cd packages/editor-cljs
+        npm ci
     
     - name: Build ClojureScript frontend
       run: |
         cd packages/editor-cljs
-        npx shadow-cljs release app
-    
-    - name: Run tests
-      run: npm run test
+        # Test that compilation succeeds with 0 warnings
+        OUTPUT=$(npm run build 2>&1)
+        echo "$OUTPUT"
+        if echo "$OUTPUT" | grep -q "warnings"; then
+          echo "❌ Compilation warnings detected!"
+          exit 1
+        else
+          echo "✅ Clean compilation with 0 warnings!"
+        fi

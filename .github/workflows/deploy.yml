@@ -65,7 +65,7 @@ jobs:
         wasm-pack build --target web --out-dir pkg --release
         # Copy WASM files to ClojureScript public directory
         mkdir -p ../../editor-cljs/resources/public/lexicon-engine/wasm/
-        cp -r pkg/* ../../editor-cljs/resources/public/lexicon-engine/wasm/
+        cp -r pkg ../../editor-cljs/resources/public/lexicon-engine/wasm/
     
     - name: Build ClojureScript
       working-directory: packages/editor-cljs
