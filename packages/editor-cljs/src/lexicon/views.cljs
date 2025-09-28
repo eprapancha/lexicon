@@ -95,9 +95,9 @@
                           (when (= (.-type mutation) "childList")
                             (println "⚠️ Unexpected DOM mutation detected")
                             (let [dom-content (.-textContent target-element)
-                                  wasm-handle @(rf/subscribe [:wasm-handle])]
-                              (when wasm-handle
-                                (let [expected-content (.getText wasm-handle)]
+                                  wasm-instance @(rf/subscribe [:active-wasm-instance])]
+                              (when wasm-instance
+                                (let [expected-content (.getText wasm-instance)]
                                   (when (not= dom-content expected-content)
                                     (println "🔄 Reconciling DOM state")
                                     (rf/dispatch [:reconcile-dom-state dom-content expected-content])))))))
@@ -232,7 +232,7 @@
               :border-top "1px solid #3e3e42"}}
      
      [:span.buffer-info
-      (str (:id active-buffer) (when buffer-modified? " •"))]
+      (str (:name active-buffer) (when buffer-modified? " •"))]
      
      [:div.spacer {:style {:flex "1"}}]
      

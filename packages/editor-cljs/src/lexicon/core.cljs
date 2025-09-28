@@ -8,16 +8,19 @@
 (defn load-wasm-module
   "Asynchronously load the WebAssembly module"
   []
-  (-> (js/fetch "/core-wasm/build/debug.wasm")
-      (.then #(.arrayBuffer %))
-      (.then #(js/WebAssembly.instantiate % #js {:env #js {:abort #(throw (js/Error. "WASM aborted"))}}))
-      (.then (fn [result]
-               (let [wasm-instance (.-exports (.-instance result))]
-                 ;; Initialize the WASM module
-                 (.init wasm-instance)
-                 ;; Store in re-frame db
-                 (rf/dispatch [:wasm-module-loaded wasm-instance])
-                 (println "✅ WASM module loaded and initialized"))))
+  ;; Load the WASM module from the generated package
+  (-> (js/import "/lexicon-engine/wasm/pkg/lexicon_wasm.js")
+      (.then (fn [wasm-module]
+               ;; Initialize the WASM module first
+               (-> (.default wasm-module)
+                   (.then (fn []
+                            ;; Create a WasmEditorCore instance with initial content
+                            (let [WasmEditorCore (.-WasmEditorCore wasm-module)
+                                  wasm-instance (WasmEditorCore.)]
+                              (.init wasm-instance "")
+                              ;; Store in re-frame db
+                              (rf/dispatch [:wasm-module-loaded wasm-instance])
+                              (println "✅ WASM module loaded and initialized")))))))
       (.catch (fn [error]
                 (println "❌ Failed to load WASM module:" error)))))
 

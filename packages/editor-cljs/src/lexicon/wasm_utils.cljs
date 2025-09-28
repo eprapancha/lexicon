@@ -1,2 +1,44 @@
 (ns lexicon.wasm-utils
-  \"Utilities for working with WASM memory and string marshalling\")\n\n;; Read UTF-16 string from WASM linear memory\n(defn read-wasm-string\n  \"Read a UTF-16 string from WASM memory starting at pointer.\n   Returns empty string if pointer is 0.\n   Reads until null terminator or max-length is reached.\"\n  [wasm-instance ptr & {:keys [max-length] :or {max-length 10000}}]\n  (if (= ptr 0)\n    \"\"\n    (let [memory (.-memory (.-exports wasm-instance))\n          buffer (js/Uint16Array. (.-buffer memory))\n          uint16-offset (/ ptr 2)\n          chars (atom [])\n          max-chars (min max-length (- (.-length buffer) uint16-offset))]\n      \n      (loop [i 0]\n        (if (< i max-chars)\n          (let [char-code (aget buffer (+ uint16-offset i))]\n            (if (= char-code 0) ; Null terminator\n              (apply str (map char @chars))\n              (do\n                (swap! chars conj char-code)\n                (recur (inc i)))))\n          (apply str (map char @chars))))))))\n\n;; Read UTF-16 string with known length\n(defn read-wasm-string-with-length\n  \"Read a UTF-16 string from WASM memory with known character length.\n   More efficient when length is known.\"\n  [wasm-instance ptr length]\n  (if (or (= ptr 0) (= length 0))\n    \"\"\n    (let [memory (.-memory (.-exports wasm-instance))\n          buffer (js/Uint16Array. (.-buffer memory))\n          uint16-offset (/ ptr 2)\n          max-readable (min length (- (.-length buffer) uint16-offset))]\n      \n      (apply str\n             (map #(char (aget buffer (+ uint16-offset %)))\n                  (range max-readable))))))\n\n;; Enhanced WASM text range getter that handles string marshalling\n(defn get-text-range-safe\n  \"Get text range from WASM with proper string marshalling.\n   Returns [text-string success?] tuple.\"\n  [wasm-handle start end]\n  (try\n    (let [length (.getLength wasm-handle)\n          clamped-start (max 0 (min start length))\n          clamped-end (max clamped-start (min end length))\n          range-length (- clamped-end clamped-start)]\n      \n      (if (= range-length 0)\n        [\"\" true]\n        (let [ptr (.getTextInRange wasm-handle clamped-start clamped-end)\n              text (if (number? ptr)\n                     ;; Pointer returned - read from memory\n                     (read-wasm-string-with-length wasm-handle ptr range-length)\n                     ;; String returned directly (fallback)\n                     (str ptr))]\n          [text true])))\n    (catch js/Error e\n      (js/console.error \"Failed to get text range:\" (.-message e))\n      [\"\" false])))\n\n;; Enhanced character access\n(defn get-char-safe\n  \"Get character at position with error handling.\"\n  [wasm-handle position]\n  (try\n    (let [length (.getLength wasm-handle)]\n      (if (and (>= position 0) (< position length))\n        (let [char-code (.getCharacterAt wasm-handle position)]\n          (char char-code))\n        nil))\n    (catch js/Error e\n      (js/console.error \"Failed to get character:\" (.-message e))\n      nil)))\n\n;; Test if WASM instance is properly initialized\n(defn wasm-initialized?\n  \"Check if WASM instance is properly initialized and responsive.\"\n  [wasm-handle]\n  (try\n    (and wasm-handle\n         (>= (.getLength wasm-handle) 0))\n    (catch js/Error e\n      false)))"
+  "Utilities for working with WASM memory and string marshalling")
+
+;; Enhanced WASM text range getter that handles string marshalling
+(defn get-text-range-safe
+  "Get text range from WASM with proper string marshalling.
+   Returns [text-string success?] tuple."
+  [wasm-handle start end]
+  (try
+    (let [length (.getLength wasm-handle)
+          clamped-start (max 0 (min start length))
+          clamped-end (max clamped-start (min end length))]
+      
+      (if (= clamped-start clamped-end)
+        ["" true]
+        (let [text (.getTextInRange wasm-handle clamped-start clamped-end)]
+          ;; getTextInRange returns string directly according to TypeScript definition
+          [text true])))
+    (catch js/Error e
+      (js/console.error "Failed to get text range:" (.-message e))
+      ["" false])))
+
+;; Enhanced character access
+(defn get-char-safe
+  "Get character at position with error handling."
+  [wasm-handle position]
+  (try
+    (let [length (.getLength wasm-handle)]
+      (if (and (>= position 0) (< position length))
+        (.getCharacterAt wasm-handle position)
+        nil))
+    (catch js/Error e
+      (js/console.error "Failed to get character:" (.-message e))
+      nil)))
+
+;; Test if WASM instance is properly initialized
+(defn wasm-initialized?
+  "Check if WASM instance is properly initialized and responsive."
+  [wasm-handle]
+  (try
+    (and wasm-handle
+         (>= (.getLength wasm-handle) 0))
+    (catch js/Error e
+      false)))

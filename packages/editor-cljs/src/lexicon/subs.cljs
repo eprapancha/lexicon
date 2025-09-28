@@ -6,22 +6,30 @@
 ;; -- Base Subscriptions --
 
 (rf/reg-sub
- :wasm-handle
- (fn [db _]
-   "Get the WASM module handle"
-   (:wasm-handle db)))
-
-(rf/reg-sub
  :initialized?
  (fn [db _]
    "Check if the application is fully initialized"
    (:initialized? db)))
 
 (rf/reg-sub
- :active-buffer-id
+ :active-window-id
  (fn [db _]
-   "Get the currently active buffer ID"
-   (:active-buffer-id db)))
+   "Get the currently active window ID"
+   (:active-window-id db)))
+
+(rf/reg-sub
+ :windows
+ (fn [db _]
+   "Get all windows"
+   (:windows db)))
+
+(rf/reg-sub
+ :active-window
+ :<- [:windows]
+ :<- [:active-window-id]
+ (fn [[windows active-id] _]
+   "Get the currently active window"
+   (get windows active-id)))
 
 ;; -- Buffer Subscriptions --
 
@@ -34,42 +42,49 @@
 (rf/reg-sub
  :active-buffer
  :<- [:buffers]
- :<- [:active-buffer-id]
- (fn [[buffers active-id] _]
+ :<- [:active-window]
+ (fn [[buffers active-window] _]
    "Get the currently active buffer"
-   (get buffers active-id)))
+   (when active-window
+     (get buffers (:buffer-id active-window)))))
+
+(rf/reg-sub
+ :active-wasm-instance
+ :<- [:active-buffer]
+ (fn [active-buffer _]
+   "Get the WASM instance for the active buffer"
+   (:wasm-instance active-buffer)))
 
 (rf/reg-sub
  :buffer-content
- :<- [:wasm-handle]
- :<- [:active-buffer]
- (fn [[wasm-handle buffer] _]
-   "Get the content of the active buffer from WASM (legacy - use :visible-content instead)"
-   (if (and wasm-handle buffer)
-     (.getText wasm-handle)
+ :<- [:active-wasm-instance]
+ (fn [wasm-instance _]
+   "Get the content of the active buffer from WASM"
+   (if wasm-instance
+     (.getText wasm-instance)
      "")))
 
 (rf/reg-sub
  :visible-content
- :<- [:wasm-handle]
+ :<- [:active-wasm-instance]
  :<- [:ui]
- (fn [[wasm-handle ui] [_ start end]]
+ (fn [[wasm-instance ui] [_ start end]]
    "Get visible text range with caching"
-   (if wasm-handle
+   (if wasm-instance
      (let [cache (:text-cache ui)
            actual-start (or start (get-in ui [:viewport :start]) 0)
            actual-end (or end (get-in ui [:viewport :end]) 1000)
-           [content _] (cache/get-text-range cache wasm-handle actual-start actual-end)]
+           [content _] (cache/get-text-range cache wasm-instance actual-start actual-end)]
        content)
      "")))
 
 (rf/reg-sub
  :text-range
- :<- [:wasm-handle]
- (fn [wasm-handle [_ start end]]
+ :<- [:active-wasm-instance]
+ (fn [wasm-instance [_ start end]]
    "Get specific text range without caching (for small ranges)"
-   (if wasm-handle
-     (first (wasm/get-text-range-safe wasm-handle start end))
+   (if wasm-instance
+     (first (wasm/get-text-range-safe wasm-instance start end))
      "")))
 
 (rf/reg-sub
@@ -86,11 +101,11 @@
 
 (rf/reg-sub
  :buffer-length
- :<- [:wasm-handle]
- (fn [wasm-handle _]
+ :<- [:active-wasm-instance]
+ (fn [wasm-instance _]
    "Get the length of the active buffer from WASM"
-   (if wasm-handle
-     (.getLength wasm-handle)
+   (if wasm-instance
+     (.getLength wasm-instance)
      0)))
 
 ;; -- UI State Subscriptions --
@@ -166,7 +181,13 @@
  :<- [:active-buffer]
  (fn [buffer _]
    "Check if the active buffer has been modified"
-   (:modified? buffer)))
+   (:is-modified? buffer)))
+
+(rf/reg-sub
+ :kill-ring
+ (fn [db _]
+   "Get the kill ring"
+   (:kill-ring db)))
 
 (rf/reg-sub
  :selection-active?
