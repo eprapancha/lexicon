@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Lexicon Core WASM Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .result {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 3px;
+            margin-top: 10px;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Lexicon Core WASM - Piece Tree Test</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Basic Initialization</h2>
+        <div id="test1-result" class="result">Loading...</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: Text Insertion</h2>
+        <div id="test2-result" class="result">Loading...</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 3: Text Retrieval</h2>
+        <div id="test3-result" class="result">Loading...</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 4: Line Operations</h2>
+        <div id="test4-result" class="result">Loading...</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 5: ClojureScript Compatibility Layer</h2>
+        <div id="test5-result" class="result">Loading...</div>
+    </div>
+
+    <script type="module">
+        import init, { EditorState, WasmEditorCore } from './pkg/core_wasm.js';
+
+        async function runTests() {
+            try {
+                // Initialize the wasm module
+                await init();
+                
+                // Test 1: Basic Initialization
+                try {
+                    const state = new EditorState("Hello, World!");
+                    const length = state.length();
+                    const lineCount = state.line_count();
+                    const version = state.version();
+                    
+                    document.getElementById('test1-result').innerHTML = `
+                        <span class="success">✓ PASS</span><br>
+                        Initial text length: ${length}<br>
+                        Line count: ${lineCount}<br>
+                        Version: ${version}
+                    `;
+                } catch (error) {
+                    document.getElementById('test1-result').innerHTML = `
+                        <span class="error">✗ FAIL</span><br>
+                        Error: ${error.message}
+                    `;
+                }
+                
+                // Test 2: Transaction-based Text Insertion
+                try {
+                    const state = new EditorState("AC");
+                    const transaction = '{"changes": [{"from": 1, "to": 1, "insert": "B"}]}';
+                    const newState = state.apply_transaction(transaction);
+                    const newText = newState.get_text();
+                    const newVersion = newState.version();
+                    
+                    document.getElementById('test2-result').innerHTML = `
+                        <span class="success">✓ PASS</span><br>
+                        Original: "AC"<br>
+                        After transaction: "${newText}"<br>
+                        Version: ${newVersion}
+                    `;
+                } catch (error) {
+                    document.getElementById('test2-result').innerHTML = `
+                        <span class="error">✗ FAIL</span><br>
+                        Error: ${error.message}
+                    `;
+                }
+                
+                // Test 3: Text Range Operations
+                try {
+                    const state = new EditorState("Hello, World!");
+                    const range1 = state.get_text_range(0, 5);
+                    const range2 = state.get_text_range(7, 12);
+                    
+                    document.getElementById('test3-result').innerHTML = `
+                        <span class="success">✓ PASS</span><br>
+                        Full text: "${state.get_text()}"<br>
+                        Range [0,5): "${range1}"<br>
+                        Range [7,12): "${range2}"
+                    `;
+                } catch (error) {
+                    document.getElementById('test3-result').innerHTML = `
+                        <span class="error">✗ FAIL</span><br>
+                        Error: ${error.message}
+                    `;
+                }
+                
+                // Test 4: Delete and Replace Transactions
+                try {
+                    const state1 = new EditorState("Hello, World!");
+                    
+                    // Delete transaction
+                    const deleteTransaction = '{"changes": [{"from": 5, "to": 7, "insert": ""}]}';
+                    const state2 = state1.apply_transaction(deleteTransaction);
+                    
+                    // Replace transaction
+                    const replaceTransaction = '{"changes": [{"from": 5, "to": 10, "insert": "Rust!"}]}';
+                    const state3 = state2.apply_transaction(replaceTransaction);
+                    
+                    document.getElementById('test4-result').innerHTML = `
+                        <span class="success">✓ PASS</span><br>
+                        Original: "${state1.get_text()}"<br>
+                        After delete: "${state2.get_text()}"<br>
+                        After replace: "${state3.get_text()}"<br>
+                        Final version: ${state3.version()}
+                    `;
+                } catch (error) {
+                    document.getElementById('test4-result').innerHTML = `
+                        <span class="error">✗ FAIL</span><br>
+                        Error: ${error.message}
+                    `;
+                }
+                
+                // Test 5: ClojureScript Compatibility Layer
+                try {
+                    const core = new WasmEditorCore();
+                    core.init("AC");
+                    
+                    // Test ClojureScript-style insert transaction
+                    const insertResult = core.applyTransaction('{"type": 0, "position": 1, "text": "B"}');
+                    const insertText = core.getText();
+                    
+                    // Test direct mutation methods
+                    core.insertText(3, "D");
+                    core.deleteText(0, 1); // Remove "A"
+                    const finalText = core.getText();
+                    
+                    document.getElementById('test5-result').innerHTML = `
+                        <span class="success">✓ PASS</span><br>
+                        ClojureScript insert result: ${insertResult}<br>
+                        After insert: "${insertText}"<br>
+                        After mutations: "${finalText}"<br>
+                        Length: ${core.getLength()}<br>
+                        Text range [1,3]: "${core.getTextInRange(1, 3)}"
+                    `;
+                } catch (error) {
+                    document.getElementById('test5-result').innerHTML = `
+                        <span class="error">✗ FAIL</span><br>
+                        Error: ${error.message}
+                    `;
+                }
+                
+            } catch (error) {
+                document.body.innerHTML = `
+                    <h1>Failed to load WASM module</h1>
+                    <p class="error">Error: ${error.message}</p>
+                    <p>Make sure to build the WASM module first with:</p>
+                    <pre>cd packages/core-wasm && wasm-pack build --target web</pre>
+                `;
+            }
+        }
+
+        runTests();
+    </script>
+</body>
+</html>

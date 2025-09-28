@@ -1,0 +1,151 @@
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: packages/editor-cljs/package.json
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+    
+    - name: Install wasm-pack
+      uses: jetli/wasm-pack-action@v0.4.0
+      with:
+        version: 'latest'
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          packages/lexicon-engine/wasm/target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+    
+    - name: Build WASM module
+      working-directory: packages/lexicon-engine/wasm
+      run: |
+        wasm-pack build --target web --out-dir pkg --release
+        # Copy WASM files to ClojureScript public directory
+        mkdir -p ../../editor-cljs/resources/public/lexicon-engine/wasm/
+        cp -r pkg ../../editor-cljs/resources/public/lexicon-engine/wasm/
+    
+    - name: Install ClojureScript dependencies
+      working-directory: packages/editor-cljs
+      run: |
+        npm install --no-workspaces
+        # Verify React is available
+        ls -la node_modules/react/ || echo "React not found in node_modules"
+        # Install shadow-cljs globally for reliable access
+        npm install -g shadow-cljs
+    
+    - name: Build ClojureScript
+      working-directory: packages/editor-cljs
+      run: npm run build
+    
+    - name: Setup Pages
+      if: github.ref == 'refs/heads/main'
+      uses: actions/configure-pages@v4
+    
+    - name: Upload artifact
+      if: github.ref == 'refs/heads/main'
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: packages/editor-cljs/resources/public
+    
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/main'
+      id: deployment
+      uses: actions/deploy-pages@v4
+
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: packages/editor-cljs/package.json
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: Install dependencies
+      working-directory: packages/editor-cljs
+      run: |
+        npm install --no-workspaces
+        # Verify React is available
+        ls -la node_modules/react/ || echo "React not found in node_modules"
+        # Install shadow-cljs globally for reliable access
+        npm install -g shadow-cljs
+    
+    - name: Run ClojureScript compilation check
+      working-directory: packages/editor-cljs
+      run: |
+        # Test that compilation succeeds with 0 warnings
+        echo "🔨 Starting ClojureScript compilation..."
+        
+        if npm run build; then
+          echo "✅ ClojureScript compilation succeeded!"
+          
+          # Check for warnings in the last build
+          if npx shadow-cljs compile app 2>&1 | grep -E "Build completed.*[1-9][0-9]* warnings"; then
+            echo "❌ ClojureScript compilation warnings detected!"
+            exit 1
+          else
+            echo "✅ Clean ClojureScript compilation with 0 warnings!"
+          fi
+        else
+          echo "❌ ClojureScript compilation failed!"
+          echo "Debugging information:"
+          echo "Node modules React check:"
+          ls -la node_modules/react/ || echo "React not found"
+          echo "WASM files check:"
+          ls -la resources/public/lexicon-engine/wasm/ || echo "WASM files not found"
+          echo "Shadow-cljs version:"
+          npx shadow-cljs --version || echo "Shadow-cljs not available"
+          echo "Package.json dependencies:"
+          cat package.json | grep -A 10 dependencies
+          exit 1
+        fi

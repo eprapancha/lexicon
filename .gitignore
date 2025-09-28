@@ -1,14 +1,46 @@
-pom.xml
-pom.xml.asc
-*.jar
-*.class
-/lib/
-/classes/
-/target/
-/checkouts/
-.lein-deps-sum
-.lein-repl-history
-.lein-plugins/
-.lein-failures
-.nrepl-port
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+/packages/core-wasm/build/
+/packages/editor-cljs/resources/public/js/
+/packages/language-grammars/*/tree-sitter-*
+/packages/language-grammars/*/*.wasm
+target/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Clojure
 .cpcache/
+.nrepl-port
+.shadow-cljs/
+.clj-kondo/
+
+# Logs
+*.log
+
+# Runtime
+.env
+.env.local
+.env.production
+
+# Temporary files
+tmp/
+temp/

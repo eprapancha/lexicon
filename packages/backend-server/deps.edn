@@ -1,0 +1,22 @@
+{:paths ["src" "resources"]
+ :deps {org.clojure/clojure {:mvn/version "1.11.1"}
+        ring/ring-core {:mvn/version "1.9.6"}
+        ring/ring-jetty-adapter {:mvn/version "1.9.6"}
+        ring/ring-json {:mvn/version "0.5.1"}
+        compojure/compojure {:mvn/version "1.7.0"}
+        cheshire/cheshire {:mvn/version "5.11.0"}}
+ :aliases
+ {:dev {:extra-deps {ring/ring-devel {:mvn/version "1.9.6"}}}
+  :test {:extra-paths ["test"]
+         :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}}
+  :uberjar {:replace-deps {org.clojure/clojure {:mvn/version "1.11.1"}
+                           ring/ring-core {:mvn/version "1.9.6"}
+                           ring/ring-jetty-adapter {:mvn/version "1.9.6"}
+                           ring/ring-json {:mvn/version "0.5.1"}
+                           compojure/compojure {:mvn/version "1.7.0"}
+                           cheshire/cheshire {:mvn/version "5.11.0"}}
+            :exec-fn clojure.tools.build.api/uber
+            :exec-args {:basis (clojure.tools.build.api/create-basis {})
+                        :lib lexicon/backend-server
+                        :main lexicon.server
+                        :uber-file "target/lexicon-server.jar"}}}}

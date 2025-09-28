@@ -1,0 +1,22 @@
+{
+  "name": "lexicon",
+  "version": "0.1.0",
+  "description": "A modern, browser-based code editor inspired by Emacs",
+  "license": "MIT",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/dev.sh",
+    "build": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/build.sh",
+    "test": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/test.sh",
+    "test-integration": "PATH=/home/nixos/.nix-profile/bin:$PATH ./test-integration.sh",
+    "dev-editor": "cd packages/editor-cljs && PATH=/home/nixos/.nix-profile/bin:$PATH npm run dev",
+    "dev-server": "cd packages/editor-cljs && PATH=/home/nixos/.nix-profile/bin:$PATH npm run dev-server"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

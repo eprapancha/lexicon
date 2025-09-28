@@ -1,0 +1,8 @@
+[package]
+name = "lexicon-core"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance text editor core using Piece Tree data structure"
+license = "MIT"
+
+[dependencies]
