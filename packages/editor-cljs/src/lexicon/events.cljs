@@ -388,6 +388,15 @@
        ;; Buffer not found - no action needed
        {:db db}))))
 
+;; -- WASM Loading Error Events --
+
+(rf/reg-event-db
+ :wasm-load-failed
+ (fn [db [_ error]]
+   "Handle WASM loading failure"
+   (println "WASM load failed, showing error to user:" error)
+   (assoc-in db [:system :wasm-error] (str error))))
+
 ;; -- Region Selection and Kill Ring Events --
 
 (rf/reg-event-db

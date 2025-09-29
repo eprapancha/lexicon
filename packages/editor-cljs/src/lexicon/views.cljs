@@ -301,7 +301,8 @@
   "Main application component"
   []
   (let [initialized? @(rf/subscribe [:initialized?])
-        editor-ready? @(rf/subscribe [:editor-ready?])]
+        editor-ready? @(rf/subscribe [:editor-ready?])
+        wasm-error @(rf/subscribe [:wasm-error])]
     
     [:div.lexicon-app
      {:style {:width "100%"
@@ -310,6 +311,24 @@
               :flex-direction "column"}}
      
      (cond
+       wasm-error
+       [:div.error
+        {:style {:padding "20px"
+                 :color "#ff6b6b"
+                 :background-color "#2d1b1b"
+                 :border "1px solid #ff6b6b"
+                 :border-radius "4px"
+                 :margin "20px"
+                 :font-family "monospace"}}
+        [:h3 "WASM Loading Error"]
+        [:p "Failed to load the WebAssembly module:"]
+        [:pre {:style {:background-color "#1a1a1a"
+                       :padding "10px"
+                       :border-radius "4px"
+                       :overflow-x "auto"}}
+         (str wasm-error)]
+        [:p "Please check the browser console for more details."]]
+       
        (not initialized?)
        [loading-view]
        

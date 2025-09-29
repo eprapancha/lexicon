@@ -203,3 +203,9 @@
  (fn [[initialized? buffer] _]
    "Check if the editor is ready for user interaction"
    (and initialized? buffer)))
+
+(rf/reg-sub
+ :wasm-error
+ (fn [db _]
+   "Get WASM loading error if any"
+   (get-in db [:system :wasm-error])))

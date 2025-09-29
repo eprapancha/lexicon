@@ -9,32 +9,40 @@
 (defn load-wasm-module
   "Asynchronously load the WebAssembly module"
   []
-  ;; Create a script tag to load the WASM module
-  (let [script (.createElement js/document "script")]
-    (set! (.-src script) "./lexicon-engine/wasm/pkg/lexicon_wasm.js")
-    (set! (.-type script) "module")
-    (set! (.-onload script)
-          (fn []
-            (try
-              ;; Access the globally available module
-              (if (exists? js/wasm_bindgen)
-                (-> (js/wasm_bindgen "./lexicon-engine/wasm/pkg/lexicon_wasm_bg.wasm")
-                    (.then (fn []
-                             ;; Create a WasmEditorCore instance with initial content
-                             (let [wasm-instance (js/WasmEditorCore.)]
-                               (.init wasm-instance "")
-                               ;; Store in re-frame db
-                               (rf/dispatch [:wasm-module-loaded wasm-instance])
-                               (println "✅ WASM module loaded and initialized"))))
-                    (.catch (fn [error]
-                              (println "❌ Failed to initialize WASM:" error))))
-                (println "❌ WASM bindgen not available"))
-              (catch js/Error error
-                (println "❌ Failed to load WASM module:" error)))))
-    (set! (.-onerror script)
-          (fn [error]
-            (println "❌ Failed to load WASM script:" error)))
-    (.appendChild (.-head js/document) script)))
+  (try
+    (println "🔍 Loading WASM module...")
+    ;; Try to load the WASM module using dynamic import via fetch
+    (-> (js/fetch "./lexicon-engine/wasm/pkg/lexicon_wasm.js")
+        (.then (fn [response]
+                 (if (.-ok response)
+                   (.text response)
+                   (throw (js/Error. (str "Failed to fetch WASM JS: " (.-status response)))))))
+        (.then (fn [js-code]
+                 ;; Execute the WASM JavaScript code
+                 (js/eval js-code)
+                 ;; Now try to initialize
+                 (if (exists? js/wasm_bindgen)
+                   (-> (js/wasm_bindgen "./lexicon-engine/wasm/pkg/lexicon_wasm_bg.wasm")
+                       (.then (fn []
+                                (println "✅ WASM bindgen initialized")
+                                ;; Check if WasmEditorCore is available
+                                (if (exists? js/WasmEditorCore)
+                                  (let [wasm-instance (js/WasmEditorCore.)]
+                                    (println "✅ WasmEditorCore created")
+                                    (.init wasm-instance "")
+                                    (rf/dispatch [:wasm-module-loaded wasm-instance])
+                                    (println "✅ WASM module loaded and initialized"))
+                                  (throw (js/Error. "WasmEditorCore not available after WASM load")))))
+                       (.catch (fn [error]
+                                 (println "❌ Failed to initialize WASM bindgen:" error)
+                                 (rf/dispatch [:wasm-load-failed error]))))
+                   (throw (js/Error. "wasm_bindgen function not available after loading JS")))))
+        (.catch (fn [error]
+                  (println "❌ Failed to load WASM module:" error)
+                  (rf/dispatch [:wasm-load-failed error]))))
+    (catch js/Error error
+      (println "❌ Failed to start WASM loading:" error)
+      (rf/dispatch [:wasm-load-failed error]))))
 
 (defn mount-app
   "Mount the main application component"
