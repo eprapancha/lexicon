@@ -56,21 +56,27 @@ jobs:
     - name: Build ClojureScript frontend
       run: |
         cd packages/editor-cljs
-        # Test that compilation succeeds with 0 warnings
-        echo "🔨 Starting ClojureScript compilation..."
+        # Production build with 0 warnings check
+        echo "🔨 Starting ClojureScript production build..."
         
-        if npm run build; then
-          echo "✅ ClojureScript compilation succeeded!"
+        # Capture build output for warning analysis
+        OUTPUT=$(npm run build 2>&1)
+        BUILD_EXIT_CODE=$?
+        
+        echo "$OUTPUT"
+        
+        if [ $BUILD_EXIT_CODE -eq 0 ]; then
+          echo "✅ ClojureScript production build succeeded!"
           
-          # Check for warnings in the last build
-          if npx shadow-cljs compile app 2>&1 | grep -E "Build completed.*[1-9][0-9]* warnings"; then
+          # Check for warnings in the build output
+          if echo "$OUTPUT" | grep -E "Build completed.*[1-9][0-9]* warnings"; then
             echo "❌ ClojureScript compilation warnings detected!"
             exit 1
           else
-            echo "✅ Clean ClojureScript compilation with 0 warnings!"
+            echo "✅ Clean ClojureScript production build with 0 warnings!"
           fi
         else
-          echo "❌ ClojureScript compilation failed!"
+          echo "❌ ClojureScript production build failed!"
           echo "Debugging information:"
           echo "Node modules React check:"
           ls -la node_modules/react/ || echo "React not found"
