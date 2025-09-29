@@ -75,3 +75,4 @@ We are building Lexicon through a series of well-defined, incremental phases. Ea
   * "Workspace as Code" via `devcontainer.json` file support.  
   * Real-time collaborative editing.
 
+#### **Nice to Haves**
