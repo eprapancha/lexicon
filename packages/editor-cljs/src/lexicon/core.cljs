@@ -7,36 +7,31 @@
             [lexicon.views :as views]))
 
 (defn load-wasm-module
-  "Asynchronously load the WebAssembly module"
+  "Asynchronously load the WebAssembly module using dynamic import"
   []
   (try
     (println "🔍 Loading WASM module...")
-    ;; Try to load the WASM module using dynamic import via fetch
-    (-> (js/fetch "./lexicon-engine/wasm/pkg/lexicon_wasm.js")
-        (.then (fn [response]
-                 (if (.-ok response)
-                   (.text response)
-                   (throw (js/Error. (str "Failed to fetch WASM JS: " (.-status response)))))))
-        (.then (fn [js-code]
-                 ;; Execute the WASM JavaScript code
-                 (js/eval js-code)
-                 ;; Now try to initialize
-                 (if (exists? js/wasm_bindgen)
-                   (-> (js/wasm_bindgen "./lexicon-engine/wasm/pkg/lexicon_wasm_bg.wasm")
+    ;; Use JavaScript's dynamic import() function with absolute path
+    (-> (js/eval "import('/lexicon-engine/wasm/pkg/lexicon_wasm.js')")
+        (.then (fn [wasm-module]
+                 (println "✅ WASM JS module loaded")
+                 ;; Initialize the WASM module - the default export is the init function
+                 (let [init-fn (.-default wasm-module)]
+                   (-> (init-fn "/lexicon-engine/wasm/pkg/lexicon_wasm_bg.wasm")
                        (.then (fn []
-                                (println "✅ WASM bindgen initialized")
-                                ;; Check if WasmEditorCore is available
-                                (if (exists? js/WasmEditorCore)
-                                  (let [wasm-instance (js/WasmEditorCore.)]
-                                    (println "✅ WasmEditorCore created")
-                                    (.init wasm-instance "")
-                                    (rf/dispatch [:wasm-module-loaded wasm-instance])
-                                    (println "✅ WASM module loaded and initialized"))
-                                  (throw (js/Error. "WasmEditorCore not available after WASM load")))))
+                                (println "✅ WASM initialized")
+                                ;; WasmEditorCore is available as a named export
+                                (let [WasmEditorCore (.-WasmEditorCore wasm-module)
+                                      wasm-instance (WasmEditorCore.)]
+                                  (println "✅ WasmEditorCore created")
+                                  (.init wasm-instance "")
+                                  ;; Store both the instance and the constructor
+                                  (rf/dispatch [:wasm-module-loaded {:instance wasm-instance
+                                                                    :constructor WasmEditorCore}])
+                                  (println "✅ WASM module loaded and initialized"))))
                        (.catch (fn [error]
-                                 (println "❌ Failed to initialize WASM bindgen:" error)
-                                 (rf/dispatch [:wasm-load-failed error]))))
-                   (throw (js/Error. "wasm_bindgen function not available after loading JS")))))
+                                 (println "❌ Failed to initialize WASM:" error)
+                                 (rf/dispatch [:wasm-load-failed error])))))))
         (.catch (fn [error]
                   (println "❌ Failed to load WASM module:" error)
                   (rf/dispatch [:wasm-load-failed error]))))

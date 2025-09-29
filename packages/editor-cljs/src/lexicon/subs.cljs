@@ -58,7 +58,9 @@
 (rf/reg-sub
  :buffer-content
  :<- [:active-wasm-instance]
- (fn [^js wasm-instance _]
+ :<- [:view-needs-update?]
+ :<- [:last-transaction-id]
+ (fn [[^js wasm-instance view-needs-update? transaction-id] _]
    "Get the content of the active buffer from WASM"
    (if wasm-instance
      (.getText wasm-instance)

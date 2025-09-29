@@ -19,48 +19,11 @@
     ;; Prevent default browser behavior - we control all DOM mutations
     (.preventDefault event)
     
-    ;; Translate input type to transaction
-    (case input-type
-      "insertText"
-      (when data
-        (rf/dispatch [:dispatch-transaction {:type :insert
-                                             :pos cursor-pos
-                                             :text data}]))
-      
-      "insertCompositionText"
-      ;; Handle during IME composition
-      (when data
-        (rf/dispatch [:ime-composition-update data]))
-      
-      "deleteContentBackward"
-      (when (> cursor-pos 0)
-        (rf/dispatch [:dispatch-transaction {:type :delete
-                                             :pos (dec cursor-pos)
-                                             :length 1}]))
-      
-      "deleteContentForward"
-      (rf/dispatch [:dispatch-transaction {:type :delete
-                                           :pos cursor-pos
-                                           :length 1}])
-      
-      "deleteByCut"
-      (let [selection-start (.-anchorOffset selection)
-            selection-end (.-focusOffset selection)
-            delete-start (min selection-start selection-end)
-            delete-length (abs (- selection-end selection-start))]
-        (when (> delete-length 0)
-          (rf/dispatch [:dispatch-transaction {:type :delete
-                                               :pos delete-start
-                                               :length delete-length}])))
-      
-      "insertFromPaste"
-      (when data
-        (rf/dispatch [:dispatch-transaction {:type :insert
-                                             :pos cursor-pos
-                                             :text data}]))
-      
-      ;; Log unhandled input types for debugging
-      (println "Unhandled input type:" input-type))))
+    ;; We need to get the cursor position from our app state, but we can't use subscriptions here
+    ;; So let's dispatch an event that will get the current cursor position and then dispatch the transaction
+    (rf/dispatch [:handle-text-input {:input-type input-type
+                                      :data data
+                                      :dom-cursor-pos cursor-pos}])))
 
 (defn handle-composition-start
   "Handle IME composition start"
@@ -89,19 +52,13 @@
   [target-element]
   (let [observer (js/MutationObserver.
                   (fn [mutations]
-                    (let [reconciliation-active? @(rf/subscribe [:reconciliation-active?])]
-                      ;; Only process mutations if we're not in the middle of reconciliation
-                      (when-not reconciliation-active?
-                        (doseq [mutation mutations]
-                          (when (= (.-type mutation) "childList")
-                            (println "⚠️ Unexpected DOM mutation detected")
-                            (let [dom-content (.-textContent target-element)
-                                  wasm-instance @(rf/subscribe [:active-wasm-instance])]
-                              (when wasm-instance
-                                (let [expected-content (.getText ^js wasm-instance)]
-                                  (when (not= dom-content expected-content)
-                                    (println "🔄 Reconciling DOM state")
-                                    (rf/dispatch [:reconcile-dom-state dom-content expected-content])))))))))))]
+                    ;; We can't use subscriptions in MutationObserver callbacks
+                    ;; Just dispatch events and let the event handlers check state
+                    (doseq [mutation mutations]
+                      (when (= (.-type mutation) "childList")
+                        ;; DOM mutation detected - this is normal during text input
+                        ;; Dispatch reconciliation event - the handler will check if reconciliation is active
+                        (rf/dispatch [:reconcile-dom-if-needed (.-textContent target-element)])))))]
     
     ;; Configure observer to watch for all changes
     (.observe observer target-element 
@@ -131,6 +88,7 @@
         ime-composing? @(rf/subscribe [:ime-composing?])
         ime-text @(rf/subscribe [:ime-composition-text])
         view-needs-update? @(rf/subscribe [:view-needs-update?])
+        cursor-position @(rf/subscribe [:cursor-position])
         editor-ref (atom nil)]
     
     (r/with-let [setup-element! (fn [element]
@@ -156,29 +114,33 @@
                                     (when-let [observer @(rf/subscribe [:mutation-observer])]
                                       (.disconnect observer)))]
       
-      ;; Update content effect
+      ;; Update content when it changes
       (r/track! (fn []
-                  (when view-needs-update?
-                    (when-let [element @editor-ref]
-                      (rf/dispatch [:set-reconciliation-active true])
-                      
-                      ;; Temporarily disconnect MutationObserver
-                      (when-let [observer @(rf/subscribe [:mutation-observer])]
-                        (.disconnect observer))
-                      
-                      ;; Update content
-                      (set! (.-textContent element) content)
-                      
-                      ;; Reconnect MutationObserver
-                      (when-let [observer @(rf/subscribe [:mutation-observer])]
-                        (.observe observer element 
-                                  #js {:childList true
-                                       :subtree true
-                                       :characterData true
-                                       :characterDataOldValue true}))
-                      
-                      (rf/dispatch [:set-reconciliation-active false])
+                  (when-let [element @editor-ref]
+                    (set! (.-textContent element) content)
+                    (when view-needs-update?
                       (rf/dispatch [:view-updated])))))
+      
+      ;; Update cursor position when it changes
+      (r/track! (fn []
+                  (let [current-cursor @(rf/subscribe [:cursor-position])]
+                    (when-let [element @editor-ref]
+                      (when (and current-cursor (.-firstChild element))
+                        (js/setTimeout 
+                         (fn []
+                           (try
+                             (let [selection (.getSelection js/window)
+                                   range (.createRange js/document)
+                                   text-node (.-firstChild element)
+                                   max-pos (.-length text-node)
+                                   safe-pos (min current-cursor max-pos)]
+                               (.setStart range text-node safe-pos)
+                               (.setEnd range text-node safe-pos)
+                               (.removeAllRanges selection)
+                               (.addRange selection range))
+                             (catch js/Error e
+                               (println "Error setting cursor position:" e))))
+                         10))))))
       
       [:div.editor-container
        [:div.editor-content
@@ -190,7 +152,7 @@
                  :font-size "14px"
                  :line-height "1.5"
                  :padding "20px"
-                 :padding-top "52px"  ; Account for buffer tabs (32px) + margin
+                 :padding-top "20px"   ; Normal padding - no buffer tabs
                  :padding-bottom "44px"  ; Account for status bar (24px) + margin
                  :outline "none"
                  :white-space "pre-wrap"
@@ -334,7 +296,6 @@
        
        editor-ready?
        [:<>
-        [buffer-tabs]
         [editor-view]
         [status-bar]]
        
