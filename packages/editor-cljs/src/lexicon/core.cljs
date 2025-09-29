@@ -9,7 +9,7 @@
   "Asynchronously load the WebAssembly module"
   []
   ;; Load the WASM module from the generated package
-  (-> (js/import "/lexicon-engine/wasm/pkg/lexicon_wasm.js")
+  (-> (js/import "./lexicon-engine/wasm/pkg/lexicon_wasm.js")
       (.then (fn [wasm-module]
                ;; Initialize the WASM module first
                (-> (.default wasm-module)
