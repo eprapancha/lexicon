@@ -2,6 +2,7 @@
   (:require [re-frame.core :as rf]
             [reagent.core :as r]
             [reagent.dom :as rdom]
+            [clojure.string :as str]
             [lexicon.events]    ; Load event handlers
             [lexicon.subs]      ; Load subscriptions
             [lexicon.views :as views]))
@@ -11,13 +12,24 @@
   []
   (try
     (println "🔍 Loading WASM module...")
-    ;; Use JavaScript's dynamic import() function with absolute path
-    (-> (js/eval "import('/lexicon-engine/wasm/pkg/lexicon_wasm.js')")
-        (.then (fn [wasm-module]
-                 (println "✅ WASM JS module loaded")
-                 ;; Initialize the WASM module - the default export is the init function
-                 (let [init-fn (.-default wasm-module)]
-                   (-> (init-fn "/lexicon-engine/wasm/pkg/lexicon_wasm_bg.wasm")
+    ;; Get the base path from the current document location
+    (let [pathname (.-pathname (.-location js/document))
+          path-parts (js->clj (.split pathname "/"))
+          base-parts (butlast path-parts)
+          base-path (str/join "/" base-parts)
+          wasm-js-path (str base-path "/lexicon-engine/wasm/pkg/lexicon_wasm.js")
+          wasm-bg-path (str base-path "/lexicon-engine/wasm/pkg/lexicon_wasm_bg.wasm")]
+      
+      (println "🔍 Base path:" base-path)
+      (println "🔍 WASM JS path:" wasm-js-path)
+      
+      ;; Use JavaScript's dynamic import() function with dynamic path
+      (-> (js/eval (str "import('" wasm-js-path "')"))
+          (.then (fn [wasm-module]
+                   (println "✅ WASM JS module loaded")
+                   ;; Initialize the WASM module - the default export is the init function
+                   (let [init-fn (.-default wasm-module)]
+                     (-> (init-fn wasm-bg-path)
                        (.then (fn []
                                 (println "✅ WASM initialized")
                                 ;; WasmEditorCore is available as a named export
@@ -32,9 +44,9 @@
                        (.catch (fn [error]
                                  (println "❌ Failed to initialize WASM:" error)
                                  (rf/dispatch [:wasm-load-failed error])))))))
-        (.catch (fn [error]
-                  (println "❌ Failed to load WASM module:" error)
-                  (rf/dispatch [:wasm-load-failed error]))))
+          (.catch (fn [error]
+                    (println "❌ Failed to load WASM module:" error)
+                    (rf/dispatch [:wasm-load-failed error])))))
     (catch js/Error error
       (println "❌ Failed to start WASM loading:" error)
       (rf/dispatch [:wasm-load-failed error]))))
