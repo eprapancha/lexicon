@@ -13,11 +13,12 @@
 
 (rf/reg-event-db
  :wasm-module-loaded
- (fn [db [_ wasm-instance]]
-   "Store the loaded WASM module instance in the default buffer and mark as initialized"
+ (fn [db [_ {:keys [instance constructor]}]]
+   "Store the loaded WASM module instance and constructor in the app state"
    (-> db
        (assoc :initialized? true)
-       (assoc-in [:buffers 1 :wasm-instance] wasm-instance))))
+       (assoc-in [:system :wasm-constructor] constructor)
+       (assoc-in [:buffers 1 :wasm-instance] instance))))
 
 ;; -- Buffer Management Events --
 
@@ -37,6 +38,45 @@
      (assoc-in db [:windows (:active-window-id db) :buffer-id] buffer-id)
      db))) ; Ignore if buffer doesn't exist
 
+;; -- Input Handling Events --
+
+(rf/reg-event-fx
+ :handle-text-input
+ (fn [{:keys [db]} [_ {:keys [input-type data dom-cursor-pos]}]]
+   "Handle text input events with proper cursor position from app state"
+   (let [current-cursor (get-in db [:ui :cursor-position] 0)
+         insert-pos current-cursor  ; Use app state cursor position
+         
+         
+         transaction (case input-type
+                       "insertText"
+                       (when data
+                         {:type :insert :pos insert-pos :text data})
+                       
+                       "insertCompositionText"
+                       (when data
+                         ;; Handle IME composition
+                         (rf/dispatch [:ime-composition-update data])
+                         nil)
+                       
+                       "deleteContentBackward"
+                       (when (> insert-pos 0)
+                         {:type :delete :pos (dec insert-pos) :length 1})
+                       
+                       "deleteContentForward"
+                       {:type :delete :pos insert-pos :length 1}
+                       
+                       "insertFromPaste"
+                       (when data
+                         {:type :insert :pos insert-pos :text data})
+                       
+                       ;; Log unhandled input types
+                       (do (println "Unhandled input type:" input-type) nil))]
+     
+     (if transaction
+       {:fx [[:dispatch [:dispatch-transaction transaction]]]}
+       {:db db}))))
+
 ;; -- Transaction Events --
 
 (rf/reg-event-fx
@@ -47,6 +87,7 @@
          active-buffer-id (:buffer-id active-window)
          active-buffer (get (:buffers db) active-buffer-id)
          wasm-instance (:wasm-instance active-buffer)]
+     
      
      (if (and wasm-instance active-buffer-id)
        (let [transaction-id (inc (get-in db [:system :last-transaction-id]))
@@ -65,35 +106,48 @@
              ;; Apply transaction via WASM
              error-code (.applyTransaction ^js wasm-instance transaction-json)]
          
+         
          (if (= error-code 0) ; SUCCESS
            ;; Transaction successful
-           (let [result-json (.getLastResult ^js wasm-instance)
-                 result (js->clj (js/JSON.parse result-json) :keywordize-keys true)
-                 new-cursor (:cursorPosition result)
-                 new-length (:length result)
-                 
-                 ;; Invalidate affected cache ranges
-                 cache-start (case type
-                               :insert pos
-                               :delete pos
-                               :replace pos
-                               0)
-                 cache-end (case type
-                             :insert (+ pos (count text))
-                             :delete (+ pos length)
-                             :replace (+ pos (count text))
-                             cache-start)
-                 
-                 updated-cache (cache/invalidate-cache-range 
-                               (get-in db [:ui :text-cache])
-                               cache-start cache-end)]
-             
-             {:db (-> db
-                      (assoc-in [:system :last-transaction-id] transaction-id)
-                      (assoc-in [:ui :cursor-position] new-cursor)
-                      (assoc-in [:ui :view-needs-update?] true)
-                      (assoc-in [:ui :text-cache] updated-cache)
-                      (assoc-in [:buffers active-buffer-id :is-modified?] true))})
+           (try
+             (let [result-json (.getLastResult ^js wasm-instance)
+                   result (js->clj (js/JSON.parse result-json) :keywordize-keys true)
+                   new-cursor (:cursorPosition result)
+                   new-length (:length result)
+                   
+                   ;; Invalidate affected cache ranges
+                   cache-start (case type
+                                 :insert pos
+                                 :delete pos
+                                 :replace pos
+                                 0)
+                   cache-end (case type
+                               :insert (+ pos (count text))
+                               :delete (+ pos length)
+                               :replace (+ pos (count text))
+                               cache-start)
+                   
+                   updated-cache (cache/invalidate-cache-range 
+                                 (get-in db [:ui :text-cache])
+                                 cache-start cache-end)
+                   
+                   ;; Set cursor position - if not provided by WASM, calculate it
+                   final-cursor (or new-cursor 
+                                   (case type
+                                     :insert (+ pos (count text))
+                                     :delete pos
+                                     :replace (+ pos (count text))
+                                     pos))]
+               
+               {:db (-> db
+                        (assoc-in [:system :last-transaction-id] transaction-id)
+                        (assoc-in [:ui :cursor-position] final-cursor)
+                        (assoc-in [:ui :view-needs-update?] true)
+                        (assoc-in [:ui :text-cache] updated-cache)
+                        (assoc-in [:buffers active-buffer-id :is-modified?] true))})
+             (catch js/Error error
+               (println "❌ Error processing transaction result:" error)
+               {:db db}))
            
            ;; Transaction failed
            (let [error-message (.getLastErrorMessage ^js wasm-instance)]
@@ -317,7 +371,8 @@
  (fn [{:keys [db]} [_ {:keys [file-handle content name]}]]
    "Handle successful file read - create new buffer and switch to it"
    (let [buffer-id (db/next-buffer-id (:buffers db))
-         wasm-instance (js/WasmEditorCore.)]
+         WasmEditorCore (get-in db [:system :wasm-constructor])
+         wasm-instance (WasmEditorCore.)]
      ;; Initialize WASM instance with file content
      (.init wasm-instance content)
      
@@ -364,7 +419,8 @@
          (if (empty? remaining-buffer-ids)
            ;; No buffers left - create a new default *scratch* buffer
            (let [new-buffer-id (inc (apply max 0 (keys buffers)))
-                 new-wasm-instance (js/WasmEditorCore.)]
+                 WasmEditorCore (get-in db [:system :wasm-constructor])
+                 new-wasm-instance (WasmEditorCore.)]
              (.init new-wasm-instance "")
              {:db (-> db
                       (assoc :buffers {new-buffer-id {:id new-buffer-id
@@ -387,6 +443,32 @@
        
        ;; Buffer not found - no action needed
        {:db db}))))
+
+;; -- WASM Loading Error Events --
+
+(rf/reg-event-db
+ :wasm-load-failed
+ (fn [db [_ error]]
+   "Handle WASM loading failure"
+   (println "WASM load failed, showing error to user:" error)
+   (assoc-in db [:system :wasm-error] (str error))))
+
+(rf/reg-event-fx
+ :reconcile-dom-if-needed
+ (fn [{:keys [db]} [_ dom-content]]
+   "Check if DOM content differs from WASM content and reconcile if needed"
+   (let [reconciliation-active? (get-in db [:system :reconciliation-active?])
+         active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         active-buffer (get (:buffers db) active-buffer-id)
+         wasm-instance (:wasm-instance active-buffer)]
+     ;; Only process if reconciliation is not currently active
+     (when (and (not reconciliation-active?) wasm-instance)
+       (let [expected-content (.getText ^js wasm-instance)]
+         (when (not= dom-content expected-content)
+           (println "🔄 Reconciling DOM state")
+           {:fx [[:dispatch [:reconcile-dom-state dom-content expected-content]]]})))
+     {:db db})))
 
 ;; -- Region Selection and Kill Ring Events --
 

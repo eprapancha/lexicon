@@ -7,34 +7,37 @@
             [lexicon.views :as views]))
 
 (defn load-wasm-module
-  "Asynchronously load the WebAssembly module"
+  "Asynchronously load the WebAssembly module using dynamic import"
   []
-  ;; Create a script tag to load the WASM module
-  (let [script (.createElement js/document "script")]
-    (set! (.-src script) "./lexicon-engine/wasm/pkg/lexicon_wasm.js")
-    (set! (.-type script) "module")
-    (set! (.-onload script)
-          (fn []
-            (try
-              ;; Access the globally available module
-              (if (exists? js/wasm_bindgen)
-                (-> (js/wasm_bindgen "./lexicon-engine/wasm/pkg/lexicon_wasm_bg.wasm")
-                    (.then (fn []
-                             ;; Create a WasmEditorCore instance with initial content
-                             (let [wasm-instance (js/WasmEditorCore.)]
-                               (.init wasm-instance "")
-                               ;; Store in re-frame db
-                               (rf/dispatch [:wasm-module-loaded wasm-instance])
-                               (println "✅ WASM module loaded and initialized"))))
-                    (.catch (fn [error]
-                              (println "❌ Failed to initialize WASM:" error))))
-                (println "❌ WASM bindgen not available"))
-              (catch js/Error error
-                (println "❌ Failed to load WASM module:" error)))))
-    (set! (.-onerror script)
-          (fn [error]
-            (println "❌ Failed to load WASM script:" error)))
-    (.appendChild (.-head js/document) script)))
+  (try
+    (println "🔍 Loading WASM module...")
+    ;; Use JavaScript's dynamic import() function with absolute path
+    (-> (js/eval "import('/lexicon-engine/wasm/pkg/lexicon_wasm.js')")
+        (.then (fn [wasm-module]
+                 (println "✅ WASM JS module loaded")
+                 ;; Initialize the WASM module - the default export is the init function
+                 (let [init-fn (.-default wasm-module)]
+                   (-> (init-fn "/lexicon-engine/wasm/pkg/lexicon_wasm_bg.wasm")
+                       (.then (fn []
+                                (println "✅ WASM initialized")
+                                ;; WasmEditorCore is available as a named export
+                                (let [WasmEditorCore (.-WasmEditorCore wasm-module)
+                                      wasm-instance (WasmEditorCore.)]
+                                  (println "✅ WasmEditorCore created")
+                                  (.init wasm-instance "")
+                                  ;; Store both the instance and the constructor
+                                  (rf/dispatch [:wasm-module-loaded {:instance wasm-instance
+                                                                    :constructor WasmEditorCore}])
+                                  (println "✅ WASM module loaded and initialized"))))
+                       (.catch (fn [error]
+                                 (println "❌ Failed to initialize WASM:" error)
+                                 (rf/dispatch [:wasm-load-failed error])))))))
+        (.catch (fn [error]
+                  (println "❌ Failed to load WASM module:" error)
+                  (rf/dispatch [:wasm-load-failed error]))))
+    (catch js/Error error
+      (println "❌ Failed to start WASM loading:" error)
+      (rf/dispatch [:wasm-load-failed error]))))
 
 (defn mount-app
   "Mount the main application component"
