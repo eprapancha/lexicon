@@ -106,6 +106,8 @@
         scroller-ref (atom nil)
         content-ref (atom nil)]
     
+    (println "🖼️ Rendering editor. Visible lines:" (count (or visible-lines "")) "Total lines:" total-lines "Viewport:" viewport)
+    
     (r/with-let [setup-scroller! (fn [element]
                                    (when element
                                      (reset! scroller-ref element)
@@ -139,19 +141,24 @@
       (r/track! (fn []
                   (let [current-cursor @(rf/subscribe [:cursor-position])]
                     (when-let [content @content-ref]
-                      (when (and current-cursor (.-firstChild content))
+                      (when current-cursor
                         (js/setTimeout 
                          (fn []
                            (try
-                             (let [selection (.getSelection js/window)
-                                   range (.createRange js/document)
-                                   text-node (.-firstChild content)
-                                   max-pos (.-length text-node)
-                                   safe-pos (min current-cursor max-pos)]
-                               (.setStart range text-node safe-pos)
-                               (.setEnd range text-node safe-pos)
-                               (.removeAllRanges selection)
-                               (.addRange selection range))
+                             ;; Find the first line div and its text node
+                             (let [first-line-div (.-firstElementChild content)]
+                               (when first-line-div
+                                 (let [text-node (.-firstChild first-line-div)]
+                                   (when text-node
+                                     (let [selection (.getSelection js/window)
+                                           range (.createRange js/document)
+                                           max-pos (.-length text-node)
+                                           safe-pos (min current-cursor max-pos)]
+                                       (println "🎯 Setting cursor to position:" safe-pos "in text:" (pr-str (.-textContent text-node)))
+                                       (.setStart range text-node safe-pos)
+                                       (.setEnd range text-node safe-pos)
+                                       (.removeAllRanges selection)
+                                       (.addRange selection range))))))
                              (catch js/Error e
                                (println "Error setting cursor position:" e))))
                          10))))))

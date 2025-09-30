@@ -103,20 +103,22 @@
              ;; Convert to JSON string for WASM
              transaction-json (js/JSON.stringify (clj->js wasm-transaction))]
          
-         ;; Apply transaction and handle result asynchronously
-         (-> (.applyTransaction ^js wasm-instance transaction-json)
-             (.then (fn [patch-json]
-                      ;; Transaction successful - dispatch result event
-                      (rf/dispatch [:apply-transaction-result 
-                                   {:patch-json patch-json
-                                    :transaction transaction
-                                    :transaction-id transaction-id
-                                    :buffer-id active-buffer-id}])))
-             (.catch (fn [error]
-                       ;; Transaction failed - dispatch error event
-                       (rf/dispatch [:transaction-failed {:error (str error)}]))))
+         ;; Apply transaction and handle result synchronously
+         (try
+           (let [patch-json (.applyTransaction ^js wasm-instance transaction-json)]
+             (println "🔧 Transaction applied. Patch JSON:" patch-json)
+             ;; Transaction successful - dispatch result event
+             (rf/dispatch [:apply-transaction-result 
+                          {:patch-json patch-json
+                           :transaction transaction
+                           :transaction-id transaction-id
+                           :buffer-id active-buffer-id}]))
+           (catch js/Error error
+             ;; Transaction failed - dispatch error event
+             (println "❌ Transaction failed:" error)
+             (rf/dispatch [:transaction-failed {:error (str error)}])))
          
-         ;; Return no immediate db changes - async handlers will update state
+         ;; Return no immediate db changes - handlers will update state
          {:db db})
        
        ;; WASM not ready or no active buffer
@@ -128,6 +130,7 @@
  :apply-transaction-result
  (fn [db [_ {:keys [patch-json transaction transaction-id buffer-id]}]]
    "Apply the result of a successful transaction - pure state update"
+   (println "📥 Applying transaction result. Patch JSON:" patch-json)
    (try
      (let [patch (js->clj (js/JSON.parse patch-json) :keywordize-keys true)
            {:keys [type pos text length]} transaction
@@ -158,6 +161,7 @@
                              :replace (+ pos (count text))
                              pos))]
        
+       (println "✅ Final cursor position:" final-cursor "Patch:" patch)
        (-> db
            (assoc-in [:system :last-transaction-id] transaction-id)
            (assoc-in [:system :last-patch] patch)

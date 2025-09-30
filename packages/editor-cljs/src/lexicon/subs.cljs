@@ -227,19 +227,36 @@
  (fn [^js wasm-instance _]
    "Get the total number of lines in the document"
    (if wasm-instance
-     (.lineCount wasm-instance)
-     1)))
+     (do
+       (println "📊 Calling lineCount on WASM instance. Has method?" (boolean (.-lineCount wasm-instance)))
+       (let [result (.lineCount wasm-instance)]
+         (println "📊 lineCount returned:" result)
+         result))
+     (do
+       (println "❌ No WASM instance for total-lines")
+       1))))
 
 (rf/reg-sub
  ::visible-lines
  :<- [::viewport]
  :<- [:active-wasm-instance]
- (fn [[viewport ^js wasm-instance] _]
+ :<- [:last-transaction-id]
+ (fn [[viewport ^js wasm-instance transaction-id] _]
    "Get the text for the visible lines"
+   (println "🔍 Visible lines sub. Viewport:" viewport "WASM instance:" (not (nil? wasm-instance)) "Transaction ID:" transaction-id)
    (if (and wasm-instance viewport)
-     (let [{:keys [start-line end-line]} viewport]
-       (.getTextForLineRange wasm-instance start-line end-line))
-     "")))
+     (let [{:keys [start-line end-line]} viewport
+           full-text (.getText wasm-instance)
+           wasm-length (.getLength wasm-instance)
+           result (.getTextForLineRange wasm-instance start-line end-line)]
+       (println "📝 Full text from WASM:" (pr-str full-text))
+       (println "📝 WASM length:" wasm-length "Full text length:" (count full-text))
+       (println "📝 WASM getTextForLineRange(" start-line "," end-line ") returned:" (pr-str result))
+       (println "📝 Result length:" (count result))
+       result)
+     (do
+       (println "❌ Missing viewport or WASM instance")
+       ""))))
 
 (rf/reg-sub
  :line-height

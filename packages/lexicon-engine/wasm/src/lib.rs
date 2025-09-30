@@ -265,19 +265,33 @@ impl WasmEditorCore {
     #[wasm_bindgen(js_name = getTextForLineRange)]
     pub fn get_text_for_line_range(&self, start_line: usize, end_line: usize) -> String {
         let text = self.current_state.get_text();
-        let lines: Vec<&str> = text.lines().collect();
         
-        if start_line >= lines.len() {
+        // Handle empty text case
+        if text.is_empty() {
             return String::new();
         }
         
-        let actual_end = end_line.min(lines.len());
+        let lines: Vec<&str> = text.lines().collect();
+        
+        // Ensure we have at least one line (even for text without newlines)
+        let actual_lines = if lines.is_empty() {
+            vec![text.as_str()]
+        } else {
+            lines
+        };
+        
+        // Check bounds
+        if start_line >= actual_lines.len() {
+            return String::new();
+        }
+        
+        let actual_end = end_line.min(actual_lines.len());
         
         if start_line >= actual_end {
             return String::new();
         }
         
-        lines[start_line..actual_end].join("\n")
+        actual_lines[start_line..actual_end].join("\n")
     }
 
     #[wasm_bindgen(js_name = lineCount)]
