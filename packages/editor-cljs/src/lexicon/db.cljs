@@ -25,6 +25,65 @@
    :editor {:mode :normal                             ; Editor mode (normal, insert, etc.)
             :keymap :emacs                             ; Active keymap
             :commands {}}                              ; Available commands
+   :fsm {:current-state :normal                        ; Active FSM state (normal, insert, visual, etc.)
+         :previous-state nil                           ; Previous state for transitions
+         :operator-pending nil                         ; Pending operator function (e.g., delete command d)
+         :active-keymap :normal-keymap}                ; Current keymap for the active state
+   :keymaps {:normal-keymap {"d" :delete-operator      ; Delete operator
+                            "w" :forward-word          ; Forward word motion
+                            "b" :backward-word         ; Backward word motion
+                            "h" :backward-char         ; Backward character
+                            "j" :next-line             ; Next line
+                            "k" :previous-line         ; Previous line
+                            "l" :forward-char          ; Forward character
+                            "i" :enter-insert-mode     ; Enter insert mode
+                            "a" :append-after-cursor   ; Append after cursor
+                            "A" :append-end-of-line    ; Append at end of line
+                            "o" :open-line-below       ; Open line below
+                            "O" :open-line-above       ; Open line above
+                            "x" :delete-char           ; Delete character under cursor
+                            "v" :enter-visual-mode     ; Enter visual mode
+                            "y" :yank-operator         ; Yank (copy) operator
+                            "p" :paste-after           ; Paste after cursor
+                            "P" :paste-before          ; Paste before cursor
+                            "u" :undo                  ; Undo
+                            "Ctrl+r" :redo             ; Redo
+                            "gg" :goto-first-line      ; Go to first line
+                            "G" :goto-last-line       ; Go to last line
+                            "0" :beginning-of-line     ; Beginning of line
+                            "$" :end-of-line           ; End of line
+                            "Escape" :normal-mode}     ; Ensure normal mode
+            :insert-keymap {"Escape" :exit-insert-mode  ; Exit insert mode
+                           "Ctrl+c" :exit-insert-mode  ; Alternative exit
+                           "Backspace" :delete-backward-char
+                           "Delete" :delete-forward-char
+                           "Enter" :newline
+                           "Tab" :insert-tab}
+            :visual-keymap {"d" :delete-region          ; Delete selected region
+                           "y" :yank-region            ; Yank selected region
+                           "x" :delete-region          ; Delete selected region (same as d)
+                           "c" :change-region          ; Change selected region
+                           "h" :extend-backward-char   ; Extend selection backward
+                           "j" :extend-next-line       ; Extend selection down
+                           "k" :extend-previous-line   ; Extend selection up
+                           "l" :extend-forward-char    ; Extend selection forward
+                           "w" :extend-forward-word    ; Extend selection by word
+                           "b" :extend-backward-word   ; Extend selection backward by word
+                           "0" :extend-beginning-of-line ; Extend to beginning of line
+                           "$" :extend-end-of-line     ; Extend to end of line
+                           "Escape" :exit-visual-mode  ; Exit visual mode
+                           "Ctrl+c" :exit-visual-mode} ; Alternative exit
+            :operator-pending-keymap {"w" :forward-word  ; Forward word motion
+                                     "b" :backward-word ; Backward word motion
+                                     "h" :backward-char ; Backward character
+                                     "j" :next-line     ; Next line
+                                     "k" :previous-line ; Previous line
+                                     "l" :forward-char  ; Forward character
+                                     "0" :beginning-of-line ; Beginning of line
+                                     "$" :end-of-line   ; End of line
+                                     "gg" :goto-first-line ; Go to first line
+                                     "G" :goto-last-line ; Go to last line
+                                     "Escape" :cancel-operator}} ; Cancel pending operator
    :system {:last-transaction-id 0                    ; For transaction ordering
             :mutation-observer nil                     ; MutationObserver instance
             :reconciliation-active? false}})           ; Prevent recursive reconciliation
