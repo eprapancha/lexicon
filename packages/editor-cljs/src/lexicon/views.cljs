@@ -1,7 +1,9 @@
 (ns lexicon.views
   (:require [re-frame.core :as rf]
             [reagent.core :as r]
-            [reagent.dom :as rdom]))
+            [reagent.dom :as rdom]
+            [lexicon.constants :as const]
+            [lexicon.subs :as subs]))
 
 ;; -- Input Event Handling --
 
@@ -81,19 +83,36 @@
    [:div.loading-spinner]
    [:div.loading-text "Loading Lexicon..."]])
 
+(defn handle-scroll
+  "Handle scroll events for virtualized rendering"
+  [event]
+  (let [scroll-top (.-scrollTop (.-target event))
+        line-height @(rf/subscribe [:line-height])
+        lines-per-screen const/DEFAULT_VIEWPORT_LINES
+        start-line (max 0 (js/Math.floor (/ scroll-top line-height)))
+        end-line (+ start-line lines-per-screen)]
+    (rf/dispatch [:update-viewport start-line end-line])))
+
 (defn editor-view
-  "Main contenteditable editor view"
+  "Main virtualized editor view"
   []
-  (let [content @(rf/subscribe [:buffer-content])
+  (let [visible-lines @(rf/subscribe [::subs/visible-lines])
+        total-lines @(rf/subscribe [::subs/total-lines])
+        line-height @(rf/subscribe [:line-height])
+        viewport @(rf/subscribe [::subs/viewport])
         ime-composing? @(rf/subscribe [:ime-composing?])
         ime-text @(rf/subscribe [:ime-composition-text])
-        view-needs-update? @(rf/subscribe [:view-needs-update?])
         cursor-position @(rf/subscribe [:cursor-position])
-        editor-ref (atom nil)]
+        scroller-ref (atom nil)
+        content-ref (atom nil)]
     
-    (r/with-let [setup-element! (fn [element]
+    (r/with-let [setup-scroller! (fn [element]
+                                   (when element
+                                     (reset! scroller-ref element)
+                                     (.addEventListener element "scroll" handle-scroll)))
+                 setup-content! (fn [element]
                                   (when element
-                                    (reset! editor-ref element)
+                                    (reset! content-ref element)
                                     
                                     ;; Set up MutationObserver
                                     (create-mutation-observer element)
@@ -104,34 +123,29 @@
                                     (.addEventListener element "compositionupdate" handle-composition-update)
                                     (.addEventListener element "compositionend" handle-composition-end)))
                  cleanup-element! (fn []
-                                    (when-let [element @editor-ref]
-                                      (.removeEventListener element "beforeinput" handle-beforeinput)
-                                      (.removeEventListener element "compositionstart" handle-composition-start)
-                                      (.removeEventListener element "compositionupdate" handle-composition-update)
-                                      (.removeEventListener element "compositionend" handle-composition-end))
+                                    (when-let [scroller @scroller-ref]
+                                      (.removeEventListener scroller "scroll" handle-scroll))
+                                    (when-let [content @content-ref]
+                                      (.removeEventListener content "beforeinput" handle-beforeinput)
+                                      (.removeEventListener content "compositionstart" handle-composition-start)
+                                      (.removeEventListener content "compositionupdate" handle-composition-update)
+                                      (.removeEventListener content "compositionend" handle-composition-end))
                                     
                                     ;; Disconnect MutationObserver
                                     (when-let [observer @(rf/subscribe [:mutation-observer])]
                                       (.disconnect observer)))]
       
-      ;; Update content when it changes
-      (r/track! (fn []
-                  (when-let [element @editor-ref]
-                    (set! (.-textContent element) content)
-                    (when view-needs-update?
-                      (rf/dispatch [:view-updated])))))
-      
       ;; Update cursor position when it changes
       (r/track! (fn []
                   (let [current-cursor @(rf/subscribe [:cursor-position])]
-                    (when-let [element @editor-ref]
-                      (when (and current-cursor (.-firstChild element))
+                    (when-let [content @content-ref]
+                      (when (and current-cursor (.-firstChild content))
                         (js/setTimeout 
                          (fn []
                            (try
                              (let [selection (.getSelection js/window)
                                    range (.createRange js/document)
-                                   text-node (.-firstChild element)
+                                   text-node (.-firstChild content)
                                    max-pos (.-length text-node)
                                    safe-pos (min current-cursor max-pos)]
                                (.setStart range text-node safe-pos)
@@ -143,30 +157,53 @@
                          10))))))
       
       [:div.editor-container
-       [:div.editor-content
-        {:ref setup-element!
-         :contentEditable true
-         :suppressContentEditableWarning true
-         :style {:min-height "100vh"
-                 :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
-                 :font-size "14px"
-                 :line-height "1.5"
-                 :padding "20px"
-                 :padding-top "20px"   ; Normal padding - no buffer tabs
-                 :padding-bottom "44px"  ; Account for status bar (24px) + margin
-                 :outline "none"
-                 :white-space "pre-wrap"
-                 :background-color "#1e1e1e"
-                 :color "#d4d4d4"
-                 :border "none"}}
-        content
+       ;; Scroller div - creates the scrollbar based on total document height
+       [:div.editor-scroller
+        {:ref setup-scroller!
+         :style {:height "100vh"
+                 :overflow-y "auto"
+                 :position "relative"
+                 :background-color "#1e1e1e"}}
         
-        ;; Show IME composition text if active
-        (when ime-composing?
-          [:span.ime-composition
-           {:style {:background-color "rgba(255, 255, 0, 0.3)"
-                    :text-decoration "underline"}}
-           ime-text])]])))
+        ;; Virtual space to create proper scrollbar height
+        [:div.virtual-space
+         {:style {:height (str (* total-lines line-height) "px")
+                  :position "relative"}}
+         
+         ;; Content div - absolutely positioned to show visible content
+         [:div.editor-content
+          {:ref setup-content!
+           :contentEditable true
+           :suppressContentEditableWarning true
+           :style {:position "absolute"
+                   :top (str (* (:start-line viewport 0) line-height) "px")
+                   :left "0"
+                   :right "0"
+                   :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
+                   :font-size "14px"
+                   :line-height (str line-height "px")
+                   :padding "20px"
+                   :outline "none"
+                   :white-space "pre-wrap"
+                   :color "#d4d4d4"
+                   :border "none"
+                   :min-height "auto"}}
+          
+          ;; Render visible lines as individual divs
+          (when visible-lines
+            (let [lines (clojure.string/split visible-lines #"\n")]
+              (for [[idx line] (map-indexed vector lines)]
+                ^{:key (+ (:start-line viewport 0) idx)}
+                [:div.line
+                 {:style {:min-height (str line-height "px")}}
+                 line])))
+          
+          ;; Show IME composition text if active
+          (when ime-composing?
+            [:span.ime-composition
+             {:style {:background-color "rgba(255, 255, 0, 0.3)"
+                      :text-decoration "underline"}}
+             ime-text])]]]])))
 
 (defn buffer-tab
   "Display a single buffer tab with close button"

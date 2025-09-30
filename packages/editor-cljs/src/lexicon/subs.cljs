@@ -211,3 +211,38 @@
  (fn [db _]
    "Get WASM loading error if any"
    (get-in db [:system :wasm-error])))
+
+;; -- Virtualized Rendering Subscriptions --
+
+(rf/reg-sub
+ ::viewport
+ :<- [:active-window]
+ (fn [active-window _]
+   "Get the viewport for the active window"
+   (:viewport active-window)))
+
+(rf/reg-sub
+ ::total-lines
+ :<- [:active-wasm-instance]
+ (fn [^js wasm-instance _]
+   "Get the total number of lines in the document"
+   (if wasm-instance
+     (.lineCount wasm-instance)
+     1)))
+
+(rf/reg-sub
+ ::visible-lines
+ :<- [::viewport]
+ :<- [:active-wasm-instance]
+ (fn [[viewport ^js wasm-instance] _]
+   "Get the text for the visible lines"
+   (if (and wasm-instance viewport)
+     (let [{:keys [start-line end-line]} viewport]
+       (.getTextForLineRange wasm-instance start-line end-line))
+     "")))
+
+(rf/reg-sub
+ :line-height
+ (fn [db _]
+   "Get the line height for layout calculations"
+   (:line-height db)))

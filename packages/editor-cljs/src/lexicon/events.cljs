@@ -1,7 +1,8 @@
 (ns lexicon.events
   (:require [re-frame.core :as rf]
             [lexicon.db :as db]
-            [lexicon.cache :as cache]))
+            [lexicon.cache :as cache]
+            [lexicon.constants :as const]))
 
 ;; -- Initialization Events --
 
@@ -82,81 +83,98 @@
 (rf/reg-event-fx
  :dispatch-transaction
  (fn [{:keys [db]} [_ transaction]]
-   "Apply a transaction to the WASM kernel using new applyTransaction API"
+   "Apply a transaction to the WASM kernel - side effect only"
    (let [active-window (get (:windows db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer (get (:buffers db) active-buffer-id)
          wasm-instance (:wasm-instance active-buffer)]
      
-     
      (if (and wasm-instance active-buffer-id)
        (let [transaction-id (inc (get-in db [:system :last-transaction-id]))
              {:keys [type pos text length]} transaction
              
-             ;; Convert to WASM transaction format
+             ;; Convert to WASM transaction format using constants
              wasm-transaction (case type
-                               :insert {:type 0 :position pos :text text}
-                               :delete {:type 1 :position pos :length length}
-                               :replace {:type 2 :position pos :length length :text text}
-                               {:type 0 :position 0 :text ""}) ; fallback
+                               :insert {:type const/TRANSACTION_INSERT :position pos :text text}
+                               :delete {:type const/TRANSACTION_DELETE :position pos :length length}
+                               :replace {:type const/TRANSACTION_REPLACE :position pos :length length :text text}
+                               {:type const/TRANSACTION_INSERT :position 0 :text ""}) ; fallback
              
              ;; Convert to JSON string for WASM
-             transaction-json (js/JSON.stringify (clj->js wasm-transaction))
-             
-             ;; Apply transaction via WASM
-             error-code (.applyTransaction ^js wasm-instance transaction-json)]
+             transaction-json (js/JSON.stringify (clj->js wasm-transaction))]
          
+         ;; Apply transaction and handle result asynchronously
+         (-> (.applyTransaction ^js wasm-instance transaction-json)
+             (.then (fn [patch-json]
+                      ;; Transaction successful - dispatch result event
+                      (rf/dispatch [:apply-transaction-result 
+                                   {:patch-json patch-json
+                                    :transaction transaction
+                                    :transaction-id transaction-id
+                                    :buffer-id active-buffer-id}])))
+             (.catch (fn [error]
+                       ;; Transaction failed - dispatch error event
+                       (rf/dispatch [:transaction-failed {:error (str error)}]))))
          
-         (if (= error-code 0) ; SUCCESS
-           ;; Transaction successful
-           (try
-             (let [result-json (.getLastResult ^js wasm-instance)
-                   result (js->clj (js/JSON.parse result-json) :keywordize-keys true)
-                   new-cursor (:cursorPosition result)
-                   new-length (:length result)
-                   
-                   ;; Invalidate affected cache ranges
-                   cache-start (case type
-                                 :insert pos
-                                 :delete pos
-                                 :replace pos
-                                 0)
-                   cache-end (case type
-                               :insert (+ pos (count text))
-                               :delete (+ pos length)
-                               :replace (+ pos (count text))
-                               cache-start)
-                   
-                   updated-cache (cache/invalidate-cache-range 
-                                 (get-in db [:ui :text-cache])
-                                 cache-start cache-end)
-                   
-                   ;; Set cursor position - if not provided by WASM, calculate it
-                   final-cursor (or new-cursor 
-                                   (case type
-                                     :insert (+ pos (count text))
-                                     :delete pos
-                                     :replace (+ pos (count text))
-                                     pos))]
-               
-               {:db (-> db
-                        (assoc-in [:system :last-transaction-id] transaction-id)
-                        (assoc-in [:ui :cursor-position] final-cursor)
-                        (assoc-in [:ui :view-needs-update?] true)
-                        (assoc-in [:ui :text-cache] updated-cache)
-                        (assoc-in [:buffers active-buffer-id :is-modified?] true))})
-             (catch js/Error error
-               (println "❌ Error processing transaction result:" error)
-               {:db db}))
-           
-           ;; Transaction failed
-           (let [error-message (.getLastErrorMessage ^js wasm-instance)]
-             (println "Transaction failed:" error-message)
-             {:db (assoc-in db [:system :last-error] error-message)
-              :fx [[:dispatch [:show-error error-message]]]})))
+         ;; Return no immediate db changes - async handlers will update state
+         {:db db})
        
        ;; WASM not ready or no active buffer
        {:db db}))))
+
+;; New event handlers for async transaction results
+
+(rf/reg-event-db
+ :apply-transaction-result
+ (fn [db [_ {:keys [patch-json transaction transaction-id buffer-id]}]]
+   "Apply the result of a successful transaction - pure state update"
+   (try
+     (let [patch (js->clj (js/JSON.parse patch-json) :keywordize-keys true)
+           {:keys [type pos text length]} transaction
+           new-cursor (:cursor-position patch)
+           new-length (:length patch)
+           
+           ;; Invalidate affected cache ranges
+           cache-start (case type
+                         :insert pos
+                         :delete pos
+                         :replace pos
+                         0)
+           cache-end (case type
+                       :insert (+ pos (count text))
+                       :delete (+ pos length)
+                       :replace (+ pos (count text))
+                       cache-start)
+           
+           updated-cache (cache/invalidate-cache-range 
+                         (get-in db [:ui :text-cache])
+                         cache-start cache-end)
+           
+           ;; Set cursor position - if not provided by WASM, calculate it
+           final-cursor (or new-cursor 
+                           (case type
+                             :insert (+ pos (count text))
+                             :delete pos
+                             :replace (+ pos (count text))
+                             pos))]
+       
+       (-> db
+           (assoc-in [:system :last-transaction-id] transaction-id)
+           (assoc-in [:system :last-patch] patch)
+           (assoc-in [:ui :cursor-position] final-cursor)
+           (assoc-in [:ui :view-needs-update?] true)
+           (assoc-in [:ui :text-cache] updated-cache)
+           (assoc-in [:buffers buffer-id :is-modified?] true)))
+     (catch js/Error error
+       (println "❌ Error processing transaction result:" error)
+       db))))
+
+(rf/reg-event-db
+ :transaction-failed
+ (fn [db [_ {:keys [error]}]]
+   "Handle transaction failure"
+   (println "Transaction failed:" error)
+   (assoc-in db [:system :last-error] error)))
 
 (rf/reg-event-fx
  :compound-transaction
@@ -167,7 +185,7 @@
          active-buffer (get (:buffers db) active-buffer-id)
          wasm-instance (:wasm-instance active-buffer)]
      (if wasm-instance
-       (let [compound-transaction {:type 3 :operations operations}
+       (let [compound-transaction {:type const/TRANSACTION_COMPOUND :operations operations}
              transaction-json (js/JSON.stringify (clj->js compound-transaction))
              error-code (.applyTransaction ^js wasm-instance transaction-json)]
          
@@ -470,6 +488,17 @@
            {:fx [[:dispatch [:reconcile-dom-state dom-content expected-content]]]})))
      {:db db})))
 
+;; -- Viewport Events for Virtualized Rendering --
+
+(rf/reg-event-db
+ :update-viewport
+ (fn [db [_ start-line end-line]]
+   "Update the viewport for the active window"
+   (let [active-window-id (:active-window-id db)]
+     (-> db
+         (assoc-in [:windows active-window-id :viewport :start-line] start-line)
+         (assoc-in [:windows active-window-id :viewport :end-line] end-line)))))
+
 ;; -- Region Selection and Kill Ring Events --
 
 (rf/reg-event-db
@@ -499,7 +528,7 @@
          (if (> length 0)
            (let [killed-text (.getTextInRange ^js wasm-instance start end)
                  kill-ring (:kill-ring db)
-                 updated-kill-ring (take 60 (cons killed-text kill-ring))]
+                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))]
              {:db (-> db
                       (assoc :kill-ring updated-kill-ring)
                       (assoc-in [:buffers active-buffer-id :mark-position] nil))

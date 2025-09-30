@@ -94,6 +94,16 @@ struct JsonChange {
     insert: String,
 }
 
+// ClojureScript transaction format
+#[derive(Debug, Deserialize)]
+struct ClojureScriptTransaction {
+    #[serde(rename = "type")]
+    transaction_type: i32,
+    position: usize,
+    text: Option<String>,
+    length: Option<usize>,
+}
+
 // Compatibility layer for ClojureScript API expectations
 #[wasm_bindgen]
 pub struct WasmEditorCore {
@@ -120,34 +130,98 @@ impl WasmEditorCore {
         self.last_error.clear();
     }
     
-    // ClojureScript expects: applyTransaction(json) -> number (0 = success)
+    // Enhanced ClojureScript API: applyTransaction(json) -> Result<String, JsValue>
     #[wasm_bindgen(js_name = applyTransaction)]
-    pub fn apply_transaction(&mut self, transaction_json: &str) -> i32 {
+    pub fn apply_transaction(&mut self, transaction_json: &str) -> Result<String, JsValue> {
         // Convert ClojureScript transaction format to internal format
         match self.convert_cljs_transaction(transaction_json) {
             Ok(internal_json) => {
                 match self.apply_internal_transaction(&internal_json) {
                     Ok(new_state) => {
+                        let old_state = self.current_state.clone();
                         self.current_state = new_state;
-                        self.last_result = format!(
-                            r#"{{"success": true, "version": {}, "length": {}}}"#,
-                            self.current_state.version(),
-                            self.current_state.length()
-                        );
-                        self.last_error.clear();
-                        0 // Success
+                        
+                        // Parse the original transaction for patch generation
+                        let cljs_transaction: Result<ClojureScriptTransaction, _> = 
+                            serde_json::from_str(transaction_json);
+                        
+                        if let Ok(transaction) = cljs_transaction {
+                            // Generate patch describing the change
+                            let patch = match transaction.transaction_type {
+                                0 => {
+                                    // Insert patch
+                                    format!(
+                                        r#"{{"type": "edit", "operation": "insert", "start_line": {}, "end_line": {}, "position": {}, "text": "{}", "version": {}, "length": {}}}"#,
+                                        self.position_to_line(transaction.position),
+                                        self.position_to_line(transaction.position + transaction.text.as_ref().map_or(0, |t| t.len())),
+                                        transaction.position,
+                                        transaction.text.as_ref().unwrap_or(&String::new()).replace('\\', "\\\\").replace('"', "\\\""),
+                                        self.current_state.version(),
+                                        self.current_state.length()
+                                    )
+                                }
+                                1 => {
+                                    // Delete patch
+                                    let length = transaction.length.unwrap_or(0);
+                                    format!(
+                                        r#"{{"type": "edit", "operation": "delete", "start_line": {}, "end_line": {}, "position": {}, "length": {}, "version": {}, "length": {}}}"#,
+                                        self.position_to_line(transaction.position),
+                                        self.position_to_line(transaction.position + length),
+                                        transaction.position,
+                                        length,
+                                        self.current_state.version(),
+                                        self.current_state.length()
+                                    )
+                                }
+                                2 => {
+                                    // Replace patch
+                                    let length = transaction.length.unwrap_or(0);
+                                    format!(
+                                        r#"{{"type": "edit", "operation": "replace", "start_line": {}, "end_line": {}, "position": {}, "length": {}, "text": "{}", "version": {}, "length": {}}}"#,
+                                        self.position_to_line(transaction.position),
+                                        self.position_to_line(transaction.position + length),
+                                        transaction.position,
+                                        length,
+                                        transaction.text.as_ref().unwrap_or(&String::new()).replace('\\', "\\\\").replace('"', "\\\""),
+                                        self.current_state.version(),
+                                        self.current_state.length()
+                                    )
+                                }
+                                _ => {
+                                    format!(
+                                        r#"{{"type": "edit", "operation": "unknown", "version": {}, "length": {}}}"#,
+                                        self.current_state.version(),
+                                        self.current_state.length()
+                                    )
+                                }
+                            };
+                            
+                            self.last_result = patch.clone();
+                            self.last_error.clear();
+                            Ok(patch)
+                        } else {
+                            let fallback_patch = format!(
+                                r#"{{"type": "edit", "operation": "unknown", "version": {}, "length": {}}}"#,
+                                self.current_state.version(),
+                                self.current_state.length()
+                            );
+                            self.last_result = fallback_patch.clone();
+                            Ok(fallback_patch)
+                        }
                     }
                     Err(e) => {
-                        self.last_error = format!("Transaction failed: {}", e);
+                        let error_msg = format!("Transaction failed: {}", e);
+                        self.last_error = error_msg.clone();
                         self.last_result.clear();
-                        1 // Error
+                        Err(JsValue::from_str(&error_msg))
                     }
                 }
             }
             Err(e) => {
-                self.last_error = format!("Invalid transaction format: {}", e);
+                let error_msg = format!("Invalid transaction format: {}", e);
+                self.last_error = error_msg.clone();
                 self.last_result.clear();
-                2 // Parse error
+                Err(JsValue::from_str(&error_msg))
             }
         }
     }
@@ -186,6 +260,29 @@ impl WasmEditorCore {
         } else {
             String::new()
         }
+    }
+
+    #[wasm_bindgen(js_name = getTextForLineRange)]
+    pub fn get_text_for_line_range(&self, start_line: usize, end_line: usize) -> String {
+        let text = self.current_state.get_text();
+        let lines: Vec<&str> = text.lines().collect();
+        
+        if start_line >= lines.len() {
+            return String::new();
+        }
+        
+        let actual_end = end_line.min(lines.len());
+        
+        if start_line >= actual_end {
+            return String::new();
+        }
+        
+        lines[start_line..actual_end].join("\n")
+    }
+
+    #[wasm_bindgen(js_name = lineCount)]
+    pub fn line_count(&self) -> usize {
+        self.current_state.line_count()
     }
     
     #[wasm_bindgen(js_name = deleteText)]
@@ -242,17 +339,26 @@ impl WasmEditorCore {
         console_log!("WasmEditorCore instance freed");
     }
     
-    // Convert ClojureScript transaction format to internal format
-    fn convert_cljs_transaction(&self, cljs_json: &str) -> Result<String, String> {
-        #[derive(Deserialize)]
-        struct ClojureScriptTransaction {
-            #[serde(rename = "type")]
-            transaction_type: i32,
-            position: usize,
-            text: Option<String>,
-            length: Option<usize>,
+    // Helper method to convert character position to line number
+    fn position_to_line(&self, position: usize) -> usize {
+        let text = self.current_state.get_text();
+        let chars: Vec<char> = text.chars().collect();
+        let mut line = 0;
+        
+        for (i, &ch) in chars.iter().enumerate() {
+            if i >= position {
+                break;
+            }
+            if ch == '\n' {
+                line += 1;
+            }
         }
         
+        line
+    }
+
+    // Convert ClojureScript transaction format to internal format
+    fn convert_cljs_transaction(&self, cljs_json: &str) -> Result<String, String> {
         let cljs_transaction: ClojureScriptTransaction = serde_json::from_str(cljs_json)
             .map_err(|e| format!("Failed to parse ClojureScript transaction: {}", e))?;
         
@@ -291,5 +397,68 @@ impl WasmEditorCore {
         };
         
         Ok(internal_format)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_text_for_line_range() {
+        let mut core = WasmEditorCore::new();
+        core.init("Line 1\nLine 2\nLine 3\nLine 4");
+        
+        // Test getting lines 0-2 (first 2 lines)
+        assert_eq!(core.get_text_for_line_range(0, 2), "Line 1\nLine 2");
+        
+        // Test getting lines 1-3 (middle 2 lines) 
+        assert_eq!(core.get_text_for_line_range(1, 3), "Line 2\nLine 3");
+        
+        // Test getting all lines
+        assert_eq!(core.get_text_for_line_range(0, 4), "Line 1\nLine 2\nLine 3\nLine 4");
+        
+        // Test out of bounds
+        assert_eq!(core.get_text_for_line_range(5, 10), "");
+        
+        // Test single line
+        assert_eq!(core.get_text_for_line_range(0, 1), "Line 1");
+    }
+
+    #[test]
+    fn test_line_count() {
+        let mut core = WasmEditorCore::new();
+        
+        // Empty text
+        core.init("");
+        assert_eq!(core.line_count(), 1);
+        
+        // Single line
+        core.init("Hello");
+        assert_eq!(core.line_count(), 1);
+        
+        // Multiple lines
+        core.init("Line 1\nLine 2\nLine 3");
+        assert_eq!(core.line_count(), 3);
+        
+        // Text ending with newline
+        core.init("Line 1\nLine 2\n");
+        assert_eq!(core.line_count(), 3);
+    }
+
+    #[test]
+    fn test_get_text_for_line_range_edge_cases() {
+        let mut core = WasmEditorCore::new();
+        core.init("A\nB\nC");
+        
+        // Start line >= end line
+        assert_eq!(core.get_text_for_line_range(2, 2), "");
+        assert_eq!(core.get_text_for_line_range(2, 1), "");
+        
+        // Start line beyond available lines
+        assert_eq!(core.get_text_for_line_range(10, 15), "");
+        
+        // End line beyond available lines (should clamp)
+        assert_eq!(core.get_text_for_line_range(1, 10), "B\nC");
     }
 }
