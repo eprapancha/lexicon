@@ -156,6 +156,48 @@
    "Get current active keymap"
    (get-in db [:editor :keymap])))
 
+;; -- FSM State Subscriptions --
+
+(rf/reg-sub
+ :fsm/current-state
+ (fn [db _]
+   "Get the current FSM state"
+   (get-in db [:fsm :current-state])))
+
+(rf/reg-sub
+ :fsm/previous-state
+ (fn [db _]
+   "Get the previous FSM state"
+   (get-in db [:fsm :previous-state])))
+
+(rf/reg-sub
+ :fsm/operator-pending
+ (fn [db _]
+   "Get the pending operator if any"
+   (get-in db [:fsm :operator-pending])))
+
+(rf/reg-sub
+ :fsm/active-keymap
+ (fn [db _]
+   "Get the current active keymap from FSM"
+   (get-in db [:fsm :active-keymap])))
+
+(rf/reg-sub
+ :fsm
+ (fn [db _]
+   "Get the entire FSM state"
+   (:fsm db)))
+
+(rf/reg-sub
+ :modal-status-display
+ :<- [:fsm/current-state]
+ :<- [:fsm/operator-pending]
+ (fn [[current-state operator-pending] _]
+   "Get display string for modal status bar"
+   (cond
+     operator-pending (str "-- " (name current-state) " [" (name operator-pending) "] --")
+     :else (str "-- " (name current-state) " --"))))
+
 ;; -- System State Subscriptions --
 
 (rf/reg-sub

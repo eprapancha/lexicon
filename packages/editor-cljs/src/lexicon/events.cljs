@@ -2,7 +2,9 @@
   (:require [re-frame.core :as rf]
             [lexicon.db :as db]
             [lexicon.cache :as cache]
-            [lexicon.constants :as const]))
+            [lexicon.constants :as const]
+            [re-frame.std-interceptors :refer [debug]])
+  (:require-macros [lexicon.macros :refer [def-evil-motion def-evil-operator]]))
 
 ;; -- Initialization Events --
 
@@ -20,6 +22,238 @@
        (assoc :initialized? true)
        (assoc-in [:system :wasm-constructor] constructor)
        (assoc-in [:buffers 1 :wasm-instance] instance))))
+
+;; -- FSM State Management --
+
+;; Registry for state lifecycle hooks
+(defonce state-enter-hooks (atom {}))
+(defonce state-exit-hooks (atom {}))
+
+(defn register-state-enter-hook!
+  "Register a hook function to be called when entering a state"
+  [state hook-fn]
+  (swap! state-enter-hooks update state (fnil conj []) hook-fn))
+
+(defn register-state-exit-hook!
+  "Register a hook function to be called when exiting a state"
+  [state hook-fn]
+  (swap! state-exit-hooks update state (fnil conj []) hook-fn))
+
+;; Interceptors for FSM lifecycle hooks
+(def on-exit-interceptor
+  (rf/->interceptor
+    :id :on-exit-interceptor
+    :before (fn [{:keys [coeffects] :as context}]
+              (let [db (:db coeffects)
+                    current-state (get-in db [:fsm :current-state])
+                    exit-hooks (get @state-exit-hooks current-state [])]
+                (doseq [hook exit-hooks]
+                  (try
+                    (hook current-state)
+                    (catch js/Error e
+                      (js/console.error "Error in exit hook for state" current-state ":" e))))
+                context))))
+
+(def on-enter-interceptor
+  (rf/->interceptor
+    :id :on-enter-interceptor
+    :after (fn [{:keys [effects] :as context}]
+             (let [db (:db effects)
+                   new-state (get-in db [:fsm :current-state])
+                   enter-hooks (get @state-enter-hooks new-state [])]
+               (doseq [hook enter-hooks]
+                 (try
+                   (hook new-state)
+                   (catch js/Error e
+                     (js/console.error "Error in enter hook for state" new-state ":" e))))
+               context))))
+
+;; Core FSM transition event
+(rf/reg-event-fx
+ :fsm/transition-to
+ [on-exit-interceptor on-enter-interceptor]
+ (fn [{:keys [db]} [_ new-state]]
+   "Transition the FSM to a new state with lifecycle hooks"
+   (let [current-state (get-in db [:fsm :current-state])
+         keymap-mapping {:normal :normal-keymap
+                        :insert :insert-keymap
+                        :visual :visual-keymap
+                        :operator-pending :normal-keymap}
+         new-keymap (get keymap-mapping new-state :normal-keymap)]
+     {:db (-> db
+              (assoc-in [:fsm :previous-state] current-state)
+              (assoc-in [:fsm :current-state] new-state)
+              (assoc-in [:fsm :active-keymap] new-keymap))})))
+
+;; FSM utility events
+(rf/reg-event-db
+ :fsm/set-operator-pending
+ (fn [db [_ operator-fn]]
+   "Set a pending operator in the FSM state"
+   (assoc-in db [:fsm :operator-pending] operator-fn)))
+
+(rf/reg-event-db
+ :fsm/clear-operator-pending
+ (fn [db [_]]
+   "Clear any pending operator from the FSM state"
+   (assoc-in db [:fsm :operator-pending] nil)))
+
+;; Register some default hooks for demonstration
+(register-state-enter-hook! :insert 
+  (fn [state] 
+    (js/console.log "Entering INSERT mode")))
+
+(register-state-enter-hook! :normal 
+  (fn [state] 
+    (js/console.log "Entering NORMAL mode")))
+
+(register-state-exit-hook! :insert 
+  (fn [state] 
+    (js/console.log "Exiting INSERT mode")))
+
+;; -- Command Registry and Execution --
+
+;; Registry for command functions
+(defonce command-registry (atom {}))
+
+(defn register-command!
+  "Register a command function in the command registry"
+  [command-key command-fn]
+  (swap! command-registry assoc command-key command-fn))
+
+(defn get-command
+  "Get a command function from the registry"
+  [command-key]
+  (get @command-registry command-key))
+
+;; Example motion commands defined with macros
+(def-evil-motion my-forward-word [count]
+  "Move forward by count words"
+  {:type :exclusive :jump? false}
+  (js/console.log "Forward word motion with count:" count)
+  ;; TODO: Implement actual word movement logic
+  )
+
+(def-evil-motion my-backward-word [count]
+  "Move backward by count words"
+  {:type :exclusive :jump? false}
+  (js/console.log "Backward word motion with count:" count)
+  ;; TODO: Implement actual word movement logic
+  )
+
+;; Example operator commands defined with macros
+(def-evil-operator my-delete-operator [motion-fn]
+  "Delete text defined by motion"
+  {:repeat? true}
+  (js/console.log "Delete operator with motion:" motion-fn)
+  ;; TODO: Implement actual delete logic
+  )
+
+;; Register the example commands
+(register-command! :forward-word my-forward-word)
+(register-command! :backward-word my-backward-word)
+(register-command! :delete-operator my-delete-operator)
+
+;; Modal command dispatcher - the core command loop
+(rf/reg-event-fx
+ :modal/dispatch-key
+ (fn [{:keys [db]} [_ key-input]]
+   "FSM-aware command dispatcher that handles operator-motion composition"
+   (let [fsm-state (get-in db [:fsm :current-state])
+         active-keymap (get-in db [:fsm :active-keymap])
+         keymap (get-in db [:keymaps active-keymap])
+         command-key (get keymap key-input)
+         command-fn (get-command command-key)
+         operator-pending (get-in db [:fsm :operator-pending])
+         
+         ;; Get metadata from command function if it exists
+         command-metadata (when command-fn 
+                           (or (meta command-fn) {}))]
+     
+     (cond
+       ;; No command found for this key
+       (not command-key)
+       (do
+         (js/console.log "No command bound to key:" key-input "in keymap:" active-keymap)
+         {:db db})
+       
+       ;; Command found but no function registered
+       (not command-fn)
+       (do
+         (js/console.log "Command" command-key "not implemented yet")
+         {:db db})
+       
+       ;; We're in operator-pending state and received a motion
+       (and operator-pending 
+            (:motion? command-metadata))
+       (let [operator-fn (get-command operator-pending)]
+         (js/console.log "Executing operator-motion composition:" operator-pending "+" command-key)
+         (when operator-fn
+           ;; Execute the operator with the motion
+           (operator-fn command-fn))
+         {:db (-> db
+                  (assoc-in [:fsm :operator-pending] nil)
+                  ;; Return to normal state
+                  (assoc-in [:fsm :current-state] :normal)
+                  (assoc-in [:fsm :active-keymap] :normal-keymap))})
+       
+       ;; Received an operator command
+       (:operator? command-metadata)
+       (do
+         (js/console.log "Setting operator pending:" command-key)
+         {:db (-> db
+                  (assoc-in [:fsm :operator-pending] command-key)
+                  (assoc-in [:fsm :current-state] :operator-pending)
+                  (assoc-in [:fsm :active-keymap] :operator-pending-keymap))})
+       
+       ;; Simple command execution (motion in normal mode, or any other command)
+       :else
+       (do
+         (js/console.log "Executing command:" command-key)
+         ;; For motions, execute with default count of 1
+         (if (:motion? command-metadata)
+           (command-fn 1)
+           (command-fn))
+         {:db db})))))
+
+;; Special state transition commands
+(rf/reg-event-fx
+ :modal/enter-insert-mode
+ (fn [{:keys [db]} [_]]
+   "Enter insert mode"
+   {:fx [[:dispatch [:fsm/transition-to :insert]]]}))
+
+(rf/reg-event-fx
+ :modal/exit-insert-mode
+ (fn [{:keys [db]} [_]]
+   "Exit insert mode and return to normal"
+   {:fx [[:dispatch [:fsm/transition-to :normal]]]}))
+
+(rf/reg-event-fx
+ :modal/enter-visual-mode
+ (fn [{:keys [db]} [_]]
+   "Enter visual mode"
+   {:fx [[:dispatch [:fsm/transition-to :visual]]]}))
+
+(rf/reg-event-fx
+ :modal/exit-visual-mode
+ (fn [{:keys [db]} [_]]
+   "Exit visual mode and return to normal"
+   {:fx [[:dispatch [:fsm/transition-to :normal]]]}))
+
+(rf/reg-event-fx
+ :modal/cancel-operator
+ (fn [{:keys [db]} [_]]
+   "Cancel pending operator and return to normal"
+   {:fx [[:dispatch [:fsm/clear-operator-pending]]
+         [:dispatch [:fsm/transition-to :normal]]]}))
+
+;; Register state transition commands
+(register-command! :enter-insert-mode #(rf/dispatch [:modal/enter-insert-mode]))
+(register-command! :exit-insert-mode #(rf/dispatch [:modal/exit-insert-mode]))
+(register-command! :enter-visual-mode #(rf/dispatch [:modal/enter-visual-mode]))
+(register-command! :exit-visual-mode #(rf/dispatch [:modal/exit-visual-mode]))
+(register-command! :cancel-operator #(rf/dispatch [:modal/cancel-operator]))
 
 ;; -- Buffer Management Events --
 
