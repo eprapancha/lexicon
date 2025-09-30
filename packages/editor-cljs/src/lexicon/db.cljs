@@ -1,4 +1,5 @@
-(ns lexicon.db)
+(ns lexicon.db
+  (:require [lexicon.constants :as const]))
 
 (def default-db
   "Default application state database for re-frame"
@@ -8,8 +9,9 @@
                 :name "*scratch*"
                 :is-modified? false
                 :mark-position nil}}                   ; For region selection
-   :windows {1 {:id 1, :buffer-id 1}}
+   :windows {1 {:id 1, :buffer-id 1, :viewport {:start-line 0, :end-line const/DEFAULT_VIEWPORT_LINES}}}
    :active-window-id 1
+   :line-height const/DEFAULT_LINE_HEIGHT
    :kill-ring []                                       ; Clipboard history
    :initialized? false                                 ; Whether WASM module is loaded
    :ui {:cursor-position 0                            ; Current cursor position
