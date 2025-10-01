@@ -12,6 +12,7 @@
   "Handle keydown events - the core of our new Emacs-style input system"
   [event]
   (let [key-str (events/key-event-to-string event)]
+    (println "⌨️ keydown event:" key-str)
     (when key-str
       ;; Prevent default browser behavior for bound keys
       (.preventDefault event)
@@ -21,6 +22,7 @@
 (defn handle-beforeinput
   "Handle beforeinput events - fallback for unbound printable characters"
   [event]
+  (println "📝 beforeinput event:" (.-inputType event) "data:" (.-data event))
   (let [input-type (.-inputType event)
         data (.-data event)
         target (.-target event)
@@ -113,10 +115,13 @@
   [:textarea.hidden-input
    {:ref (fn [element]
            (when element
+             (println "📱 Hidden textarea element created")
              (reset! input-ref-atom element)
-             (.focus element)))
+             (.focus element)
+             (println "📱 Hidden textarea focused")))
     :on-key-down handle-keydown
     :on-input handle-beforeinput
+    :on-before-input handle-beforeinput
     :on-paste (fn [e]
                 (.preventDefault e)
                 (let [paste-data (-> e .-clipboardData (.getData "text"))]
@@ -127,13 +132,15 @@
     :style {:position "absolute"
             :top "0"
             :left "0"
-            :width "1px"
-            :height "1px"
+            :width "200px"
+            :height "100px"
             :opacity "0"
+            :background-color "transparent"
             :caret-color "transparent"
             :resize "none"
             :border "none"
-            :outline "none"}}])
+            :outline "none"
+            :z-index "9999"}}])
 
 (defn custom-rendered-pane
   "Read-only text display using divs per line"
@@ -227,8 +234,10 @@
     [:div.editor-wrapper
      {:tabIndex 0
       :on-click (fn [_]
+                  (println "🖱️ Editor wrapper clicked")
                   ;; Focus the hidden input when wrapper is clicked
                   (when-let [hidden-input @hidden-input-ref]
+                    (println "🎯 Focusing hidden input")
                     (.focus hidden-input))
                   ;; TODO: Dispatch click-to-cursor event
                   )

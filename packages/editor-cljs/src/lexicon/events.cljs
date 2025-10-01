@@ -1,5 +1,6 @@
 (ns lexicon.events
   (:require [re-frame.core :as rf]
+            [re-frame.db]
             [lexicon.db :as db]
             [lexicon.cache :as cache]
             [lexicon.constants :as const]
@@ -268,6 +269,7 @@
  :handle-key-sequence
  (fn [{:keys [db]} [_ key-str]]
    "Handle a key sequence and dispatch the appropriate command"
+   (println "🔤 Key sequence handler - key:" key-str "FSM state:" (get-in db [:fsm :current-state]))
    (let [prefix-state (get-in db [:ui :prefix-key-state])
          full-sequence (if prefix-state
                         (str prefix-state " " key-str)
@@ -299,10 +301,10 @@
             (not (re-matches #"[CM]-." key-str))  ; Not a modifier combo
             (>= (.charCodeAt key-str 0) 32)      ; Printable ASCII
             (= (get-in db [:fsm :current-state]) :insert))
-       {:fx [[:dispatch [:dispatch-transaction {:type :insert 
-                                               :pos (get-in db [:ui :cursor-position])
-                                               :text key-str}]]
-             [:dispatch [:clear-prefix-key-state]]]}
+       (do
+         (println "✍️ Inserting character:" key-str)
+         {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text key-str}]]
+               [:dispatch [:clear-prefix-key-state]]]})
        
        ;; Unknown key sequence - clear state and ignore
        :else
@@ -377,26 +379,14 @@
 (rf/reg-event-fx
  :delete-backward-char
  (fn [{:keys [db]} [_]]
-   "Delete character before cursor (backspace)"
-   (let [cursor-pos (get-in db [:ui :cursor-position])
-         buffer-length @(rf/subscribe [:buffer-length])]
-     (if (> cursor-pos 0)
-       {:fx [[:dispatch [:dispatch-transaction {:type :delete
-                                              :pos (dec cursor-pos)
-                                              :len 1}]]]}
-       {}))))
+   "Delete character before cursor (backspace) - queue operation"
+   {:fx [[:dispatch [:editor/queue-transaction {:op :delete-backward}]]]}))
 
 (rf/reg-event-fx
  :delete-forward-char
  (fn [{:keys [db]} [_]]
-   "Delete character after cursor (delete)"
-   (let [cursor-pos (get-in db [:ui :cursor-position])
-         buffer-length @(rf/subscribe [:buffer-length])]
-     (if (< cursor-pos buffer-length)
-       {:fx [[:dispatch [:dispatch-transaction {:type :delete
-                                              :pos cursor-pos
-                                              :len 1}]]]}
-       {}))))
+   "Delete character after cursor (delete) - queue operation"
+   {:fx [[:dispatch [:editor/queue-transaction {:op :delete-forward}]]]}))
 
 ;; Initialize cursor position when buffer is created
 (rf/reg-event-fx
@@ -722,44 +712,228 @@
      (assoc-in db [:windows (:active-window-id db) :buffer-id] buffer-id)
      db))) ; Ignore if buffer doesn't exist
 
-;; -- Input Handling Events --
+;; -- Serialized Transaction Queue System --
 
+;; Helper event to synchronously set the in-flight flag
+(rf/reg-event-db
+ :editor/set-flight-status
+ (fn [db [_ status]]
+   "Set transaction in-flight status"
+   (assoc db :transaction-in-flight? status)))
+
+;; Queue-based input handling - replaces direct dispatch
+(rf/reg-event-fx
+ :editor/queue-transaction
+ (fn [{:keys [db]} [_ operation]]
+   "Add transaction to queue and trigger processing"
+   (println "🔄 Queueing operation:" operation)
+   (let [updated-db (update db :transaction-queue conj operation)
+         queue-size (count (:transaction-queue updated-db))]
+     (println "📋 Queue size after adding:" queue-size)
+     {:db updated-db
+      :fx [[:editor/process-queue updated-db]]})))
+
+;; Input handling events that queue operations instead of direct dispatch
 (rf/reg-event-fx
  :handle-text-input
  (fn [{:keys [db]} [_ {:keys [input-type data dom-cursor-pos]}]]
-   "Handle text input events with proper cursor position from app state"
-   (let [current-cursor (get-in db [:ui :cursor-position] 0)
-         insert-pos current-cursor  ; Use app state cursor position
-         
-         
-         transaction (case input-type
-                       "insertText"
-                       (when data
-                         {:type :insert :pos insert-pos :text data})
-                       
-                       "insertCompositionText"
-                       (when data
-                         ;; Handle IME composition
-                         (rf/dispatch [:ime-composition-update data])
-                         nil)
-                       
-                       "deleteContentBackward"
-                       (when (> insert-pos 0)
-                         {:type :delete :pos (dec insert-pos) :length 1})
-                       
-                       "deleteContentForward"
-                       {:type :delete :pos insert-pos :length 1}
-                       
-                       "insertFromPaste"
-                       (when data
-                         {:type :insert :pos insert-pos :text data})
-                       
-                       ;; Log unhandled input types
-                       (do (println "Unhandled input type:" input-type) nil))]
+   "Handle text input events by queueing operations"
+   (let [operation (case input-type
+                     "insertText"
+                     (when data
+                       {:op :insert :text data})
+                     
+                     "insertCompositionText"
+                     (when data
+                       ;; Handle IME composition
+                       (rf/dispatch [:ime-composition-update data])
+                       nil)
+                     
+                     "deleteContentBackward"
+                     {:op :delete-backward}
+                     
+                     "deleteContentForward"
+                     {:op :delete-forward}
+                     
+                     "insertFromPaste"
+                     (when data
+                       {:op :insert :text data})
+                     
+                     ;; Log unhandled input types
+                     (do (println "Unhandled input type:" input-type) nil))]
      
-     (if transaction
-       {:fx [[:dispatch [:dispatch-transaction transaction]]]}
+     (if operation
+       {:fx [[:dispatch [:editor/queue-transaction operation]]]}
        {:db db}))))
+
+;; Core queue processor effect - ensures serialized execution
+(rf/reg-fx
+ :editor/process-queue
+ (fn [db-state]
+   "Process the next transaction in the queue if not already processing"
+   (println "🚀 Queue processor called")
+   (let [db (or db-state @re-frame.db/app-db)
+         in-flight? (:transaction-in-flight? db)
+         queue (:transaction-queue db)
+         queue-size (count queue)]
+     (println "📊 Queue status - In flight:" in-flight? "Queue size:" queue-size)
+     (when (and (not in-flight?) (seq queue))
+       (let [operation (first (:transaction-queue db))
+             active-window (get (:windows db) (:active-window-id db))
+             active-buffer-id (:buffer-id active-window)
+             active-buffer (get (:buffers db) active-buffer-id)
+             wasm-instance (:wasm-instance active-buffer)
+             current-cursor (get-in db [:ui :cursor-position] 0)]
+         
+         (if wasm-instance
+           (do
+             (println "🔧 Processing operation:" (:op operation) "with WASM instance")
+             ;; Immediately set the in-flight flag in the database to prevent concurrent operations
+             (swap! re-frame.db/app-db assoc :transaction-in-flight? true)
+             
+             ;; Process the operation based on its type
+             (case (:op operation)
+             :insert
+             (let [wasm-transaction {:type const/TRANSACTION_INSERT 
+                                   :position current-cursor 
+                                   :text (:text operation)}
+                   transaction-json (js/JSON.stringify (clj->js wasm-transaction))]
+               (println "🔧 INSERT transaction - text:" (:text operation) "position:" current-cursor)
+               (try
+                 (let [patch-json (.applyTransaction wasm-instance transaction-json)]
+                   (rf/dispatch [:editor/transaction-success 
+                                {:patch-json patch-json
+                                 :operation operation}]))
+                 (catch js/Error error
+                   (rf/dispatch [:editor/transaction-failure 
+                                {:error (str error)
+                                 :operation operation}]))))
+             
+             :delete-backward
+             (when (> current-cursor 0)
+               (let [wasm-transaction {:type const/TRANSACTION_DELETE 
+                                     :position (dec current-cursor) 
+                                     :length 1}
+                     transaction-json (js/JSON.stringify (clj->js wasm-transaction))]
+                 (try
+                   (let [patch-json (.applyTransaction wasm-instance transaction-json)]
+                     (rf/dispatch [:editor/transaction-success 
+                                  {:patch-json patch-json
+                                   :operation operation}]))
+                   (catch js/Error error
+                     (rf/dispatch [:editor/transaction-failure 
+                                  {:error (str error)
+                                   :operation operation}])))))
+             
+             :delete-forward
+             (let [wasm-transaction {:type const/TRANSACTION_DELETE 
+                                   :position current-cursor 
+                                   :length 1}
+                   transaction-json (js/JSON.stringify (clj->js wasm-transaction))]
+               (try
+                 (let [patch-json (.applyTransaction wasm-instance transaction-json)]
+                   (rf/dispatch [:editor/transaction-success 
+                                {:patch-json patch-json
+                                 :operation operation}]))
+                 (catch js/Error error
+                   (rf/dispatch [:editor/transaction-failure 
+                                {:error (str error)
+                                 :operation operation}]))))
+             
+             :delete-range
+             (let [wasm-transaction {:type const/TRANSACTION_DELETE 
+                                   :position (:start operation) 
+                                   :length (:length operation)}
+                   transaction-json (js/JSON.stringify (clj->js wasm-transaction))]
+               (try
+                 (let [patch-json (.applyTransaction wasm-instance transaction-json)]
+                   (rf/dispatch [:editor/transaction-success 
+                                {:patch-json patch-json
+                                 :operation operation}]))
+                 (catch js/Error error
+                   (rf/dispatch [:editor/transaction-failure 
+                                {:error (str error)
+                                 :operation operation}]))))
+             
+             ;; Unknown operation type
+             (do
+               (println "Unknown operation type:" (:op operation))
+               (rf/dispatch [:editor/transaction-failure 
+                            {:error "Unknown operation type"
+                             :operation operation}]))))))))))
+
+;; Transaction success handler - updates state and continues processing
+(rf/reg-event-fx
+ :editor/transaction-success
+ (fn [{:keys [db]} [_ {:keys [patch-json operation]}]]
+   "Handle successful transaction completion"
+   (println "✅ Queue: Transaction success. Patch JSON:" patch-json)
+   (try
+     (let [patch (js->clj (js/JSON.parse patch-json) :keywordize-keys true)
+           active-window (get (:windows db) (:active-window-id db))
+           active-buffer-id (:buffer-id active-window)
+           new-cursor (:cursor-position patch)
+           
+           ;; Calculate cursor position based on operation if not provided
+           current-cursor (get-in db [:ui :cursor-position] 0)
+           final-cursor (or new-cursor 
+                           (case (:op operation)
+                             :insert (+ current-cursor (count (:text operation)))
+                             :delete-backward (max 0 (dec current-cursor))
+                             :delete-forward current-cursor
+                             :delete-range (:start operation)
+                             current-cursor))
+           
+           _ (println "🎯 Transaction result - operation:" (:op operation) "current cursor:" current-cursor "final cursor:" final-cursor)
+           
+           ;; Calculate line/column coordinates for the new cursor position
+           ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+           text (when wasm-instance (.getText wasm-instance))
+           line-col (when text (linear-pos-to-line-col text final-cursor))
+           
+           updated-db (-> db
+                          ;; Remove completed operation from queue
+                          (update :transaction-queue rest)
+                          ;; Clear in-flight flag
+                          (assoc :transaction-in-flight? false)
+                          ;; Update cursor positions
+                          (assoc-in [:ui :cursor-position] final-cursor)
+                          (assoc-in [:buffers active-buffer-id :cursor-position] (or line-col {:line 0 :column 0}))
+                          ;; Mark buffer as modified
+                          (assoc-in [:buffers active-buffer-id :is-modified?] true)
+                          ;; Update system state
+                          (update-in [:system :last-transaction-id] inc)
+                          (assoc-in [:system :last-patch] patch)
+                          (assoc-in [:ui :view-needs-update?] true))]
+       
+       ;; Continue processing the queue
+       {:db updated-db
+        :fx [[:editor/process-queue updated-db]]})
+     (catch js/Error error
+       (println "❌ Error processing transaction success:" error)
+       ;; Clear in-flight flag and continue processing
+       (let [updated-db (-> db
+                           (update :transaction-queue rest)
+                           (assoc :transaction-in-flight? false))]
+         {:db updated-db
+          :fx [[:editor/process-queue updated-db]]})))))
+
+;; Transaction failure handler - continues processing queue
+(rf/reg-event-fx
+ :editor/transaction-failure
+ (fn [{:keys [db]} [_ {:keys [error operation]}]]
+   "Handle transaction failure"
+   (println "❌ Queue: Transaction failed:" error "for operation:" operation)
+   (let [updated-db (-> db
+                        ;; Remove failed operation from queue
+                        (update :transaction-queue rest)
+                        ;; Clear in-flight flag
+                        (assoc :transaction-in-flight? false)
+                        ;; Store error for debugging
+                        (assoc-in [:system :last-error] error))]
+     ;; Continue processing the queue
+     {:db updated-db
+      :fx [[:editor/process-queue updated-db]]})))
 
 ;; -- Transaction Events --
 
@@ -933,9 +1107,7 @@
  :ime-commit-composition
  (fn [coeffects [_ text position]]
    "Commit IME composition as a transaction"
-   (rf/dispatch [:dispatch-transaction {:type :insert
-                                        :pos position
-                                        :text text}])
+   (rf/dispatch [:editor/queue-transaction {:op :insert :text text}])
    coeffects))
 
 ;; -- View Reconciliation Events --
@@ -1230,10 +1402,8 @@
              {:db (-> db
                       (assoc :kill-ring updated-kill-ring)
                       (assoc-in [:buffers active-buffer-id :mark-position] nil))
-              :fx [[:dispatch [:dispatch-transaction 
-                              {:type :delete
-                               :pos start
-                               :length length}]]]})
+              :fx [[:dispatch [:editor/queue-transaction 
+                              {:op :delete-range :start start :length length}]]]})
            {:db db}))
        (do
          (println "Mark not set")
@@ -1252,8 +1422,6 @@
      
      (if (and wasm-instance (seq kill-ring))
        (let [text-to-yank (first kill-ring)]
-         {:fx [[:dispatch [:dispatch-transaction 
-                          {:type :insert
-                           :pos cursor-pos
-                           :text text-to-yank}]]]})
+         {:fx [[:dispatch [:editor/queue-transaction 
+                          {:op :insert :text text-to-yank}]]]})
        {:db db}))))

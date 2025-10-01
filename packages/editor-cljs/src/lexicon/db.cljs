@@ -114,7 +114,9 @@
                                      "Escape" :cancel-operator}} ; Cancel pending operator
    :system {:last-transaction-id 0                    ; For transaction ordering
             :mutation-observer nil                     ; MutationObserver instance
-            :reconciliation-active? false}})           ; Prevent recursive reconciliation
+            :reconciliation-active? false}             ; Prevent recursive reconciliation
+   :transaction-queue []                              ; Queue for pending transactions
+   :transaction-in-flight? false})                   ; Flag to prevent concurrent transactions
 
 (defn create-buffer
   "Create a new buffer data structure"
