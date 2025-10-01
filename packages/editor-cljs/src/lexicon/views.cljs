@@ -12,6 +12,7 @@
   "Handle keydown events - the core of our new Emacs-style input system"
   [event]
   (let [key-str (events/key-event-to-string event)]
+    (println "⌨️ keydown event:" key-str)
     (when key-str
       ;; Prevent default browser behavior for bound keys
       (.preventDefault event)
@@ -21,6 +22,7 @@
 (defn handle-beforeinput
   "Handle beforeinput events - fallback for unbound printable characters"
   [event]
+  (println "📝 beforeinput event:" (.-inputType event) "data:" (.-data event))
   (let [input-type (.-inputType event)
         data (.-data event)
         target (.-target event)
@@ -105,126 +107,181 @@
         end-line (+ start-line lines-per-screen)]
     (rf/dispatch [:update-viewport start-line end-line])))
 
-(defn editor-view
-  "Main virtualized editor view"
+;; -- Hidden Textarea + Custom DOM Architecture --
+
+(defn hidden-input-handler
+  "Hidden textarea that captures all user input"
+  [input-ref-atom]
+  [:textarea.hidden-input
+   {:ref (fn [element]
+           (when element
+             (println "📱 Hidden textarea element created")
+             (reset! input-ref-atom element)
+             (.focus element)
+             (println "📱 Hidden textarea focused")))
+    :on-key-down handle-keydown
+    :on-input handle-beforeinput
+    :on-before-input handle-beforeinput
+    :on-paste (fn [e]
+                (.preventDefault e)
+                (let [paste-data (-> e .-clipboardData (.getData "text"))]
+                  (rf/dispatch [:editor/paste-text paste-data])))
+    :on-composition-start handle-composition-start
+    :on-composition-update handle-composition-update
+    :on-composition-end handle-composition-end
+    :style {:position "absolute"
+            :top "0"
+            :left "0"
+            :width "200px"
+            :height "100px"
+            :opacity "0"
+            :background-color "transparent"
+            :caret-color "transparent"
+            :resize "none"
+            :border "none"
+            :outline "none"
+            :z-index "9999"}}])
+
+(defn custom-rendered-pane
+  "Read-only text display using divs per line"
   []
   (let [visible-lines @(rf/subscribe [::subs/visible-lines])
-        total-lines @(rf/subscribe [::subs/total-lines])
         line-height @(rf/subscribe [:line-height])
-        viewport @(rf/subscribe [::subs/viewport])
-        ime-composing? @(rf/subscribe [:ime-composing?])
-        ime-text @(rf/subscribe [:ime-composition-text])
-        cursor-position @(rf/subscribe [:cursor-position])
-        scroller-ref (atom nil)
-        content-ref (atom nil)]
+        viewport @(rf/subscribe [::subs/viewport])]
     
-    (println "🖼️ Rendering editor. Visible lines:" (count (or visible-lines "")) "Total lines:" total-lines "Viewport:" viewport)
+    [:div.text-pane
+     {:style {:position "absolute"
+              :top (str (* (:start-line viewport 0) line-height) "px")
+              :left "0"
+              :right "0"
+              :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
+              :font-size "14px"
+              :line-height (str line-height "px")
+              :padding "20px"
+              :color "#d4d4d4"
+              :white-space "pre-wrap"
+              :pointer-events "none"
+              :background-color "#1e1e1e"}}  ; Same as main background
+     
+     ;; Inner editable content area with subtle background
+     [:div.editable-area
+      {:style {:background-color "rgba(37, 37, 38, 0.5)"  ; Semi-transparent for debugging
+               :border-radius "4px"
+               :min-height "200px"
+               :position "relative"
+               :padding "8px"
+               :z-index "1"}}  ; Ensure it's layered properly
+      
+      ;; Render visible lines as individual divs
+      (when visible-lines
+        (let [lines (clojure.string/split visible-lines #"\n")]
+          (for [[idx line] (map-indexed vector lines)]
+            ^{:key (+ (:start-line viewport 0) idx)}
+            [:div.text-line
+             {:style {:min-height (str line-height "px")
+                      :position "relative"
+                      :z-index "2"
+                      :color "#d4d4d4"}}  ; Ensure text color is set
+             [:span.line-content 
+              {:style {:color "#d4d4d4"}}  ; Explicit text color
+              line]])))]]))
+
+(defn custom-cursor
+  "Custom cursor element positioned by our application state"
+  []
+  (let [cursor-pos @(rf/subscribe [::subs/cursor-position])
+        line-height @(rf/subscribe [:line-height])]
     
-    (r/with-let [setup-scroller! (fn [element]
-                                   (when element
-                                     (reset! scroller-ref element)
-                                     (.addEventListener element "scroll" handle-scroll)))
-                 setup-content! (fn [element]
-                                  (when element
-                                    (reset! content-ref element)
-                                    
-                                    ;; Set up MutationObserver
-                                    (create-mutation-observer element)
-                                    
-                                    ;; Set up event listeners
-                                    (.addEventListener element "keydown" handle-keydown)
-                                    (.addEventListener element "beforeinput" handle-beforeinput)
-                                    (.addEventListener element "compositionstart" handle-composition-start)
-                                    (.addEventListener element "compositionupdate" handle-composition-update)
-                                    (.addEventListener element "compositionend" handle-composition-end)))
-                 cleanup-element! (fn []
-                                    (when-let [scroller @scroller-ref]
-                                      (.removeEventListener scroller "scroll" handle-scroll))
-                                    (when-let [content @content-ref]
-                                      (.removeEventListener content "keydown" handle-keydown)
-                                      (.removeEventListener content "beforeinput" handle-beforeinput)
-                                      (.removeEventListener content "compositionstart" handle-composition-start)
-                                      (.removeEventListener content "compositionupdate" handle-composition-update)
-                                      (.removeEventListener content "compositionend" handle-composition-end))
-                                    
-                                    ;; Disconnect MutationObserver
-                                    (when-let [observer @(rf/subscribe [:mutation-observer])]
-                                      (.disconnect observer)))]
-      
-      ;; Update cursor position when it changes
-      (r/track! (fn []
-                  (let [current-cursor @(rf/subscribe [:cursor-position])]
-                    (when-let [content @content-ref]
-                      (when current-cursor
-                        (js/setTimeout 
-                         (fn []
-                           (try
-                             ;; Find the first line div and its text node
-                             (let [first-line-div (.-firstElementChild content)]
-                               (when first-line-div
-                                 (let [text-node (.-firstChild first-line-div)]
-                                   (when text-node
-                                     (let [selection (.getSelection js/window)
-                                           range (.createRange js/document)
-                                           max-pos (.-length text-node)
-                                           safe-pos (min current-cursor max-pos)]
-                                       (println "🎯 Setting cursor to position:" safe-pos "in text:" (pr-str (.-textContent text-node)))
-                                       (.setStart range text-node safe-pos)
-                                       (.setEnd range text-node safe-pos)
-                                       (.removeAllRanges selection)
-                                       (.addRange selection range))))))
-                             (catch js/Error e
-                               (println "Error setting cursor position:" e))))
-                         10))))))
-      
-      [:div.editor-container
-       ;; Scroller div - creates the scrollbar based on total document height
-       [:div.editor-scroller
-        {:ref setup-scroller!
-         :style {:height "100vh"
-                 :overflow-y "auto"
-                 :position "relative"
-                 :background-color "#1e1e1e"}}
+    (println "🎯 Custom cursor render - cursor-pos:" cursor-pos "line-height:" line-height)
+    
+    (if cursor-pos
+      (let [{:keys [line column]} cursor-pos
+            ;; Calculate pixel position  
+            char-width 8.4  ; Approximate monospace char width - TODO: measure dynamically
+            top-px (* line line-height)
+            left-px (+ 20 (* column char-width))]  ; 20px for padding
         
-        ;; Virtual space to create proper scrollbar height
-        [:div.virtual-space
-         {:style {:height (str (* total-lines line-height) "px")
-                  :position "relative"}}
-         
-         ;; Content div - absolutely positioned to show visible content
-         [:div.editor-content
-          {:ref setup-content!
-           :contentEditable true
-           :suppressContentEditableWarning true
-           :style {:position "absolute"
-                   :top (str (* (:start-line viewport 0) line-height) "px")
-                   :left "0"
-                   :right "0"
-                   :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
-                   :font-size "14px"
-                   :line-height (str line-height "px")
-                   :padding "20px"
-                   :outline "none"
-                   :white-space "pre-wrap"
-                   :color "#d4d4d4"
-                   :border "none"
-                   :min-height "auto"}}
-          
-          ;; Render visible lines as individual divs
-          (when visible-lines
-            (let [lines (clojure.string/split visible-lines #"\n")]
-              (for [[idx line] (map-indexed vector lines)]
-                ^{:key (+ (:start-line viewport 0) idx)}
-                [:div.line
-                 {:style {:min-height (str line-height "px")}}
-                 line])))
-          
-          ;; Show IME composition text if active
-          (when ime-composing?
-            [:span.ime-composition
-             {:style {:background-color "rgba(255, 255, 0, 0.3)"
-                      :text-decoration "underline"}}
-             ime-text])]]]])))
+        (println "🎯 Rendering cursor at line:" line "column:" column "top:" top-px "left:" left-px)
+        
+        [:div.custom-cursor
+         {:style {:position "absolute"
+                  :top (str (+ top-px 20 8) "px")    ; Add 20px outer + 8px inner padding
+                  :left (str (+ left-px 8) "px")     ; Add 8px inner left padding
+                  :width "2px"
+                  :height (str line-height "px")
+                  :background-color "#ffffff"
+                  :pointer-events "none"
+                  :animation "cursor-blink 1s infinite"
+                  :z-index "1000"}}])
+      (do
+        (println "❌ Custom cursor - no cursor-pos data!")
+        ;; Render a fallback cursor at 0,0 so we can see if the element is there
+        [:div.custom-cursor-fallback
+         {:style {:position "absolute"
+                  :top "0px"
+                  :left "20px"
+                  :width "2px" 
+                  :height (str line-height "px")
+                  :background-color "#ff0000"  ; Red so we can see it
+                  :pointer-events "none"
+                  :z-index "1000"}}]))))
+
+(defn editor-wrapper
+  "Main editor wrapper with hidden textarea + custom DOM architecture"
+  []
+  (let [hidden-input-ref (atom nil)]
+    
+    [:div.editor-wrapper
+     {:tabIndex 0
+      :on-click (fn [_]
+                  (println "🖱️ Editor wrapper clicked")
+                  ;; Focus the hidden input when wrapper is clicked
+                  (when-let [hidden-input @hidden-input-ref]
+                    (println "🎯 Focusing hidden input")
+                    (.focus hidden-input))
+                  ;; TODO: Dispatch click-to-cursor event
+                  )
+      :style {:position "relative"
+              :width "100%"
+              :height "100%"
+              :outline "none"}}
+     
+     ;; Hidden input handler - captures all keyboard input
+     [hidden-input-handler hidden-input-ref]
+     
+     ;; Custom rendered pane - displays text content
+     [custom-rendered-pane]
+     
+     ;; Custom cursor - fake cursor controlled by our state
+     [custom-cursor]]))
+
+(defn editor-view
+  "Main editor view with virtualized scrolling and custom cursor architecture"
+  []
+  (let [total-lines @(rf/subscribe [::subs/total-lines])
+        line-height @(rf/subscribe [:line-height])
+        scroller-ref (atom nil)]
+    
+    [:div.editor-container
+     ;; Scroller div - creates the scrollbar based on total document height
+     [:div.editor-scroller
+      {:ref (fn [element]
+              (when element
+                (reset! scroller-ref element)
+                (.addEventListener element "scroll" handle-scroll)))
+       :style {:height "calc(100vh - 56px)"  ; Account for buffer tabs and status bar
+               :overflow-y "auto"
+               :position "relative"
+               :background-color "#1e1e1e"
+               :margin-top "32px"}}
+      
+      ;; Virtual space to create proper scrollbar height
+      [:div.virtual-space
+       {:style {:height (str (* total-lines line-height) "px")
+                :position "relative"}}
+       
+       ;; New editor wrapper with custom architecture
+       [editor-wrapper]]]]))
 
 (defn buffer-tab
   "Display a single buffer tab with close button"
@@ -320,42 +377,51 @@
 (defn main-app
   "Main application component"
   []
-  (let [initialized? @(rf/subscribe [:initialized?])
+  (let [initialized?  @(rf/subscribe [:initialized?])
         editor-ready? @(rf/subscribe [:editor-ready?])
-        wasm-error @(rf/subscribe [:wasm-error])]
+        wasm-error    @(rf/subscribe [:wasm-error])]
     
-    [:div.lexicon-app
-     {:style {:width "100%"
-              :height "100vh"
-              :display "flex"
-              :flex-direction "column"}}
+    [:<>
+     ;; Add CSS for cursor animation
+     [:style
+      "@keyframes cursor-blink {
+         0%, 50% { opacity: 1; }
+         51%, 100% { opacity: 0; }
+       }"]
      
-     (cond
-       wasm-error
-       [:div.error
-        {:style {:padding "20px"
-                 :color "#ff6b6b"
-                 :background-color "#2d1b1b"
-                 :border "1px solid #ff6b6b"
-                 :border-radius "4px"
-                 :margin "20px"
-                 :font-family "monospace"}}
-        [:h3 "WASM Loading Error"]
-        [:p "Failed to load the WebAssembly module:"]
-        [:pre {:style {:background-color "#1a1a1a"
-                       :padding "10px"
-                       :border-radius "4px"
-                       :overflow-x "auto"}}
-         (str wasm-error)]
-        [:p "Please check the browser console for more details."]]
-       
-       (not initialized?)
-       [loading-view]
-       
-       editor-ready?
-       [:<>
-        [editor-view]
-        [status-bar]]
-       
-       :else
-       [:div.error "Failed to initialize editor"])]))
+     [:div.lexicon-app
+      {:style {:width          "100%"
+               :height         "100vh"
+               :display        "flex"
+               :flex-direction "column"}}
+      
+      (cond
+        wasm-error
+        [:div.error
+         {:style {:padding          "20px"
+                  :color            "#ff6b6b"
+                  :background-color "#2d1b1b"
+                  :border           "1px solid #ff6b6b"
+                  :border-radius    "4px"
+                  :margin           "20px"
+                  :font-family      "monospace"}}
+         [:h3 "WASM Loading Error"]
+         [:p "Failed to load the WebAssembly module:"]
+         [:pre {:style {:background-color "#1a1a1a"
+                        :padding          "10px"
+                        :border-radius    "4px"
+                        :overflow-x       "auto"}}
+          (str wasm-error)]
+         [:p "Please check the browser console for more details."]]
+        
+        (not initialized?)
+        [loading-view]
+        
+        editor-ready?
+        [:<>
+         [buffer-tabs]
+         [editor-view]
+         [status-bar]]
+        
+        :else
+        [:div.error "Failed to initialize editor"])]]))
