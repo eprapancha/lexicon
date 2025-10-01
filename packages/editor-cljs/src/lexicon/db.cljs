@@ -9,6 +9,8 @@
                 :name "*scratch*"
                 :is-modified? false
                 :mark-position nil                     ; For region selection
+                :cursor-position {:line 0 :column 0}  ; Cursor position as line/column coordinates
+                :selection-range nil                   ; Selection range for future use
                 :major-mode :fundamental-mode          ; Active major mode
                 :minor-modes #{}                       ; Set of active minor modes
                 :buffer-local-vars {}}}                ; Mode-specific configuration
@@ -33,7 +35,7 @@
    :editor {:mode :normal                             ; Editor mode (normal, insert, etc.)
             :keymap :emacs                             ; Active keymap
             :commands {}}                              ; Available commands
-   :fsm {:current-state :normal                        ; Active FSM state (normal, insert, visual, etc.)
+   :fsm {:current-state :insert                        ; Active FSM state (normal, insert, visual, etc.)
          :previous-state nil                           ; Previous state for transitions
          :operator-pending nil                         ; Pending operator function (e.g., delete command d)
          :active-keymap :normal-keymap}                ; Current keymap for the active state
@@ -48,7 +50,9 @@
                      "C-_" :undo                       ; Alternative undo
                      "C-w" :kill-region                ; Kill region
                      "M-w" :copy-region-as-kill        ; Copy region
-                     "C-y" :yank}                      ; Yank
+                     "C-y" :yank                       ; Yank
+                     "DEL" :delete-backward-char        ; Backspace
+                     "DELETE" :delete-forward-char}     ; Delete
             :major {}                                  ; Major mode keymaps
             :minor {}                                  ; Minor mode keymaps
             
@@ -121,6 +125,8 @@
    :name name
    :is-modified? false
    :mark-position nil
+   :cursor-position {:line 0 :column 0}  ; Cursor position as line/column coordinates
+   :selection-range nil                   ; Selection range for future use
    :major-mode :fundamental-mode
    :minor-modes #{}
    :buffer-local-vars {}})

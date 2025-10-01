@@ -15,14 +15,15 @@
    {:db db/default-db
     :fx [[:dispatch [:initialize-commands]]]}))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :wasm-module-loaded
- (fn [db [_ {:keys [instance constructor]}]]
+ (fn [{:keys [db]} [_ {:keys [instance constructor]}]]
    "Store the loaded WASM module instance and constructor in the app state"
-   (-> db
-       (assoc :initialized? true)
-       (assoc-in [:system :wasm-constructor] constructor)
-       (assoc-in [:buffers 1 :wasm-instance] instance))))
+   {:db (-> db
+            (assoc :initialized? true)
+            (assoc-in [:system :wasm-constructor] constructor)
+            (assoc-in [:buffers 1 :wasm-instance] instance))
+    :fx [[:dispatch [:initialize-buffer-cursor 1]]]}))
 
 ;; -- FSM State Management --
 
@@ -371,6 +372,91 @@
                     {:docstring "Toggle line number display"
                      :handler [:toggle-minor-mode :line-number-mode]}]]]}))
 
+;; -- Character Deletion Commands --
+
+(rf/reg-event-fx
+ :delete-backward-char
+ (fn [{:keys [db]} [_]]
+   "Delete character before cursor (backspace)"
+   (let [cursor-pos (get-in db [:ui :cursor-position])
+         buffer-length @(rf/subscribe [:buffer-length])]
+     (if (> cursor-pos 0)
+       {:fx [[:dispatch [:dispatch-transaction {:type :delete
+                                              :pos (dec cursor-pos)
+                                              :len 1}]]]}
+       {}))))
+
+(rf/reg-event-fx
+ :delete-forward-char
+ (fn [{:keys [db]} [_]]
+   "Delete character after cursor (delete)"
+   (let [cursor-pos (get-in db [:ui :cursor-position])
+         buffer-length @(rf/subscribe [:buffer-length])]
+     (if (< cursor-pos buffer-length)
+       {:fx [[:dispatch [:dispatch-transaction {:type :delete
+                                              :pos cursor-pos
+                                              :len 1}]]]}
+       {}))))
+
+;; Initialize cursor position when buffer is created
+(rf/reg-event-fx
+ :initialize-buffer-cursor
+ (fn [{:keys [db]} [_ buffer-id]]
+   "Initialize cursor position for a buffer"
+   (let [^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])]
+     (if wasm-instance
+       {:fx [[:dispatch [:update-cursor-position 0]]]}
+       {:db db}))))
+
+;; -- Phase 3: New Cursor Coordinate Management --
+
+(defn linear-pos-to-line-col
+  "Convert linear position to line/column coordinates"
+  [text linear-pos]
+  (let [lines (clojure.string/split-lines text)
+        lines-with-lengths (map count lines)]
+    (loop [pos 0
+           line 0
+           remaining-lengths lines-with-lengths]
+      (if (empty? remaining-lengths)
+        {:line (max 0 (dec line)) :column 0}
+        (let [line-len (first remaining-lengths)
+              line-end-pos (+ pos line-len)]
+          (if (<= linear-pos line-end-pos)
+            {:line line :column (- linear-pos pos)}
+            (recur (+ line-end-pos 1) ; +1 for newline
+                   (inc line)
+                   (rest remaining-lengths))))))))
+
+(defn line-col-to-linear-pos
+  "Convert line/column coordinates to linear position"
+  [text line column]
+  (let [lines (clojure.string/split-lines text)]
+    (if (>= line (count lines))
+      (count text)
+      (let [lines-before (take line lines)
+            chars-before-line (reduce + 0 (map count lines-before))
+            newlines-before line ; One newline per line before current
+            line-content (nth lines line "")
+            safe-column (min column (count line-content))]
+        (+ chars-before-line newlines-before safe-column)))))
+
+(rf/reg-event-fx
+ :update-cursor-position
+ (fn [{:keys [db]} [_ new-linear-pos]]
+   "Update cursor position in both linear and line/column formats"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             line-col (linear-pos-to-line-col text new-linear-pos)]
+         {:db (-> db
+                  (assoc-in [:ui :cursor-position] new-linear-pos) ; Keep old for compatibility
+                  (assoc-in [:buffers active-buffer-id :cursor-position] line-col))})
+       {:db db}))))
+
+
 ;; Update the main initialization to include mode commands
 (rf/reg-event-fx
  :initialize-commands
@@ -397,6 +483,12 @@
          [:dispatch [:register-command :yank 
                     {:docstring "Yank (paste) from kill ring"
                      :handler [:yank]}]]
+         [:dispatch [:register-command :delete-backward-char 
+                    {:docstring "Delete character before cursor"
+                     :handler [:delete-backward-char]}]]
+         [:dispatch [:register-command :delete-forward-char 
+                    {:docstring "Delete character after cursor"
+                     :handler [:delete-forward-char]}]]
          ;; Initialize mode commands
          [:dispatch [:initialize-mode-commands]]
          ;; Update save-buffer to use hooks
@@ -753,13 +845,24 @@
                              pos))]
        
        (println "✅ Final cursor position:" final-cursor "Patch:" patch)
-       (-> db
-           (assoc-in [:system :last-transaction-id] transaction-id)
-           (assoc-in [:system :last-patch] patch)
-           (assoc-in [:ui :cursor-position] final-cursor)
-           (assoc-in [:ui :view-needs-update?] true)
-           (assoc-in [:ui :text-cache] updated-cache)
-           (assoc-in [:buffers buffer-id :is-modified?] true)))
+       
+       ;; Calculate line/column coordinates for the new cursor position
+       (let [^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+             text (when wasm-instance (.getText wasm-instance))
+             line-col (when text 
+                        (let [result (linear-pos-to-line-col text final-cursor)]
+                          (println "🔄 Converting cursor pos" final-cursor "to line/col:" result "from text:" (pr-str text))
+                          result))]
+         
+         (-> db
+             (assoc-in [:system :last-transaction-id] transaction-id)
+             (assoc-in [:system :last-patch] patch)
+             (assoc-in [:ui :cursor-position] final-cursor)
+             (assoc-in [:ui :view-needs-update?] true)
+             (assoc-in [:ui :text-cache] updated-cache)
+             (assoc-in [:buffers buffer-id :is-modified?] true)
+             ;; Update the new buffer-based cursor position
+             (assoc-in [:buffers buffer-id :cursor-position] (or line-col {:line 0 :column 0})))))
      (catch js/Error error
        (println "❌ Error processing transaction result:" error)
        db))))

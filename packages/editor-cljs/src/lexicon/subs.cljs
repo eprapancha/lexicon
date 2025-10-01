@@ -110,6 +110,22 @@
      (.getLength wasm-instance)
      0)))
 
+;; -- New Buffer-Based Cursor Subscriptions --
+
+(rf/reg-sub
+ ::cursor-position
+ :<- [:active-buffer]
+ (fn [active-buffer _]
+   "Get the cursor position from the active buffer"
+   (:cursor-position active-buffer)))
+
+(rf/reg-sub
+ ::selection-range
+ :<- [:active-buffer]
+ (fn [active-buffer _]
+   "Get the selection range from the active buffer"
+   (:selection-range active-buffer)))
+
 ;; -- UI State Subscriptions --
 
 (rf/reg-sub
