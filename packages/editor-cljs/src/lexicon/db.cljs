@@ -8,12 +8,20 @@
                 :file-handle nil
                 :name "*scratch*"
                 :is-modified? false
-                :mark-position nil}}                   ; For region selection
+                :mark-position nil                     ; For region selection
+                :major-mode :fundamental-mode          ; Active major mode
+                :minor-modes #{}                       ; Set of active minor modes
+                :buffer-local-vars {}}}                ; Mode-specific configuration
    :windows {1 {:id 1, :buffer-id 1, :viewport {:start-line 0, :end-line const/DEFAULT_VIEWPORT_LINES}}}
    :active-window-id 1
    :line-height const/DEFAULT_LINE_HEIGHT
    :kill-ring []                                       ; Clipboard history
    :initialized? false                                 ; Whether WASM module is loaded
+   :commands {}                                        ; Central command registry
+   :hooks {:before-save-hook []                      ; Commands to run before saving
+           :after-save-hook []                       ; Commands to run after saving
+           :buffer-list-update-hook []               ; Commands to run when buffer list changes
+           :kill-buffer-hook []}                     ; Commands to run before killing a buffer
    :ui {:cursor-position 0                            ; Current cursor position
         :selection {:start 0 :end 0}                  ; Current selection range
         :ime-composing? false                          ; IME composition state
@@ -29,7 +37,23 @@
          :previous-state nil                           ; Previous state for transitions
          :operator-pending nil                         ; Pending operator function (e.g., delete command d)
          :active-keymap :normal-keymap}                ; Current keymap for the active state
-   :keymaps {:normal-keymap {"d" :delete-operator      ; Delete operator
+   :keymaps {:global {"C-x C-f" :find-file             ; Find file
+                     "C-x C-s" :save-buffer            ; Save buffer
+                     "C-x C-c" :save-buffers-kill-emacs ; Quit emacs
+                     "C-g" :keyboard-quit              ; Keyboard quit
+                     "M-x" :execute-extended-command   ; M-x command prompt
+                     "C-x b" :switch-to-buffer         ; Switch buffer
+                     "C-x k" :kill-buffer              ; Kill buffer
+                     "C-/" :undo                       ; Undo
+                     "C-_" :undo                       ; Alternative undo
+                     "C-w" :kill-region                ; Kill region
+                     "M-w" :copy-region-as-kill        ; Copy region
+                     "C-y" :yank}                      ; Yank
+            :major {}                                  ; Major mode keymaps
+            :minor {}                                  ; Minor mode keymaps
+            
+            ;; Legacy keymaps for backward compatibility
+            :normal-keymap {"d" :delete-operator      ; Delete operator
                             "w" :forward-word          ; Forward word motion
                             "b" :backward-word         ; Backward word motion
                             "h" :backward-char         ; Backward character
@@ -96,7 +120,10 @@
    :file-handle nil
    :name name
    :is-modified? false
-   :mark-position nil})
+   :mark-position nil
+   :major-mode :fundamental-mode
+   :minor-modes #{}
+   :buffer-local-vars {}})
 
 (defn create-buffer-with-content
   "Create a new buffer with initial content"

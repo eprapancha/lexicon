@@ -8,11 +8,12 @@
 
 ;; -- Initialization Events --
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :initialize-db
  (fn [_ _]
    "Initialize the application database with default state"
-   db/default-db))
+   {:db db/default-db
+    :fx [[:dispatch [:initialize-commands]]]}))
 
 (rf/reg-event-db
  :wasm-module-loaded
@@ -111,7 +112,363 @@
   (fn [state] 
     (js/console.log "Exiting INSERT mode")))
 
-;; -- Command Registry and Execution --
+;; -- Emacs-style Command Registry and Execution --
+
+(rf/reg-event-db
+ :register-command
+ (fn [db [_ command-name command-definition]]
+   "Register a new command in the central command registry"
+   (assoc-in db [:commands command-name] command-definition)))
+
+(rf/reg-event-fx
+ :execute-command
+ (fn [{:keys [db]} [_ command-name & args]]
+   "Execute a command by name from the central registry"
+   (let [command-def (get-in db [:commands command-name])]
+     (if command-def
+       (let [handler (:handler command-def)]
+         {:fx [[:dispatch (into handler args)]]})
+       {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]}))))
+
+(rf/reg-event-db
+ :show-error
+ (fn [db [_ message]]
+   "Show an error message to the user"
+   (println "Error:" message)
+   (assoc-in db [:system :last-error] message)))
+
+(rf/reg-event-db
+ :keyboard-quit
+ (fn [db [_]]
+   "Cancel the current operation (equivalent to C-g in Emacs)"
+   (println "Keyboard quit")
+   ;; Clear any pending operations, selection, etc.
+   (-> db
+       (assoc-in [:ui :selection] {:start 0 :end 0})
+       (assoc-in [:fsm :operator-pending] nil))))
+
+;; -- Key Sequence Parsing and Processing --
+
+(defn key-event-to-string
+  "Convert a KeyboardEvent to Emacs-style key string notation"
+  [event]
+  (let [ctrl? (.-ctrlKey event)
+        meta? (.-metaKey event)
+        alt? (.-altKey event)
+        shift? (.-shiftKey event)
+        key (.-key event)
+        code (.-code event)]
+    (cond
+      ;; Special handling for certain keys
+      (= key "Control") nil  ; Ignore standalone modifier keys
+      (= key "Meta") nil
+      (= key "Alt") nil
+      (= key "Shift") nil
+      
+      ;; Handle special keys
+      (= key "Escape") "ESC"
+      (= key "Enter") "RET"
+      (= key "Tab") "TAB"
+      (= key "Backspace") "DEL"
+      (= key "Delete") "DELETE"
+      (= key " ") "SPC"
+      
+      ;; Function keys
+      (and (>= (.indexOf key "F") 0) 
+           (js/isNaN (js/parseInt (subs key 1))))
+      key
+      
+      ;; Regular keys with modifiers
+      :else
+      (let [base-key (if (and shift? (= (count key) 1))
+                       ;; For shifted letters, use uppercase
+                       (.toUpperCase key)
+                       key)]
+        (str 
+         (when ctrl? "C-")
+         (when meta? "M-")
+         (when (and alt? (not meta?)) "A-")  ; Alt without Meta
+         base-key)))))
+
+(defn parse-key-sequence
+  "Parse a key sequence string like 'C-x C-f' into a vector of individual keys"
+  [key-sequence-str]
+  (when key-sequence-str
+    (clojure.string/split (clojure.string/trim key-sequence-str) #"\s+")))
+
+(defn normalize-key-sequence
+  "Normalize a key sequence vector to handle common variations"
+  [key-sequence]
+  (mapv (fn [key]
+          (case key
+            "C-m" "RET"     ; Ctrl+M is Enter
+            "C-i" "TAB"     ; Ctrl+I is Tab
+            "C-[" "ESC"     ; Ctrl+[ is Escape
+            key))
+        key-sequence))
+
+(defn get-active-minor-modes
+  "Get the set of active minor modes for the active buffer"
+  [db]
+  (let [active-window (get (:windows db) (:active-window-id db))
+        active-buffer-id (:buffer-id active-window)
+        active-buffer (get (:buffers db) active-buffer-id)]
+    (:minor-modes active-buffer #{})))
+
+(defn get-active-major-mode
+  "Get the active major mode for the active buffer"
+  [db]
+  (let [active-window (get (:windows db) (:active-window-id db))
+        active-buffer-id (:buffer-id active-window)
+        active-buffer (get (:buffers db) active-buffer-id)]
+    (:major-mode active-buffer :fundamental-mode)))
+
+(defn resolve-keybinding
+  "Resolve a key sequence to a command using Emacs precedence order"
+  [db key-sequence-str]
+  (let [keymaps (:keymaps db)
+        minor-modes (get-active-minor-modes db)
+        major-mode (get-active-major-mode db)]
+    
+    ;; Emacs precedence order:
+    ;; 1. Active minor mode keymaps (in reverse order of activation)
+    ;; 2. Active major mode keymap  
+    ;; 3. Global keymap
+    
+    (or 
+     ;; 1. Check minor mode keymaps
+     (some (fn [minor-mode]
+             (get-in keymaps [:minor minor-mode key-sequence-str]))
+           (reverse (seq minor-modes)))
+     
+     ;; 2. Check major mode keymap
+     (get-in keymaps [:major major-mode key-sequence-str])
+     
+     ;; 3. Check global keymap
+     (get-in keymaps [:global key-sequence-str])
+     
+     ;; Return nil if no binding found
+     nil)))
+
+;; State management for prefix keys
+(rf/reg-event-db
+ :set-prefix-key-state
+ (fn [db [_ prefix-key]]
+   "Set the current prefix key state for multi-key sequences"
+   (assoc-in db [:ui :prefix-key-state] prefix-key)))
+
+(rf/reg-event-db
+ :clear-prefix-key-state
+ (fn [db [_]]
+   "Clear the prefix key state"
+   (assoc-in db [:ui :prefix-key-state] nil)))
+
+(rf/reg-event-fx
+ :handle-key-sequence
+ (fn [{:keys [db]} [_ key-str]]
+   "Handle a key sequence and dispatch the appropriate command"
+   (let [prefix-state (get-in db [:ui :prefix-key-state])
+         full-sequence (if prefix-state
+                        (str prefix-state " " key-str)
+                        key-str)
+         command-name (resolve-keybinding db full-sequence)]
+     
+     (cond
+       ;; Found a complete command binding
+       command-name
+       {:fx [[:dispatch [:execute-command command-name]]
+             [:dispatch [:clear-prefix-key-state]]]}
+       
+       ;; Check if this might be a prefix for a multi-key sequence
+       ;; by seeing if any keybinding starts with this sequence
+       (some (fn [keymap-entry]
+               (and (string? (first keymap-entry))
+                    (.startsWith (first keymap-entry) full-sequence)))
+             (concat 
+              (mapcat (fn [minor-mode] 
+                        (get-in db [:keymaps :minor minor-mode]))
+                      (get-active-minor-modes db))
+              (get-in db [:keymaps :major (get-active-major-mode db)])
+              (get-in db [:keymaps :global])))
+       {:fx [[:dispatch [:set-prefix-key-state full-sequence]]]}
+       
+       ;; No binding found - check if it's a printable character for insertion
+       (and (= (count key-str) 1)
+            (not prefix-state)
+            (not (re-matches #"[CM]-." key-str))  ; Not a modifier combo
+            (>= (.charCodeAt key-str 0) 32)      ; Printable ASCII
+            (= (get-in db [:fsm :current-state]) :insert))
+       {:fx [[:dispatch [:dispatch-transaction {:type :insert 
+                                               :pos (get-in db [:ui :cursor-position])
+                                               :text key-str}]]
+             [:dispatch [:clear-prefix-key-state]]]}
+       
+       ;; Unknown key sequence - clear state and ignore
+       :else
+       {:fx [[:dispatch [:clear-prefix-key-state]]]}))))
+
+;; -- Major and Minor Mode Architecture --
+
+(rf/reg-event-db
+ :set-major-mode
+ (fn [db [_ mode-keyword]]
+   "Set the major mode for the active buffer"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)]
+     ;; Update the buffer's major mode
+     (assoc-in db [:buffers active-buffer-id :major-mode] mode-keyword))))
+
+(rf/reg-event-db
+ :toggle-minor-mode
+ (fn [db [_ mode-keyword]]
+   "Toggle a minor mode for the active buffer"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         current-modes (get-in db [:buffers active-buffer-id :minor-modes] #{})]
+     (if (contains? current-modes mode-keyword)
+       ;; Remove the mode
+       (assoc-in db [:buffers active-buffer-id :minor-modes] 
+                 (disj current-modes mode-keyword))
+       ;; Add the mode
+       (assoc-in db [:buffers active-buffer-id :minor-modes] 
+                 (conj current-modes mode-keyword))))))
+
+(rf/reg-event-db
+ :enable-minor-mode
+ (fn [db [_ mode-keyword]]
+   "Enable a minor mode for the active buffer"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         current-modes (get-in db [:buffers active-buffer-id :minor-modes] #{})]
+     (assoc-in db [:buffers active-buffer-id :minor-modes] 
+               (conj current-modes mode-keyword)))))
+
+(rf/reg-event-db
+ :disable-minor-mode
+ (fn [db [_ mode-keyword]]
+   "Disable a minor mode for the active buffer"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         current-modes (get-in db [:buffers active-buffer-id :minor-modes] #{})]
+     (assoc-in db [:buffers active-buffer-id :minor-modes] 
+               (disj current-modes mode-keyword)))))
+
+;; Register mode-related commands
+(rf/reg-event-fx
+ :initialize-mode-commands
+ (fn [{:keys [db]} [_]]
+   "Initialize mode-related commands"
+   {:fx [[:dispatch [:register-command :fundamental-mode 
+                    {:docstring "Switch to fundamental mode"
+                     :handler [:set-major-mode :fundamental-mode]}]]
+         [:dispatch [:register-command :text-mode 
+                    {:docstring "Switch to text mode"
+                     :handler [:set-major-mode :text-mode]}]]
+         [:dispatch [:register-command :clojure-mode 
+                    {:docstring "Switch to Clojure mode"
+                     :handler [:set-major-mode :clojure-mode]}]]
+         [:dispatch [:register-command :line-number-mode 
+                    {:docstring "Toggle line number display"
+                     :handler [:toggle-minor-mode :line-number-mode]}]]]}))
+
+;; Update the main initialization to include mode commands
+(rf/reg-event-fx
+ :initialize-commands
+ (fn [{:keys [db]} [_]]
+   "Initialize built-in commands in the command registry"
+   {:fx [[:dispatch [:register-command :find-file 
+                    {:docstring "Open a file"
+                     :handler [:find-file]}]]
+         [:dispatch [:register-command :save-buffer 
+                    {:docstring "Save current buffer"
+                     :handler [:save-buffer]}]]
+         [:dispatch [:register-command :kill-buffer 
+                    {:docstring "Close current buffer"
+                     :handler [:close-buffer]}]]
+         [:dispatch [:register-command :keyboard-quit 
+                    {:docstring "Cancel current operation"
+                     :handler [:keyboard-quit]}]]
+         [:dispatch [:register-command :undo 
+                    {:docstring "Undo last change"
+                     :handler [:undo]}]]
+         [:dispatch [:register-command :kill-region 
+                    {:docstring "Kill (cut) the active region"
+                     :handler [:kill-region]}]]
+         [:dispatch [:register-command :yank 
+                    {:docstring "Yank (paste) from kill ring"
+                     :handler [:yank]}]]
+         ;; Initialize mode commands
+         [:dispatch [:initialize-mode-commands]]
+         ;; Update save-buffer to use hooks
+         [:dispatch [:update-save-buffer-command]]]}))
+
+;; -- Hook System Implementation --
+
+(rf/reg-event-db
+ :add-hook
+ (fn [db [_ hook-name command-keyword]]
+   "Add a command to a hook"
+   (update-in db [:hooks hook-name] (fnil conj []) command-keyword)))
+
+(rf/reg-event-db
+ :remove-hook
+ (fn [db [_ hook-name command-keyword]]
+   "Remove a command from a hook"
+   (update-in db [:hooks hook-name] 
+              (fn [commands]
+                (vec (remove #(= % command-keyword) commands))))))
+
+(rf/reg-event-fx
+ :run-hook
+ (fn [{:keys [db]} [_ hook-name]]
+   "Run all commands registered for a hook"
+   (let [hook-commands (get-in db [:hooks hook-name] [])]
+     {:fx (mapv (fn [command-name]
+                  [:dispatch [:execute-command command-name]])
+                hook-commands)})))
+
+;; Example hook usage - update save-buffer to use before-save-hook
+(rf/reg-event-fx
+ :save-buffer-with-hooks
+ (fn [{:keys [db]} [_]]
+   "Save buffer with before-save and after-save hooks"
+   {:fx [[:dispatch [:run-hook :before-save-hook]]
+         [:dispatch [:save-buffer-internal]]
+         [:dispatch [:run-hook :after-save-hook]]]}))
+
+;; Create internal save-buffer event (renamed from original)
+(rf/reg-event-fx
+ :save-buffer-internal
+ (fn [{:keys [db]} [_]]
+   "Internal save buffer implementation"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         active-buffer (get (:buffers db) active-buffer-id)
+         wasm-instance (:wasm-instance active-buffer)
+         file-handle (:file-handle active-buffer)]
+     
+     (if wasm-instance
+       (let [content (.getText ^js wasm-instance)]
+         (if file-handle
+           ;; Save to existing file
+           {:fx [[:save-to-file-handle {:file-handle file-handle
+                                        :content content
+                                        :buffer-id active-buffer-id}]]}
+           ;; Prompt for save location
+           {:fx [[:save-file-picker {:content content
+                                     :buffer-id active-buffer-id}]]}))
+       {:db db}))))
+
+;; Update the original save-buffer command registration to use hooks
+(rf/reg-event-fx
+ :update-save-buffer-command
+ (fn [{:keys [db]} [_]]
+   "Update save-buffer command to use hook system"
+   {:fx [[:dispatch [:register-command :save-buffer 
+                    {:docstring "Save current buffer with hooks"
+                     :handler [:save-buffer-with-hooks]}]]]}))
+
+;; -- Legacy Command Registry (for backward compatibility) --
 
 ;; Registry for command functions
 (defonce command-registry (atom {}))

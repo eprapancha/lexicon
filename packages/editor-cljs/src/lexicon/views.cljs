@@ -3,12 +3,23 @@
             [reagent.core :as r]
             [reagent.dom :as rdom]
             [lexicon.constants :as const]
-            [lexicon.subs :as subs]))
+            [lexicon.subs :as subs]
+            [lexicon.events :as events]))
 
 ;; -- Input Event Handling --
 
+(defn handle-keydown
+  "Handle keydown events - the core of our new Emacs-style input system"
+  [event]
+  (let [key-str (events/key-event-to-string event)]
+    (when key-str
+      ;; Prevent default browser behavior for bound keys
+      (.preventDefault event)
+      ;; Dispatch to our new key sequence handler
+      (rf/dispatch [:handle-key-sequence key-str]))))
+
 (defn handle-beforeinput
-  "Handle beforeinput events - the core of our proactive input strategy"
+  "Handle beforeinput events - fallback for unbound printable characters"
   [event]
   (let [input-type (.-inputType event)
         data (.-data event)
@@ -18,14 +29,15 @@
                      (.-startOffset (.getRangeAt selection 0))
                      0)]
     
-    ;; Prevent default browser behavior - we control all DOM mutations
-    (.preventDefault event)
-    
-    ;; We need to get the cursor position from our app state, but we can't use subscriptions here
-    ;; So let's dispatch an event that will get the current cursor position and then dispatch the transaction
-    (rf/dispatch [:handle-text-input {:input-type input-type
-                                      :data data
-                                      :dom-cursor-pos cursor-pos}])))
+    ;; Only handle insertText for characters not bound to commands
+    (when (= input-type "insertText")
+      ;; Prevent default browser behavior - we control all DOM mutations
+      (.preventDefault event)
+      
+      ;; Dispatch to handle text input if it's a simple insertion
+      (rf/dispatch [:handle-text-input {:input-type input-type
+                                        :data data
+                                        :dom-cursor-pos cursor-pos}]))))
 
 (defn handle-composition-start
   "Handle IME composition start"
@@ -120,6 +132,7 @@
                                     (create-mutation-observer element)
                                     
                                     ;; Set up event listeners
+                                    (.addEventListener element "keydown" handle-keydown)
                                     (.addEventListener element "beforeinput" handle-beforeinput)
                                     (.addEventListener element "compositionstart" handle-composition-start)
                                     (.addEventListener element "compositionupdate" handle-composition-update)
@@ -128,6 +141,7 @@
                                     (when-let [scroller @scroller-ref]
                                       (.removeEventListener scroller "scroll" handle-scroll))
                                     (when-let [content @content-ref]
+                                      (.removeEventListener content "keydown" handle-keydown)
                                       (.removeEventListener content "beforeinput" handle-beforeinput)
                                       (.removeEventListener content "compositionstart" handle-composition-start)
                                       (.removeEventListener content "compositionupdate" handle-composition-update)
