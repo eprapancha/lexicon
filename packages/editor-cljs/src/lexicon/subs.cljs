@@ -321,3 +321,47 @@
  (fn [db _]
    "Get the line height for layout calculations"
    (:line-height db)))
+
+;; -- Minibuffer Subscriptions --
+
+(rf/reg-sub
+ :minibuffer
+ (fn [db _]
+   "Get the minibuffer state"
+   (:minibuffer db)))
+
+;; -- Parser and Highlighting Subscriptions --
+
+(defn ast-to-decorations
+  "Convert AST nodes to decoration maps for syntax highlighting"
+  [ast]
+  (when-let [children (:children ast)]
+    (mapv (fn [node]
+            (let [{:keys [type startPosition endPosition]} node
+                  css-class (case type
+                              "keyword" "syntax-keyword"
+                              "string" "syntax-string"
+                              "comment" "syntax-comment"
+                              "number" "syntax-number"
+                              "syntax-default")]
+              {:from {:line (:row startPosition) :column (:column startPosition)}
+               :to {:line (:row endPosition) :column (:column endPosition)}
+               :class css-class
+               :text (:text node)}))
+          children)))
+
+(rf/reg-sub
+ :parser-worker-ready?
+ (fn [db _]
+   "Check if parser worker is ready"
+   (get-in db [:system :parser-worker-ready?])))
+
+(rf/reg-sub
+ ::highlight-decorations
+ :<- [:active-buffer]
+ (fn [active-buffer _]
+   "Get syntax highlighting decorations from AST"
+   (let [ast (:ast active-buffer)]
+     (if ast
+       (ast-to-decorations ast)
+       []))))

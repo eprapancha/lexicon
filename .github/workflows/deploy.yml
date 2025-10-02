@@ -67,10 +67,26 @@ jobs:
         mkdir -p ../../editor-cljs/resources/public/lexicon-engine/wasm/
         cp -r pkg ../../editor-cljs/resources/public/lexicon-engine/wasm/
     
+    - name: Install Tree-sitter CLI
+      run: npm install -g tree-sitter-cli
+    
+    - name: Build Tree-sitter grammars
+      working-directory: packages/language-grammars
+      run: |
+        chmod +x build-grammars.sh
+        ./build-grammars.sh || echo "Some grammars failed to build, continuing..."
+        # Copy any built WASM files to the public directory
+        mkdir -p ../editor-cljs/resources/public/grammars
+        find . -name "tree-sitter-*.wasm" -exec cp {} ../editor-cljs/resources/public/grammars/ \; || true
+    
     - name: Install ClojureScript dependencies
       working-directory: packages/editor-cljs
       run: |
         npm install --no-workspaces
+        # Copy web-tree-sitter to public directory for production
+        mkdir -p resources/public/js
+        cp node_modules/web-tree-sitter/tree-sitter.js resources/public/js/web-tree-sitter.js || echo "web-tree-sitter not found, using mock mode"
+        cp node_modules/web-tree-sitter/tree-sitter.wasm resources/public/js/ || true
         # Verify React is available
         ls -la node_modules/react/ || echo "React not found in node_modules"
         # Install shadow-cljs globally for reliable access

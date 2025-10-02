@@ -13,7 +13,9 @@
                 :selection-range nil                   ; Selection range for future use
                 :major-mode :fundamental-mode          ; Active major mode
                 :minor-modes #{}                       ; Set of active minor modes
-                :buffer-local-vars {}}}                ; Mode-specific configuration
+                :buffer-local-vars {}                  ; Mode-specific configuration
+                :ast nil                               ; Parsed AST from Tree-sitter
+                :language :text}}                      ; Language for syntax highlighting
    :windows {1 {:id 1, :buffer-id 1, :viewport {:start-line 0, :end-line const/DEFAULT_VIEWPORT_LINES}}}
    :active-window-id 1
    :line-height const/DEFAULT_LINE_HEIGHT
@@ -114,9 +116,17 @@
                                      "Escape" :cancel-operator}} ; Cancel pending operator
    :system {:last-transaction-id 0                    ; For transaction ordering
             :mutation-observer nil                     ; MutationObserver instance
-            :reconciliation-active? false}             ; Prevent recursive reconciliation
+            :reconciliation-active? false              ; Prevent recursive reconciliation
+            :parser-worker nil                         ; Web Worker instance for Tree-sitter
+            :parser-worker-ready? false}               ; Whether parser worker is initialized
    :transaction-queue []                              ; Queue for pending transactions
-   :transaction-in-flight? false})                   ; Flag to prevent concurrent transactions
+   :transaction-in-flight? false                     ; Flag to prevent concurrent transactions
+   :minibuffer {:active? false                       ; Whether minibuffer is currently active
+                :prompt ""                           ; Prompt text (e.g., "M-x ")
+                :input ""                            ; Current user input in minibuffer
+                :on-confirm nil                      ; Event vector to dispatch on Enter
+                :on-cancel [:minibuffer/deactivate]} ; Event vector to dispatch on Escape/C-g
+   })
 
 (defn create-buffer
   "Create a new buffer data structure"
@@ -131,7 +141,9 @@
    :selection-range nil                   ; Selection range for future use
    :major-mode :fundamental-mode
    :minor-modes #{}
-   :buffer-local-vars {}})
+   :buffer-local-vars {}
+   :ast nil                               ; Parsed AST from Tree-sitter
+   :language :text})
 
 (defn create-buffer-with-content
   "Create a new buffer with initial content"

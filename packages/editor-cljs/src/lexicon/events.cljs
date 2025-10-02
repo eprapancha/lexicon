@@ -7,6 +7,21 @@
             [re-frame.std-interceptors :refer [debug]])
   (:require-macros [lexicon.macros :refer [def-evil-motion def-evil-operator]]))
 
+;; -- Helper Functions --
+
+;; Language detection helper
+(defn detect-language-from-filename
+  "Detect language from file name/extension"
+  [filename]
+  (cond
+    (re-matches #".*\.(js|jsx|mjs|cjs)$" filename) :javascript
+    (re-matches #".*\.(ts|tsx)$" filename) :typescript
+    (re-matches #".*\.(clj|cljs|cljc|edn)$" filename) :clojure
+    (re-matches #".*\.(py)$" filename) :python
+    (re-matches #".*\.(rs)$" filename) :rust
+    (re-matches #".*\.(md|markdown)$" filename) :markdown
+    :else :text))
+
 ;; -- Initialization Events --
 
 (rf/reg-event-fx
@@ -24,7 +39,8 @@
             (assoc :initialized? true)
             (assoc-in [:system :wasm-constructor] constructor)
             (assoc-in [:buffers 1 :wasm-instance] instance))
-    :fx [[:dispatch [:initialize-buffer-cursor 1]]]}))
+    :fx [[:dispatch [:initialize-buffer-cursor 1]]
+         [:parser/start-worker {:worker-path "/parser-worker.js"}]]}))
 
 ;; -- FSM State Management --
 
@@ -188,8 +204,7 @@
                        key)]
         (str 
          (when ctrl? "C-")
-         (when meta? "M-")
-         (when (and alt? (not meta?)) "A-")  ; Alt without Meta
+         (when (or meta? alt?) "M-")  ; Map both Meta and Alt keys to M- (Emacs convention)
          base-key)))))
 
 (defn parse-key-sequence
@@ -479,6 +494,9 @@
          [:dispatch [:register-command :delete-forward-char 
                     {:docstring "Delete character after cursor"
                      :handler [:delete-forward-char]}]]
+         [:dispatch [:register-command :execute-extended-command 
+                    {:docstring "Execute extended command (M-x)"
+                     :handler [:execute-extended-command]}]]
          ;; Initialize mode commands
          [:dispatch [:initialize-mode-commands]]
          ;; Update save-buffer to use hooks
@@ -906,9 +924,13 @@
                           (assoc-in [:system :last-patch] patch)
                           (assoc-in [:ui :view-needs-update?] true))]
        
-       ;; Continue processing the queue
+       ;; Continue processing the queue and trigger incremental parsing
        {:db updated-db
-        :fx [[:editor/process-queue updated-db]]})
+        :fx [[:editor/process-queue updated-db]
+             [:dispatch [:parser/request-incremental-parse 
+                        {:op (:op operation)
+                         :position final-cursor
+                         :text (:text operation)}]]]})
      (catch js/Error error
        (println "❌ Error processing transaction success:" error)
        ;; Clear in-flight flag and continue processing
@@ -1265,15 +1287,34 @@
      (.init wasm-instance content)
      
      ;; Create new buffer and update app state
-     (let [new-buffer {:id buffer-id
+     (let [detected-language (detect-language-from-filename name)
+           new-buffer {:id buffer-id
                        :wasm-instance wasm-instance
                        :file-handle file-handle
                        :name name
                        :is-modified? false
-                       :mark-position nil}]
+                       :mark-position nil
+                       :cursor-position {:line 0 :column 0}
+                       :selection-range nil
+                       :major-mode :fundamental-mode
+                       :minor-modes #{}
+                       :buffer-local-vars {}
+                       :ast nil
+                       :language detected-language}]
        {:db (-> db
                 (assoc-in [:buffers buffer-id] new-buffer)
-                (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))))
+                (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))
+        :fx [[:dispatch [:parser/request-parse buffer-id]]]}))))
+
+;; Debug helper to check parser worker state
+(rf/reg-event-fx
+ :debug/check-parser-state
+ (fn [{:keys [db]} [_]]
+   (let [worker (get-in db [:system :parser-worker])
+         worker-ready? (get-in db [:system :parser-worker-ready?])]
+     (println "🔍 Debug - Parser worker:" (if worker "exists" "missing") 
+              "Ready:" worker-ready?)
+     {:db db})))
 
 (rf/reg-event-db
  :file-read-failure
@@ -1368,6 +1409,201 @@
      (-> db
          (assoc-in [:windows active-window-id :viewport :start-line] start-line)
          (assoc-in [:windows active-window-id :viewport :end-line] end-line)))))
+
+;; -- Minibuffer Events --
+
+(rf/reg-event-db
+ :minibuffer/activate
+ (fn [db [_ config]]
+   "Activate the minibuffer with given configuration"
+   (-> db
+       (assoc-in [:minibuffer :active?] true)
+       (assoc-in [:minibuffer :prompt] (:prompt config ""))
+       (assoc-in [:minibuffer :input] "")
+       (assoc-in [:minibuffer :on-confirm] (:on-confirm config))
+       (assoc-in [:minibuffer :on-cancel] (or (:on-cancel config) [:minibuffer/deactivate])))))
+
+(rf/reg-event-db
+ :minibuffer/deactivate
+ (fn [db [_]]
+   "Deactivate the minibuffer and reset state"
+   (-> db
+       (assoc-in [:minibuffer :active?] false)
+       (assoc-in [:minibuffer :prompt] "")
+       (assoc-in [:minibuffer :input] "")
+       (assoc-in [:minibuffer :on-confirm] nil)
+       (assoc-in [:minibuffer :on-cancel] [:minibuffer/deactivate]))))
+
+(rf/reg-event-db
+ :minibuffer/set-input
+ (fn [db [_ input-text]]
+   "Update the minibuffer input text"
+   (assoc-in db [:minibuffer :input] input-text)))
+
+(rf/reg-event-fx
+ :minibuffer/confirm
+ (fn [{:keys [db]} [_]]
+   "Confirm minibuffer input and execute the configured action"
+   (let [minibuffer (:minibuffer db)
+         input (:input minibuffer)
+         on-confirm (:on-confirm minibuffer)]
+     (if on-confirm
+       {:fx [[:dispatch (conj on-confirm input)]
+             [:dispatch [:minibuffer/deactivate]]]}
+       {:fx [[:dispatch [:minibuffer/deactivate]]]}))))
+
+;; -- Parser Worker Events --
+
+(rf/reg-fx
+ :parser/start-worker
+ (fn [{:keys [worker-path]}]
+   "Create and initialize the parser Web Worker"
+   (let [worker (js/Worker. (or worker-path "/parser-worker.js"))]
+     ;; Set up message handler
+     (.addEventListener worker "message" 
+       (fn [event]
+         (let [data (js->clj (.-data event) :keywordize-keys true)
+               msg-type (:type data)
+               payload (:payload data)]
+           (case msg-type
+             "init-success"
+             (rf/dispatch [:parser/worker-ready payload])
+             
+             "init-error"
+             (rf/dispatch [:parser/worker-error payload])
+             
+             "parse-success"
+             (rf/dispatch [:parser/ast-updated payload])
+             
+             "parse-error"
+             (rf/dispatch [:parser/parse-error payload])
+             
+             "edit-success"
+             (rf/dispatch [:parser/ast-updated payload])
+             
+             "edit-error"
+             (rf/dispatch [:parser/parse-error payload])
+             
+             "error"
+             (rf/dispatch [:parser/worker-error payload])
+             
+             (println "Unknown worker message type:" msg-type)))))
+     
+     ;; Store worker instance and initialize
+     (rf/dispatch [:parser/worker-created worker])
+     
+     ;; Initialize the worker with a default language
+     (.postMessage worker 
+       (clj->js {:type "init"
+                 :payload {:languageName "javascript"
+                           :wasmPath "/grammars/tree-sitter-javascript.wasm"}})))))
+
+(rf/reg-event-db
+ :parser/worker-created
+ (fn [db [_ worker]]
+   "Store the created worker instance"
+   (assoc-in db [:system :parser-worker] worker)))
+
+(rf/reg-event-db
+ :parser/worker-ready
+ (fn [db [_ payload]]
+   "Mark parser worker as ready"
+   (println "✅ Parser worker ready for language:" (:languageName payload))
+   (assoc-in db [:system :parser-worker-ready?] true)))
+
+(rf/reg-event-db
+ :parser/worker-error
+ (fn [db [_ payload]]
+   "Handle parser worker errors"
+   (println "Parser worker error:" (:error payload))
+   (assoc-in db [:system :parser-worker-ready?] false)))
+
+(rf/reg-event-db
+ :parser/ast-updated
+ (fn [db [_ payload]]
+   "Update the AST for the active buffer"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)]
+     (println "AST updated for buffer" active-buffer-id)
+     (assoc-in db [:buffers active-buffer-id :ast] (:ast payload)))))
+
+(rf/reg-event-db
+ :parser/parse-error
+ (fn [db [_ payload]]
+   "Handle parsing errors"
+   (println "Parse error:" (:error payload))
+   db))
+
+(rf/reg-event-fx
+ :parser/request-parse
+ (fn [{:keys [db]} [_ buffer-id]]
+   "Request full parse of buffer content"
+   (let [buffer (get-in db [:buffers buffer-id])
+         wasm-instance (:wasm-instance buffer)
+         language (:language buffer :text)
+         worker (get-in db [:system :parser-worker])
+         worker-ready? (get-in db [:system :parser-worker-ready?])]
+     
+     (println "🎯 Parse request for buffer" buffer-id 
+              "Language:" language 
+              "Worker:" (if worker "exists" "missing")
+              "Ready:" worker-ready?
+              "WASM:" (if wasm-instance "exists" "missing"))
+     
+     (if (and worker worker-ready? wasm-instance)
+       (let [text (.getText wasm-instance)]
+         (println "📝 Sending text to parser, length:" (count text))
+         (.postMessage worker 
+           (clj->js {:type "parse"
+                     :payload {:text text
+                               :languageName (name language)}}))
+         {:db db})
+       (do
+         (println "❌ Cannot parse - missing:" 
+                  (cond 
+                    (not worker) "worker"
+                    (not worker-ready?) "worker-ready"
+                    (not wasm-instance) "wasm-instance"))
+         {:db db})))))
+
+(rf/reg-event-fx
+ :parser/request-incremental-parse
+ (fn [{:keys [db]} [_ edit-details]]
+   "Request incremental reparse after edit"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         buffer (get-in db [:buffers active-buffer-id])
+         wasm-instance (:wasm-instance buffer)
+         worker (get-in db [:system :parser-worker])
+         worker-ready? (get-in db [:system :parser-worker-ready?])]
+     
+     (if (and worker worker-ready? wasm-instance)
+       (let [text (.getText wasm-instance)]
+         (.postMessage worker 
+           (clj->js {:type "edit"
+                     :payload {:edit edit-details
+                               :text text}}))
+         {:db db})
+       ;; Fall back to full parse
+       {:fx [[:dispatch [:parser/request-parse active-buffer-id]]]}))))
+
+
+;; -- Execute Extended Command (M-x) Implementation --
+
+(rf/reg-event-fx
+ :execute-extended-command
+ (fn [{:keys [db]} [_]]
+   "Open minibuffer for M-x command execution"
+   {:fx [[:dispatch [:minibuffer/activate 
+                     {:prompt "M-x "
+                      :on-confirm [:execute-command-by-name]}]]]}))
+
+(rf/reg-event-fx
+ :execute-command-by-name
+ (fn [{:keys [db]} [_ command-name-str]]
+   "Execute a command by its string name"
+   (let [command-keyword (keyword command-name-str)]
+     {:fx [[:dispatch [:execute-command command-keyword]]]})))
 
 ;; -- Region Selection and Kill Ring Events --
 
