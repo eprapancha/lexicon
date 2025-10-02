@@ -489,6 +489,7 @@
        .syntax-keyword { color: #569cd6; font-weight: bold; }
        .syntax-string { color: #ce9178; }
        .syntax-comment { color: #6a9955; font-style: italic; }
+       .syntax-number { color: #b5cea8; }
        .syntax-default { color: #d4d4d4; }"]
      
      [:div.lexicon-app

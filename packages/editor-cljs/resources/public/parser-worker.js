@@ -5,9 +5,16 @@ let TreeSitter = null;
 let parser = null;
 let tree = null;
 let language = null;
+let mockMode = false; // Flag to indicate we're running in mock mode
 
-// Import web-tree-sitter
-importScripts('https://tree-sitter.github.io/tree-sitter/assets/js/tree-sitter.js');
+// Try to import web-tree-sitter, fall back to mock mode if it fails
+try {
+  importScripts('https://tree-sitter.github.io/tree-sitter/assets/js/tree-sitter.js');
+  console.log('Tree-sitter library loaded successfully');
+} catch (error) {
+  console.warn('Failed to load Tree-sitter library, falling back to mock mode:', error);
+  mockMode = true;
+}
 
 // Initialize the worker
 self.onmessage = async function(e) {
@@ -42,33 +49,40 @@ self.onmessage = async function(e) {
 async function initializeParser(payload) {
   const { languageName, wasmPath } = payload;
   
-  console.log('Initializing Tree-sitter parser for', languageName);
+  console.log('Initializing Tree-sitter parser for', languageName, mockMode ? '(mock mode)' : '(real mode)');
   
   try {
-    // Initialize Tree-sitter
-    await TreeSitter.init();
-    TreeSitter = TreeSitter.default || TreeSitter;
-    
-    // Create parser
-    parser = new TreeSitter();
-    
-    // Load language grammar
-    if (wasmPath) {
-      // For development, we'll simulate loading a language
-      // In production, this would load the actual WASM file:
-      // language = await TreeSitter.Language.load(wasmPath);
-      console.log('Simulating language load for', languageName);
-      language = { name: languageName }; // Mock language object
+    if (!mockMode && TreeSitter) {
+      // Real Tree-sitter mode
+      await TreeSitter.init();
+      TreeSitter = TreeSitter.default || TreeSitter;
+      
+      // Create parser
+      parser = new TreeSitter();
+      
+      // Load language grammar
+      if (wasmPath) {
+        // For development, we'll simulate loading a language
+        // In production, this would load the actual WASM file:
+        // language = await TreeSitter.Language.load(wasmPath);
+        console.log('Simulating language load for', languageName);
+        language = { name: languageName }; // Mock language object
+      }
+      
+      // Set language on parser (in production)
+      // parser.setLanguage(language);
+    } else {
+      // Mock mode - simulate initialization
+      console.log('Mock mode: Simulating parser initialization for', languageName);
+      language = { name: languageName, mock: true };
     }
-    
-    // Set language on parser (in production)
-    // parser.setLanguage(language);
     
     self.postMessage({
       type: 'init-success',
       payload: {
         languageName,
-        ready: true
+        ready: true,
+        mockMode: mockMode
       }
     });
     
@@ -77,7 +91,8 @@ async function initializeParser(payload) {
     self.postMessage({
       type: 'init-error',
       payload: {
-        error: error.message
+        error: error.message,
+        mockMode: mockMode
       }
     });
   }
@@ -86,16 +101,22 @@ async function initializeParser(payload) {
 async function parseText(payload) {
   const { text, languageName } = payload;
   
-  if (!parser) {
+  if (!language) {
     throw new Error('Parser not initialized');
   }
   
-  console.log('Parsing text of length:', text.length);
+  console.log('Parsing text of length:', text.length, mockMode ? '(mock mode)' : '(real mode)');
   
   try {
-    // For development, we'll create a mock AST
-    // In production, this would be: tree = parser.parse(text);
-    tree = createMockAST(text, languageName);
+    if (!mockMode && parser) {
+      // Real Tree-sitter parsing (when available)
+      // tree = parser.parse(text);
+      // For now, still using mock until we have real WASM files
+      tree = createMockAST(text, languageName);
+    } else {
+      // Mock mode parsing
+      tree = createMockAST(text, languageName);
+    }
     
     // Serialize the tree for sending back to main thread
     const serializedTree = serializeTree(tree);
@@ -104,7 +125,8 @@ async function parseText(payload) {
       type: 'parse-success',
       payload: {
         ast: serializedTree,
-        languageName
+        languageName,
+        mockMode: mockMode
       }
     });
     
@@ -113,7 +135,8 @@ async function parseText(payload) {
     self.postMessage({
       type: 'parse-error',
       payload: {
-        error: error.message
+        error: error.message,
+        mockMode: mockMode
       }
     });
   }
@@ -122,28 +145,33 @@ async function parseText(payload) {
 async function editAndReparse(payload) {
   const { edit, text } = payload;
   
-  if (!parser || !tree) {
+  if ((!mockMode && (!parser || !tree)) || (mockMode && !language)) {
     // Fall back to full parse
     await parseText({ text, languageName: language?.name || 'unknown' });
     return;
   }
   
-  console.log('Incremental reparse with edit:', edit);
+  console.log('Incremental reparse with edit:', edit, mockMode ? '(mock mode)' : '(real mode)');
   
   try {
-    // For development, simulate incremental parsing
-    // In production, this would be:
-    // tree.edit(edit);
-    // tree = parser.parse(text, tree);
-    
-    tree = createMockAST(text, language?.name || 'unknown');
+    if (!mockMode && parser && tree) {
+      // Real incremental parsing (when available)
+      // tree.edit(edit);
+      // tree = parser.parse(text, tree);
+      // For now, still using mock until we have real WASM files
+      tree = createMockAST(text, language?.name || 'unknown');
+    } else {
+      // Mock mode incremental parsing
+      tree = createMockAST(text, language?.name || 'unknown');
+    }
     
     const serializedTree = serializeTree(tree);
     
     self.postMessage({
       type: 'edit-success',
       payload: {
-        ast: serializedTree
+        ast: serializedTree,
+        mockMode: mockMode
       }
     });
     
@@ -152,7 +180,8 @@ async function editAndReparse(payload) {
     self.postMessage({
       type: 'edit-error',
       payload: {
-        error: error.message
+        error: error.message,
+        mockMode: mockMode
       }
     });
   }
@@ -163,16 +192,21 @@ function createMockAST(text, languageName) {
   const lines = text.split('\n');
   const nodes = [];
   
-  // Simple keyword detection for JavaScript
+  // Enhanced JavaScript syntax detection
   if (languageName === 'javascript') {
-    const keywords = ['const', 'let', 'var', 'function', 'class', 'if', 'else', 'for', 'while', 'return'];
-    const strings = [];
-    const comments = [];
+    const keywords = [
+      'const', 'let', 'var', 'function', 'class', 'if', 'else', 'for', 'while', 'return',
+      'import', 'export', 'from', 'default', 'async', 'await', 'try', 'catch', 'finally',
+      'throw', 'new', 'this', 'super', 'extends', 'static', 'get', 'set', 'typeof',
+      'instanceof', 'in', 'of', 'do', 'switch', 'case', 'break', 'continue', 'null',
+      'undefined', 'true', 'false', 'with', 'debugger', 'delete', 'void'
+    ];
     
     lines.forEach((line, lineIndex) => {
-      let columnIndex = 0;
+      // Skip if line is empty
+      if (line.trim().length === 0) return;
       
-      // Find keywords
+      // Find keywords (improved word boundary detection)
       keywords.forEach(keyword => {
         let index = 0;
         while ((index = line.indexOf(keyword, index)) !== -1) {
@@ -188,7 +222,7 @@ function createMockAST(text, languageName) {
         }
       });
       
-      // Find strings
+      // Find strings (improved handling)
       let inString = false;
       let stringStart = 0;
       let quote = '';
@@ -207,6 +241,18 @@ function createMockAST(text, languageName) {
           });
           inString = false;
         }
+      }
+      
+      // Find numbers
+      const numberRegex = /\b\d+(\.\d+)?\b/g;
+      let numberMatch;
+      while ((numberMatch = numberRegex.exec(line)) !== null) {
+        nodes.push({
+          type: 'number',
+          text: numberMatch[0],
+          startPosition: { row: lineIndex, column: numberMatch.index },
+          endPosition: { row: lineIndex, column: numberMatch.index + numberMatch[0].length }
+        });
       }
       
       // Find comments
@@ -232,7 +278,8 @@ function createMockAST(text, languageName) {
 function isWordBoundary(text, start, length) {
   const before = start > 0 ? text[start - 1] : ' ';
   const after = start + length < text.length ? text[start + length] : ' ';
-  return /\s/.test(before) && /\s/.test(after);
+  // Check that the character before is not alphanumeric and after is not alphanumeric
+  return !/[a-zA-Z0-9_$]/.test(before) && !/[a-zA-Z0-9_$]/.test(after);
 }
 
 function serializeTree(tree) {
@@ -244,4 +291,4 @@ function serializeTree(tree) {
   };
 }
 
-console.log('Parser worker initialized');
+console.log('Parser worker initialized in', mockMode ? 'mock mode' : 'real mode');

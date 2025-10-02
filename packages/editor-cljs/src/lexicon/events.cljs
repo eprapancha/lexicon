@@ -204,8 +204,7 @@
                        key)]
         (str 
          (when ctrl? "C-")
-         (when meta? "M-")
-         (when (and alt? (not meta?)) "A-")  ; Alt without Meta
+         (when (or meta? alt?) "M-")  ; Map both Meta and Alt keys to M- (Emacs convention)
          base-key)))))
 
 (defn parse-key-sequence
@@ -1307,6 +1306,16 @@
                 (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))
         :fx [[:dispatch [:parser/request-parse buffer-id]]]}))))
 
+;; Debug helper to check parser worker state
+(rf/reg-event-fx
+ :debug/check-parser-state
+ (fn [{:keys [db]} [_]]
+   (let [worker (get-in db [:system :parser-worker])
+         worker-ready? (get-in db [:system :parser-worker-ready?])]
+     (println "🔍 Debug - Parser worker:" (if worker "exists" "missing") 
+              "Ready:" worker-ready?)
+     {:db db})))
+
 (rf/reg-event-db
  :file-read-failure
  (fn [db [_ {:keys [error message]}]]
@@ -1480,8 +1489,14 @@
              
              (println "Unknown worker message type:" msg-type)))))
      
-     ;; Store worker instance
-     (rf/dispatch [:parser/worker-created worker]))))
+     ;; Store worker instance and initialize
+     (rf/dispatch [:parser/worker-created worker])
+     
+     ;; Initialize the worker with a default language
+     (.postMessage worker 
+       (clj->js {:type "init"
+                 :payload {:languageName "javascript"
+                           :wasmPath "/grammars/tree-sitter-javascript.wasm"}})))))
 
 (rf/reg-event-db
  :parser/worker-created
@@ -1493,7 +1508,7 @@
  :parser/worker-ready
  (fn [db [_ payload]]
    "Mark parser worker as ready"
-   (println "Parser worker ready for language:" (:languageName payload))
+   (println "✅ Parser worker ready for language:" (:languageName payload))
    (assoc-in db [:system :parser-worker-ready?] true)))
 
 (rf/reg-event-db
@@ -1529,14 +1544,27 @@
          worker (get-in db [:system :parser-worker])
          worker-ready? (get-in db [:system :parser-worker-ready?])]
      
+     (println "🎯 Parse request for buffer" buffer-id 
+              "Language:" language 
+              "Worker:" (if worker "exists" "missing")
+              "Ready:" worker-ready?
+              "WASM:" (if wasm-instance "exists" "missing"))
+     
      (if (and worker worker-ready? wasm-instance)
        (let [text (.getText wasm-instance)]
+         (println "📝 Sending text to parser, length:" (count text))
          (.postMessage worker 
            (clj->js {:type "parse"
                      :payload {:text text
                                :languageName (name language)}}))
          {:db db})
-       {:db db}))))
+       (do
+         (println "❌ Cannot parse - missing:" 
+                  (cond 
+                    (not worker) "worker"
+                    (not worker-ready?) "worker-ready"
+                    (not wasm-instance) "wasm-instance"))
+         {:db db})))))
 
 (rf/reg-event-fx
  :parser/request-incremental-parse

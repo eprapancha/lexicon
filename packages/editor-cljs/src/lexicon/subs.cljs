@@ -342,6 +342,7 @@
                               "keyword" "syntax-keyword"
                               "string" "syntax-string"
                               "comment" "syntax-comment"
+                              "number" "syntax-number"
                               "syntax-default")]
               {:from {:line (:row startPosition) :column (:column startPosition)}
                :to {:line (:row endPosition) :column (:column endPosition)}
