@@ -365,3 +365,45 @@
      (if ast
        (ast-to-decorations ast)
        []))))
+
+(defn lsp-diagnostics-to-decorations
+  "Convert LSP diagnostics to decoration maps"
+  [diagnostics]
+  (mapv (fn [diagnostic]
+          (let [{:keys [range severity message]} diagnostic
+                {:keys [start end]} range
+                css-class (case severity
+                           1 "diagnostic-error"     ; Error
+                           2 "diagnostic-warning"   ; Warning
+                           3 "diagnostic-info"      ; Information
+                           4 "diagnostic-hint"      ; Hint
+                           "diagnostic-error")      ; Default to error
+                severity-class (case severity
+                               1 "severity-error"
+                               2 "severity-warning"
+                               3 "severity-info"
+                               4 "severity-hint"
+                               "severity-error")]
+            {:from {:line (:line start) :column (:character start)}
+             :to {:line (:line end) :column (:character end)}
+             :class css-class
+             :severity-class severity-class
+             :message message
+             :type :diagnostic}))
+        diagnostics))
+
+(rf/reg-sub
+ ::diagnostic-decorations
+ :<- [:active-buffer]
+ (fn [active-buffer _]
+   "Get diagnostic decorations from LSP diagnostics"
+   (let [diagnostics (:diagnostics active-buffer [])]
+     (lsp-diagnostics-to-decorations diagnostics))))
+
+(rf/reg-sub
+ ::all-decorations
+ :<- [::highlight-decorations]
+ :<- [::diagnostic-decorations]
+ (fn [[highlight-decorations diagnostic-decorations] _]
+   "Merge syntax highlighting and diagnostic decorations"
+   (concat highlight-decorations diagnostic-decorations)))

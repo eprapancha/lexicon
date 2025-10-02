@@ -16,6 +16,53 @@
             width: 100vw;
             height: 100vh;
         }
+        
+        /* Syntax highlighting */
+        .syntax-keyword { color: #569cd6; }
+        .syntax-string { color: #ce9178; }
+        .syntax-comment { color: #6a9955; }
+        .syntax-number { color: #b5cea8; }
+        
+        /* LSP Diagnostic styles */
+        .diagnostic-error {
+            border-bottom: 2px wavy #f14c4c;
+            position: relative;
+        }
+        
+        .diagnostic-warning {
+            border-bottom: 2px wavy #ff8c00;
+            position: relative;
+        }
+        
+        .diagnostic-info {
+            border-bottom: 2px wavy #4fc1ff;
+            position: relative;
+        }
+        
+        .diagnostic-hint {
+            border-bottom: 2px wavy #d7ba7d;
+            position: relative;
+        }
+        
+        /* Tooltip styles for diagnostic messages */
+        .diagnostic-error:hover::after,
+        .diagnostic-warning:hover::after,
+        .diagnostic-info:hover::after,
+        .diagnostic-hint:hover::after {
+            content: attr(data-message);
+            position: absolute;
+            background: #2d2d30;
+            color: #cccccc;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+            top: 100%;
+            left: 0;
+            margin-top: 2px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
     </style>
 </head>
 <body>

@@ -40,7 +40,8 @@
             (assoc-in [:system :wasm-constructor] constructor)
             (assoc-in [:buffers 1 :wasm-instance] instance))
     :fx [[:dispatch [:initialize-buffer-cursor 1]]
-         [:parser/start-worker {:worker-path "/parser-worker.js"}]]}))
+         [:parser/start-worker {:worker-path "/parser-worker.js"}]
+         [:dispatch [:ws/connect]]]}))
 
 ;; -- FSM State Management --
 
@@ -887,27 +888,27 @@
    "Handle successful transaction completion"
    (println "✅ Queue: Transaction success. Patch JSON:" patch-json)
    (try
-     (let [patch (js->clj (js/JSON.parse patch-json) :keywordize-keys true)
-           active-window (get (:windows db) (:active-window-id db))
+     (let [patch            (js->clj (js/JSON.parse patch-json) :keywordize-keys true)
+           active-window    (get (:windows db) (:active-window-id db))
            active-buffer-id (:buffer-id active-window)
-           new-cursor (:cursor-position patch)
+           new-cursor       (:cursor-position patch)
            
            ;; Calculate cursor position based on operation if not provided
            current-cursor (get-in db [:ui :cursor-position] 0)
-           final-cursor (or new-cursor 
-                           (case (:op operation)
-                             :insert (+ current-cursor (count (:text operation)))
-                             :delete-backward (max 0 (dec current-cursor))
-                             :delete-forward current-cursor
-                             :delete-range (:start operation)
-                             current-cursor))
+           final-cursor   (or new-cursor 
+                              (case (:op operation)
+                                :insert          (+ current-cursor (count (:text operation)))
+                                :delete-backward (max 0 (dec current-cursor))
+                                :delete-forward  current-cursor
+                                :delete-range    (:start operation)
+                                current-cursor))
            
            _ (println "🎯 Transaction result - operation:" (:op operation) "current cursor:" current-cursor "final cursor:" final-cursor)
            
            ;; Calculate line/column coordinates for the new cursor position
            ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
-           text (when wasm-instance (.getText wasm-instance))
-           line-col (when text (linear-pos-to-line-col text final-cursor))
+           text              (when wasm-instance (.getText wasm-instance))
+           line-col          (when text (linear-pos-to-line-col text final-cursor))
            
            updated-db (-> db
                           ;; Remove completed operation from queue
@@ -928,15 +929,16 @@
        {:db updated-db
         :fx [[:editor/process-queue updated-db]
              [:dispatch [:parser/request-incremental-parse 
-                        {:op (:op operation)
-                         :position final-cursor
-                         :text (:text operation)}]]]})
+                         {:op       (:op operation)
+                          :position final-cursor
+                          :text     (:text operation)}]]
+             [:dispatch [:lsp/on-buffer-changed active-buffer-id]]]})
      (catch js/Error error
        (println "❌ Error processing transaction success:" error)
        ;; Clear in-flight flag and continue processing
        (let [updated-db (-> db
-                           (update :transaction-queue rest)
-                           (assoc :transaction-in-flight? false))]
+                            (update :transaction-queue rest)
+                            (assoc :transaction-in-flight? false))]
          {:db updated-db
           :fx [[:editor/process-queue updated-db]]})))))
 
@@ -1230,15 +1232,16 @@
        (.catch (fn [error]
                  (println "Failed to create writable stream:" error))))))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :buffer-saved
- (fn [db [_ {:keys [buffer-id file-handle]}]]
+ (fn [{:keys [db]} [_ {:keys [buffer-id file-handle]}]]
    "Mark buffer as saved and update file handle"
    (let [file-name (.-name file-handle)]
-     (-> db
-         (assoc-in [:buffers buffer-id :is-modified?] false)
-         (assoc-in [:buffers buffer-id :file-handle] file-handle)
-         (assoc-in [:buffers buffer-id :name] file-name)))))
+     {:db (-> db
+              (assoc-in [:buffers buffer-id :is-modified?] false)
+              (assoc-in [:buffers buffer-id :file-handle] file-handle)
+              (assoc-in [:buffers buffer-id :name] file-name))
+      :fx [[:dispatch [:lsp/on-buffer-saved buffer-id]]]})))
 
 (rf/reg-event-fx
  :find-file
@@ -1300,11 +1303,13 @@
                        :minor-modes #{}
                        :buffer-local-vars {}
                        :ast nil
-                       :language detected-language}]
+                       :language detected-language
+                       :diagnostics []}]
        {:db (-> db
                 (assoc-in [:buffers buffer-id] new-buffer)
                 (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))
-        :fx [[:dispatch [:parser/request-parse buffer-id]]]}))))
+        :fx [[:dispatch [:parser/request-parse buffer-id]]
+             [:dispatch [:lsp/on-buffer-opened buffer-id]]]}))))
 
 ;; Debug helper to check parser worker state
 (rf/reg-event-fx
@@ -1587,6 +1592,137 @@
        ;; Fall back to full parse
        {:fx [[:dispatch [:parser/request-parse active-buffer-id]]]}))))
 
+;; -- WebSocket Bridge Communication --
+
+(rf/reg-fx
+ :ws/connect
+ (fn [{:keys [url on-open on-message on-close on-error]}]
+   "Create WebSocket connection to lexicon-bridge server"
+   (when (and url (not (get-in @re-frame.db/app-db [:bridge :ws])))
+     (try
+       (let [ws (js/WebSocket. url)]
+         ;; Store the WebSocket immediately to prevent duplicate connections
+         (rf/dispatch [:ws/connecting ws])
+         
+         (set! (.-onopen ws) 
+               (fn [event]
+                 (rf/dispatch [:ws/opened event])))
+         
+         (set! (.-onmessage ws)
+               (fn [event]
+                 (let [data (js/JSON.parse (.-data event))]
+                   (rf/dispatch [:ws/message-received (js->clj data :keywordize-keys true)]))))
+         
+         (set! (.-onclose ws)
+               (fn [event]
+                 (rf/dispatch [:ws/closed {:code (.-code event) 
+                                           :reason (.-reason event)
+                                           :was-clean (.-wasClean event)}])))
+         
+         (set! (.-onerror ws)
+               (fn [event]
+                 (rf/dispatch [:ws/error {:error "WebSocket connection error"}]))))
+       (catch js/Error error
+         (rf/dispatch [:ws/error {:error (str "Failed to create WebSocket: " error)}]))))))
+
+(rf/reg-fx
+ :ws/send
+ (fn [{:keys [message]}]
+   "Send message over active WebSocket connection"
+   (println "🌐 WS: send effect called with message type:" (:type message))
+   (let [ws (get-in @re-frame.db/app-db [:bridge :ws])
+         status (get-in @re-frame.db/app-db [:bridge :status])]
+     (println "🌐 WS: Connection status:" status "WebSocket exists:" (boolean ws))
+     (println "🌐 WS: WebSocket readyState:" (when ws (.-readyState ws)))
+     (println "🌐 WS: WebSocket URL:" (when ws (.-url ws)))
+     (if (and ws (= status :connected))
+       (try
+         (println "🌐 WS: Sending message:" message)
+         (.send ws (js/JSON.stringify (clj->js message)))
+         (println "🌐 WS: Message sent successfully to:" (when ws (.-url ws)))
+         (catch js/Error error
+           (println "❌ WS: Failed to send WebSocket message:" error)
+           (rf/dispatch [:ws/error {:error (str "Send failed: " error)}])))
+       (println "❌ WS: Cannot send message - WebSocket not connected. Status:" status)))))
+
+;; WebSocket Event Handlers
+
+(rf/reg-event-db
+ :ws/connecting
+ (fn [db [_ ws]]
+   "Set WebSocket connection status to connecting"
+   (-> db
+       (assoc-in [:bridge :ws] ws)
+       (assoc-in [:bridge :status] :connecting))))
+
+(rf/reg-event-db
+ :ws/opened
+ (fn [db [_ event]]
+   "Handle WebSocket connection opened"
+   (println "✅ Connected to lexicon-bridge")
+   (-> db
+       (assoc-in [:bridge :status] :connected)
+       (assoc-in [:bridge :retry-count] 0))))
+
+(rf/reg-event-fx
+ :ws/closed
+ (fn [{:keys [db]} [_ {:keys [code reason was-clean]}]]
+   "Handle WebSocket connection closed"
+   (println "🔌 WebSocket connection closed. Code:" code "Reason:" reason "Clean:" was-clean)
+   (let [retry-count (get-in db [:bridge :retry-count] 0)
+         max-retries (get-in db [:bridge :max-retries] 5)]
+     {:db (-> db
+              (assoc-in [:bridge :ws] nil)
+              (assoc-in [:bridge :status] :disconnected))
+      :fx (if (< retry-count max-retries)
+            [[:dispatch-later {:ms 2000 :dispatch [:ws/connect]}]]
+            [])})))
+
+(rf/reg-event-fx
+ :ws/error
+ (fn [{:keys [db]} [_ {:keys [error]}]]
+   "Handle WebSocket error"
+   (println "❌ WebSocket error:" error)
+   (let [retry-count (get-in db [:bridge :retry-count] 0)
+         max-retries (get-in db [:bridge :max-retries] 5)]
+     {:db (-> db
+              (assoc-in [:bridge :status] :disconnected)
+              (update-in [:bridge :retry-count] inc))
+      :fx (if (< retry-count max-retries)
+            [[:dispatch-later {:ms 3000 :dispatch [:ws/connect]}]]
+            [])})))
+
+(rf/reg-event-fx
+ :ws/connect
+ (fn [{:keys [db]} [_]]
+   "Initiate WebSocket connection to bridge"
+   (let [url (get-in db [:bridge :url])]
+     {:fx [[:ws/connect {:url url}]]})))
+
+(rf/reg-event-fx
+ :ws/message-received
+ (fn [{:keys [db]} [_ message]]
+   "Handle incoming WebSocket message from bridge"
+   (let [msg-type (:type message)]
+     (case msg-type
+       "lsp/started" 
+       {:fx [[:dispatch [:lsp/server-started message]]]}
+       
+       "lsp/stopped"
+       {:fx [[:dispatch [:lsp/server-stopped message]]]}
+       
+       "lsp/message"
+       {:fx [[:dispatch [:lsp/message-received message]]]}
+       
+       "error"
+       (do
+         (println "Bridge error:" (:message message))
+         {:db db})
+       
+       ;; Unknown message type
+       (do
+         (println "Unknown bridge message type:" msg-type)
+         {:db db})))))
 
 ;; -- Execute Extended Command (M-x) Implementation --
 
@@ -1649,15 +1785,15 @@
  :yank
  (fn [{:keys [db]} [_]]
    "Yank (paste) the most recent kill"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window    (get (:windows db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
-         active-buffer (get (:buffers db) active-buffer-id)
-         wasm-instance (:wasm-instance active-buffer)
-         kill-ring (:kill-ring db)
-         cursor-pos (get-in db [:ui :cursor-position])]
+         active-buffer    (get (:buffers db) active-buffer-id)
+         wasm-instance    (:wasm-instance active-buffer)
+         kill-ring        (:kill-ring db)
+         cursor-pos       (get-in db [:ui :cursor-position])]
      
      (if (and wasm-instance (seq kill-ring))
        (let [text-to-yank (first kill-ring)]
          {:fx [[:dispatch [:editor/queue-transaction 
-                          {:op :insert :text text-to-yank}]]]})
+                           {:op :insert :text text-to-yank}]]]})
        {:db db}))))

@@ -166,8 +166,10 @@
             (when (seq text-before)
               (swap! segments conj [:span text-before]))
             
-            ;; Add decorated text
-            (swap! segments conj [:span {:class (:class decoration)} decorated-text])
+            ;; Add decorated text with attributes for diagnostic decorations
+            (let [span-attrs (cond-> {:class (:class decoration)}
+                               (:message decoration) (assoc :data-message (:message decoration)))]
+              (swap! segments conj [:span span-attrs decorated-text]))
             
             ;; Update position
             (reset! current-pos end-col)))
@@ -186,7 +188,7 @@
   (let [visible-lines @(rf/subscribe [::subs/visible-lines])
         line-height @(rf/subscribe [:line-height])
         viewport @(rf/subscribe [::subs/viewport])
-        decorations @(rf/subscribe [::subs/highlight-decorations])]
+        decorations @(rf/subscribe [::subs/all-decorations])]
     
     [:div.text-pane
      {:style {:position "absolute"
