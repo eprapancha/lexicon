@@ -142,12 +142,51 @@
             :outline "none"
             :z-index "9999"}}])
 
+(defn apply-decorations-to-line
+  "Apply syntax highlighting decorations to a line of text"
+  [line-text line-number decorations]
+  (let [line-decorations (filter #(= (:line (:from %)) line-number) decorations)]
+    (if (empty? line-decorations)
+      ;; No decorations, return plain text
+      [:span.line-content 
+       {:style {:color "#d4d4d4"}}
+       line-text]
+      ;; Apply decorations
+      (let [segments (atom [])
+            current-pos (atom 0)]
+        
+        ;; Sort decorations by column position
+        (doseq [decoration (sort-by #(get-in % [:from :column]) line-decorations)]
+          (let [start-col (get-in decoration [:from :column])
+                end-col (get-in decoration [:to :column])
+                text-before (subs line-text @current-pos start-col)
+                decorated-text (subs line-text start-col end-col)]
+            
+            ;; Add text before decoration
+            (when (seq text-before)
+              (swap! segments conj [:span text-before]))
+            
+            ;; Add decorated text
+            (swap! segments conj [:span {:class (:class decoration)} decorated-text])
+            
+            ;; Update position
+            (reset! current-pos end-col)))
+        
+        ;; Add remaining text
+        (let [remaining-text (subs line-text @current-pos)]
+          (when (seq remaining-text)
+            (swap! segments conj [:span remaining-text])))
+        
+        ;; Return combined segments
+        (into [:span.line-content {:style {:color "#d4d4d4"}}] @segments)))))
+
 (defn custom-rendered-pane
-  "Read-only text display using divs per line"
+  "Read-only text display using divs per line with syntax highlighting"
   []
   (let [visible-lines @(rf/subscribe [::subs/visible-lines])
         line-height @(rf/subscribe [:line-height])
-        viewport @(rf/subscribe [::subs/viewport])]
+        viewport @(rf/subscribe [::subs/viewport])
+        decorations @(rf/subscribe [::subs/highlight-decorations])]
     
     [:div.text-pane
      {:style {:position "absolute"
@@ -172,19 +211,18 @@
                :padding "8px"
                :z-index "1"}}  ; Ensure it's layered properly
       
-      ;; Render visible lines as individual divs
+      ;; Render visible lines as individual divs with syntax highlighting
       (when visible-lines
         (let [lines (clojure.string/split visible-lines #"\n")]
           (for [[idx line] (map-indexed vector lines)]
-            ^{:key (+ (:start-line viewport 0) idx)}
-            [:div.text-line
-             {:style {:min-height (str line-height "px")
-                      :position "relative"
-                      :z-index "2"
-                      :color "#d4d4d4"}}  ; Ensure text color is set
-             [:span.line-content 
-              {:style {:color "#d4d4d4"}}  ; Explicit text color
-              line]])))]]))
+            (let [line-number (+ (:start-line viewport 0) idx)]
+              ^{:key line-number}
+              [:div.text-line
+               {:style {:min-height (str line-height "px")
+                        :position "relative"
+                        :z-index "2"
+                        :color "#d4d4d4"}}
+               (apply-decorations-to-line line line-number decorations)]))))]]))
 
 (defn custom-cursor
   "Custom cursor element positioned by our application state"
@@ -343,36 +381,96 @@
        ^{:key (:id buffer)}
        [buffer-tab buffer (= (:id buffer) (:id active-buffer))])]))
 
+(defn minibuffer-view
+  "Minibuffer component for interactive commands (M-x style)"
+  []
+  (let [minibuffer @(rf/subscribe [:minibuffer])
+        input-ref (atom nil)]
+    
+    (when (:active? minibuffer)
+      [:div.minibuffer
+       {:style {:position "fixed"
+                :bottom "0"
+                :left "0"
+                :right "0"
+                :height "32px"
+                :background-color "#1e1e1e"
+                :color "#cccccc"
+                :font-size "14px"
+                :font-family "monospace"
+                :display "flex"
+                :align-items "center"
+                :padding "0 10px"
+                :border-top "1px solid #3e3e42"
+                :z-index "1000"}}
+       
+       [:span.minibuffer-prompt
+        {:style {:margin-right "4px"
+                 :color "#569cd6"}}
+        (:prompt minibuffer)]
+       
+       [:input.minibuffer-input
+        {:ref (fn [element]
+                (when element
+                  (reset! input-ref element)
+                  (.focus element)))
+         :type "text"
+         :value (:input minibuffer)
+         :on-change (fn [e]
+                      (rf/dispatch [:minibuffer/set-input (.. e -target -value)]))
+         :on-key-down (fn [e]
+                        (let [key (.-key e)]
+                          (cond
+                            (= key "Enter")
+                            (do
+                              (.preventDefault e)
+                              (rf/dispatch [:minibuffer/confirm]))
+                            
+                            (or (= key "Escape") 
+                                (and (.-ctrlKey e) (= key "g")))
+                            (do
+                              (.preventDefault e)
+                              (rf/dispatch (:on-cancel minibuffer))))))
+         :style {:background-color "transparent"
+                 :border "none"
+                 :outline "none"
+                 :color "#cccccc"
+                 :font-size "14px"
+                 :font-family "monospace"
+                 :flex "1"}}]])))
+
 (defn status-bar
   "Display editor status information"
   []
   (let [cursor-pos @(rf/subscribe [:cursor-position])
         buffer-length @(rf/subscribe [:buffer-length])
         buffer-modified? @(rf/subscribe [:buffer-modified?])
-        active-buffer @(rf/subscribe [:active-buffer])]
+        active-buffer @(rf/subscribe [:active-buffer])
+        minibuffer @(rf/subscribe [:minibuffer])]
     
-    [:div.status-bar
-     {:style {:position "fixed"
-              :bottom "0"
-              :left "0"
-              :right "0"
-              :height "24px"
-              :background-color "#2d2d30"
-              :color "#cccccc"
-              :font-size "12px"
-              :font-family "monospace"
-              :display "flex"
-              :align-items "center"
-              :padding "0 10px"
-              :border-top "1px solid #3e3e42"}}
-     
-     [:span.buffer-info
-      (str (:name active-buffer) (when buffer-modified? " •"))]
-     
-     [:div.spacer {:style {:flex "1"}}]
-     
-     [:span.cursor-info
-      (str "Pos: " cursor-pos " | Len: " buffer-length)]]))
+    (when-not (:active? minibuffer)
+      [:div.status-bar
+       {:style {:position "fixed"
+                :bottom "0"
+                :left "0"
+                :right "0"
+                :height "24px"
+                :background-color "#2d2d30"
+                :color "#cccccc"
+                :font-size "12px"
+                :font-family "monospace"
+                :display "flex"
+                :align-items "center"
+                :padding "0 10px"
+                :border-top "1px solid #3e3e42"}}
+       
+       [:span.buffer-info
+        (str (:name active-buffer) (when buffer-modified? " •"))]
+       
+       [:div.spacer {:style {:flex "1"}}]
+       
+       [:span.cursor-info
+        (str "Pos: " cursor-pos " | Len: " buffer-length)]])))
 
 (defn main-app
   "Main application component"
@@ -382,12 +480,16 @@
         wasm-error    @(rf/subscribe [:wasm-error])]
     
     [:<>
-     ;; Add CSS for cursor animation
+     ;; Add CSS for cursor animation and syntax highlighting
      [:style
       "@keyframes cursor-blink {
          0%, 50% { opacity: 1; }
          51%, 100% { opacity: 0; }
-       }"]
+       }
+       .syntax-keyword { color: #569cd6; font-weight: bold; }
+       .syntax-string { color: #ce9178; }
+       .syntax-comment { color: #6a9955; font-style: italic; }
+       .syntax-default { color: #d4d4d4; }"]
      
      [:div.lexicon-app
       {:style {:width          "100%"
@@ -421,7 +523,8 @@
         [:<>
          [buffer-tabs]
          [editor-view]
-         [status-bar]]
+         [status-bar]
+         [minibuffer-view]]
         
         :else
         [:div.error "Failed to initialize editor"])]]))

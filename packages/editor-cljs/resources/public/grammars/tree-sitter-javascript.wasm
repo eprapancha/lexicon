@@ -1,0 +1,3 @@
+# Mock WASM file for Tree-sitter JavaScript
+# This is a placeholder file for development purposes
+# In production, this would be the actual compiled Tree-sitter WASM binary
