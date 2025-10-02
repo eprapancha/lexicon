@@ -46,3 +46,4 @@ tmp/
 temp/
 /packages/editor-cljs/syntax-test.cljs
 /packages/editor-cljs/out/
+/.cider-repl-history

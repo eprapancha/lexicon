@@ -7,9 +7,9 @@ let tree = null;
 let language = null;
 let mockMode = false; // Flag to indicate we're running in mock mode
 
-// Try to import web-tree-sitter, fall back to mock mode if it fails
+// Try to import web-tree-sitter from local bundle, fall back to mock mode if it fails
 try {
-  importScripts('https://tree-sitter.github.io/tree-sitter/assets/js/tree-sitter.js');
+  importScripts('/js/web-tree-sitter.js');
   console.log('Tree-sitter library loaded successfully');
 } catch (error) {
   console.warn('Failed to load Tree-sitter library, falling back to mock mode:', error);

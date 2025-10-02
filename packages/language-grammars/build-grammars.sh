@@ -22,8 +22,11 @@ for grammar_dir in */; do
         # Build the grammar to WebAssembly
         if command -v tree-sitter &> /dev/null; then
             tree-sitter build --wasm
-        else
+        elif command -v npx &> /dev/null; then
             npx tree-sitter build --wasm
+        else
+            echo "Warning: Neither tree-sitter nor npx found, skipping $grammar_dir"
+            continue
         fi
         
         cd ..
