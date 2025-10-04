@@ -145,7 +145,12 @@
 (defn apply-decorations-to-line
   "Apply syntax highlighting decorations to a line of text"
   [line-text line-number decorations]
-  (let [line-decorations (filter #(= (:line (:from %)) line-number) decorations)]
+  (let [line-decorations (filter #(= (:line (:from %)) line-number) decorations)
+        line-diagnostics (filter #(= (:type %) :diagnostic) line-decorations)]
+    (when (= line-number 15)
+      (println "🎨 LINE 15: Found" (count line-decorations) "total decorations," (count line-diagnostics) "diagnostic decorations")
+      (when (> (count line-diagnostics) 0)
+        (println "🎨 LINE 15: First diagnostic decoration:" (first line-diagnostics))))
     (if (empty? line-decorations)
       ;; No decorations, return plain text
       [:span.line-content 
@@ -169,6 +174,8 @@
             ;; Add decorated text with attributes for diagnostic decorations
             (let [span-attrs (cond-> {:class (:class decoration)}
                                (:message decoration) (assoc :data-message (:message decoration)))]
+              (when (= (:type decoration) :diagnostic)
+                (println "🎨 DECORATION: Creating diagnostic span with attrs:" span-attrs "text:" (pr-str decorated-text)))
               (swap! segments conj [:span span-attrs decorated-text]))
             
             ;; Update position
@@ -189,6 +196,10 @@
         line-height @(rf/subscribe [:line-height])
         viewport @(rf/subscribe [::subs/viewport])
         decorations @(rf/subscribe [::subs/all-decorations])]
+    (println "🎨 VIEW: custom-rendered-pane called! Line height:" line-height "Viewport:" viewport)
+    (println "🎨 VIEW: Rendering with" (count decorations) "total decorations")
+    (let [diagnostic-decorations (filter #(= (:type %) :diagnostic) decorations)]
+      (println "🎨 VIEW: Including" (count diagnostic-decorations) "diagnostic decorations"))
     
     [:div.text-pane
      {:style {:position "absolute"

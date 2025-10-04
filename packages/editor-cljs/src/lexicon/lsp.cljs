@@ -1,7 +1,8 @@
 (ns lexicon.lsp
   (:require [re-frame.core :as rf]
             [clojure.core.async :as async :refer [<!]]
-            [clojure.core.async.interop :refer-macros [<p!]])
+            [clojure.core.async.interop :refer-macros [<p!]]
+            [clojure.string])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
 ;; -- LSP Message ID Management --
@@ -67,7 +68,8 @@
                             :trace                 "off"
                             :workspaceFolders      nil}
          message           (make-lsp-request "initialize" initialize-params)]
-     {:fx [[:ws/send {:message {:type "lsp/start" :language (name language)}}]]})))
+     {:fx [[:ws/send {:message {:type "lsp/start" :language (name language)}}]
+           [:dispatch-later {:ms 1000 :dispatch [:lsp/send-message {:language language :message message}]}]]})))
 
 (rf/reg-event-fx
  :lsp/initialized
@@ -87,23 +89,33 @@
          file-name     (:name buffer)]
      (println "📄 LSP: didOpen details - wasm:" (boolean wasm-instance) "language:" language "file:" file-name)
      (if (and wasm-instance (not= language :text))
-       (let [text        (.getText wasm-instance)
-             language-id (case language
-                           :javascript "javascript"
-                           :typescript "typescript"
-                           :python     "python"
-                           :rust       "rust"
-                           :clojure    "clojure"
-                           "text")
-             params      {:textDocument {:uri        (file-uri-from-path file-name)
-                                         :languageId language-id
-                                         :version    1
-                                         :text       text}}
-             message     (make-lsp-notification "textDocument/didOpen" params)]
-         (println "📤 LSP: Starting LSP server and sending didOpen for" language-id "to" file-name "text length:" (count text))
-         {:fx [[:dispatch [:lsp/initialize language]]
-               [:dispatch-later {:ms       2000 
-                                 :dispatch [:lsp/send-message {:language language :message message}]}]]})
+       (let [already-open? (get-in db [:buffers buffer-id :lsp-open?] false)]
+         (if already-open?
+           (do
+             (println "📄 LSP: File already open in LSP, skipping didOpen for" file-name)
+             {:db db})
+           (let [text        (.getText wasm-instance)
+                 language-id (case language
+                               :javascript "javascript"
+                               :typescript "typescript"
+                               :python     "python"
+                               :rust       "rust"
+                               :clojure    "clojure"
+                               "text")
+                 file-uri    (file-uri-from-path file-name)
+                 close-params {:textDocument {:uri file-uri}}
+                 close-message (make-lsp-notification "textDocument/didClose" close-params)
+                 open-params  {:textDocument {:uri        file-uri
+                                              :languageId language-id
+                                              :version    1
+                                              :text       text}}
+                 open-message (make-lsp-notification "textDocument/didOpen" open-params)]
+             (println "📤 LSP: Sending didClose+didOpen - file-name:" file-name "-> URI:" file-uri)
+             (println "📤 LSP: Starting LSP server and sending didClose+didOpen for" language-id "to" file-name "text length:" (count text))
+             {:db (assoc-in db [:buffers buffer-id :lsp-open?] true)
+              :fx [[:dispatch [:lsp/initialize language]]
+                   [:dispatch-later {:ms 2000 :dispatch [:lsp/send-message {:language language :message close-message}]}]
+                   [:dispatch-later {:ms 2100 :dispatch [:lsp/send-message {:language language :message open-message}]}]]})))
        (do
          (println "❌ LSP: Cannot send didOpen - wasm:" (boolean wasm-instance) "language:" language)
          {:db db})))))
@@ -137,6 +149,21 @@
        (let [params  {:textDocument {:uri (file-uri-from-path file-name)}}
              message (make-lsp-notification "textDocument/didSave" params)]
          {:fx [[:dispatch [:lsp/send-message {:language language :message message}]]]})))))
+
+(rf/reg-event-fx
+ :lsp/did-close
+ (fn [{:keys [db]} [_ buffer-id]]
+   "Send textDocument/didClose notification when buffer is closed"
+   (let [buffer        (get-in db [:buffers buffer-id])
+         language      (:language buffer)
+         file-name     (:name buffer)
+         already-open? (get-in db [:buffers buffer-id :lsp-open?] false)]
+     (when (and already-open? (not= language :text))
+       (let [params  {:textDocument {:uri (file-uri-from-path file-name)}}
+             message (make-lsp-notification "textDocument/didClose" params)]
+         (println "📤 LSP: Sending didClose for" file-name)
+         {:db (assoc-in db [:buffers buffer-id :lsp-open?] false)
+          :fx [[:dispatch [:lsp/send-message {:language language :message message}]]]})))))
 
 ;; -- LSP Effect Handlers --
 
@@ -212,8 +239,16 @@
    (let [;; Find buffer by matching file name with URI
          buffer-id (->> (:buffers db)
                         (filter (fn [[id buffer]]
-                                  (let [file-name (:name buffer)]
-                                    (= uri (file-uri-from-path file-name)))))
+                                  (let [file-name (:name buffer)
+                                        expected-uri (file-uri-from-path file-name)
+                                        ;; Handle trailing slash by normalizing both URIs
+                                        normalize-uri (fn [u] (clojure.string/replace u #"/$" ""))
+                                        normalized-received (normalize-uri uri)
+                                        normalized-expected (normalize-uri expected-uri)
+                                        matches? (= normalized-received normalized-expected)]
+                                    (println "🔍 Comparing URI:" uri "with expected:" expected-uri)
+                                    (println "🔍 Normalized:" normalized-received "vs" normalized-expected "matches:" matches?)
+                                    matches?)))
                         first
                         first)]
      (if buffer-id

@@ -397,8 +397,13 @@
  :<- [:active-buffer]
  (fn [active-buffer _]
    "Get diagnostic decorations from LSP diagnostics"
-   (let [diagnostics (:diagnostics active-buffer [])]
-     (lsp-diagnostics-to-decorations diagnostics))))
+   (let [diagnostics (:diagnostics active-buffer [])
+         decorations (lsp-diagnostics-to-decorations diagnostics)]
+     (println "🔍 DIAGNOSTICS: Found" (count diagnostics) "diagnostics, generated" (count decorations) "decorations")
+     (when (> (count diagnostics) 0)
+       (println "🔍 DIAGNOSTICS: First diagnostic:" (first diagnostics))
+       (println "🔍 DIAGNOSTICS: First decoration:" (first decorations)))
+     decorations)))
 
 (rf/reg-sub
  ::all-decorations
