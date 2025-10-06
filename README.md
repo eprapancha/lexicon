@@ -94,23 +94,41 @@ We are building Lexicon through a series of well-defined, incremental phases. Ea
   * ✅ **Custom cursor rendering** - CSS-animated cursor positioned by application state
   * ✅ **Race condition elimination** - Robust transaction processing prevents text corruption
 
-#### **L1.5: The "Modern Powerhouse" 🔄 NEXT**
+#### **L1.5: Security Hardening & Modal Editing Foundation ✅ COMPLETE**
 
-* **Goal**: To integrate advanced, language-aware editing features.  
+* **Goal**: Critical security hardening of bridge infrastructure and implementation of modal editing foundation.
+* **Status**: **COMPLETE**. Production-ready security measures implemented alongside comprehensive modal editing architecture.
+* **Key Achievements**:
+  * ✅ **Critical Security Hardening** - Bridge server now production-ready with comprehensive security measures
+    * ✅ Command injection mitigation using `child_process.spawn()` with argument arrays
+    * ✅ Input validation and language ID whitelisting 
+    * ✅ Ticket-based WebSocket authentication system with TTL expiration
+    * ✅ Enhanced logging with tier-of-origin classification (`:client`, `:bridge-server`, `:lsp-process`)
+  * ✅ **Modal Editing Foundation (Phase L2.1)** - Complete FSM-based architecture for Vim/Evil-style editing
+    * ✅ Pure FSM state management with comprehensive modal state schema
+    * ✅ Metaprogramming DSL with `def-evil-motion`, `def-evil-operator`, `def-evil-text-object` macros
+    * ✅ Operator-motion composition engine implementing Vim's "verb-noun" grammar
+    * ✅ Centralized keymap registry with context-aware precedence resolution
+    * ✅ State lifecycle hooks via re-frame interceptors (on-enter/on-exit)
+
+#### **L1.6: The "Modern Powerhouse" 🔄 NEXT**
+
+* **Goal**: To integrate advanced, language-aware editing features with secure LSP bridge.
 * **Key Features**:  
   * 🔲 Asynchronous, incremental parsing with **Tree-sitter** in a Web Worker
   * 🔲 Declarative, query-based syntax highlighting and code folding
   * 🔲 Language-aware editing commands (smart indentation, navigation)
+  * 🔲 Production LSP integration with security-hardened bridge
 
-#### **L1.6: The System-Integrated IDE**
+#### **L1.7: The System-Integrated IDE**
 
 * **Goal**: To break out of the browser sandbox by connecting to native developer tools.  
 * **Key Features**:  
-  * 🔲 The `backend-server`, a local companion process that bridges the browser to the OS via WebSockets
+  * ✅ The `lexicon-bridge`, a secure local companion process that bridges the browser to the OS via WebSockets
   * 🔲 Full Language Server Protocol (LSP) integration for features like diagnostics, code completion, and go-to-definition
   * 🔲 Integration with external tools (git, linters, formatters)
 
-#### **L1.7: The Collaborative Cloud IDE**
+#### **L1.8: The Collaborative Cloud IDE**
 
 * **Goal**: To evolve Lexicon into a full-fledged, multiuser, cloud-native development environment.  
 * **Key Features**:  
@@ -123,6 +141,7 @@ We are building Lexicon through a series of well-defined, incremental phases. Ea
 ### Prerequisites
 - **Nix** (for reproducible development environment)
 - **Modern browser** with WebAssembly and File System Access API support
+- **Node.js** and **npm** (for bridge server and development)
 
 ### Quick Start
 ```bash
@@ -133,51 +152,172 @@ cd lexicon
 # Start the development environment
 npm run dev
 
+# In a separate terminal, start the secure bridge server
+cd packages/lexicon-bridge
+node index.js
+
 # Open your browser to http://localhost:8080
 ```
 
-### Testing the Emacs Foundation
-Once running, you can test the new extensible features:
+## **Available Commands and Functionality**
 
-**Keyboard Shortcuts:**
-- `Ctrl+X Ctrl+F` - Open file
-- `Ctrl+X Ctrl+S` - Save file
+### Core Editor Features (Currently Working)
+- ✅ **Multi-buffer text editing** with persistent file operations
+- ✅ **Emacs-style keyboard shortcuts** and command system
+- ✅ **Kill ring (clipboard history)** with region-based operations
+- ✅ **Buffer tabs** with modified indicators
+- ✅ **Status bar** with cursor position and buffer information
+- ✅ **Transaction-based undo/redo** system
+- ✅ **Race-condition-free input handling**
+
+### Security Infrastructure (Production Ready)
+- ✅ **Secure WebSocket bridge** with ticket-based authentication
+- ✅ **Command injection protection** via process spawning safeguards
+- ✅ **Input validation** and language whitelisting
+- ✅ **Comprehensive logging** with security audit trails
+
+### Modal Editing Foundation (Ready for Implementation)
+- ✅ **FSM state management** for Normal/Insert/Visual modes
+- ✅ **Operator-motion composition** (Vim's "verb-noun" grammar)
+- ✅ **Metaprogramming macros** for defining Evil-style commands
+- ✅ **Context-aware keymap system** with precedence resolution
+- ✅ **State lifecycle hooks** for mode transitions
+
+### Keyboard Shortcuts
+**Emacs-style Navigation:**
+- `Ctrl+X Ctrl+F` - Open file (find-file)
+- `Ctrl+X Ctrl+S` - Save file (save-buffer)
 - `Ctrl+G` - Cancel operation
 - `Ctrl+W` - Kill region (cut)
-- `Ctrl+Y` - Yank (paste)
+- `Ctrl+Y` - Yank (paste from kill ring)
+- `Ctrl+Space` - Set mark (begin selection)
+- `Alt+W` - Copy region to kill ring
 
-**Programmatic Commands** (via browser console):
+**Buffer Management:**
+- `Ctrl+X B` - Switch buffer
+- `Ctrl+X K` - Kill buffer
+- `Ctrl+X 1` - Delete other windows
+- `Ctrl+X 2` - Split window horizontally
+
+### Programmatic API
+**Execute Commands:**
 ```javascript
-// Execute commands
-window.re_frame.core.dispatch(cljs.core.vector('execute-command', 'find-file'));
+// Execute built-in commands
+window.re_frame.core.dispatch(['execute-command', 'find-file']);
+window.re_frame.core.dispatch(['execute-command', 'save-buffer']);
 
-// Register custom commands
-window.re_frame.core.dispatch(cljs.core.vector('register-command', 'my-command', 
-  cljs.core.js__GT_clj({docstring: "My command", handler: cljs.core.vector('show-error', 'Hello!')})));
+// FSM state transitions (modal editing)
+window.re_frame.core.dispatch(['fsm/transition-to', 'normal']);
+window.re_frame.core.dispatch(['fsm/transition-to', 'insert']);
+```
+
+**Register Custom Commands:**
+```javascript
+// Register new commands
+window.re_frame.core.dispatch(['register-command', 'my-command', {
+  docstring: "My custom command",
+  handler: ['show-message', 'Hello from custom command!']
+}]);
+```
+
+**Modal Editing Macros (ClojureScript):**
+```clojure
+;; Define Evil-style motions
+(def-evil-motion word-forward [count]
+  "Move forward by word"
+  {:repeatable true :jump-list true}
+  (move-by-word count))
+
+;; Define Evil-style operators  
+(def-evil-operator delete-operator [motion]
+  "Delete text specified by motion"
+  {:needs-motion true}
+  (delete-range (motion)))
+```
+
+### Bridge Server Features
+**Security:**
+- ✅ **Ticket-based WebSocket authentication** (port 30304)
+- ✅ **Secure process spawning** with argument validation
+- ✅ **CORS protection** for localhost origins only
+- ✅ **Request logging** with security classifications
+
+**LSP Integration (Ready):**
+- ✅ **Language server process management**
+- ✅ **JSON-RPC message forwarding**
+- ✅ **Multi-client support** per language server
+- ✅ **Graceful process cleanup**
+
+### Development Commands
+```bash
+# Build and test the editor
+npm run build:editor
+
+# Run ClojureScript compilation
+npm run cljs:compile
+
+# Build Rust/WASM engine
+npm run build:engine
+
+# Start bridge server with debugging
+cd packages/lexicon-bridge && node index.js
+
+# Run tests (when available)
+npm test
 ```
 
 ## **Architecture Overview**
 
-Lexicon's architecture reflects its dual nature: a high-performance text engine paired with a flexible, extensible user interface.
+Lexicon's architecture reflects its multi-layered approach: a security-hardened bridge, FSM-based modal editing, and high-performance text engine.
 
 ```
 ┌─────────────────────────────────────────┐
-│           ClojureScript UI              │
-│         (re-frame + Reagent)            │
-├─────────────────────────────────────────┤
-│         Command & Keymap System         │
-│        (Emacs-style extensibility)      │
-├─────────────────────────────────────────┤
-│        Hidden Textarea + Custom DOM     │
-│      (Race-condition-free input)        │
-├─────────────────────────────────────────┤
-│         Transaction Queue System        │
-│       (Serialized text operations)      │
-├─────────────────────────────────────────┤
-│            WebAssembly API              │
-├─────────────────────────────────────────┤
-│           Rust Text Engine              │
-│         (Piece tree + UTF-8)            │
+│        Browser (localhost:8080)         │
+│     ┌─────────────────────────────────┐ │
+│     │     ClojureScript UI            │ │
+│     │   (re-frame + Reagent)          │ │
+│     ├─────────────────────────────────┤ │
+│     │   FSM Modal Editing System     │ │
+│     │ (Evil/Vim-style architecture)  │ │
+│     ├─────────────────────────────────┤ │
+│     │   Command & Keymap System      │ │
+│     │  (Emacs-style extensibility)   │ │
+│     ├─────────────────────────────────┤ │
+│     │  Hidden Textarea + Custom DOM  │ │
+│     │   (Race-condition-free input)  │ │
+│     ├─────────────────────────────────┤ │
+│     │   Transaction Queue System     │ │
+│     │  (Serialized text operations)  │ │
+│     ├─────────────────────────────────┤ │
+│     │      WebAssembly API           │ │
+│     ├─────────────────────────────────┤ │
+│     │     Rust Text Engine           │ │
+│     │    (Piece tree + UTF-8)        │ │
+│     └─────────────────────────────────┘ │
+└─────────────────────────────────────────┘
+            │ WebSocket + HTTPS
+            │ (Ticket Authentication)
+┌─────────────────────────────────────────┐
+│     Lexicon Bridge (localhost:30303)    │
+│   ┌─────────────────────────────────┐   │
+│   │   Security Layer               │   │
+│   │ • Ticket-based auth            │   │
+│   │ • Input validation             │   │
+│   │ • Command injection protection │   │
+│   ├─────────────────────────────────┤   │
+│   │   LSP Process Management       │   │
+│   │ • Multi-language support       │   │
+│   │ • JSON-RPC forwarding          │   │
+│   │ • Process lifecycle            │   │
+│   └─────────────────────────────────┘   │
+└─────────────────────────────────────────┘
+            │ Native Process Spawning
+┌─────────────────────────────────────────┐
+│        Language Servers                 │
+│  • typescript-language-server          │
+│  • rust-analyzer                       │
+│  • clojure-lsp                          │
+│  • pylsp                                │
 └─────────────────────────────────────────┘
 ```
 
@@ -197,12 +337,39 @@ There are opportunities to contribute at every level of the stack.
 lexicon/
 ├── packages/
 │   ├── editor-cljs/          # ClojureScript UI and extensibility layer
-│   ├── lexicon-engine/       # Rust/WASM text engine
+│   │   ├── src/lexicon/
+│   │   │   ├── db.cljs       # App state schema with FSM modal editing
+│   │   │   ├── events.cljs   # Event handlers with security & modal editing
+│   │   │   ├── macros.clj    # Evil-style metaprogramming DSL
+│   │   │   ├── fsm/          # Modal editing FSM architecture
+│   │   │   ├── command/      # Command dispatcher with operator-motion
+│   │   │   └── keymaps/      # Context-aware keymap registry
+│   ├── lexicon-engine/       # Rust/WASM text engine with piece tree
+│   ├── lexicon-bridge/       # Security-hardened LSP bridge server
+│   │   └── index.js          # WebSocket + HTTP server with auth
 │   ├── language-grammars/    # Tree-sitter parsing grammars
-│   └── backend-server/       # Clojure companion server
+│   └── backend-server/       # Future: Clojure orchestration server
 ├── scripts/                  # Development and build scripts
 └── docs/                     # Architecture and API documentation
 ```
+
+## **Security Considerations**
+
+### Production-Ready Security Features
+- ✅ **Command Injection Protection**: All process spawning uses `child_process.spawn()` with argument arrays
+- ✅ **Input Validation**: Language IDs validated against whitelist before process spawning
+- ✅ **Authentication**: Ticket-based WebSocket authentication with TTL expiration (30s)
+- ✅ **CORS Protection**: HTTP endpoints restricted to localhost origins only
+- ✅ **Audit Logging**: Comprehensive request logging with tier-of-origin classification
+- ✅ **Process Isolation**: Language servers run in separate processes with stdio piping
+- ✅ **Resource Cleanup**: Graceful process termination and resource management
+
+### Security Architecture
+The lexicon-bridge operates as a **security-first** local development server:
+1. **HTTP Ticket Endpoint** (port 30304): Issues time-limited authentication tickets
+2. **WebSocket Bridge** (port 30303): Validates tickets before allowing connections
+3. **Process Management**: Safely spawns and manages language server processes
+4. **Request Validation**: All inputs validated and sanitized before processing
 
 ## **License**
 
