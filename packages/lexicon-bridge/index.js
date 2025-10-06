@@ -22,7 +22,7 @@ class LSPBridge {
       const parsedUrl = require('url').parse(req.url, true);
       
       // Enable CORS for localhost only
-      res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
+      res.setHeader('Access-Control-Allow-Origin', 'http://localhost:8080');
       res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
       
