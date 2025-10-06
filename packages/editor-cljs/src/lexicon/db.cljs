@@ -38,10 +38,25 @@
    :editor {:mode :normal                             ; Editor mode (normal, insert, etc.)
             :keymap :emacs                             ; Active keymap
             :commands {}}                              ; Available commands
-   :fsm {:current-state :insert                        ; Active FSM state (normal, insert, visual, etc.)
-         :previous-state nil                           ; Previous state for transitions
+   :fsm {:current-state :normal                        ; Active FSM state (normal, insert, visual, etc.)
+         :previous-state nil                           ; Previous state for transitions  
+         :state-context {}                             ; Additional context data for states
          :operator-pending nil                         ; Pending operator function (e.g., delete command d)
-         :active-keymap :normal-keymap}                ; Current keymap for the active state
+         :motion-pending nil                           ; Pending motion for operator-motion composition
+         :count-register nil                           ; Numeric prefix for commands (e.g., 3dw)
+         :register-name nil                            ; Named register for operations (e.g., "ay)
+         :active-keymap :normal-keymap                 ; Current keymap for the active state
+         :selection-mode :normal                       ; Visual selection mode (:normal, :line, :block)
+         :selection-anchor nil                         ; Anchor point for visual selections
+         :last-search {:pattern nil                    ; Last search pattern
+                       :direction :forward             ; Search direction
+                       :case-sensitive false}          ; Case sensitivity
+         :repeat-last-command nil                      ; Last command for . (repeat) operation
+         :macro-recording nil                          ; Currently recording macro (register name)
+         :macro-registry {}                            ; Stored macros by register name
+         :command-history []                           ; Command history for debugging
+         :transition-hooks {:enter {}                  ; State enter hooks by state
+                           :exit {}}}                   ; State exit hooks by state
    :keymaps {:global {"C-x C-f" :find-file             ; Find file
                      "C-x C-s" :save-buffer            ; Save buffer
                      "C-x C-c" :save-buffers-kill-emacs ; Quit emacs

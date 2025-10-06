@@ -1,67 +1,76 @@
 (ns lexicon.macros
-  "Metaprogramming DSL for defining evil-mode style commands with rich metadata")
+  "Metaprogramming macros for defining Evil-style motions and operators")
 
 (defmacro def-evil-motion
-  "Define a motion command with evil-mode style metadata.
-  
-  Usage:
-    (def-evil-motion my-forward-word [count]
-      \"Move forward by count words\"
-      {:type :exclusive :jump? false}
-      (do-forward-word count))
-  
-  Args:
-    name - symbol name for the motion function
-    args - argument vector (typically includes count)
-    docstring - documentation string
-    metadata-map - map containing motion metadata:
-      :type - :exclusive, :inclusive, or :line
-      :jump? - boolean indicating if this is a jump motion
-    body - implementation body"
-  [name args docstring metadata-map & body]
-  `(def ~(with-meta name (assoc metadata-map 
-                                :motion? true
-                                :doc docstring))
-     (fn ~args ~@body)))
+  "Define an Evil-style motion command with metadata."
+  [name args docstring metadata & body]
+  (let [motion-metadata (merge {:type :motion
+                               :motion? true}
+                              metadata)]
+    `(do
+       (defn ~name ~args
+         ~docstring
+         ~@body)
+       
+       ;; Attach metadata to the function var
+       (alter-meta! (var ~name) merge ~motion-metadata)
+       
+       ;; Return the function var for further use
+       (var ~name))))
 
 (defmacro def-evil-operator
-  "Define an operator command with evil-mode style metadata.
-  
-  Usage:
-    (def-evil-operator my-delete [motion]
-      \"Delete text defined by motion\"
-      {:repeat? true}
-      (do-delete motion))
-  
-  Args:
-    name - symbol name for the operator function
-    args - argument vector (typically includes motion)
-    docstring - documentation string
-    metadata-map - map containing operator metadata:
-      :repeat? - boolean indicating if this operator can be repeated
-    body - implementation body"
-  [name args docstring metadata-map & body]
-  `(def ~(with-meta name (assoc metadata-map 
-                                :operator? true
-                                :type :operator
-                                :doc docstring))
-     (fn ~args ~@body)))
+  "Define an Evil-style operator command with metadata."
+  [name args docstring metadata & body]
+  (let [operator-metadata (merge {:type :operator
+                                 :operator? true}
+                                metadata)]
+    `(do
+       (defn ~name ~args
+         ~docstring
+         ~@body)
+       
+       ;; Attach metadata to the function var
+       (alter-meta! (var ~name) merge ~operator-metadata)
+       
+       ;; Return the function var for further use
+       (var ~name))))
+
+(defmacro def-evil-text-object
+  "Define an Evil-style text object with metadata."
+  [name args docstring metadata & body]
+  (let [text-object-metadata (merge {:type :text-object
+                                    :text-object? true}
+                                   metadata)]
+    `(do
+       (defn ~name ~args
+         ~docstring
+         ~@body)
+       
+       ;; Attach metadata to the function var
+       (alter-meta! (var ~name) merge ~text-object-metadata)
+       
+       ;; Return the function var for further use
+       (var ~name))))
 
 (defmacro def-evil-command
-  "Define a general evil command with metadata.
-  
-  Usage:
-    (def-evil-command my-command []
-      \"A simple command\"
-      {:type :command}
-      (do-something))
-  
-  Args:
-    name - symbol name for the command function
-    args - argument vector
-    docstring - documentation string
-    metadata-map - map containing command metadata
-    body - implementation body"
-  [name args docstring metadata-map & body]
-  `(def ~(with-meta name (assoc metadata-map :doc docstring))
-     (fn ~args ~@body)))
+  "Define a general Evil-style command with metadata."
+  [name args docstring metadata & body]
+  (let [command-metadata (merge {:type :command
+                                :command? true}
+                               metadata)]
+    `(do
+       (defn ~name ~args
+         ~docstring
+         ~@body)
+       
+       ;; Attach metadata to the function var
+       (alter-meta! (var ~name) merge ~command-metadata)
+       
+       ;; Return the function var for further use
+       (var ~name))))
+
+(defmacro with-count
+  "Execute body with count variable bound to current count register."
+  [count-sym & body]
+  `(let [~count-sym (or (get-in @re-frame.db/app-db [:fsm :count-register]) 1)]
+     ~@body))

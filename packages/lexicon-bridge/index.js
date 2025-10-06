@@ -7,9 +7,70 @@ const path = require('path');
 class LSPBridge {
   constructor(port = 30303) {
     this.port = port;
+    this.httpPort = port + 1; // HTTP server on port + 1 (30304)
     this.lspProcesses = new Map(); // language -> { process, clients }
     this.clients = new Set();
+    this.pendingTickets = new Map(); // ticket -> { timestamp, used }
+    this.ticketTTL = 30000; // 30 seconds
+    this.setupHttpServer();
     this.setupServer();
+    this.startTicketCleanup();
+  }
+
+  setupHttpServer() {
+    this.httpServer = require('http').createServer((req, res) => {
+      const parsedUrl = require('url').parse(req.url, true);
+      
+      // Enable CORS for localhost only
+      res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      
+      if (req.method === 'OPTIONS') {
+        res.writeHead(200);
+        res.end();
+        return;
+      }
+      
+      if (req.method === 'POST' && parsedUrl.pathname === '/api/ws-ticket') {
+        this.handleTicketRequest(req, res);
+      } else {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: 'Not found' }));
+      }
+    });
+    
+    this.httpServer.listen(this.httpPort, 'localhost', () => {
+      console.log(`🎫 :bridge-server Ticket server listening on localhost:${this.httpPort}`);
+    });
+  }
+
+  handleTicketRequest(req, res) {
+    // For now, we'll generate tickets for any request
+    // In a real implementation, this would validate HTTP session/auth
+    const ticket = require('crypto').randomBytes(32).toString('hex');
+    const timestamp = Date.now();
+    
+    this.pendingTickets.set(ticket, {
+      timestamp,
+      used: false
+    });
+    
+    console.log(`🎫 :bridge-server Generated WebSocket ticket: ${ticket.substring(0, 8)}...`);
+    
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ticket }));
+  }
+
+  startTicketCleanup() {
+    setInterval(() => {
+      const now = Date.now();
+      for (const [ticket, info] of this.pendingTickets.entries()) {
+        if (now - info.timestamp > this.ticketTTL) {
+          this.pendingTickets.delete(ticket);
+        }
+      }
+    }, 10000); // Clean up every 10 seconds
   }
 
   setupServer() {
@@ -243,7 +304,7 @@ class LSPBridge {
       const contentLengthMatch = headers.match(/Content-Length: (\d+)/);
       
       if (!contentLengthMatch) {
-        console.error(`⚠️ No Content-Length header found in: ${headers}`);
+        console.error(`⚠️ :bridge-server No Content-Length header found in: ${headers}`);
         break;
       }
 
@@ -253,7 +314,7 @@ class LSPBridge {
 
       if (remaining.length < messageEnd) {
         // Incomplete message, keep everything in buffer
-        console.log(`⚠️ Incomplete message: need ${messageEnd} bytes, have ${remaining.length}`);
+        console.log(`⚠️ :bridge-server Incomplete message: need ${messageEnd} bytes, have ${remaining.length}`);
         break;
       }
 
@@ -261,11 +322,11 @@ class LSPBridge {
       
       try {
         const message = JSON.parse(messageContent);
-        console.log(`✅ Parsed complete JSON-RPC message: ${message.method || 'response'}`);
+        console.log(`✅ :bridge-server Parsed complete JSON-RPC message: ${message.method || 'response'}`);
         messages.push(message);
       } catch (error) {
-        console.error('❌ Failed to parse JSON-RPC message:', error);
-        console.error('❌ Message content was:', messageContent);
+        console.error('❌ :bridge-server Failed to parse JSON-RPC message:', error);
+        console.error('❌ :bridge-server Message content was:', messageContent);
       }
 
       remaining = remaining.substring(messageEnd);

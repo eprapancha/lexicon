@@ -87,12 +87,12 @@
          wasm-instance (:wasm-instance buffer)
          language      (:language buffer)
          file-name     (:name buffer)]
-     (println "📄 LSP: didOpen details - wasm:" (boolean wasm-instance) "language:" language "file:" file-name)
+     (println "📄 :client LSP didOpen details - wasm:" (boolean wasm-instance) "language:" language "file:" file-name)
      (if (and wasm-instance (not= language :text))
        (let [already-open? (get-in db [:buffers buffer-id :lsp-open?] false)]
          (if already-open?
            (do
-             (println "📄 LSP: File already open in LSP, skipping didOpen for" file-name)
+             (println "📄 :client LSP file already open, skipping didOpen for" file-name)
              {:db db})
            (let [text        (.getText wasm-instance)
                  language-id (case language
@@ -110,14 +110,13 @@
                                               :version    1
                                               :text       text}}
                  open-message (make-lsp-notification "textDocument/didOpen" open-params)]
-             (println "📤 LSP: Sending didClose+didOpen - file-name:" file-name "-> URI:" file-uri)
-             (println "📤 LSP: Starting LSP server and sending didClose+didOpen for" language-id "to" file-name "text length:" (count text))
+             (println "📤 :client LSP sending didClose+didOpen - file:" file-name "-> URI:" file-uri "length:" (count text))
              {:db (assoc-in db [:buffers buffer-id :lsp-open?] true)
               :fx [[:dispatch [:lsp/initialize language]]
                    [:dispatch-later {:ms 2000 :dispatch [:lsp/send-message {:language language :message close-message}]}]
                    [:dispatch-later {:ms 2100 :dispatch [:lsp/send-message {:language language :message open-message}]}]]})))
        (do
-         (println "❌ LSP: Cannot send didOpen - wasm:" (boolean wasm-instance) "language:" language)
+         (println "❌ :client LSP cannot send didOpen - wasm:" (boolean wasm-instance) "language:" language)
          {:db db})))))
 
 (rf/reg-event-fx
@@ -171,7 +170,7 @@
  :lsp/send-message
  (fn [_ [_ {:keys [language message]}]]
    "Send LSP message through WebSocket bridge"
-   (println "🌉 LSP: send-message effect called - language:" language "message type:" (:method message))
+   (println "🌉 :client LSP send-message - language:" language "method:" (:method message))
    {:fx [[:ws/send {:message {:type     "lsp/message"
                               :language (name language)
                               :data     message}}]]}))
@@ -182,7 +181,7 @@
  :lsp/server-started
  (fn [{:keys [db]} [_ {:keys [language status]}]]
    "Handle LSP server started notification"
-   (println "🚀 LSP server started for" language "- status:" status)
+   (println "🚀 :client LSP server started for" language "- status:" status)
    (if (= status "success")
      {:fx [[:dispatch [:lsp/initialize language]]]}
      {:db db})))
@@ -191,7 +190,7 @@
  :lsp/server-stopped
  (fn [db [_ {:keys [language code]}]]
    "Handle LSP server stopped notification"
-   (println "🛑 LSP server stopped for" language "- exit code:" code)
+   (println "🛑 :client LSP server stopped for" language "- exit code:" code)
    db))
 
 (rf/reg-event-fx
@@ -200,34 +199,34 @@
    "Handle incoming LSP message from server"
    (let [method (:method data)
          params (:params data)]
-     (println "📨 LSP: Received message method:" method "from" language)
+     (println "📨 :client LSP received message method:" method "from" language)
      (case method
        "textDocument/publishDiagnostics"
        (do
-         (println "📋 LSP: Received diagnostics for:" (:uri params))
+         (println "📋 :client LSP received diagnostics for:" (:uri params))
          {:fx [[:dispatch [:diagnostics/update 
                           {:uri         (:uri params)
                            :diagnostics (:diagnostics params)}]]]})
        
        "window/logMessage"
        (do
-         (println "📝 LSP: Log message:" (:message params))
+         (println "📝 :client LSP log message:" (:message params))
          {:db db})
        
        "window/showMessage"
        (do
-         (println "💬 LSP: Show message:" (:message params))
+         (println "💬 :client LSP show message:" (:message params))
          {:db db})
        
        ;; Response to initialize request or other responses
        (if (and (:result data) (:id data))
          (do
-           (println "✅ LSP: Initialize response received")
+           (println "✅ :client LSP initialize response received")
            {:fx [[:dispatch [:lsp/initialized language]]]})
          
          ;; Default case - log unknown methods
          (do
-           (println "📨 LSP: Unknown message method:" method "from" language)
+           (println "📨 :client LSP unknown message method:" method "from" language)
            {:db db}))))))
 
 ;; -- Diagnostics Management --
@@ -253,10 +252,10 @@
                         first)]
      (if buffer-id
        (do
-         (println "📋 Updating diagnostics for buffer" buffer-id ":" (count diagnostics) "items")
+         (println "📋 :client Updating diagnostics for buffer" buffer-id ":" (count diagnostics) "items")
          (assoc-in db [:buffers buffer-id :diagnostics] diagnostics))
        (do
-         (println "⚠️  No buffer found for URI:" uri)
+         (println "⚠️ :client No buffer found for URI:" uri)
          db)))))
 
 ;; -- Debounced Change Notifications --
@@ -288,15 +287,13 @@
    "Handle buffer opened for LSP integration"
    (let [buffer   (get-in db [:buffers buffer-id])
          language (:language buffer)]
-     (println "🔍 LSP: Buffer opened - ID:" buffer-id "Language:" language "Buffer:" (keys buffer))
-     (println "🔍 LSP: Bridge status:" (get-in db [:bridge :status]))
+     (println "🔍 :client LSP buffer opened - ID:" buffer-id "Language:" language "Bridge status:" (get-in db [:bridge :status]))
      (if (not= language :text)
        (do
-         (println "🚀 LSP: Starting LSP for language:" language)
-         (println "🚀 LSP: Dispatching [:lsp/did-open" buffer-id "]")
+         (println "🚀 :client LSP starting for language:" language)
          {:fx [[:dispatch [:lsp/did-open buffer-id]]]})
        (do
-         (println "⚠️ LSP: Skipping text files")
+         (println "⚠️ :client LSP skipping text files")
          {:db db})))))
 
 (rf/reg-event-fx

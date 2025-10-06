@@ -1597,32 +1597,54 @@
 (rf/reg-fx
  :ws/connect
  (fn [{:keys [url on-open on-message on-close on-error]}]
-   "Create WebSocket connection to lexicon-bridge server"
+   "Create WebSocket connection to lexicon-bridge server with ticket authentication"
    (when (and url (not (get-in @re-frame.db/app-db [:bridge :ws])))
      (try
-       (let [ws (js/WebSocket. url)]
-         ;; Store the WebSocket immediately to prevent duplicate connections
-         (rf/dispatch [:ws/connecting ws])
+       ;; First, get a ticket from the HTTP server
+       (-> (js/fetch "http://localhost:30304/api/ws-ticket" 
+                     (clj->js {:method "POST"
+                               :headers {"Content-Type" "application/json"}}))
+           (.then (fn [response]
+                    (if (.-ok response)
+                      (.json response)
+                      (throw (js/Error. (str "Failed to get ticket: " (.-status response)))))))
+           (.then (fn [ticket-data]
+                    (let [ticket (.-ticket ^js ticket-data)
+                          ws-url (str url "?ticket=" ticket)
+                          ws (js/WebSocket. ws-url)]
+                      (println "🎫 :client Got WebSocket ticket:" (subs ticket 0 8) "...")
+                      
+                      ;; Store the WebSocket immediately to prevent duplicate connections
+                      (rf/dispatch [:ws/connecting ws])
          
-         (set! (.-onopen ws) 
-               (fn [event]
-                 (rf/dispatch [:ws/opened event])))
-         
-         (set! (.-onmessage ws)
-               (fn [event]
-                 (let [data (js/JSON.parse (.-data event))]
-                   (rf/dispatch [:ws/message-received (js->clj data :keywordize-keys true)]))))
-         
-         (set! (.-onclose ws)
-               (fn [event]
-                 (rf/dispatch [:ws/closed {:code (.-code event) 
-                                           :reason (.-reason event)
-                                           :was-clean (.-wasClean event)}])))
-         
-         (set! (.-onerror ws)
-               (fn [event]
-                 (rf/dispatch [:ws/error {:error "WebSocket connection error"}]))))
+                      (set! (.-onopen ws) 
+                            (fn [event]
+                              (println "✅ :client WebSocket connected with valid ticket")
+                              (rf/dispatch [:ws/opened event])))
+                      
+                      (set! (.-onmessage ws)
+                            (fn [event]
+                              (let [data (js/JSON.parse (.-data event))]
+                                (println "📨 :client Received message:" (.-type data))
+                                (rf/dispatch [:ws/message-received (js->clj data :keywordize-keys true)]))))
+                      
+                      (set! (.-onclose ws)
+                            (fn [event]
+                              (println "🔌 :client WebSocket closed. Code:" (.-code event) "Reason:" (.-reason event))
+                              (rf/dispatch [:ws/closed {:code (.-code event) 
+                                                        :reason (.-reason event)
+                                                        :was-clean (.-wasClean event)}])))
+                      
+                      (set! (.-onerror ws)
+                            (fn [event]
+                              (println "❌ :client WebSocket error")
+                              (rf/dispatch [:ws/error {:error "WebSocket connection error"}])))
+                      )))
+           (.catch (fn [error]
+                     (println "❌ :client Failed to get WebSocket ticket:" error)
+                     (rf/dispatch [:ws/error {:error (str "Ticket acquisition failed: " error)}]))))
        (catch js/Error error
+         (println "❌ :client WebSocket creation error:" error)
          (rf/dispatch [:ws/error {:error (str "Failed to create WebSocket: " error)}]))))))
 
 (rf/reg-fx
@@ -1695,8 +1717,9 @@
 (rf/reg-event-fx
  :ws/connect
  (fn [{:keys [db]} [_]]
-   "Initiate WebSocket connection to bridge"
-   (let [url (get-in db [:bridge :url])]
+   "Initiate WebSocket connection to bridge with ticket authentication"
+   (let [url (get-in db [:bridge :url] "ws://localhost:30303")]
+     (println "🌉 :client Initiating WebSocket connection to:" url)
      {:fx [[:ws/connect {:url url}]]})))
 
 (rf/reg-event-fx
