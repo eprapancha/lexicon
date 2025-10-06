@@ -5,6 +5,7 @@
             [clojure.string :as str]
             [lexicon.events]    ; Load event handlers
             [lexicon.subs]      ; Load subscriptions
+            [lexicon.lsp]       ; Load LSP handlers
             [lexicon.views :as views]))
 
 (defn load-wasm-module

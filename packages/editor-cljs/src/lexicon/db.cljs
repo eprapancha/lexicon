@@ -15,7 +15,8 @@
                 :minor-modes #{}                       ; Set of active minor modes
                 :buffer-local-vars {}                  ; Mode-specific configuration
                 :ast nil                               ; Parsed AST from Tree-sitter
-                :language :text}}                      ; Language for syntax highlighting
+                :language :text                        ; Language for syntax highlighting
+                :diagnostics []}}                      ; LSP diagnostics for this buffer
    :windows {1 {:id 1, :buffer-id 1, :viewport {:start-line 0, :end-line const/DEFAULT_VIEWPORT_LINES}}}
    :active-window-id 1
    :line-height const/DEFAULT_LINE_HEIGHT
@@ -37,10 +38,25 @@
    :editor {:mode :normal                             ; Editor mode (normal, insert, etc.)
             :keymap :emacs                             ; Active keymap
             :commands {}}                              ; Available commands
-   :fsm {:current-state :insert                        ; Active FSM state (normal, insert, visual, etc.)
-         :previous-state nil                           ; Previous state for transitions
+   :fsm {:current-state :normal                        ; Active FSM state (normal, insert, visual, etc.)
+         :previous-state nil                           ; Previous state for transitions  
+         :state-context {}                             ; Additional context data for states
          :operator-pending nil                         ; Pending operator function (e.g., delete command d)
-         :active-keymap :normal-keymap}                ; Current keymap for the active state
+         :motion-pending nil                           ; Pending motion for operator-motion composition
+         :count-register nil                           ; Numeric prefix for commands (e.g., 3dw)
+         :register-name nil                            ; Named register for operations (e.g., "ay)
+         :active-keymap :normal-keymap                 ; Current keymap for the active state
+         :selection-mode :normal                       ; Visual selection mode (:normal, :line, :block)
+         :selection-anchor nil                         ; Anchor point for visual selections
+         :last-search {:pattern nil                    ; Last search pattern
+                       :direction :forward             ; Search direction
+                       :case-sensitive false}          ; Case sensitivity
+         :repeat-last-command nil                      ; Last command for . (repeat) operation
+         :macro-recording nil                          ; Currently recording macro (register name)
+         :macro-registry {}                            ; Stored macros by register name
+         :command-history []                           ; Command history for debugging
+         :transition-hooks {:enter {}                  ; State enter hooks by state
+                           :exit {}}}                   ; State exit hooks by state
    :keymaps {:global {"C-x C-f" :find-file             ; Find file
                      "C-x C-s" :save-buffer            ; Save buffer
                      "C-x C-c" :save-buffers-kill-emacs ; Quit emacs
@@ -119,6 +135,11 @@
             :reconciliation-active? false              ; Prevent recursive reconciliation
             :parser-worker nil                         ; Web Worker instance for Tree-sitter
             :parser-worker-ready? false}               ; Whether parser worker is initialized
+   :bridge {:ws nil                                   ; WebSocket connection to lexicon-bridge
+            :status :disconnected                      ; Connection status (:disconnected, :connecting, :connected)
+            :url "ws://localhost:30303"                ; Bridge server URL
+            :retry-count 0                             ; Number of connection retry attempts
+            :max-retries 5}                            ; Maximum retry attempts
    :transaction-queue []                              ; Queue for pending transactions
    :transaction-in-flight? false                     ; Flag to prevent concurrent transactions
    :minibuffer {:active? false                       ; Whether minibuffer is currently active
@@ -143,7 +164,8 @@
    :minor-modes #{}
    :buffer-local-vars {}
    :ast nil                               ; Parsed AST from Tree-sitter
-   :language :text})
+   :language :text                        ; Language for syntax highlighting
+   :diagnostics []})
 
 (defn create-buffer-with-content
   "Create a new buffer with initial content"

@@ -145,7 +145,12 @@
 (defn apply-decorations-to-line
   "Apply syntax highlighting decorations to a line of text"
   [line-text line-number decorations]
-  (let [line-decorations (filter #(= (:line (:from %)) line-number) decorations)]
+  (let [line-decorations (filter #(= (:line (:from %)) line-number) decorations)
+        line-diagnostics (filter #(= (:type %) :diagnostic) line-decorations)]
+    ; (when (= line-number 15)
+    ;   (println "🎨 LINE 15: Found" (count line-decorations) "total decorations," (count line-diagnostics) "diagnostic decorations")
+    ;   (when (> (count line-diagnostics) 0)
+    ;     (println "🎨 LINE 15: First diagnostic decoration:" (first line-diagnostics))))
     (if (empty? line-decorations)
       ;; No decorations, return plain text
       [:span.line-content 
@@ -166,8 +171,12 @@
             (when (seq text-before)
               (swap! segments conj [:span text-before]))
             
-            ;; Add decorated text
-            (swap! segments conj [:span {:class (:class decoration)} decorated-text])
+            ;; Add decorated text with attributes for diagnostic decorations
+            (let [span-attrs (cond-> {:class (:class decoration)}
+                               (:message decoration) (assoc :data-message (:message decoration)))]
+              ; (when (= (:type decoration) :diagnostic)
+              ;   (println "🎨 DECORATION: Creating diagnostic span with attrs:" span-attrs "text:" (pr-str decorated-text)))
+              (swap! segments conj [:span span-attrs decorated-text]))
             
             ;; Update position
             (reset! current-pos end-col)))
@@ -180,18 +189,92 @@
         ;; Return combined segments
         (into [:span.line-content {:style {:color "#d4d4d4"}}] @segments)))))
 
+(defn editor-gutter
+  "IDE-style gutter with line numbers and diagnostic markers"
+  []
+  (let [visible-lines @(rf/subscribe [::subs/visible-lines])
+        line-height @(rf/subscribe [:line-height])
+        viewport @(rf/subscribe [::subs/viewport])
+        decorations @(rf/subscribe [::subs/all-decorations])
+        diagnostic-decorations (filter #(= (:type %) :diagnostic) decorations)]
+    
+    [:div.gutter
+     {:style {:position "absolute"
+              :top "0"
+              :left "0"
+              :width "60px"
+              :height "100%"
+              :background-color "#2d2d30"
+              :border-right "1px solid #3e3e3e"
+              :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
+              :font-size "12px"
+              :line-height (str line-height "px")
+              :color "#858585"
+              :user-select "none"
+              :z-index "10"}}
+     
+     ;; Render line numbers and markers
+     (when visible-lines
+       (let [lines (clojure.string/split visible-lines #"\n")
+             start-line (:start-line viewport 0)]
+         (map-indexed
+           (fn [idx line]
+             (let [line-num (+ start-line idx 1)
+                   line-diagnostics (filter #(= (:line (:from %)) (dec line-num)) diagnostic-decorations)
+                   has-error? (some #(= (:class %) "diagnostic-error") line-diagnostics)
+                   has-warning? (some #(= (:class %) "diagnostic-warning") line-diagnostics)
+                   has-hint? (some #(= (:class %) "diagnostic-hint") line-diagnostics)]
+               [:div.gutter-line
+                {:key line-num
+                 :style {:height (str line-height "px")
+                         :display "flex"
+                         :align-items "center"
+                         :padding-right "8px"
+                         :position "relative"}}
+                
+                ;; Diagnostic marker
+                (when (or has-error? has-warning? has-hint?)
+                  [:div.diagnostic-marker
+                   {:style {:position "absolute"
+                            :left "4px"
+                            :width "8px"
+                            :height "8px"
+                            :border-radius "50%"
+                            :background-color (cond
+                                               has-error? "#f14c4c"
+                                               has-warning? "#ff8c00"
+                                               has-hint? "#d7ba7d"
+                                               :else "#666")}}])
+                
+                ;; Line number
+                [:div.line-number
+                 {:style {:margin-left "auto"
+                          :text-align "right"
+                          :font-weight (if (or has-error? has-warning? has-hint?) "bold" "normal")
+                          :color (cond
+                                  has-error? "#f14c4c"
+                                  has-warning? "#ff8c00"
+                                  has-hint? "#d7ba7d"
+                                  :else "#858585")}}
+                 line-num]]))
+           lines)))]))
+
 (defn custom-rendered-pane
   "Read-only text display using divs per line with syntax highlighting"
   []
   (let [visible-lines @(rf/subscribe [::subs/visible-lines])
         line-height @(rf/subscribe [:line-height])
         viewport @(rf/subscribe [::subs/viewport])
-        decorations @(rf/subscribe [::subs/highlight-decorations])]
+        decorations @(rf/subscribe [::subs/all-decorations])]
+    ; (println "🎨 VIEW: custom-rendered-pane called! Line height:" line-height "Viewport:" viewport)
+    ; (println "🎨 VIEW: Rendering with" (count decorations) "total decorations")
+    ; (let [diagnostic-decorations (filter #(= (:type %) :diagnostic) decorations)]
+    ;   (println "🎨 VIEW: Including" (count diagnostic-decorations) "diagnostic decorations"))
     
     [:div.text-pane
      {:style {:position "absolute"
               :top (str (* (:start-line viewport 0) line-height) "px")
-              :left "0"
+              :left "60px"  ; Make room for gutter
               :right "0"
               :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
               :font-size "14px"
@@ -286,6 +369,9 @@
      
      ;; Hidden input handler - captures all keyboard input
      [hidden-input-handler hidden-input-ref]
+     
+     ;; Gutter with line numbers and diagnostic markers
+     [editor-gutter]
      
      ;; Custom rendered pane - displays text content
      [custom-rendered-pane]
