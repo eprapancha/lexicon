@@ -4,6 +4,8 @@
             [lexicon.db :as db]
             [lexicon.cache :as cache]
             [lexicon.constants :as const]
+            [lexicon.modes.structural :as structural]
+            [lexicon.api.export-examples :as export-examples]
             [re-frame.std-interceptors :refer [debug]])
   (:require-macros [lexicon.macros :refer [def-evil-motion def-evil-operator]]))
 
@@ -311,6 +313,22 @@
               (get-in db [:keymaps :global])))
        {:fx [[:dispatch [:set-prefix-key-state full-sequence]]]}
        
+       ;; Special handling for Enter key (smart indentation)
+       (and (= key-str "RET")
+            (= (get-in db [:fsm :current-state]) :insert))
+       (do
+         (println "✍️ Smart indented newline")
+         {:fx [[:dispatch [:smart-indent/handle-newline]]
+               [:dispatch [:clear-prefix-key-state]]]})
+       
+       ;; Special handling for closing braces (smart dedentation)
+       (and (contains? #{"}" "]" ")"} key-str)
+            (= (get-in db [:fsm :current-state]) :insert))
+       (do
+         (println "✍️ Smart dedented brace:" key-str)
+         {:fx [[:dispatch [:smart-indent/handle-closing-brace key-str]]
+               [:dispatch [:clear-prefix-key-state]]]})
+       
        ;; No binding found - check if it's a printable character for insertion
        (and (= (count key-str) 1)
             (not prefix-state)
@@ -501,7 +519,13 @@
          ;; Initialize mode commands
          [:dispatch [:initialize-mode-commands]]
          ;; Update save-buffer to use hooks
-         [:dispatch [:update-save-buffer-command]]]}))
+         [:dispatch [:update-save-buffer-command]]
+         ;; Initialize folding commands
+         [:dispatch [:initialize-folding-commands]]
+         ;; Initialize structural navigation commands
+         [:dispatch [:initialize-structural-commands]]
+         ;; Initialize export commands
+         [:dispatch [:initialize-export-commands]]]}))
 
 ;; -- Hook System Implementation --
 
@@ -1763,6 +1787,338 @@
    "Execute a command by its string name"
    (let [command-keyword (keyword command-name-str)]
      {:fx [[:dispatch [:execute-command command-keyword]]]})))
+
+;; -- Code Folding Events --
+
+;; Helper functions for folding
+(defn ast-node-foldable?
+  "Determine if an AST node can be folded"
+  [node]
+  (when node
+    (let [node-type (:type node)]
+      (contains? #{"function_definition" "class_body" "object_literal" 
+                   "block_statement" "array_literal" "if_statement" 
+                   "for_statement" "while_statement" "switch_statement"} 
+                 node-type))))
+
+(defn ast-to-folding-ranges
+  "Extract foldable ranges from AST"
+  [ast]
+  (when ast
+    (let [ranges (atom [])]
+      (letfn [(traverse [node]
+                (when (and node (ast-node-foldable? node))
+                  (let [start-pos (:startPosition node)
+                        end-pos (:endPosition node)]
+                    (when (and start-pos end-pos 
+                               (> (:row end-pos) (:row start-pos)))
+                      (swap! ranges conj {:start-line (:row start-pos)
+                                          :end-line (:row end-pos)
+                                          :type (:type node)
+                                          :foldable true
+                                          :folded false}))))
+                (when-let [children (:children node)]
+                  (doseq [child children]
+                    (traverse child))))]
+        (traverse ast))
+      @ranges)))
+
+(rf/reg-event-db
+ :folding/toggle-fold-at-line
+ (fn [db [_ line-number]]
+   "Toggle folding state for the range starting at the given line"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         folding-state (get-in db [:buffers active-buffer-id :buffer-local-vars :folding-state] {})]
+     (assoc-in db [:buffers active-buffer-id :buffer-local-vars :folding-state line-number]
+               (not (get folding-state line-number false))))))
+
+(rf/reg-event-fx
+ :folding/fold-current-block
+ (fn [{:keys [db]} [_]]
+   "Fold the block containing the cursor"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         cursor-line (get-in db [:buffers active-buffer-id :cursor-position :line] 0)
+         active-buffer (get-in db [:buffers active-buffer-id])
+         ast (:ast active-buffer)]
+     (when ast
+       (let [folding-ranges (ast-to-folding-ranges ast)
+             target-range (first (filter (fn [range]
+                                           (and (<= (:start-line range) cursor-line)
+                                                (>= (:end-line range) cursor-line)))
+                                         folding-ranges))]
+         (if target-range
+           {:fx [[:dispatch [:folding/toggle-fold-at-line (:start-line target-range)]]]}
+           {:db db}))))))
+
+(rf/reg-event-db
+ :folding/unfold-all
+ (fn [db [_]]
+   "Unfold all folded blocks in the current buffer"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)]
+     (assoc-in db [:buffers active-buffer-id :buffer-local-vars :folding-state] {}))))
+
+(rf/reg-event-db
+ :folding/fold-all
+ (fn [db [_]]
+   "Fold all foldable blocks in the current buffer"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         active-buffer (get-in db [:buffers active-buffer-id])
+         ast (:ast active-buffer)]
+     (when ast
+       (let [folding-ranges (ast-to-folding-ranges ast)
+             folding-state (zipmap (map :start-line folding-ranges) (repeat true))]
+         (assoc-in db [:buffers active-buffer-id :buffer-local-vars :folding-state] folding-state))))))
+
+;; Register folding commands
+(rf/reg-event-fx
+ :initialize-folding-commands
+ (fn [{:keys [db]} [_]]
+   "Initialize code folding commands"
+   {:fx [[:dispatch [:register-command :fold-current-block 
+                    {:docstring "Fold the current block at cursor"
+                     :handler [:folding/fold-current-block]}]]
+         [:dispatch [:register-command :unfold-all 
+                    {:docstring "Unfold all folded blocks"
+                     :handler [:folding/unfold-all]}]]
+         [:dispatch [:register-command :fold-all 
+                    {:docstring "Fold all foldable blocks"
+                     :handler [:folding/fold-all]}]]]}))
+
+;; Register structural navigation commands
+(rf/reg-event-fx
+ :initialize-structural-commands
+ (fn [{:keys [db]} [_]]
+   "Initialize structural navigation commands"
+   {:fx [[:dispatch [:register-command :next-function 
+                    {:docstring "Move to the next function definition"
+                     :handler [:structural/next-function]}]]
+         [:dispatch [:register-command :prev-function 
+                    {:docstring "Move to the previous function definition"
+                     :handler [:structural/prev-function]}]]
+         [:dispatch [:register-command :next-class 
+                    {:docstring "Move to the next class definition"
+                     :handler [:structural/next-class]}]]
+         [:dispatch [:register-command :prev-class 
+                    {:docstring "Move to the previous class definition"
+                     :handler [:structural/prev-class]}]]
+         [:dispatch [:register-command :beginning-of-defun 
+                    {:docstring "Move to the beginning of current function/class"
+                     :handler [:structural/beginning-of-defun]}]]
+         [:dispatch [:register-command :end-of-defun 
+                    {:docstring "Move to the end of current function/class"
+                     :handler [:structural/end-of-defun]}]]]}))
+
+;; Register export commands
+(rf/reg-event-fx
+ :initialize-export-commands
+ (fn [{:keys [db]} [_]]
+   "Initialize export and analysis commands"
+   {:fx [[:dispatch [:register-command :export-json 
+                    {:docstring "Export buffer AST as JSON"
+                     :handler [:export/process-buffer :json {}]}]]
+         [:dispatch [:register-command :export-html 
+                    {:docstring "Export buffer as HTML"
+                     :handler [:examples/export-as-html]}]]
+         [:dispatch [:register-command :export-markdown 
+                    {:docstring "Export buffer as Markdown documentation"
+                     :handler [:examples/export-as-markdown]}]]
+         [:dispatch [:register-command :show-code-statistics 
+                    {:docstring "Show code statistics for current buffer"
+                     :handler [:examples/show-statistics]}]]]}))
+
+;; Structural navigation event handlers
+(rf/reg-event-fx
+ :structural/next-function
+ (fn [{:keys [db]} [_]]
+   "Move to the next function definition"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         active-buffer (get (:buffers db) active-buffer-id)
+         ast (:ast active-buffer)
+         cursor-line (get-in active-buffer [:cursor-position :line] 0)]
+     (when ast
+       (let [target-node (structural/find-nearest-node ast cursor-line "function_definition" :forward)]
+         (when target-node
+           (let [new-position (structural/node-to-cursor-position (:node target-node))]
+             {:fx [[:dispatch [:update-cursor-position 
+                              (line-col-to-linear-pos 
+                               (.getText (:wasm-instance active-buffer)) 
+                               (:line new-position) 
+                               (:column new-position))]]]})))))))
+
+(rf/reg-event-fx
+ :structural/prev-function
+ (fn [{:keys [db]} [_]]
+   "Move to the previous function definition"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         active-buffer (get (:buffers db) active-buffer-id)
+         ast (:ast active-buffer)
+         cursor-line (get-in active-buffer [:cursor-position :line] 0)]
+     (when ast
+       (let [target-node (structural/find-nearest-node ast cursor-line "function_definition" :backward)]
+         (when target-node
+           (let [new-position (structural/node-to-cursor-position (:node target-node))]
+             {:fx [[:dispatch [:update-cursor-position 
+                              (line-col-to-linear-pos 
+                               (.getText (:wasm-instance active-buffer)) 
+                               (:line new-position) 
+                               (:column new-position))]]]})))))))
+
+(rf/reg-event-fx
+ :structural/next-class
+ (fn [{:keys [db]} [_]]
+   "Move to the next class definition"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         active-buffer (get (:buffers db) active-buffer-id)
+         ast (:ast active-buffer)
+         cursor-line (get-in active-buffer [:cursor-position :line] 0)]
+     (when ast
+       (let [target-node (structural/find-nearest-node ast cursor-line "class_definition" :forward)]
+         (when target-node
+           (let [new-position (structural/node-to-cursor-position (:node target-node))]
+             {:fx [[:dispatch [:update-cursor-position 
+                              (line-col-to-linear-pos 
+                               (.getText (:wasm-instance active-buffer)) 
+                               (:line new-position) 
+                               (:column new-position))]]]})))))))
+
+(rf/reg-event-fx
+ :structural/prev-class
+ (fn [{:keys [db]} [_]]
+   "Move to the previous class definition"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         active-buffer (get (:buffers db) active-buffer-id)
+         ast (:ast active-buffer)
+         cursor-line (get-in active-buffer [:cursor-position :line] 0)]
+     (when ast
+       (let [target-node (structural/find-nearest-node ast cursor-line "class_definition" :backward)]
+         (when target-node
+           (let [new-position (structural/node-to-cursor-position (:node target-node))]
+             {:fx [[:dispatch [:update-cursor-position 
+                              (line-col-to-linear-pos 
+                               (.getText (:wasm-instance active-buffer)) 
+                               (:line new-position) 
+                               (:column new-position))]]]})))))))
+
+(rf/reg-event-fx
+ :structural/beginning-of-defun
+ (fn [{:keys [db]} [_]]
+   "Move to the beginning of the current function/class definition"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         active-buffer (get (:buffers db) active-buffer-id)
+         ast (:ast active-buffer)
+         cursor-line (get-in active-buffer [:cursor-position :line] 0)]
+     (when ast
+       (let [function-node (structural/find-nearest-node ast cursor-line "function_definition" :current)
+             class-node (structural/find-nearest-node ast cursor-line "class_definition" :current)
+             target-node (or function-node class-node)]
+         (when target-node
+           (let [new-position (structural/node-to-cursor-position (:node target-node))]
+             {:fx [[:dispatch [:update-cursor-position 
+                              (line-col-to-linear-pos 
+                               (.getText (:wasm-instance active-buffer)) 
+                               (:line new-position) 
+                               (:column new-position))]]]})))))))
+
+(rf/reg-event-fx
+ :structural/end-of-defun
+ (fn [{:keys [db]} [_]]
+   "Move to the end of the current function/class definition"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         active-buffer (get (:buffers db) active-buffer-id)
+         ast (:ast active-buffer)
+         cursor-line (get-in active-buffer [:cursor-position :line] 0)]
+     (when ast
+       (let [function-node (structural/find-nearest-node ast cursor-line "function_definition" :current)
+             class-node (structural/find-nearest-node ast cursor-line "class_definition" :current)
+             target-node (or function-node class-node)]
+         (when target-node
+           (let [end-pos (:endPosition (:node target-node))
+                 new-position {:line (:row end-pos) :column (:column end-pos)}]
+             {:fx [[:dispatch [:update-cursor-position 
+                              (line-col-to-linear-pos 
+                               (.getText (:wasm-instance active-buffer)) 
+                               (:line new-position) 
+                               (:column new-position))]]]})))))))
+
+;; -- Smart Indentation Logic --
+
+(defn calculate-ast-indentation
+  "Calculate proper indentation level based on AST context"
+  [ast cursor-line]
+  (when ast
+    (let [indent-level (atom 0)]
+      (letfn [(traverse [node current-depth]
+                (when node
+                  (let [start-pos (:startPosition node)
+                        end-pos (:endPosition node)
+                        node-type (:type node)]
+                    ;; Check if cursor is inside this node
+                    (when (and start-pos end-pos
+                               (<= (:row start-pos) cursor-line)
+                               (>= (:row end-pos) cursor-line))
+                      ;; Increase indentation for block-like structures
+                      (when (contains? #{"block_statement" "object_literal" "array_literal" 
+                                        "function_definition" "class_body" "if_statement" 
+                                        "for_statement" "while_statement" "switch_statement"} 
+                                      node-type)
+                        (reset! indent-level (+ current-depth 1)))
+                      ;; Recursively check children
+                      (when-let [children (:children node)]
+                        (doseq [child children]
+                          (traverse child (inc current-depth))))))))]
+        (traverse ast 0))
+      (* @indent-level 2)))) ; 2 spaces per indent level
+
+(defn smart-indent-newline
+  "Handle Enter key with smart indentation"
+  [db]
+  (let [active-window (get (:windows db) (:active-window-id db))
+        active-buffer-id (:buffer-id active-window)
+        active-buffer (get (:buffers db) active-buffer-id)
+        ast (:ast active-buffer)
+        cursor-line (get-in active-buffer [:cursor-position :line] 0)
+        indent-level (if ast
+                       (calculate-ast-indentation ast cursor-line)
+                       0)
+        newline-with-indent (str "\n" (apply str (repeat indent-level " ")))]
+    {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text newline-with-indent}]]]}))
+
+(defn smart-indent-closing-brace
+  "Handle closing brace with proper dedentation"
+  [db brace-char]
+  (let [active-window (get (:windows db) (:active-window-id db))
+        active-buffer-id (:buffer-id active-window)
+        active-buffer (get (:buffers db) active-buffer-id)
+        ast (:ast active-buffer)
+        cursor-line (get-in active-buffer [:cursor-position :line] 0)
+        indent-level (if ast
+                       (max 0 (- (calculate-ast-indentation ast cursor-line) 2))
+                       0)
+        dedented-brace (str "\n" (apply str (repeat indent-level " ")) brace-char)]
+    {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text dedented-brace}]]]}))
+
+;; Enhanced input handler with smart indentation
+(rf/reg-event-fx
+ :smart-indent/handle-newline
+ (fn [{:keys [db]} [_]]
+   "Handle newline with smart indentation based on AST context"
+   (smart-indent-newline db)))
+
+(rf/reg-event-fx
+ :smart-indent/handle-closing-brace
+ (fn [{:keys [db]} [_ brace-char]]
+   "Handle closing brace with smart dedentation"
+   (smart-indent-closing-brace db brace-char)))
 
 ;; -- Region Selection and Kill Ring Events --
 

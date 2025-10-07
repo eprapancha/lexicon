@@ -409,6 +409,86 @@
  ::all-decorations
  :<- [::highlight-decorations]
  :<- [::diagnostic-decorations]
- (fn [[highlight-decorations diagnostic-decorations] _]
-   "Merge syntax highlighting and diagnostic decorations"
-   (concat highlight-decorations diagnostic-decorations)))
+ :<- [::folding-decorations]
+ (fn [[highlight-decorations diagnostic-decorations folding-decorations] _]
+   "Merge syntax highlighting, diagnostic, and folding decorations"
+   (concat highlight-decorations diagnostic-decorations folding-decorations)))
+
+;; -- Code Folding Subscriptions --
+
+(defn ast-node-foldable?
+  "Determine if an AST node can be folded"
+  [node]
+  (when node
+    (let [node-type (:type node)]
+      (contains? #{"function_definition" "class_body" "object_literal" 
+                   "block_statement" "array_literal" "if_statement" 
+                   "for_statement" "while_statement" "switch_statement"} 
+                 node-type))))
+
+(defn ast-to-folding-ranges
+  "Extract foldable ranges from AST"
+  [ast]
+  (when ast
+    (let [ranges (atom [])]
+      (letfn [(traverse [node]
+                (when (and node (ast-node-foldable? node))
+                  (let [start-pos (:startPosition node)
+                        end-pos (:endPosition node)]
+                    (when (and start-pos end-pos 
+                               (> (:row end-pos) (:row start-pos)))
+                      (swap! ranges conj {:start-line (:row start-pos)
+                                          :end-line (:row end-pos)
+                                          :type (:type node)
+                                          :foldable true
+                                          :folded false}))))
+                (when-let [children (:children node)]
+                  (doseq [child children]
+                    (traverse child))))]
+        (traverse ast))
+      @ranges)))
+
+(rf/reg-sub
+ ::folding-ranges
+ :<- [:active-buffer]
+ (fn [active-buffer _]
+   "Get folding ranges from the active buffer's AST"
+   (let [ast (:ast active-buffer)
+         folding-state (get-in active-buffer [:buffer-local-vars :folding-state] {})]
+     (when ast
+       (let [ranges (ast-to-folding-ranges ast)]
+         (map (fn [range]
+                (assoc range :folded (get folding-state (:start-line range) false)))
+              ranges))))))
+
+(defn folding-ranges-to-decorations
+  "Convert folding ranges to visual decorations"
+  [folding-ranges]
+  (mapcat (fn [range]
+            (let [{:keys [start-line end-line folded]} range
+                  marker-decoration {:from {:line start-line :column 0}
+                                     :to {:line start-line :column 0}
+                                     :class "folding-marker"
+                                     :marker-type (if folded "folded" "foldable")
+                                     :type :folding-marker
+                                     :line start-line}]
+              (if folded
+                ;; Add both marker and hiding decoration
+                [marker-decoration
+                 {:from {:line (inc start-line) :column 0}
+                  :to {:line end-line :column 0}
+                  :class "folded-content"
+                  :type :folding-hide
+                  :replacement "..."}]
+                ;; Only marker decoration
+                [marker-decoration])))
+          folding-ranges))
+
+(rf/reg-sub
+ ::folding-decorations
+ :<- [::folding-ranges]
+ (fn [folding-ranges _]
+   "Get folding decorations for the gutter and content hiding"
+   (if (seq folding-ranges)
+     (folding-ranges-to-decorations folding-ranges)
+     [])))

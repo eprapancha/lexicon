@@ -196,7 +196,8 @@
         line-height @(rf/subscribe [:line-height])
         viewport @(rf/subscribe [::subs/viewport])
         decorations @(rf/subscribe [::subs/all-decorations])
-        diagnostic-decorations (filter #(= (:type %) :diagnostic) decorations)]
+        diagnostic-decorations (filter #(= (:type %) :diagnostic) decorations)
+        folding-decorations (filter #(= (:type %) :folding-marker) decorations)]
     
     [:div.gutter
      {:style {:position "absolute"
@@ -221,6 +222,7 @@
            (fn [idx line]
              (let [line-num (+ start-line idx 1)
                    line-diagnostics (filter #(= (:line (:from %)) (dec line-num)) diagnostic-decorations)
+                   line-folding (first (filter #(= (:line %) (dec line-num)) folding-decorations))
                    has-error? (some #(= (:class %) "diagnostic-error") line-diagnostics)
                    has-warning? (some #(= (:class %) "diagnostic-warning") line-diagnostics)
                    has-hint? (some #(= (:class %) "diagnostic-hint") line-diagnostics)]
@@ -232,11 +234,31 @@
                          :padding-right "8px"
                          :position "relative"}}
                 
-                ;; Diagnostic marker
+                ;; Folding marker (leftmost position)
+                (when line-folding
+                  [:div.folding-marker
+                   {:style {:position "absolute"
+                            :left "2px"
+                            :width "12px"
+                            :height "12px"
+                            :display "flex"
+                            :align-items "center"
+                            :justify-content "center"
+                            :font-size "10px"
+                            :color "#858585"
+                            :cursor "pointer"
+                            :user-select "none"
+                            :border "1px solid #555"
+                            :background-color "#2d2d30"
+                            :border-radius "2px"}
+                    :on-click #(rf/dispatch [:folding/toggle-fold-at-line (dec line-num)])}
+                   (if (= (:marker-type line-folding) "folded") "+" "−")])
+                
+                ;; Diagnostic marker (slightly to the right to avoid overlap)
                 (when (or has-error? has-warning? has-hint?)
                   [:div.diagnostic-marker
                    {:style {:position "absolute"
-                            :left "4px"
+                            :left (if line-folding "16px" "4px")  ; Adjust position if folding marker is present
                             :width "8px"
                             :height "8px"
                             :border-radius "50%"
@@ -296,16 +318,21 @@
       
       ;; Render visible lines as individual divs with syntax highlighting
       (when visible-lines
-        (let [lines (clojure.string/split visible-lines #"\n")]
+        (let [lines (clojure.string/split visible-lines #"\n")
+              folding-hide-decorations (filter #(= (:type %) :folding-hide) decorations)]
           (for [[idx line] (map-indexed vector lines)]
-            (let [line-number (+ (:start-line viewport 0) idx)]
-              ^{:key line-number}
-              [:div.text-line
-               {:style {:min-height (str line-height "px")
-                        :position "relative"
-                        :z-index "2"
-                        :color "#d4d4d4"}}
-               (apply-decorations-to-line line line-number decorations)]))))]]))
+            (let [line-number (+ (:start-line viewport 0) idx)
+                  is-hidden? (some #(and (<= (:line (:from %)) line-number)
+                                         (> (:line (:to %)) line-number))
+                                   folding-hide-decorations)]
+              (when-not is-hidden?
+                ^{:key line-number}
+                [:div.text-line
+                 {:style {:min-height (str line-height "px")
+                          :position "relative"
+                          :z-index "2"
+                          :color "#d4d4d4"}}
+                 (apply-decorations-to-line line line-number decorations)])))))]]))
 
 (defn custom-cursor
   "Custom cursor element positioned by our application state"
