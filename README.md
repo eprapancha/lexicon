@@ -1,380 +1,344 @@
-# **Lexicon: A Modern, Browser-Based Editor**
+# Lexicon: Emacs for the Modern Web
 
-Lexicon is an architectural exploration into building a highly extensible, keyboard-driven code editor for the modern web. Our mission is to capture the spirit of GNU Emacs—its malleability, introspection, and legendary extensibility—while building upon a foundation of modern, high-performance, and principled software architecture.
-
-This project is a deep dive into editor design, synthesizing the timeless architectural patterns of Emacs with the functional, state-of-the-art paradigms of systems like CodeMirror 6. The result is an editor designed to be powerful, performant, and a joy to develop with.
-
-## **Current Status: The Extensible Foundation is Live**
-
-Lexicon has successfully evolved from a concept to a **working, extensible editor** with core Emacs-like capabilities. The editor now features:
-
-- ✅ **A high-performance Rust/WASM text engine** with piece tree data structures
-- ✅ **Multi-buffer and multi-window management** with persistent file operations
-- ✅ **Complete Emacs-style command and keymap system** with hierarchical precedence
-- ✅ **Major and minor mode architecture** with hooks for extensibility
-- ✅ **Interactive command execution** via both keybindings and programmatic dispatch
-- ✅ **Professional development environment** with reproducible builds
-
-**You can now use Lexicon as a functional text editor with Emacs-style keybindings like `C-x C-f` to open files and `C-x C-s` to save!**
-
-## **Core Philosophy: A Synthesis of Classic and Modern**
-
-Lexicon is built upon a clear and robust set of architectural principles that guide every implementation decision:
-
-1. **The "Functional Core, Imperative Shell" Model**: Inspired by CodeMirror 6, the editor's state is managed by a pure, functional core using immutable data structures and atomic, transaction-based updates. This creates a predictable, unidirectional data flow, which is essential for complex features like a reliable undo history and real-time collaboration. The view layer acts as an "imperative shell," handling the messy realities of DOM interaction while remaining a pure reflection of the canonical state.
-
-2. **The "Userspace/Kernel" Split**: Drawing from the wisdom of Emacs's design, Lexicon is bifurcated into two distinct realms:
-
-   * **The ClojureScript "Userspace"**: This is the interactive heart of the editor, analogous to the Emacs Lisp environment. Built with the **re-frame** framework, it handles all UI, command logic, and the user-facing extensibility system in a structured, scalable way.  
-   * **The Rust/WASM "Kernel"**: This is the high-performance core, analogous to Emacs's C kernel. Written in **Rust** and compiled to WebAssembly, it manages the most computationally intensive text manipulation tasks, ensuring a responsive user experience.
-
-3. **A Professional, Standardized Development Environment**: To eliminate the "it works on my machine" problem and streamline onboarding, the entire development environment is codified and version-controlled using **Nix** and structured scripts. This ensures every developer, as well as our CI pipeline, uses an identical, reproducible toolchain.
-
-## **The Technology Stack**
-
-Lexicon is a polyglot application, choosing the best tool for each architectural layer. The monorepo structure reflects this clear separation of concerns.
-
-* **UI & Extensibility Layer (`editor-cljs`)**: **ClojureScript** with the **re-frame** framework provides a powerful, REPL-driven environment for building a dynamic and extensible UI.  
-* **High-Performance Core (`lexicon-engine`)**: **Rust**, compiled to **WebAssembly (WASM)**, is used for the performance-critical text engine.  
-  * **Core Data Structure**: A **Piece Tree** provides O(log k) performance for all text manipulations and superior memory efficiency.  
-  * **Memory Management**: Leverages the browser's native garbage collection for reduced complexity.
-  * **Architecture**: The engine is structured using the **"library-first" pattern**, separating the pure `lexicon-core` library from the `lexicon-wasm` bindings for enhanced testability and reusability.  
-* **Syntax Parsing (`language-grammars`)**: **Tree-sitter** provides fast, incremental, and error-tolerant parsing. Grammars are compiled to WASM and run in a Web Worker to keep the UI fully responsive.  
-* **Backend Services (`backend-server`)**: **Clojure** powers the local companion server, which will bridge the browser sandbox to enable interaction with native developer tools like the Language Server Protocol (LSP).
-
-## **The Grand Vision: An Incremental Roadmap**
-
-We are building Lexicon through a series of well-defined, incremental phases. Each phase delivers a more capable editor, building upon the robust foundation of the last.
-
-#### **L1.1: The Core Engine & View Layer MVP ✅ COMPLETE**
-
-* **Goal**: To build a functional "Typing Machine" that validates the entire architecture, from user input to the WASM kernel and back to the DOM.  
-* **Status**: **COMPLETE**. The editor now has a solid, performant, and future-proof foundation. All core tasks are finished, including the Piece Tree implementation, the transaction-based state model, and the proactive `contenteditable` view layer. We have also completed a critical "library-first" refactor of the Rust engine to align with best practices.
-* **Key Achievements**:
-  * ✅ Rust/WASM text engine with piece tree data structure
-  * ✅ ClojureScript UI with re-frame state management
-  * ✅ Transaction-based text operations with undo/redo
-  * ✅ DOM reconciliation and cursor management
-  * ✅ Performance-optimized rendering with virtualization
-
-#### **L1.2: The "Functional Editor" ✅ COMPLETE**
-
-* **Goal**: To build upon the core by adding essential Emacs-like editing features.  
-* **Status**: **COMPLETE**. Lexicon now functions as a capable multi-buffer text editor with persistent file operations.
-* **Key Achievements**:  
-  * ✅ Multi-buffer and multi-window state management
-  * ✅ Local file system access via the File System Access API
-  * ✅ The core kill ring (clipboard history) and region-based commands
-  * ✅ Buffer tabs with modified indicators and close functionality
-  * ✅ Status bar with cursor position and buffer information
-  * ✅ File save/load with proper error handling
-
-#### **L1.3: The "Extensible Emacs" Foundation ✅ COMPLETE**
-
-* **Goal**: To build the core machinery that enables Emacs-like extensibility.  
-* **Status**: **COMPLETE**. Lexicon now has a complete command and keymap system with mode support.
-* **Key Achievements**:  
-  * ✅ Central command dispatcher with dynamic command registration
-  * ✅ Hierarchical keymap system with Emacs-style precedence (minor → major → global)
-  * ✅ Multi-key sequence support (e.g., `C-x C-f`)
-  * ✅ Major and minor mode architecture with buffer-local state
-  * ✅ Hook system for intercepting and customizing behavior
-  * ✅ Interactive command execution via keybindings
-  * ✅ Built-in commands: `find-file`, `save-buffer`, `kill-region`, `yank`, etc.
-
-#### **L1.4: The "Robust Text Foundation" ✅ COMPLETE**
-
-* **Goal**: To eliminate cursor race conditions and establish a rock-solid text editing foundation.  
-* **Status**: **COMPLETE**. Lexicon now has a production-ready text editing architecture that handles fast typing without race conditions.
-* **Key Achievements**:  
-  * ✅ **Hidden Textarea + Custom DOM architecture** - Industry standard pattern for reliable input capture
-  * ✅ **Cursor as first-class citizen** - Application-managed cursor eliminates browser conflicts  
-  * ✅ **Transaction queue system** - Serialized text operations prevent race conditions during fast typing
-  * ✅ **Coordinate conversion system** - Seamless translation between linear positions and line/column coordinates
-  * ✅ **Custom cursor rendering** - CSS-animated cursor positioned by application state
-  * ✅ **Race condition elimination** - Robust transaction processing prevents text corruption
-
-#### **L1.5: Security Hardening & Modal Editing Foundation ✅ COMPLETE**
-
-* **Goal**: Critical security hardening of bridge infrastructure and implementation of modal editing foundation.
-* **Status**: **COMPLETE**. Production-ready security measures implemented alongside comprehensive modal editing architecture.
-* **Key Achievements**:
-  * ✅ **Critical Security Hardening** - Bridge server now production-ready with comprehensive security measures
-    * ✅ Command injection mitigation using `child_process.spawn()` with argument arrays
-    * ✅ Input validation and language ID whitelisting 
-    * ✅ Ticket-based WebSocket authentication system with TTL expiration
-    * ✅ Enhanced logging with tier-of-origin classification (`:client`, `:bridge-server`, `:lsp-process`)
-  * ✅ **Modal Editing Foundation (Phase L2.1)** - Complete FSM-based architecture for Vim/Evil-style editing
-    * ✅ Pure FSM state management with comprehensive modal state schema
-    * ✅ Metaprogramming DSL with `def-evil-motion`, `def-evil-operator`, `def-evil-text-object` macros
-    * ✅ Operator-motion composition engine implementing Vim's "verb-noun" grammar
-    * ✅ Centralized keymap registry with context-aware precedence resolution
-    * ✅ State lifecycle hooks via re-frame interceptors (on-enter/on-exit)
-
-#### **L1.6: The "Modern Powerhouse" 🔄 NEXT**
-
-* **Goal**: To integrate advanced, language-aware editing features with secure LSP bridge.
-* **Key Features**:  
-  * 🔲 Asynchronous, incremental parsing with **Tree-sitter** in a Web Worker
-  * 🔲 Declarative, query-based syntax highlighting and code folding
-  * 🔲 Language-aware editing commands (smart indentation, navigation)
-  * 🔲 Production LSP integration with security-hardened bridge
-
-#### **L1.7: The System-Integrated IDE**
-
-* **Goal**: To break out of the browser sandbox by connecting to native developer tools.  
-* **Key Features**:  
-  * ✅ The `lexicon-bridge`, a secure local companion process that bridges the browser to the OS via WebSockets
-  * 🔲 Full Language Server Protocol (LSP) integration for features like diagnostics, code completion, and go-to-definition
-  * 🔲 Integration with external tools (git, linters, formatters)
-
-#### **L1.8: The Collaborative Cloud IDE**
-
-* **Goal**: To evolve Lexicon into a full-fledged, multiuser, cloud-native development environment.  
-* **Key Features**:  
-  * 🔲 A backend orchestration service to manage containerized workspaces
-  * 🔲 "Workspace as Code" via `devcontainer.json` file support
-  * 🔲 Real-time collaborative editing with conflict resolution
-
-## **Getting Started**
-
-### Prerequisites
-- **Nix** (for reproducible development environment)
-- **Modern browser** with WebAssembly and File System Access API support
-- **Node.js** and **npm** (for bridge server and development)
-
-### Quick Start
-```bash
-# Clone the repository
-git clone <repository-url>
-cd lexicon
-
-# Start the development environment
-npm run dev
-
-# In a separate terminal, start the secure bridge server
-cd packages/lexicon-bridge
-node index.js
-
-# Open your browser to http://localhost:8080
-```
-
-## **Available Commands and Functionality**
-
-### Core Editor Features (Currently Working)
-- ✅ **Multi-buffer text editing** with persistent file operations
-- ✅ **Emacs-style keyboard shortcuts** and command system
-- ✅ **Kill ring (clipboard history)** with region-based operations
-- ✅ **Buffer tabs** with modified indicators
-- ✅ **Status bar** with cursor position and buffer information
-- ✅ **Transaction-based undo/redo** system
-- ✅ **Race-condition-free input handling**
-
-### Security Infrastructure (Production Ready)
-- ✅ **Secure WebSocket bridge** with ticket-based authentication
-- ✅ **Command injection protection** via process spawning safeguards
-- ✅ **Input validation** and language whitelisting
-- ✅ **Comprehensive logging** with security audit trails
-
-### Modal Editing Foundation (Ready for Implementation)
-- ✅ **FSM state management** for Normal/Insert/Visual modes
-- ✅ **Operator-motion composition** (Vim's "verb-noun" grammar)
-- ✅ **Metaprogramming macros** for defining Evil-style commands
-- ✅ **Context-aware keymap system** with precedence resolution
-- ✅ **State lifecycle hooks** for mode transitions
-
-### Keyboard Shortcuts
-**Emacs-style Navigation:**
-- `Ctrl+X Ctrl+F` - Open file (find-file)
-- `Ctrl+X Ctrl+S` - Save file (save-buffer)
-- `Ctrl+G` - Cancel operation
-- `Ctrl+W` - Kill region (cut)
-- `Ctrl+Y` - Yank (paste from kill ring)
-- `Ctrl+Space` - Set mark (begin selection)
-- `Alt+W` - Copy region to kill ring
-
-**Buffer Management:**
-- `Ctrl+X B` - Switch buffer
-- `Ctrl+X K` - Kill buffer
-- `Ctrl+X 1` - Delete other windows
-- `Ctrl+X 2` - Split window horizontally
-
-### Programmatic API
-**Execute Commands:**
-```javascript
-// Execute built-in commands
-window.re_frame.core.dispatch(['execute-command', 'find-file']);
-window.re_frame.core.dispatch(['execute-command', 'save-buffer']);
-
-// FSM state transitions (modal editing)
-window.re_frame.core.dispatch(['fsm/transition-to', 'normal']);
-window.re_frame.core.dispatch(['fsm/transition-to', 'insert']);
-```
-
-**Register Custom Commands:**
-```javascript
-// Register new commands
-window.re_frame.core.dispatch(['register-command', 'my-command', {
-  docstring: "My custom command",
-  handler: ['show-message', 'Hello from custom command!']
-}]);
-```
-
-**Modal Editing Macros (ClojureScript):**
-```clojure
-;; Define Evil-style motions
-(def-evil-motion word-forward [count]
-  "Move forward by word"
-  {:repeatable true :jump-list true}
-  (move-by-word count))
-
-;; Define Evil-style operators  
-(def-evil-operator delete-operator [motion]
-  "Delete text specified by motion"
-  {:needs-motion true}
-  (delete-range (motion)))
-```
-
-### Bridge Server Features
-**Security:**
-- ✅ **Ticket-based WebSocket authentication** (port 30304)
-- ✅ **Secure process spawning** with argument validation
-- ✅ **CORS protection** for localhost origins only
-- ✅ **Request logging** with security classifications
-
-**LSP Integration (Ready):**
-- ✅ **Language server process management**
-- ✅ **JSON-RPC message forwarding**
-- ✅ **Multi-client support** per language server
-- ✅ **Graceful process cleanup**
-
-### Development Commands
-```bash
-# Build and test the editor
-npm run build:editor
-
-# Run ClojureScript compilation
-npm run cljs:compile
-
-# Build Rust/WASM engine
-npm run build:engine
-
-# Start bridge server with debugging
-cd packages/lexicon-bridge && node index.js
-
-# Run tests (when available)
-npm test
-```
-
-## **Architecture Overview**
-
-Lexicon's architecture reflects its multi-layered approach: a security-hardened bridge, FSM-based modal editing, and high-performance text engine.
-
-```
-┌─────────────────────────────────────────┐
-│        Browser (localhost:8080)         │
-│     ┌─────────────────────────────────┐ │
-│     │     ClojureScript UI            │ │
-│     │   (re-frame + Reagent)          │ │
-│     ├─────────────────────────────────┤ │
-│     │   FSM Modal Editing System     │ │
-│     │ (Evil/Vim-style architecture)  │ │
-│     ├─────────────────────────────────┤ │
-│     │   Command & Keymap System      │ │
-│     │  (Emacs-style extensibility)   │ │
-│     ├─────────────────────────────────┤ │
-│     │  Hidden Textarea + Custom DOM  │ │
-│     │   (Race-condition-free input)  │ │
-│     ├─────────────────────────────────┤ │
-│     │   Transaction Queue System     │ │
-│     │  (Serialized text operations)  │ │
-│     ├─────────────────────────────────┤ │
-│     │      WebAssembly API           │ │
-│     ├─────────────────────────────────┤ │
-│     │     Rust Text Engine           │ │
-│     │    (Piece tree + UTF-8)        │ │
-│     └─────────────────────────────────┘ │
-└─────────────────────────────────────────┘
-            │ WebSocket + HTTPS
-            │ (Ticket Authentication)
-┌─────────────────────────────────────────┐
-│     Lexicon Bridge (localhost:30303)    │
-│   ┌─────────────────────────────────┐   │
-│   │   Security Layer               │   │
-│   │ • Ticket-based auth            │   │
-│   │ • Input validation             │   │
-│   │ • Command injection protection │   │
-│   ├─────────────────────────────────┤   │
-│   │   LSP Process Management       │   │
-│   │ • Multi-language support       │   │
-│   │ • JSON-RPC forwarding          │   │
-│   │ • Process lifecycle            │   │
-│   └─────────────────────────────────┘   │
-└─────────────────────────────────────────┘
-            │ Native Process Spawning
-┌─────────────────────────────────────────┐
-│        Language Servers                 │
-│  • typescript-language-server          │
-│  • rust-analyzer                       │
-│  • clojure-lsp                          │
-│  • pylsp                                │
-└─────────────────────────────────────────┘
-```
-
-## **Contributing**
-
-Lexicon is designed to be hackable and extensible. Whether you're interested in:
-- 🦀 **Rust/WASM performance optimization**
-- 🔧 **ClojureScript UI development** 
-- ⌨️ **Emacs-style extensibility features**
-- 📝 **Language grammar development**
-
-There are opportunities to contribute at every level of the stack.
-
-## **Project Structure**
-
-```
-lexicon/
-├── packages/
-│   ├── editor-cljs/          # ClojureScript UI and extensibility layer
-│   │   ├── src/lexicon/
-│   │   │   ├── db.cljs       # App state schema with FSM modal editing
-│   │   │   ├── events.cljs   # Event handlers with security & modal editing
-│   │   │   ├── macros.clj    # Evil-style metaprogramming DSL
-│   │   │   ├── fsm/          # Modal editing FSM architecture
-│   │   │   ├── command/      # Command dispatcher with operator-motion
-│   │   │   └── keymaps/      # Context-aware keymap registry
-│   ├── lexicon-engine/       # Rust/WASM text engine with piece tree
-│   ├── lexicon-bridge/       # Security-hardened LSP bridge server
-│   │   └── index.js          # WebSocket + HTTP server with auth
-│   ├── language-grammars/    # Tree-sitter parsing grammars
-│   └── backend-server/       # Future: Clojure orchestration server
-├── scripts/                  # Development and build scripts
-└── docs/                     # Architecture and API documentation
-```
-
-## **Security Considerations**
-
-### Production-Ready Security Features
-- ✅ **Command Injection Protection**: All process spawning uses `child_process.spawn()` with argument arrays
-- ✅ **Input Validation**: Language IDs validated against whitelist before process spawning
-- ✅ **Authentication**: Ticket-based WebSocket authentication with TTL expiration (30s)
-- ✅ **CORS Protection**: HTTP endpoints restricted to localhost origins only
-- ✅ **Audit Logging**: Comprehensive request logging with tier-of-origin classification
-- ✅ **Process Isolation**: Language servers run in separate processes with stdio piping
-- ✅ **Resource Cleanup**: Graceful process termination and resource management
-
-### Security Architecture
-The lexicon-bridge operates as a **security-first** local development server:
-1. **HTTP Ticket Endpoint** (port 30304): Issues time-limited authentication tickets
-2. **WebSocket Bridge** (port 30303): Validates tickets before allowing connections
-3. **Process Management**: Safely spawns and manages language server processes
-4. **Request Validation**: All inputs validated and sanitized before processing
-
-## **License**
-
-MIT - See [LICENSE](LICENSE) for details.
+> **A shameless recreation of GNU Emacs in the browser, built with Rust, ClojureScript, and WebAssembly**
 
 ---
 
-*Lexicon represents a modern synthesis of time-tested editor design principles with cutting-edge web technologies. It's proof that the browser can be a first-class platform for serious software development tools.*
+## Current Status: Architecture Reset (Phase 0)
+
+**⚠️ PROJECT UNDER ACTIVE REFACTORING ⚠️**
+
+Lexicon is currently undergoing a significant architectural realignment to stay true to Emacs principles. We got ahead of ourselves by implementing complex features (Evil-mode) before establishing a solid core, and basic functionality is currently broken.
+
+**What's Working:**
+- ✅ Development environment (Nix-based, reproducible)
+- ✅ WASM loading infrastructure
+- ✅ re-frame state management setup
+- ✅ Basic DOM rendering
+
+**What's Broken/In Progress:**
+- ⚠️ **Basic text input** - Enter key doesn't create newline (being fixed)
+- ⚠️ **Architecture** - Evil-mode code mixed into core (being separated)
+- ⚠️ **Buffer engine** - Piece tree being replaced with gap buffer
+
+**Current Focus:** Establishing a minimal, working Emacs core before adding packages.
+
+See [ROADMAP.md](./docs/ROADMAP.md) for detailed plan and [CORE_PRINCIPLES.md](./docs/CORE_PRINCIPLES.md) for architectural guidelines.
+
+---
+
+## Vision
+
+Lexicon aims to be **GNU Emacs for the web** - not inspired by Emacs, not Emacs-like, but **actual Emacs** running in the browser. We faithfully implement Emacs's architecture:
+
+- **Gap buffer** for text storage (like Emacs C core)
+- **Hierarchical keymaps** with exact Emacs precedence
+- **Major and minor modes** with buffer-local state
+- **Command dispatcher** with interactive specifications
+- **Minibuffer** for user interaction
+- **Package system** where Evil-mode, Vertico, etc. are external packages
+
+**Why?** Because Emacs has the best editing architecture ever designed, and the web deserves it.
+
+---
+
+## Core Principles
+
+### 1. Emacs Purity
+When in doubt, do what Emacs does. Study `emacs/src/*.c` and Elisp before implementing.
+
+### 2. Core is Sacred
+Core = bare Emacs (`emacs -Q`). Everything else is a package.
+- ✅ Core: Buffers, windows, keymaps, commands, modes, minibuffer
+- ❌ Not Core: Evil-mode, Vertico, LSP, themes
+
+### 3. Gap Buffer
+We use gap buffers like Emacs, not piece trees. Simplicity and Emacs-alignment matter more than theoretical performance.
+
+### 4. Userspace/Kernel Split
+- **Rust/WASM**: Low-level gap buffer operations (like Emacs C core)
+- **ClojureScript**: Everything else (like Emacs Lisp layer)
+
+### 5. Packages are External
+Evil-mode lives in `packages/evil-mode/`, not in core. Packages interact with core via clean APIs.
+
+Read the full principles: [CORE_PRINCIPLES.md](./docs/CORE_PRINCIPLES.md)
+
+---
+
+## Technology Stack
+
+```
+┌─────────────────────────────────────┐
+│         Browser (localhost:8080)    │
+│  ┌───────────────────────────────┐  │
+│  │   ClojureScript (re-frame)    │  │  ← Emacs Lisp layer equivalent
+│  │   - Buffers, windows, modes   │  │
+│  │   - Commands, keymaps         │  │
+│  │   - UI rendering (Reagent)    │  │
+│  └───────────────┬───────────────┘  │
+│                  │ WASM FFI          │
+│  ┌───────────────┴───────────────┐  │
+│  │   Rust/WASM (Gap Buffer)      │  │  ← Emacs C core equivalent
+│  │   - Text storage & operations │  │
+│  │   - UTF-8 handling            │  │
+│  └───────────────────────────────┘  │
+└─────────────────────────────────────┘
+         │ WebSocket (future)
+┌─────────────────────────────────────┐
+│   Lexicon Bridge (localhost:30303) │  ← For LSP, git, etc.
+│   - Language servers               │
+│   - Native tool integration        │
+└─────────────────────────────────────┘
+```
+
+**Core Technologies:**
+- **ClojureScript** + **re-frame** - Functional reactive UI & state
+- **Rust** + **WebAssembly** - High-performance text engine
+- **Reagent** - React wrapper for ClojureScript
+- **Nix** - Reproducible development environment
+
+---
+
+## Roadmap
+
+We're building Lexicon in phases, each delivering working software:
+
+### Phase 0: Architecture Reset (Current - Dec 2025)
+🔄 **In Progress**
+- Extract Evil-mode from core to `packages/evil-mode/`
+- Replace piece tree with gap buffer
+- Fix basic text input (typing, Enter, Backspace)
+- Establish clean core/package boundary
+
+### Phase 1: Basic Editing (Jan 2025)
+🔲 Planned
+- Navigation: C-f, C-b, C-n, C-p, C-a, C-e
+- Editing: insert, delete, newline, kill-line
+- Selection: C-SPC, C-w, M-w, C-y
+- Undo: C-/
+
+### Phase 2: Buffers & Files (Jan-Feb 2025)
+🔲 Planned
+- Multi-buffer support: C-x b, C-x k
+- File I/O: C-x C-f, C-x C-s
+- Buffer switching with minibuffer completion
+
+### Phase 3: Windows (Feb 2025)
+🔲 Planned
+- Window splitting: C-x 2, C-x 3
+- Window navigation: C-x o
+- Window deletion: C-x 0, C-x 1
+
+### Phase 4: Minibuffer & Completion (Feb-Mar 2025)
+🔲 Planned
+- M-x command execution
+- Completion (TAB)
+- File/buffer name completion
+
+### Phase 5: Modes & Keymaps (Mar 2025)
+🔲 Planned
+- Major modes: fundamental, text, clojure
+- Minor modes: auto-fill, line-number
+- Mode hooks
+- Keymap inheritance
+
+### Phase 6: Package System & Evil-mode (Mar-Apr 2025)
+🔲 Planned
+- Package loading system
+- Evil-mode as external package
+- Normal, Insert, Visual modes
+- Vim operators and motions
+
+**See [ROADMAP.md](./docs/ROADMAP.md) for complete phased plan**
+
+---
+
+## Project Structure
+
+```
+lexicon/
+├── docs/
+│   ├── CORE_PRINCIPLES.md      # Architectural guidelines (READ THIS)
+│   ├── ROADMAP.md              # Detailed phased plan
+│   └── architecture.md         # Technical architecture
+│
+├── packages/
+│   ├── lexicon-core/           # THE BARE EMACS (future)
+│   │   ├── wasm/              # Rust gap buffer
+│   │   └── cljs/              # ClojureScript core
+│   │
+│   ├── editor-cljs/           # Current code (being refactored)
+│   ├── lexicon-engine/        # Current WASM (piece tree → gap buffer)
+│   │
+│   ├── evil-mode/             # Vim emulation package (future)
+│   ├── vertico/               # Completion UI (future)
+│   └── lexicon-bridge/        # LSP bridge server
+│
+└── scripts/                   # Build and dev scripts
+```
+
+---
+
+## Getting Started (For Developers)
+
+### Prerequisites
+- **Nix** (with flakes enabled)
+- **Modern browser** (Chrome, Firefox, Edge)
+- **Node.js 18+** and **npm**
+
+### Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/lexicon.git
+cd lexicon
+
+# Enter Nix development shell
+nix-shell
+
+# Install JavaScript dependencies
+npm install
+
+# Build Rust/WASM engine
+cd packages/lexicon-engine/wasm
+wasm-pack build --target web --out-dir pkg
+cd ../../..
+
+# Start development server
+npm run dev
+
+# In another terminal, start bridge server (optional, for LSP)
+cd packages/lexicon-bridge
+node index.js
+```
+
+Open browser to `http://localhost:8080`
+
+**⚠️ Current State:** You'll see a basic editor, but Enter key doesn't work yet. We're fixing this!
+
+---
+
+## Current Implementation Status
+
+### What Actually Works
+
+✅ **Infrastructure:**
+- Nix-based reproducible dev environment
+- Shadow-cljs build pipeline
+- WASM module loading
+- re-frame state management
+- Basic DOM rendering
+- Bridge server (for future LSP integration)
+
+### What's Being Fixed (Phase 0)
+
+🔄 **Core Editor:**
+- Gap buffer implementation (replacing piece tree)
+- Basic text input (Enter key broken)
+- Cursor positioning
+- Character insertion/deletion
+
+🔄 **Architecture:**
+- Extracting Evil-mode to separate package
+- Cleaning core namespace
+- Defining core API for packages
+
+### What's Coming Next (Phase 1)
+
+🔲 **Basic Editing:**
+- Navigation commands (C-f, C-b, C-n, C-p)
+- Kill ring (C-w, M-w, C-y)
+- Undo (C-/)
+- Line editing (C-k, C-a, C-e)
+
+---
+
+## Documentation
+
+- **[CORE_PRINCIPLES.md](./docs/CORE_PRINCIPLES.md)** - Read this first! Architectural philosophy and guidelines
+- **[ROADMAP.md](./docs/ROADMAP.md)** - Detailed phased development plan
+- **[architecture.md](./docs/architecture.md)** - Technical architecture details
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Deployment guide (outdated, will update)
+
+---
+
+## Contributing
+
+Lexicon is in active refactoring. We're not ready for external contributions yet, but you can:
+
+- ⭐ **Star the repo** to follow progress
+- 👀 **Watch** for updates
+- 💬 **Open issues** for questions or suggestions
+- 📖 **Read the principles** to understand our approach
+
+Once Phase 0 is complete (working basic editor), we'll welcome contributions!
+
+---
+
+## Philosophy
+
+Lexicon is an **experiment in architectural fidelity**. Most "Emacs-inspired" editors borrow Emacs's keybindings but not its architecture. We're doing the opposite - building the actual Emacs architecture in the browser:
+
+- **Gap buffers** for text storage
+- **Command-oriented** editing model
+- **Hierarchical keymaps** with prefix keys
+- **Mode-based** extensibility
+- **Lisp-powered** configuration (ClojureScript instead of Elisp)
+
+Why? Because Emacs got it right. After 40+ years, Emacs's architecture remains the gold standard for extensible text editors. The web deserves that same power.
+
+**We may fail**, but we'll learn a lot trying. And if we succeed, we'll have Emacs in the browser.
+
+---
+
+## Learning Resources
+
+Understanding Lexicon requires understanding Emacs:
+
+**Emacs Internals:**
+- [GNU Emacs Lisp Reference Manual](https://www.gnu.org/software/emacs/manual/html_node/elisp/)
+- [Emacs source code](https://github.com/emacs-mirror/emacs) - Especially `src/buffer.c`, `src/keyboard.c`
+- [Emacs Wiki - Architecture](https://www.emacswiki.org/)
+
+**Gap Buffers:**
+- [The Text Editor Sam](http://doc.cat-v.org/plan_9/4th_edition/papers/sam/) - Another gap buffer implementation
+- [Emacs Buffer Implementation](https://www.gnu.org/software/emacs/manual/html_node/elisp/Buffer-Internals.html)
+
+**Project Inspirations:**
+- [GNU Emacs](https://www.gnu.org/software/emacs/) - The original
+- [CodeMirror 6](https://codemirror.net/6/) - Modern web editor architecture
+- [Xi Editor](https://github.com/xi-editor/xi-editor) - High-performance editor (archived)
+
+---
+
+## Status Updates
+
+Follow development progress:
+
+- **GitHub Issues** - Track bugs and features
+- **Commit History** - See daily progress
+- **ROADMAP.md** - Updated weekly with phase progress
+
+---
+
+## License
+
+MIT License - See [LICENSE](./LICENSE) for details.
+
+---
+
+## Acknowledgments
+
+- **GNU Emacs** - For 40 years of editorial excellence
+- **Rich Hickey** - For Clojure(Script) and functional sanity
+- **The Rust Community** - For WebAssembly tooling
+- **You** - For being curious about this experiment
+
+---
+
+**Current Phase:** Architecture Reset (Phase 0)
+**Last Updated:** 2025-12-20
+**Status:** 🔄 Active Development
+
+*Building Emacs for the web, one gap buffer at a time.*
