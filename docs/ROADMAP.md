@@ -1,7 +1,7 @@
 # Lexicon Development Roadmap
 
-**Last Updated:** 2025-12-20 (Evening Update)
-**Current Phase:** Phase 0 (Architecture Reset - 50% Complete!)
+**Last Updated:** 2025-12-20 (Late Evening Update)
+**Current Phase:** Phase 0 (Architecture Reset - 70% Complete!)
 
 ---
 
@@ -30,11 +30,12 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
    - ✅ Core compiles cleanly with 0 errors
    - ✅ Created `evil-mode/README.md` documenting future integration
 
-2. **Replace Piece Tree with Gap Buffer**
-   - Implement gap buffer in Rust (`packages/lexicon-engine/core/src/gap_buffer.rs`)
-   - WASM bindings for gap buffer operations
-   - Unit tests for insert, delete, gap movement
-   - UTF-8 correctness validation
+2. **Replace Piece Tree with Gap Buffer** ✅ COMPLETE (Dec 20, 2025)
+   - ✅ Implemented gap buffer in Rust (350 lines, clean and simple)
+   - ✅ WASM bindings created (`gap_buffer_wasm.rs`)
+   - ✅ 15 comprehensive unit tests (all passing)
+   - ✅ UTF-8 correctness validated (emoji support)
+   - ✅ Fixed nix-shell TMPDIR issue for testing
 
 3. **Fix Core Text Input**
    - Verify basic typing works (characters appear on screen)
@@ -67,16 +68,16 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ### Success Criteria
 
-- [ ] Can type text and see it on screen (NEXT UP)
-- [ ] Enter key creates new line (BLOCKED: needs gap buffer)
-- [ ] Backspace deletes characters (BLOCKED: needs gap buffer)
-- [ ] Arrow keys move cursor (BLOCKED: needs gap buffer)
+- [ ] Can type text and see it on screen (NEXT UP - needs WASM integration)
+- [ ] Enter key creates new line (NEXT - needs WASM integration)
+- [ ] Backspace deletes characters (NEXT - needs WASM integration)
+- [ ] Arrow keys move cursor (NEXT - needs WASM integration)
 - [x] **Core compiles without Evil-mode** ✅ Dec 20
 - [x] **Evil-mode code completely moved to `packages/evil-mode/`** ✅ Dec 20
-- [ ] Gap buffer passes all unit tests (NEXT PRIORITY)
+- [x] **Gap buffer passes all unit tests** ✅ Dec 20 (15/15 tests)
 - [x] **README accurately describes current state** ✅ Dec 20
 
-**Progress:** 3/8 complete (37.5%)
+**Progress:** 4/8 complete (50%)
 
 ### Risks & Mitigations
 
