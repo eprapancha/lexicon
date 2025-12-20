@@ -1,5 +1,8 @@
 // Core data structures for the text editor
 
+// Gap Buffer - Primary text storage (Emacs-style)
+pub mod gap_buffer;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BufferType {
     Original,

@@ -2,6 +2,9 @@ use wasm_bindgen::prelude::*;
 use lexicon_core::{EditorState, Transaction, Change};
 use serde::{Deserialize, Serialize};
 
+// Gap Buffer WASM bindings (new, simplified API)
+pub mod gap_buffer_wasm;
+
 #[wasm_bindgen]
 extern "C" {
     fn alert(s: &str);
