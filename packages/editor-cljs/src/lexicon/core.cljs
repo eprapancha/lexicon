@@ -56,12 +56,8 @@
   "Mount the main application component"
   []
   (let [container (.getElementById js/document "editor")]
-    (if (exists? js/ReactDOM.createRoot)
-      ;; React 18+ API
-      (let [root (js/ReactDOM.createRoot container)]
-        (.render root (r/as-element [views/main-app])))
-      ;; Fallback to React 17 API
-      (rdom/render [views/main-app] container))))
+    ;; Use standard Reagent render - it handles React 18 internally
+    (rdom/render [views/main-app] container)))
 
 (defn init
   "Initialize the Lexicon editor application"

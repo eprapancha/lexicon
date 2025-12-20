@@ -35,28 +35,26 @@
         :text-cache {}                                 ; Text range cache for performance
         :viewport {:start 0 :end 1000}                ; Currently visible text range
         :scroll-position 0}                            ; Current scroll position
-   :editor {:mode :normal                             ; Editor mode (normal, insert, etc.)
+   :editor {:mode :emacs                              ; Editor mode - simple Emacs mode for now
             :keymap :emacs                             ; Active keymap
             :commands {}}                              ; Available commands
-   :fsm {:current-state :normal                        ; Active FSM state (normal, insert, visual, etc.)
-         :previous-state nil                           ; Previous state for transitions  
-         :state-context {}                             ; Additional context data for states
-         :operator-pending nil                         ; Pending operator function (e.g., delete command d)
-         :motion-pending nil                           ; Pending motion for operator-motion composition
-         :count-register nil                           ; Numeric prefix for commands (e.g., 3dw)
-         :register-name nil                            ; Named register for operations (e.g., "ay)
-         :active-keymap :normal-keymap                 ; Current keymap for the active state
-         :selection-mode :normal                       ; Visual selection mode (:normal, :line, :block)
-         :selection-anchor nil                         ; Anchor point for visual selections
-         :last-search {:pattern nil                    ; Last search pattern
-                       :direction :forward             ; Search direction
-                       :case-sensitive false}          ; Case sensitivity
-         :repeat-last-command nil                      ; Last command for . (repeat) operation
-         :macro-recording nil                          ; Currently recording macro (register name)
-         :macro-registry {}                            ; Stored macros by register name
-         :command-history []                           ; Command history for debugging
-         :transition-hooks {:enter {}                  ; State enter hooks by state
-                           :exit {}}}                   ; State exit hooks by state
+   ;; COMMENTED OUT: Evil mode / FSM - not ready yet, focus on basic Emacs first
+   ;; :fsm {:current-state :insert
+   ;;       :previous-state nil
+   ;;       :state-context {}
+   ;;       :operator-pending nil
+   ;;       :motion-pending nil
+   ;;       :count-register nil
+   ;;       :register-name nil
+   ;;       :active-keymap :insert-keymap
+   ;;       :selection-mode :normal
+   ;;       :selection-anchor nil
+   ;;       :last-search {:pattern nil :direction :forward :case-sensitive false}
+   ;;       :repeat-last-command nil
+   ;;       :macro-recording nil
+   ;;       :macro-registry {}
+   ;;       :command-history []
+   ;;       :transition-hooks {:enter {} :exit {}}}
    :keymaps {:global {"C-x C-f" :find-file             ; Find file
                      "C-x C-s" :save-buffer            ; Save buffer
                      "C-x C-c" :save-buffers-kill-emacs ; Quit emacs
@@ -72,64 +70,14 @@
                      "DEL" :delete-backward-char        ; Backspace
                      "DELETE" :delete-forward-char}     ; Delete
             :major {}                                  ; Major mode keymaps
-            :minor {}                                  ; Minor mode keymaps
-            
-            ;; Legacy keymaps for backward compatibility
-            :normal-keymap {"d" :delete-operator      ; Delete operator
-                            "w" :forward-word          ; Forward word motion
-                            "b" :backward-word         ; Backward word motion
-                            "h" :backward-char         ; Backward character
-                            "j" :next-line             ; Next line
-                            "k" :previous-line         ; Previous line
-                            "l" :forward-char          ; Forward character
-                            "i" :enter-insert-mode     ; Enter insert mode
-                            "a" :append-after-cursor   ; Append after cursor
-                            "A" :append-end-of-line    ; Append at end of line
-                            "o" :open-line-below       ; Open line below
-                            "O" :open-line-above       ; Open line above
-                            "x" :delete-char           ; Delete character under cursor
-                            "v" :enter-visual-mode     ; Enter visual mode
-                            "y" :yank-operator         ; Yank (copy) operator
-                            "p" :paste-after           ; Paste after cursor
-                            "P" :paste-before          ; Paste before cursor
-                            "u" :undo                  ; Undo
-                            "Ctrl+r" :redo             ; Redo
-                            "gg" :goto-first-line      ; Go to first line
-                            "G" :goto-last-line       ; Go to last line
-                            "0" :beginning-of-line     ; Beginning of line
-                            "$" :end-of-line           ; End of line
-                            "Escape" :normal-mode}     ; Ensure normal mode
-            :insert-keymap {"Escape" :exit-insert-mode  ; Exit insert mode
-                           "Ctrl+c" :exit-insert-mode  ; Alternative exit
-                           "Backspace" :delete-backward-char
-                           "Delete" :delete-forward-char
-                           "Enter" :newline
-                           "Tab" :insert-tab}
-            :visual-keymap {"d" :delete-region          ; Delete selected region
-                           "y" :yank-region            ; Yank selected region
-                           "x" :delete-region          ; Delete selected region (same as d)
-                           "c" :change-region          ; Change selected region
-                           "h" :extend-backward-char   ; Extend selection backward
-                           "j" :extend-next-line       ; Extend selection down
-                           "k" :extend-previous-line   ; Extend selection up
-                           "l" :extend-forward-char    ; Extend selection forward
-                           "w" :extend-forward-word    ; Extend selection by word
-                           "b" :extend-backward-word   ; Extend selection backward by word
-                           "0" :extend-beginning-of-line ; Extend to beginning of line
-                           "$" :extend-end-of-line     ; Extend to end of line
-                           "Escape" :exit-visual-mode  ; Exit visual mode
-                           "Ctrl+c" :exit-visual-mode} ; Alternative exit
-            :operator-pending-keymap {"w" :forward-word  ; Forward word motion
-                                     "b" :backward-word ; Backward word motion
-                                     "h" :backward-char ; Backward character
-                                     "j" :next-line     ; Next line
-                                     "k" :previous-line ; Previous line
-                                     "l" :forward-char  ; Forward character
-                                     "0" :beginning-of-line ; Beginning of line
-                                     "$" :end-of-line   ; End of line
-                                     "gg" :goto-first-line ; Go to first line
-                                     "G" :goto-last-line ; Go to last line
-                                     "Escape" :cancel-operator}} ; Cancel pending operator
+            :minor {}}                                 ; Minor mode keymaps
+
+            ;; COMMENTED OUT: Evil mode keymaps - not ready yet, focus on basic Emacs first
+            ;; :normal-keymap {"d" :delete-operator "w" :forward-word ...}
+            ;; :insert-keymap {"Escape" :exit-insert-mode ...}
+            ;; :visual-keymap {"d" :delete-region ...}
+            ;; :operator-pending-keymap {"w" :forward-word ...}
+
    :system {:last-transaction-id 0                    ; For transaction ordering
             :mutation-observer nil                     ; MutationObserver instance
             :reconciliation-active? false              ; Prevent recursive reconciliation

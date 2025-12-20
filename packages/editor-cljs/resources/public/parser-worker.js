@@ -1,7 +1,6 @@
 // Tree-sitter Parser Web Worker
 // Handles syntax parsing in a separate thread to avoid blocking the UI
 
-let TreeSitter = null;
 let parser = null;
 let tree = null;
 let language = null;
@@ -53,8 +52,16 @@ async function initializeParser(payload) {
   
   try {
     if (!mockMode && TreeSitter) {
-      // Real Tree-sitter mode
-      await TreeSitter.init();
+      // Real Tree-sitter mode - initialize with locateFile to find WASM
+      await TreeSitter.init({
+        locateFile(scriptName, scriptDirectory) {
+          // Tell tree-sitter where to find its WASM file
+          if (scriptName === 'tree-sitter.wasm') {
+            return '/js/tree-sitter.wasm';
+          }
+          return scriptName;
+        }
+      });
       TreeSitter = TreeSitter.default || TreeSitter;
       
       // Create parser

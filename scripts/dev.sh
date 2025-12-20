@@ -6,9 +6,13 @@ set -e
 
 echo "Starting Lexicon development environment..."
 
+# Setup dependencies
+echo "Setting up dependencies..."
+cd packages/editor-cljs
+./scripts/setup-deps.sh
+
 # Start the ClojureScript development server
 echo "Starting ClojureScript development server..."
-cd packages/editor-cljs
 npx shadow-cljs watch app &
 CLJS_PID=$!
 

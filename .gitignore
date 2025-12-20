@@ -47,3 +47,6 @@ temp/
 /packages/editor-cljs/syntax-test.cljs
 /packages/editor-cljs/out/
 /.cider-repl-history
+/packages/editor-cljs/node_modules
+/Screenshots
+/packages/editor-cljs/resources/public/lexicon-engine/

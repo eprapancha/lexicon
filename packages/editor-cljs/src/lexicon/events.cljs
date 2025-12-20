@@ -285,43 +285,56 @@
  :handle-key-sequence
  (fn [{:keys [db]} [_ key-str]]
    "Handle a key sequence and dispatch the appropriate command"
-   (println "🔤 Key sequence handler - key:" key-str "FSM state:" (get-in db [:fsm :current-state]))
+   (println "🔤 Key sequence handler - key:" key-str)
    (let [prefix-state (get-in db [:ui :prefix-key-state])
          full-sequence (if prefix-state
                         (str prefix-state " " key-str)
                         key-str)
          command-name (resolve-keybinding db full-sequence)]
-     
+
      (cond
        ;; Found a complete command binding
        command-name
        {:fx [[:dispatch [:execute-command command-name]]
              [:dispatch [:clear-prefix-key-state]]]}
-       
+
        ;; Check if this might be a prefix for a multi-key sequence
        ;; by seeing if any keybinding starts with this sequence
        (some (fn [keymap-entry]
                (and (string? (first keymap-entry))
                     (.startsWith (first keymap-entry) full-sequence)))
-             (concat 
-              (mapcat (fn [minor-mode] 
+             (concat
+              (mapcat (fn [minor-mode]
                         (get-in db [:keymaps :minor minor-mode]))
                       (get-active-minor-modes db))
               (get-in db [:keymaps :major (get-active-major-mode db)])
               (get-in db [:keymaps :global])))
        {:fx [[:dispatch [:set-prefix-key-state full-sequence]]]}
-       
-       ;; No binding found - check if it's a printable character for insertion
+
+       ;; Handle special keys that should insert
+       (and (not prefix-state)
+            (or (= key-str "SPC")   ; Space
+                (= key-str "RET")   ; Enter/Return
+                (= key-str "TAB"))) ; Tab
+       (let [text-to-insert (case key-str
+                              "SPC" " "
+                              "RET" "\n"
+                              "TAB" "\t"
+                              key-str)]
+         (println "✍️ Inserting special key:" key-str "as:" (pr-str text-to-insert))
+         {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
+               [:dispatch [:clear-prefix-key-state]]]})
+
+       ;; No binding found - check if it's a printable character for insertion (Emacs mode - always insert)
        (and (= (count key-str) 1)
             (not prefix-state)
             (not (re-matches #"[CM]-." key-str))  ; Not a modifier combo
-            (>= (.charCodeAt key-str 0) 32)      ; Printable ASCII
-            (= (get-in db [:fsm :current-state]) :insert))
+            (>= (.charCodeAt key-str 0) 32))     ; Printable ASCII
        (do
          (println "✍️ Inserting character:" key-str)
          {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text key-str}]]
                [:dispatch [:clear-prefix-key-state]]]})
-       
+
        ;; Unknown key sequence - clear state and ignore
        :else
        {:fx [[:dispatch [:clear-prefix-key-state]]]}))))
@@ -813,11 +826,14 @@
              ;; Process the operation based on its type
              (case (:op operation)
              :insert
-             (let [wasm-transaction {:type const/TRANSACTION_INSERT 
-                                   :position current-cursor 
-                                   :text (:text operation)}
-                   transaction-json (js/JSON.stringify (clj->js wasm-transaction))]
-               (println "🔧 INSERT transaction - text:" (:text operation) "position:" current-cursor)
+             (let [;; Use clj->js and JSON.stringify
+                   clj-map {:type const/TRANSACTION_INSERT
+                           :position current-cursor
+                           :text (:text operation)}
+                   transaction-json (js/JSON.stringify (clj->js clj-map))]
+               (println "🔧 INSERT transaction - text:" (pr-str (:text operation)) "position:" current-cursor)
+               (println "🔧 Transaction JSON (raw):" transaction-json)
+               (println "🔧 JSON char codes:" (mapv #(.charCodeAt transaction-json %) (range (count transaction-json))))
                (try
                  (let [patch-json (.applyTransaction wasm-instance transaction-json)]
                    (rf/dispatch [:editor/transaction-success 

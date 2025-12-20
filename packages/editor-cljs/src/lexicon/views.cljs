@@ -132,15 +132,15 @@
     :style {:position "absolute"
             :top "0"
             :left "0"
-            :width "200px"
-            :height "100px"
+            :width "100%"
+            :height "100%"
             :opacity "0"
             :background-color "transparent"
             :caret-color "transparent"
             :resize "none"
             :border "none"
             :outline "none"
-            :z-index "9999"}}])
+            :z-index "100"}}])
 
 (defn apply-decorations-to-line
   "Apply syntax highlighting decorations to a line of text"
@@ -192,18 +192,15 @@
 (defn editor-gutter
   "IDE-style gutter with line numbers and diagnostic markers"
   []
-  (let [visible-lines @(rf/subscribe [::subs/visible-lines])
+  (let [visible-lines @(rf/subscribe [:lexicon.subs/visible-lines])
         line-height @(rf/subscribe [:line-height])
-        viewport @(rf/subscribe [::subs/viewport])
-        decorations @(rf/subscribe [::subs/all-decorations])
+        viewport @(rf/subscribe [:lexicon.subs/viewport])
+        decorations @(rf/subscribe [:lexicon.subs/all-decorations])
         diagnostic-decorations (filter #(= (:type %) :diagnostic) decorations)]
-    
+
     [:div.gutter
-     {:style {:position "absolute"
-              :top "0"
-              :left "0"
+     {:style {:flex-shrink "0"
               :width "60px"
-              :height "100%"
               :background-color "#2d2d30"
               :border-right "1px solid #3e3e3e"
               :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
@@ -211,7 +208,7 @@
               :line-height (str line-height "px")
               :color "#858585"
               :user-select "none"
-              :z-index "10"}}
+              :padding-top "20px"}}
      
      ;; Render line numbers and markers
      (when visible-lines
@@ -262,38 +259,30 @@
 (defn custom-rendered-pane
   "Read-only text display using divs per line with syntax highlighting"
   []
-  (let [visible-lines @(rf/subscribe [::subs/visible-lines])
+  (let [visible-lines @(rf/subscribe [:lexicon.subs/visible-lines])
         line-height @(rf/subscribe [:line-height])
-        viewport @(rf/subscribe [::subs/viewport])
-        decorations @(rf/subscribe [::subs/all-decorations])]
-    ; (println "🎨 VIEW: custom-rendered-pane called! Line height:" line-height "Viewport:" viewport)
-    ; (println "🎨 VIEW: Rendering with" (count decorations) "total decorations")
-    ; (let [diagnostic-decorations (filter #(= (:type %) :diagnostic) decorations)]
-    ;   (println "🎨 VIEW: Including" (count diagnostic-decorations) "diagnostic decorations"))
-    
-    [:div.text-pane
-     {:style {:position "absolute"
-              :top (str (* (:start-line viewport 0) line-height) "px")
-              :left "60px"  ; Make room for gutter
-              :right "0"
-              :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
-              :font-size "14px"
-              :line-height (str line-height "px")
-              :padding "20px"
-              :color "#d4d4d4"
-              :white-space "pre-wrap"
-              :pointer-events "none"
-              :background-color "#1e1e1e"}}  ; Same as main background
-     
-     ;; Inner editable content area with subtle background
+        viewport @(rf/subscribe [:lexicon.subs/viewport])
+        decorations @(rf/subscribe [:lexicon.subs/all-decorations])
+        cursor-pos @(rf/subscribe [:lexicon.subs/cursor-position])]
+
+    [:div.text-container
+     {:style {:flex "1"
+              :position "relative"
+              :overflow "hidden"}}
+
      [:div.editable-area
-      {:style {:background-color "rgba(37, 37, 38, 0.5)"  ; Semi-transparent for debugging
+      {:style {:background-color "rgba(37, 37, 38, 0.5)"  ; Semi-transparent highlight
                :border-radius "4px"
-               :min-height "200px"
                :position "relative"
-               :padding "8px"
-               :z-index "1"}}  ; Ensure it's layered properly
-      
+               :padding "20px 8px"  ; Top/bottom 20px, left/right 8px
+               :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
+               :font-size "14px"
+               :line-height (str line-height "px")
+               :color "#d4d4d4"
+               :white-space "pre-wrap"
+               :pointer-events "none"
+               :min-height (str line-height "px")}}  ; At least one line tall
+
       ;; Render visible lines as individual divs with syntax highlighting
       (when visible-lines
         (let [lines (clojure.string/split visible-lines #"\n")]
@@ -302,50 +291,28 @@
               ^{:key line-number}
               [:div.text-line
                {:style {:min-height (str line-height "px")
-                        :position "relative"
-                        :z-index "2"
                         :color "#d4d4d4"}}
-               (apply-decorations-to-line line line-number decorations)]))))]]))
+               (apply-decorations-to-line line line-number decorations)]))))
 
-(defn custom-cursor
-  "Custom cursor element positioned by our application state"
-  []
-  (let [cursor-pos @(rf/subscribe [::subs/cursor-position])
-        line-height @(rf/subscribe [:line-height])]
-    
-    (println "🎯 Custom cursor render - cursor-pos:" cursor-pos "line-height:" line-height)
-    
-    (if cursor-pos
-      (let [{:keys [line column]} cursor-pos
-            ;; Calculate pixel position  
-            char-width 8.4  ; Approximate monospace char width - TODO: measure dynamically
-            top-px (* line line-height)
-            left-px (+ 20 (* column char-width))]  ; 20px for padding
-        
-        (println "🎯 Rendering cursor at line:" line "column:" column "top:" top-px "left:" left-px)
-        
-        [:div.custom-cursor
-         {:style {:position "absolute"
-                  :top (str (+ top-px 20 8) "px")    ; Add 20px outer + 8px inner padding
-                  :left (str (+ left-px 8) "px")     ; Add 8px inner left padding
-                  :width "2px"
-                  :height (str line-height "px")
-                  :background-color "#ffffff"
-                  :pointer-events "none"
-                  :animation "cursor-blink 1s infinite"
-                  :z-index "1000"}}])
-      (do
-        (println "❌ Custom cursor - no cursor-pos data!")
-        ;; Render a fallback cursor at 0,0 so we can see if the element is there
-        [:div.custom-cursor-fallback
-         {:style {:position "absolute"
-                  :top "0px"
-                  :left "20px"
-                  :width "2px" 
-                  :height (str line-height "px")
-                  :background-color "#ff0000"  ; Red so we can see it
-                  :pointer-events "none"
-                  :z-index "1000"}}]))))
+      ;; Cursor - now positioned INSIDE editable-area
+      (when cursor-pos
+        (let [{:keys [line column]} cursor-pos
+              char-width 8.4
+              left-padding 8  ; Account for editable-area left padding
+              top-padding 20  ; Account for editable-area top padding
+              top-px (+ top-padding (* line line-height))
+              left-px (+ left-padding (* column char-width))]
+          [:div.custom-cursor
+           {:style {:position "absolute"
+                    :top (str top-px "px")
+                    :left (str left-px "px")
+                    :width "2px"
+                    :height (str line-height "px")
+                    :background-color "#ffffff"
+                    :pointer-events "none"
+                    :animation "cursor-blink 1s infinite"
+                    :z-index "1000"}}]))]]))
+
 
 (defn editor-wrapper
   "Main editor wrapper with hidden textarea + custom DOM architecture"
@@ -361,28 +328,26 @@
                     (println "🎯 Focusing hidden input")
                     (.focus hidden-input))
                   ;; TODO: Dispatch click-to-cursor event
-                  )
+                  ) 
       :style {:position "relative"
               :width "100%"
-              :height "100%"
+              :min-height "100%"
               :outline "none"}}
      
      ;; Hidden input handler - captures all keyboard input
      [hidden-input-handler hidden-input-ref]
      
-     ;; Gutter with line numbers and diagnostic markers
-     [editor-gutter]
      
-     ;; Custom rendered pane - displays text content
-     [custom-rendered-pane]
-     
-     ;; Custom cursor - fake cursor controlled by our state
-     [custom-cursor]]))
+     ;; Flexbox container for gutter + text
+     [:div.editor-content
+      {:on-click (fn [e] (when-let [hidden-input @hidden-input-ref] (.focus hidden-input)) (.stopPropagation e)) :style {:display "flex" :flex-direction "row" :width "100%" :min-height "100%"}}
+      [editor-gutter]
+      [custom-rendered-pane]]]))
 
 (defn editor-view
   "Main editor view with virtualized scrolling and custom cursor architecture"
   []
-  (let [total-lines @(rf/subscribe [::subs/total-lines])
+  (let [total-lines @(rf/subscribe [:lexicon.subs/total-lines])
         line-height @(rf/subscribe [:line-height])
         scroller-ref (atom nil)]
     
@@ -393,11 +358,10 @@
               (when element
                 (reset! scroller-ref element)
                 (.addEventListener element "scroll" handle-scroll)))
-       :style {:height "calc(100vh - 56px)"  ; Account for buffer tabs and status bar
+       :style {:height "calc(100vh - 24px)"  ; Account for status bar only
                :overflow-y "auto"
                :position "relative"
-               :background-color "#1e1e1e"
-               :margin-top "32px"}}
+               :background-color "#1e1e1e"}}
       
       ;; Virtual space to create proper scrollbar height
       [:div.virtual-space
@@ -528,12 +492,12 @@
 (defn status-bar
   "Display editor status information"
   []
-  (let [cursor-pos @(rf/subscribe [:cursor-position])
+  (let [cursor-pos @(rf/subscribe [:lexicon.subs/cursor-position])
         buffer-length @(rf/subscribe [:buffer-length])
         buffer-modified? @(rf/subscribe [:buffer-modified?])
         active-buffer @(rf/subscribe [:active-buffer])
         minibuffer @(rf/subscribe [:minibuffer])]
-    
+
     (when-not (:active? minibuffer)
       [:div.status-bar
        {:style {:position "fixed"
@@ -556,7 +520,8 @@
        [:div.spacer {:style {:flex "1"}}]
        
        [:span.cursor-info
-        (str "Pos: " cursor-pos " | Len: " buffer-length)]])))
+        (when cursor-pos
+          (str "Line " (inc (:line cursor-pos)) ", Col " (:column cursor-pos) " | " buffer-length " chars"))]])))
 
 (defn main-app
   "Main application component"
@@ -608,7 +573,6 @@
         
         editor-ready?
         [:<>
-         [buffer-tabs]
          [editor-view]
          [status-bar]
          [minibuffer-view]]

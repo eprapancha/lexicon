@@ -29,6 +29,8 @@ echo "📦 Compiling Rust to WebAssembly..."
 wasm-pack build --target web
 
 echo "📁 Copying WASM files to ClojureScript resources..."
+# Create target directory if it doesn't exist
+mkdir -p ../../editor-cljs/resources/public/lexicon-engine/wasm/pkg/
 # Copy built files to where ClojureScript expects them
 cp pkg/* ../../editor-cljs/resources/public/lexicon-engine/wasm/pkg/
 
