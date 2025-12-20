@@ -4,8 +4,7 @@
             [lexicon.db :as db]
             [lexicon.cache :as cache]
             [lexicon.constants :as const]
-            [re-frame.std-interceptors :refer [debug]])
-  (:require-macros [lexicon.macros :refer [def-evil-motion def-evil-operator]]))
+            [re-frame.std-interceptors :refer [debug]]))
 
 ;; -- Helper Functions --
 
