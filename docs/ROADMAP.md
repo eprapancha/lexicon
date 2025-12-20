@@ -1,7 +1,7 @@
 # Lexicon Development Roadmap
 
-**Last Updated:** 2025-12-20
-**Current Phase:** Phase 0 (Architecture Reset)
+**Last Updated:** 2025-12-20 (Evening Update)
+**Current Phase:** Phase 0 (Architecture Reset - 50% Complete!)
 
 ---
 
@@ -21,12 +21,14 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ### Objectives
 
-1. **Extract Evil-mode from Core** ⚠️ CRITICAL
-   - Move `fsm/` directory → `packages/evil-mode/src/lexicon/evil/fsm/`
-   - Move `macros.clj` → `packages/evil-mode/src/lexicon/evil/macros.clj`
-   - Remove FSM state from core `db.cljs`
-   - Remove FSM event handlers from core `events.cljs`
-   - Core must compile and run without any Evil-mode code
+1. **Extract Evil-mode from Core** ✅ COMPLETE (Dec 20, 2025)
+   - ✅ Move `fsm/` directory → `packages/evil-mode/src/lexicon/evil/fsm/`
+   - ✅ Move `macros.clj` → `packages/evil-mode/src/lexicon/evil/macros.clj`
+   - ✅ Move `command/` dispatcher → `packages/evil-mode/src/lexicon/evil/command/`
+   - ✅ Move `keymaps/` → `packages/evil-mode/src/lexicon/evil/keymaps/`
+   - ✅ Remove FSM state from core `events.cljs`
+   - ✅ Core compiles cleanly with 0 errors
+   - ✅ Created `evil-mode/README.md` documenting future integration
 
 2. **Replace Piece Tree with Gap Buffer**
    - Implement gap buffer in Rust (`packages/lexicon-engine/core/src/gap_buffer.rs`)
@@ -57,21 +59,24 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
        └── src/lexicon/evil/
    ```
 
-5. **Update Documentation**
-   - README reflects actual working state
-   - Architecture doc describes gap buffer implementation
-   - This roadmap tracks progress
+5. **Update Documentation** ✅ COMPLETE (Dec 20, 2025)
+   - ✅ Created CORE_PRINCIPLES.md - Architectural foundation
+   - ✅ Created ROADMAP.md - This document
+   - ✅ Updated README.md - Reflects reality (broken features marked)
+   - ✅ Updated architecture.md - Gap buffer design documented
 
 ### Success Criteria
 
-- [ ] Can type text and see it on screen
-- [ ] Enter key creates new line
-- [ ] Backspace deletes characters
-- [ ] Arrow keys move cursor
-- [ ] Core compiles without Evil-mode
-- [ ] Evil-mode code completely moved to `packages/evil-mode/`
-- [ ] Gap buffer passes all unit tests
-- [ ] README accurately describes current state
+- [ ] Can type text and see it on screen (NEXT UP)
+- [ ] Enter key creates new line (BLOCKED: needs gap buffer)
+- [ ] Backspace deletes characters (BLOCKED: needs gap buffer)
+- [ ] Arrow keys move cursor (BLOCKED: needs gap buffer)
+- [x] **Core compiles without Evil-mode** ✅ Dec 20
+- [x] **Evil-mode code completely moved to `packages/evil-mode/`** ✅ Dec 20
+- [ ] Gap buffer passes all unit tests (NEXT PRIORITY)
+- [x] **README accurately describes current state** ✅ Dec 20
+
+**Progress:** 3/8 complete (37.5%)
 
 ### Risks & Mitigations
 
