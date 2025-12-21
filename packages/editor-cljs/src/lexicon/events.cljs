@@ -250,7 +250,7 @@
 (defn get-active-minor-modes
   "Get the set of active minor modes for the active buffer"
   [db]
-  (let [active-window (get (:windows db) (:active-window-id db))
+  (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
         active-buffer-id (:buffer-id active-window)
         active-buffer (get (:buffers db) active-buffer-id)]
     (:minor-modes active-buffer #{})))
@@ -258,7 +258,7 @@
 (defn get-active-major-mode
   "Get the active major mode for the active buffer"
   [db]
-  (let [active-window (get (:windows db) (:active-window-id db))
+  (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
         active-buffer-id (:buffer-id active-window)
         active-buffer (get (:buffers db) active-buffer-id)]
     (:major-mode active-buffer :fundamental-mode)))
@@ -366,7 +366,7 @@
  :set-major-mode
  (fn [db [_ mode-keyword]]
    "Set the major mode for the active buffer"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)]
      ;; Update the buffer's major mode
      (assoc-in db [:buffers active-buffer-id :major-mode] mode-keyword))))
@@ -375,7 +375,7 @@
  :toggle-minor-mode
  (fn [db [_ mode-keyword]]
    "Toggle a minor mode for the active buffer"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          current-modes (get-in db [:buffers active-buffer-id :minor-modes] #{})]
      (if (contains? current-modes mode-keyword)
@@ -390,7 +390,7 @@
  :enable-minor-mode
  (fn [db [_ mode-keyword]]
    "Enable a minor mode for the active buffer"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          current-modes (get-in db [:buffers active-buffer-id :minor-modes] #{})]
      (assoc-in db [:buffers active-buffer-id :minor-modes] 
@@ -400,7 +400,7 @@
  :disable-minor-mode
  (fn [db [_ mode-keyword]]
    "Disable a minor mode for the active buffer"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          current-modes (get-in db [:buffers active-buffer-id :minor-modes] #{})]
      (assoc-in db [:buffers active-buffer-id :minor-modes] 
@@ -444,7 +444,7 @@
  :forward-char
  (fn [{:keys [db]} [_]]
    "Move cursor forward one character (C-f or Right arrow)"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)]
@@ -466,7 +466,7 @@
  :next-line
  (fn [{:keys [db]} [_]]
    "Move cursor to next line (C-n or Down arrow)"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)]
@@ -485,7 +485,7 @@
  :previous-line
  (fn [{:keys [db]} [_]]
    "Move cursor to previous line (C-p or Up arrow)"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)]
@@ -503,7 +503,7 @@
  :click-to-position
  (fn [{:keys [db]} [_ line column]]
    "Move cursor to clicked position"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])]
      (if wasm-instance
@@ -517,7 +517,7 @@
  :beginning-of-line
  (fn [{:keys [db]} [_]]
    "Move cursor to beginning of current line (C-a)"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)]
@@ -532,7 +532,7 @@
  :end-of-line
  (fn [{:keys [db]} [_]]
    "Move cursor to end of current line (C-e)"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)]
@@ -555,7 +555,7 @@
  :end-of-buffer
  (fn [{:keys [db]} [_]]
    "Move cursor to end of buffer (M->)"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])]
      (if wasm-instance
@@ -567,7 +567,7 @@
  :forward-word
  (fn [{:keys [db]} [_]]
    "Move cursor forward one word (M-f)"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)]
@@ -581,7 +581,7 @@
  :backward-word
  (fn [{:keys [db]} [_]]
    "Move cursor backward one word (M-b)"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)]
@@ -597,7 +597,7 @@
  :kill-line
  (fn [{:keys [db]} [_]]
    "Kill from cursor to end of line (C-k)"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)]
@@ -641,11 +641,13 @@
  :set-mark-command
  (fn [{:keys [db]} [_]]
    "Set mark at current cursor position (C-SPC)"
-   (let [active-window (get (:windows db) (:active-window-id db))
-         active-buffer-id (:buffer-id active-window)
-         current-pos (get-in db [:ui :cursor-position] 0)]
+   (let [active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         current-pos (get-in db [:ui :cursor-position] 0)
+         new-tree (db/update-window-in-tree window-tree active-window-id
+                                            #(assoc % :mark-position current-pos))]
      (println "✓ Mark set at position" current-pos)
-     {:db (assoc-in db [:buffers active-buffer-id :mark-position] current-pos)})))
+     {:db (assoc db :window-tree new-tree)})))
 
 ;; -- Universal Argument (Prefix Argument) --
 
@@ -677,10 +679,12 @@
  :copy-region-as-kill
  (fn [{:keys [db]} [_]]
    "Copy region to kill ring without deleting (M-w)"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         active-window (db/find-window-in-tree window-tree active-window-id)
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
-         mark-position (get-in db [:buffers active-buffer-id :mark-position])
+         mark-position (:mark-position active-window)
          cursor-pos (get-in db [:ui :cursor-position] 0)]
 
      (if (and wasm-instance mark-position)
@@ -690,11 +694,13 @@
          (if (> length 0)
            (let [copied-text (.getRange wasm-instance start end)
                  kill-ring (:kill-ring db)
-                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons copied-text kill-ring))]
+                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons copied-text kill-ring))
+                 new-tree (db/update-window-in-tree window-tree active-window-id
+                                                    #(assoc % :mark-position nil))]
              (println "✓ Copied" length "characters to kill ring")
              {:db (-> db
                       (assoc :kill-ring updated-kill-ring)
-                      (assoc-in [:buffers active-buffer-id :mark-position] nil))})
+                      (assoc :window-tree new-tree))})
            {:db db}))
        (do
          (println "⚠ No region selected (set mark with C-SPC first)")
@@ -716,15 +722,19 @@
  :update-cursor-position
  (fn [{:keys [db]} [_ new-linear-pos]]
    "Update cursor position in both linear and line/column formats"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         active-window (db/find-window-in-tree window-tree active-window-id)
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])]
      (if wasm-instance
        (let [text (.getText wasm-instance)
-             line-col (linear-pos-to-line-col text new-linear-pos)]
+             line-col (linear-pos-to-line-col text new-linear-pos)
+             new-tree (db/update-window-in-tree window-tree active-window-id
+                                                #(assoc % :cursor-position line-col))]
          {:db (-> db
-                  (assoc-in [:ui :cursor-position] new-linear-pos) ; Keep old for compatibility
-                  (assoc-in [:buffers active-buffer-id :cursor-position] line-col))})
+                  (assoc :window-tree new-tree)
+                  (assoc-in [:ui :cursor-position] new-linear-pos))})  ; Keep old for compatibility
        {:db db}))))
 
 
@@ -882,7 +892,7 @@
  :save-buffer-internal
  (fn [{:keys [db]} [_]]
    "Internal save buffer implementation"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer (get (:buffers db) active-buffer-id)
          wasm-instance (:wasm-instance active-buffer)
@@ -1429,7 +1439,7 @@
      (println "📊 Queue status - In flight:" in-flight? "Queue size:" queue-size)
      (when (and (not in-flight?) (seq queue))
        (let [operation (first (:transaction-queue db))
-             active-window (get (:windows db) (:active-window-id db))
+             active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
              active-buffer-id (:buffer-id active-window)
              active-buffer (get (:buffers db) active-buffer-id)
              wasm-instance (:wasm-instance active-buffer)
@@ -1539,7 +1549,7 @@
    "Handle successful transaction completion"
    (println "✅ Queue: Transaction success. New cursor:" new-cursor)
    (try
-     (let [active-window    (get (:windows db) (:active-window-id db))
+     (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
            active-buffer-id (:buffer-id active-window)
            final-cursor     new-cursor
 
@@ -1613,7 +1623,7 @@
  :dispatch-transaction
  (fn [{:keys [db]} [_ transaction]]
    "Apply a transaction to the WASM kernel - side effect only"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer (get (:buffers db) active-buffer-id)
          wasm-instance (:wasm-instance active-buffer)]
@@ -1724,7 +1734,7 @@
  :compound-transaction
  (fn [{:keys [db]} [_ operations]]
    "Apply multiple operations as a compound transaction"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer (get (:buffers db) active-buffer-id)
          wasm-instance (:wasm-instance active-buffer)]
@@ -1794,7 +1804,7 @@
  :reconcile-dom-state
  (fn [{:keys [db]} [_ dom-content expected-content]]
    "Reconcile DOM state with WASM state using diff algorithm"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer (get (:buffers db) active-buffer-id)
          wasm-instance (:wasm-instance active-buffer)]
@@ -1827,7 +1837,7 @@
  :save-buffer
  (fn [{:keys [db]} [_]]
    "Save the active buffer to disk (C-x C-s)"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer (get (:buffers db) active-buffer-id)
          wasm-instance (:wasm-instance active-buffer)
@@ -1849,7 +1859,7 @@
  :write-file
  (fn [{:keys [db]} [_]]
    "Save buffer to a new file (C-x C-w - Save As)"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer (get (:buffers db) active-buffer-id)
          wasm-instance (:wasm-instance active-buffer)]
@@ -2060,7 +2070,7 @@
  (fn [{:keys [db]} [_ dom-content]]
    "Check if DOM content differs from WASM content and reconcile if needed"
    (let [reconciliation-active? (get-in db [:system :reconciliation-active?])
-         active-window (get (:windows db) (:active-window-id db))
+         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer (get (:buffers db) active-buffer-id)
          wasm-instance (:wasm-instance active-buffer)]
@@ -2276,7 +2286,7 @@
  :parser/ast-updated
  (fn [db [_ payload]]
    "Update the AST for the active buffer"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)]
      (println "AST updated for buffer" active-buffer-id)
      (assoc-in db [:buffers active-buffer-id :ast] (:ast payload)))))
@@ -2324,7 +2334,7 @@
  :parser/request-incremental-parse
  (fn [{:keys [db]} [_ edit-details]]
    "Request incremental reparse after edit"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          buffer (get-in db [:buffers active-buffer-id])
          wasm-instance (:wasm-instance buffer)
@@ -2519,22 +2529,26 @@
  :set-mark
  (fn [db [_]]
    "Set the mark at the current cursor position"
-   (let [active-window (get (:windows db) (:active-window-id db))
-         active-buffer-id (:buffer-id active-window)
-         cursor-pos (get-in db [:ui :cursor-position])]
-     (assoc-in db [:buffers active-buffer-id :mark-position] cursor-pos))))
+   (let [active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         cursor-pos (get-in db [:ui :cursor-position])
+         new-tree (db/update-window-in-tree window-tree active-window-id
+                                            #(assoc % :mark-position cursor-pos))]
+     (assoc db :window-tree new-tree))))
 
 (rf/reg-event-fx
  :kill-region
  (fn [{:keys [db]} [_]]
    "Kill (cut) the region between point and mark"
-   (let [active-window (get (:windows db) (:active-window-id db))
+   (let [active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         active-window (db/find-window-in-tree window-tree active-window-id)
          active-buffer-id (:buffer-id active-window)
          active-buffer (get (:buffers db) active-buffer-id)
          wasm-instance (:wasm-instance active-buffer)
-         mark-position (:mark-position active-buffer)
+         mark-position (:mark-position active-window)
          cursor-pos (get-in db [:ui :cursor-position])]
-     
+
      (if (and wasm-instance mark-position)
        (let [start (min cursor-pos mark-position)
              end (max cursor-pos mark-position)
@@ -2542,11 +2556,13 @@
          (if (> length 0)
            (let [killed-text (.getRange ^js wasm-instance start end)
                  kill-ring (:kill-ring db)
-                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))]
+                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))
+                 new-tree (db/update-window-in-tree window-tree active-window-id
+                                                    #(assoc % :mark-position nil))]
              {:db (-> db
                       (assoc :kill-ring updated-kill-ring)
-                      (assoc-in [:buffers active-buffer-id :mark-position] nil))
-              :fx [[:dispatch [:editor/queue-transaction 
+                      (assoc :window-tree new-tree))
+              :fx [[:dispatch [:editor/queue-transaction
                               {:op :delete-range :start start :length length}]]]})
            {:db db}))
        (do
@@ -2557,7 +2573,7 @@
  :yank
  (fn [{:keys [db]} [_]]
    "Yank (paste) the most recent kill"
-   (let [active-window    (get (:windows db) (:active-window-id db))
+   (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer    (get (:buffers db) active-buffer-id)
          wasm-instance    (:wasm-instance active-buffer)
@@ -2581,7 +2597,7 @@
  :yank-pop
  (fn [{:keys [db]} [_]]
    "Replace last yank with next item in kill ring (M-y)"
-   (let [active-window    (get (:windows db) (:active-window-id db))
+   (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer    (get (:buffers db) active-buffer-id)
          wasm-instance    (:wasm-instance active-buffer)
@@ -2616,7 +2632,7 @@
  :undo
  (fn [{:keys [db]} [_]]
    "Undo the last operation (C-/ or C-_)"
-   (let [active-window    (get (:windows db) (:active-window-id db))
+   (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer    (get (:buffers db) active-buffer-id)
          wasm-instance    (:wasm-instance active-buffer)
