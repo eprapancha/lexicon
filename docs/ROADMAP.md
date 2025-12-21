@@ -139,6 +139,27 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 **Progress:** 5/5 complete (100%) ✅ PHASE 1 COMPLETE!
 
+### Known Gaps (Post-completion)
+
+**🎨 Visual Feedback - Region Highlighting**
+- **Issue:** Region (mark to point) not visually highlighted
+- **Impact:** Users can't see what they're selecting with C-SPC + motion
+- **Commands affected:** `kill-region` (C-w), `copy-region-as-kill` (M-w), any region-based command
+- **Priority:** High - poor UX without visual feedback
+- **Effort:** ~30 minutes (CSS + render logic when mark active)
+- **Should be fixed:** Before Phase 3
+
+**⌨️ Prefix Arguments - Universal Argument (C-u)**
+- **Issue:** No support for numeric prefix arguments
+- **Impact:** Can't do `C-u 10 C-n` (move 10 lines), `C-u C-k` (kill including newline), etc.
+- **Priority:** High - fundamental Emacs feature
+- **Effort:** 2-3 hours
+  - Add `:prefix-argument` state to app-db
+  - C-u sets multiplier (4, 16, 64...)
+  - Modify commands to accept/consume prefix arg
+  - Show "C-u -" in mode line during input
+- **Should be fixed:** Before Phase 3 (simpler than doing it after window splits)
+
 ---
 
 ## Technical Debt & Code Quality Improvements
@@ -363,6 +384,45 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ---
 
+## Phase 2.5: Core Polish (Before Phase 3)
+
+**Status:** 🔲 Planned
+**Goal:** Fix critical UX gaps from Phase 1-2 before adding window complexity
+**Timeline:** 0.5-1 day
+**Prerequisites:** Phase 2 complete
+
+### Essential Additions
+
+#### 1. Region Highlighting (30 min)
+**Why now:** Phase 1 commands (C-w, M-w) unusable without visual feedback
+- Add CSS for `.selected-region` with background color
+- Update view to render highlighted spans when mark is active
+- Calculate mark position to cursor position range
+
+#### 2. Basic Help - describe-bindings (1 hour)
+**Why now:** Need to discover implemented commands as list grows
+- `describe-bindings` (C-h b) - List all keybindings in buffer
+- Simple implementation: format keymap data, no completion yet
+- Foundation for full help system in Phase 4
+
+#### 3. Universal Argument (C-u) (2-3 hours)
+**Why now:** Simpler before window splits; fundamental Emacs feature
+- Add `:prefix-argument` state to app-db
+- Implement C-u handler (accumulates 4, 16, 64...)
+- Modify motion commands to accept count parameter
+- Modify editing commands (C-k, etc.) for prefix arg behavior
+- Show "C-u -" or "C-u 4" in mode line
+
+### Success Criteria
+- [ ] Can see region selection visually
+- [ ] C-h b lists all current keybindings
+- [ ] C-u 5 C-n moves down 5 lines
+- [ ] C-u C-k kills line including newline
+
+**Estimated Total Effort:** 3-4 hours
+
+---
+
 ## Phase 3: Core Emacs - Windows & Frames
 
 **Status:** 🔲 Planned
@@ -431,6 +491,15 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 - Show keybinding if available
 - Recent commands tracking
 
+#### Help System (C-h)
+- `describe-key` (C-h k) - Show what a key binding does
+- `describe-function` (C-h f) - Describe a command/function
+- `describe-bindings` (C-h b) - List all current key bindings
+- `apropos-command` (C-h a) - Search commands by keyword
+- `help-for-help` (C-h ?) - Show help menu
+- Command registry for introspection
+- Keybinding reverse lookup (command → key)
+
 ### Success Criteria
 
 - [ ] M-x works with completion
@@ -438,6 +507,9 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 - [ ] Buffer completion works in `switch-to-buffer`
 - [ ] TAB completes, RET confirms, C-g cancels
 - [ ] Minibuffer shows prompt and input correctly
+- [ ] C-h k shows keybinding documentation
+- [ ] C-h b lists all keybindings in a buffer
+- [ ] C-h f describes any command
 
 ---
 
