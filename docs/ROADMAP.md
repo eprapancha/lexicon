@@ -388,24 +388,83 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 **Status:** 🔲 Planned
 **Goal:** Fix critical UX gaps from Phase 1-2 before adding window complexity
-**Timeline:** 1 day
+**Timeline:** 1.5-2 days
 **Prerequisites:** Phase 2 complete
+
+### 🚨 SHOW-STOPPER Issues (Prevents basic usage)
+
+**Problem 1: Layout/Focus - Two-area editor with dead zone**
+- **Symptom:** Content only appears in narrow left column (~60px gutter width)
+- **Symptom:** Huge dark empty area on right doesn't accept clicks/focus
+- **Symptom:** Must click in specific narrow area to type
+- **Symptom:** M- commands don't work until after clicking in editor
+- **Impact:** **CRITICAL** - Cannot type without mouse, defeats entire purpose of Emacs
+- **Root Cause:** `.editable-area` not expanding to fill `.text-container`
+- **Fix:** (1 hour)
+  - Ensure `.text-container` flex:1 fills parent width
+  - Ensure `.editable-area` width: 100% or inherits container width
+  - Add explicit width calculations if needed
+  - Fix z-index/pointer-events issues preventing click propagation
+
+**Problem 2: Focus management - Unpredictable focus behavior**
+- **Symptom:** Sometimes can't type without explicitly clicking in editor
+- **Symptom:** Minibuffer doesn't reliably return focus to buffer after cancel
+- **Impact:** **CRITICAL** - Using mouse in Emacs is "the biggest joke"
+- **Fix:** (30 min)
+  - Minibuffer cancel (Esc/C-g) must explicitly `.focus()` hidden input
+  - All navigation commands should ensure hidden input has focus
+  - Document-level click handler to always focus editor when clicking anywhere
+
+**Problem 3: C-g in minibuffer - Not working**
+- **Symptom:** Esc works to cancel minibuffer, but C-g doesn't
+- **Impact:** HIGH - C-g is THE Emacs "get out of jail" key
+- **Fix:** (15 min)
+  - Minibuffer keydown handler already has C-g check (line 527 in views.cljs)
+  - Verify it's dispatching `:on-cancel` correctly
+  - Test that cancel handler focuses editor
+
+**Problem 4: Horizontal scrollbar - Shouldn't exist**
+- **Symptom:** Ugly horizontal scrollbar just above mode line
+- **Impact:** MEDIUM - Visual pollution, suggests layout issue
+- **Fix:** (15 min)
+  - `.editor-scroller` should have `overflow-x: hidden`
+  - Ensure no child elements exceed container width
+  - Verify `.editable-area` doesn't have fixed width causing overflow
+
+**Problem 5: No echo area - Messages have nowhere to go**
+- **Symptom:** Mode line at very bottom, no blank line below for messages
+- **Impact:** MEDIUM - Can't show transient messages (saving, errors, etc.)
+- **Fix:** (30 min)
+  - Add `.echo-area` div below mode line
+  - Reserve space in layout (20-24px height)
+  - Add `:echo-message` to app-db
+  - Auto-clear messages after 2-3 seconds
+  - Essential for showing command feedback
 
 ### Critical UX Issues (Makes Phase 2 frustrating to use)
 
-**Problem 1: C-x b (switch-to-buffer) - No completion**
+**Problem 6: C-x b (switch-to-buffer) - No completion**
 - With multiple buffers, must type exact name character-by-character
 - No way to see available buffer names
 - No TAB completion or partial matching
 - **Impact:** Unusable with 5+ buffers
 
-**Problem 2: C-x C-b (list-buffers) - Read-only buffer list**
+**Problem 7: C-x C-b (list-buffers) - Read-only buffer list**
 - Shows buffer list but can't interact with it
 - Must memorize buffer name, exit, then use C-x b
 - Should be able to navigate and press RET to switch
 - **Impact:** Feature is essentially broken
 
-### Essential Additions
+### Essential Additions (In Priority Order)
+
+#### 0. FIX SHOW-STOPPERS FIRST (3 hours)
+**THESE MUST BE FIXED BEFORE ANYTHING ELSE**
+1. Layout/Focus - Two-area editor (1 hour) - **BLOCKING**
+2. Focus management (30 min) - **BLOCKING**
+3. C-g in minibuffer (15 min) - **BLOCKING**
+4. Horizontal scrollbar (15 min)
+5. Echo area for messages (30 min)
+6. Test thoroughly - ensure can type anywhere, focus is predictable
 
 #### 1. Region Highlighting (30 min) - HIGH PRIORITY
 **Why now:** Phase 1 commands (C-w, M-w) unusable without visual feedback
@@ -450,6 +509,11 @@ Completions: *scratch*, shell.nix
 - Show "C-u -" or "C-u 4" in mode line
 
 ### Success Criteria
+- [ ] **Can type anywhere in editor without clicking narrow column first** ← CRITICAL
+- [ ] **M- commands work immediately after app loads** ← CRITICAL
+- [ ] **C-g cancels minibuffer and returns focus to editor** ← CRITICAL
+- [ ] No horizontal scrollbar visible
+- [ ] Echo area shows messages (e.g., "Saving...", "Saved")
 - [ ] Can see region selection visually
 - [ ] C-x b shows completions on TAB, can select with arrow keys
 - [ ] C-x C-b allows RET to switch to buffer on current line
@@ -457,13 +521,26 @@ Completions: *scratch*, shell.nix
 - [ ] (Optional) C-u 5 C-n moves down 5 lines
 
 ### Implementation Priority
-1. Region highlighting (30 min)
-2. TAB completion for C-x b (1-2 hours) ← **BLOCKING**
-3. Interactive buffer-menu-mode (1 hour) ← **BLOCKING**
-4. C-h b describe-bindings (1 hour)
-5. C-u universal argument (2-3 hours) - Can wait
+**PHASE 1 - SHOW-STOPPERS (Must fix first):**
+1. Layout/Focus - Fix two-area editor (1 hour) ← **BLOCKING EVERYTHING**
+2. Focus management - Reliable focus (30 min) ← **BLOCKING EVERYTHING**
+3. C-g in minibuffer (15 min) ← **BLOCKING**
+4. Horizontal scrollbar removal (15 min)
+5. Echo area implementation (30 min)
+6. **THOROUGH TESTING** - Ensure basic typing works
 
-**Estimated Total Effort:** 4-5 hours (without C-u), 6-8 hours (with C-u)
+**PHASE 2 - USABILITY (After show-stoppers fixed):**
+7. Region highlighting (30 min)
+8. TAB completion for C-x b (1-2 hours) ← **BLOCKING multi-buffer use**
+9. Interactive buffer-menu-mode (1 hour) ← **BLOCKING C-x C-b**
+10. C-h b describe-bindings (1 hour)
+11. C-u universal argument (2-3 hours) - Can defer to Phase 2.6
+
+**Estimated Total Effort:**
+- Show-stoppers: 3 hours
+- Core usability: 2.5-3.5 hours
+- **Total: 5.5-6.5 hours** (without C-u)
+- **Total: 7.5-9.5 hours** (with C-u)
 
 ---
 
