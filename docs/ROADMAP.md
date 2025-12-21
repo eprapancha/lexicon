@@ -315,7 +315,7 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 | Item | Priority | Phase | Status |
 |------|----------|-------|--------|
-| Subscription caching | 🚨 Critical | Before Phase 2 | 🔲 Planned |
+| Subscription caching | 🚨 Critical | Before Phase 2 | ✅ Complete |
 | app-db structure | ⚠️ High | Phase 2 | 🔲 Planned |
 | Event handler refactor | ⚠️ High | Phase 2 | 🔲 Planned |
 | Error handling | 📋 Medium | Phase 3-4 | 🔲 Planned |
@@ -327,10 +327,10 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ## Phase 2: Core Emacs - Buffers & Files
 
-**Status:** 🔲 Planned
+**Status:** ⏳ In Progress
 **Goal:** Multi-buffer editing with file I/O
 **Timeline:** 2 weeks (Jan 24 - Feb 7, 2025)
-**Prerequisites:** Phase 1 complete
+**Prerequisites:** ✅ Phase 1 complete, ✅ Subscription caching complete
 
 ### Features
 
