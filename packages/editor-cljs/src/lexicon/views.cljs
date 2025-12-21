@@ -409,37 +409,252 @@
                     :z-index "1000"}}]))]]))
 
 
+(defn window-pane-gutter
+  "Gutter for a specific window"
+  [window-id]
+  (let [visible-lines @(rf/subscribe [:lexicon.subs/window-visible-lines window-id])
+        line-height @(rf/subscribe [:line-height])
+        viewport @(rf/subscribe [:lexicon.subs/window-viewport window-id])
+        decorations @(rf/subscribe [:lexicon.subs/window-decorations window-id])
+        diagnostic-decorations (filter #(= (:type %) :diagnostic) decorations)]
+
+    [:div.gutter
+     {:style {:flex-shrink "0"
+              :width "60px"
+              :background-color "#2d2d30"
+              :border-right "1px solid #3e3e3e"
+              :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
+              :font-size "12px"
+              :line-height (str line-height "px")
+              :color "#858585"
+              :user-select "none"
+              :padding-top "20px"}}
+
+     (when visible-lines
+       (let [lines (clojure.string/split visible-lines #"\n" -1)
+             start-line (:start-line viewport 0)]
+         (map-indexed
+           (fn [idx line]
+             (let [line-num (+ start-line idx 1)
+                   line-diagnostics (filter #(= (:line (:from %)) (dec line-num)) diagnostic-decorations)
+                   has-error? (some #(= (:class %) "diagnostic-error") line-diagnostics)
+                   has-warning? (some #(= (:class %) "diagnostic-warning") line-diagnostics)
+                   has-hint? (some #(= (:class %) "diagnostic-hint") line-diagnostics)]
+               [:div.gutter-line
+                {:key line-num
+                 :style {:height (str line-height "px")
+                         :display "flex"
+                         :align-items "center"
+                         :padding-right "8px"
+                         :position "relative"}}
+
+                (when (or has-error? has-warning? has-hint?)
+                  [:div.diagnostic-marker
+                   {:style {:position "absolute"
+                            :left "4px"
+                            :width "8px"
+                            :height "8px"
+                            :border-radius "50%"
+                            :background-color (cond
+                                               has-error? "#f14c4c"
+                                               has-warning? "#ff8c00"
+                                               has-hint? "#d7ba7d"
+                                               :else "#666")}}])
+
+                [:div.line-number
+                 {:style {:margin-left "auto"
+                          :text-align "right"
+                          :font-weight (if (or has-error? has-warning? has-hint?) "bold" "normal")
+                          :color (cond
+                                  has-error? "#f14c4c"
+                                  has-warning? "#ff8c00"
+                                  has-hint? "#d7ba7d"
+                                  :else "#858585")}}
+                 line-num]]))
+           lines)))]))
+
+(defn window-pane-text
+  "Text rendering pane for a specific window"
+  [window-id is-active? hidden-input-ref]
+  (let [visible-lines @(rf/subscribe [:lexicon.subs/window-visible-lines window-id])
+        line-height @(rf/subscribe [:line-height])
+        viewport @(rf/subscribe [:lexicon.subs/window-viewport window-id])
+        base-decorations @(rf/subscribe [:lexicon.subs/window-decorations window-id])
+        cursor-pos @(rf/subscribe [:lexicon.subs/window-cursor-position window-id])
+        mark-position @(rf/subscribe [:lexicon.subs/window-mark-position window-id])
+        buffer-content @(rf/subscribe [:lexicon.subs/window-buffer-content window-id])
+        region-active? (not (nil? mark-position))
+        region-decorations (when region-active?
+                            (create-region-decorations mark-position cursor-pos buffer-content))
+        decorations (if region-decorations
+                     (concat base-decorations region-decorations)
+                     base-decorations)
+        handle-click (fn [e]
+                       (println "📍 Window" window-id "clicked!")
+                       (.stopPropagation e)
+                       ;; Set this window as active
+                       (rf/dispatch [:set-active-window window-id])
+                       ;; Focus hidden input
+                       (when-let [hidden-input @hidden-input-ref]
+                         (.focus hidden-input))
+                       (let [rect (-> e .-currentTarget .getBoundingClientRect)
+                             click-x (- (.-clientX e) (.-left rect))
+                             click-y (- (.-clientY e) (.-top rect))
+                             char-width 8.4
+                             left-padding 8
+                             top-padding 20
+                             clicked-line (int (/ (- click-y top-padding) line-height))
+                             clicked-column (max 0 (int (/ (- click-x left-padding) char-width)))
+                             absolute-line (+ clicked-line (:start-line viewport 0))]
+                         (println "🖱️ Click at pixel" click-x "," click-y
+                                  "→ line" absolute-line "col" clicked-column)
+                         (rf/dispatch [:click-to-position absolute-line clicked-column])))]
+
+    [:div.text-container
+     {:style {:flex "1"
+              :position "relative"
+              :overflow "hidden"
+              :min-height "100%"}
+      :on-click handle-click}
+
+     [:div.editable-area
+      {:on-click (fn [e]
+                   (when-let [hidden-input @hidden-input-ref]
+                     (.focus hidden-input)))
+       :style {:background-color "rgba(37, 37, 38, 0.5)"
+               :border-radius "4px"
+               :position "absolute"
+               :top "0"
+               :left "0"
+               :right "0"
+               :bottom "0"
+               :padding "20px 8px"
+               :box-sizing "border-box"
+               :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
+               :font-size "14px"
+               :line-height (str line-height "px")
+               :color "#d4d4d4"
+               :white-space "pre-wrap"
+               :cursor "text"
+               :pointer-events "auto"
+               :z-index "1"}}
+
+      ;; Render visible lines
+      (when visible-lines
+        (let [lines (clojure.string/split visible-lines #"\n" -1)]
+          (for [[idx line] (map-indexed vector lines)]
+            (let [line-number (+ (:start-line viewport 0) idx)]
+              ^{:key line-number}
+              [:div.text-line
+               {:style {:min-height (str line-height "px")
+                        :color "#d4d4d4"}}
+               (apply-decorations-to-line line line-number decorations)]))))
+
+      ;; Cursor - only show if this is the active window
+      (when (and is-active? cursor-pos)
+        (let [{:keys [line column]} cursor-pos
+              char-width 8.4
+              left-padding 8
+              top-padding 20
+              top-px (+ top-padding (* line line-height))
+              left-px (+ left-padding (* column char-width))]
+          [:div.custom-cursor
+           {:style {:position "absolute"
+                    :top (str top-px "px")
+                    :left (str left-px "px")
+                    :width "2px"
+                    :height (str line-height "px")
+                    :background-color "#ffffff"
+                    :pointer-events "none"
+                    :animation "cursor-blink 1s infinite"
+                    :z-index "1000"}}]))]]))
+
+(defn window-pane
+  "Render a single window pane (leaf node)"
+  [window-id is-active? hidden-input-ref]
+  [:div.window-pane
+   {:style {:display "flex"
+            :flex-direction "row"
+            :width "100%"
+            :height "100%"
+            :border (if is-active? "2px solid #007acc" "2px solid transparent")
+            :box-sizing "border-box"}}
+   [window-pane-gutter window-id]
+   [window-pane-text window-id is-active? hidden-input-ref]])
+
+(defn render-window-tree
+  "Recursively render the window tree"
+  [tree active-window-id hidden-input-ref]
+  (case (:type tree)
+    :leaf
+    [window-pane (:id tree) (= (:id tree) active-window-id) hidden-input-ref]
+
+    :hsplit
+    [:div.hsplit
+     {:style {:display "flex"
+              :flex-direction "row"
+              :width "100%"
+              :height "100%"}}
+     [:div.split-first
+      {:style {:flex "1"
+               :height "100%"
+               :border-right "1px solid #3e3e3e"}}
+      (render-window-tree (:first tree) active-window-id hidden-input-ref)]
+     [:div.split-second
+      {:style {:flex "1"
+               :height "100%"}}
+      (render-window-tree (:second tree) active-window-id hidden-input-ref)]]
+
+    :vsplit
+    [:div.vsplit
+     {:style {:display "flex"
+              :flex-direction "column"
+              :width "100%"
+              :height "100%"}}
+     [:div.split-first
+      {:style {:flex "1"
+               :width "100%"
+               :border-bottom "1px solid #3e3e3e"}}
+      (render-window-tree (:first tree) active-window-id hidden-input-ref)]
+     [:div.split-second
+      {:style {:flex "1"
+               :width "100%"}}
+      (render-window-tree (:second tree) active-window-id hidden-input-ref)]]
+
+    ;; Default case
+    [:div.error "Unknown window tree node type"]))
+
 (defn editor-wrapper
   "Main editor wrapper with hidden textarea + custom DOM architecture"
   []
-  (let [hidden-input-ref (atom nil)]
-    
+  (let [hidden-input-ref (atom nil)
+        window-tree @(rf/subscribe [:window-tree])
+        active-window-id @(rf/subscribe [:active-window-id])]
+
     [:div.editor-wrapper
      {:tabIndex 0
       :on-click (fn [_]
                   ;; Focus the hidden input when wrapper is clicked
                   (when-let [hidden-input @hidden-input-ref]
                     (.focus hidden-input)))
-      :style {:position "sticky"  ; Changed to sticky
+      :style {:position "sticky"
               :top "0"
               :width "100%"
-              :height "calc(100vh - 24px)"  ; Fill viewport height
+              :height "calc(100vh - 24px)"
               :outline "none"}}
-     
-     ;; Hidden input handler - captures all keyboard input
+
+     ;; Hidden input handler - captures all keyboard input (shared by all windows)
      [hidden-input-handler hidden-input-ref]
-     
-     
-     ;; Flexbox container for gutter + text
+
+     ;; Recursive window tree rendering
      [:div.editor-content
       {:on-click (fn [e] (when-let [hidden-input @hidden-input-ref] (.focus hidden-input)) (.stopPropagation e))
        :style {:display "flex"
                :flex-direction "row"
                :width "100%"
-               :height "100%"  ; Fill parent height
+               :height "100%"
                :min-height "100%"}}
-      [editor-gutter]
-      [custom-rendered-pane hidden-input-ref]]]))
+      (render-window-tree window-tree active-window-id hidden-input-ref)]]))
 
 ;; Add document-level listener once to intercept browser shortcuts
 (defonce ^:private keydown-listener-installed?

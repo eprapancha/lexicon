@@ -417,3 +417,81 @@
  (fn [[highlight-decorations diagnostic-decorations] _]
    "Merge syntax highlighting and diagnostic decorations"
    (concat highlight-decorations diagnostic-decorations)))
+
+;; -- Parameterized Window Subscriptions (Phase 3B) --
+
+(rf/reg-sub
+ ::window-by-id
+ :<- [:window-tree]
+ (fn [window-tree [_ window-id]]
+   "Get a specific window by ID"
+   (lexicon.db/find-window-in-tree window-tree window-id)))
+
+(rf/reg-sub
+ ::window-buffer
+ (fn [[_ window-id]]
+   [(rf/subscribe [::window-by-id window-id])
+    (rf/subscribe [:buffers])])
+ (fn [[window buffers] _]
+   "Get the buffer for a specific window"
+   (when window
+     (get buffers (:buffer-id window)))))
+
+(rf/reg-sub
+ ::window-cursor-position
+ (fn [[_ window-id]]
+   (rf/subscribe [::window-by-id window-id]))
+ (fn [window _]
+   "Get cursor position for a specific window"
+   (:cursor-position window)))
+
+(rf/reg-sub
+ ::window-mark-position
+ (fn [[_ window-id]]
+   (rf/subscribe [::window-by-id window-id]))
+ (fn [window _]
+   "Get mark position for a specific window"
+   (:mark-position window)))
+
+(rf/reg-sub
+ ::window-viewport
+ (fn [[_ window-id]]
+   (rf/subscribe [::window-by-id window-id]))
+ (fn [window _]
+   "Get viewport for a specific window"
+   (:viewport window)))
+
+(rf/reg-sub
+ ::window-visible-lines
+ (fn [[_ window-id]]
+   [(rf/subscribe [::window-viewport window-id])
+    (rf/subscribe [::window-buffer window-id])])
+ (fn [[viewport buffer] _]
+   "Get visible lines for a specific window"
+   (if (and buffer viewport)
+     (let [{:keys [start-line end-line]} viewport
+           full-text (get-in buffer [:cache :text] "")
+           all-lines (clojure.string/split full-text #"\n" -1)
+           visible-lines (subvec (vec all-lines) start-line (min (inc end-line) (count all-lines)))]
+       (clojure.string/join "\n" visible-lines))
+     "")))
+
+(rf/reg-sub
+ ::window-buffer-content
+ (fn [[_ window-id]]
+   (rf/subscribe [::window-buffer window-id]))
+ (fn [buffer _]
+   "Get buffer content for a specific window"
+   (get-in buffer [:cache :text] "")))
+
+(rf/reg-sub
+ ::window-decorations
+ (fn [[_ window-id]]
+   [(rf/subscribe [::window-buffer window-id])])
+ (fn [[buffer] _]
+   "Get decorations for a specific window's buffer"
+   (let [ast (:ast buffer)
+         diagnostics (:diagnostics buffer [])
+         highlight-decorations (when ast (ast-to-decorations ast))
+         diagnostic-decorations (lsp-diagnostics-to-decorations diagnostics)]
+     (concat highlight-decorations diagnostic-decorations))))

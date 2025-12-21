@@ -1293,6 +1293,12 @@
 
      {:db (assoc db :active-window-id next-window-id)})))
 
+(rf/reg-event-db
+ :set-active-window
+ (fn [db [_ window-id]]
+   "Set the active window by ID (used when clicking on a window)"
+   (assoc db :active-window-id window-id)))
+
 (rf/reg-event-fx
  :delete-window
  (fn [{:keys [db]} [_]]
@@ -1564,6 +1570,11 @@
            lines (when text (clojure.string/split text #"\n" -1))
            line-count (if lines (count lines) 1)
 
+           ;; Update window tree with new cursor position (Phase 3)
+           window-tree (:window-tree db)
+           new-window-tree (db/update-window-in-tree window-tree (:active-window-id db)
+                                                     #(assoc % :cursor-position (or line-col {:line 0 :column 0})))
+
            updated-db (-> db
                           ;; Remove completed operation from queue
                           (update :transaction-queue rest)
@@ -1571,7 +1582,7 @@
                           (assoc :transaction-in-flight? false)
                           ;; Update cursor positions
                           (assoc-in [:ui :cursor-position] final-cursor)
-                          (assoc-in [:buffers active-buffer-id :cursor-position] (or line-col {:line 0 :column 0}))
+                          (assoc :window-tree new-window-tree)
                           ;; Mark buffer as modified
                           (assoc-in [:buffers active-buffer-id :is-modified?] true)
                           ;; Increment editor version (invalidates cache)
