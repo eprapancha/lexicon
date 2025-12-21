@@ -8,9 +8,6 @@
                 :file-handle nil
                 :name "*scratch*"
                 :is-modified? false
-                :mark-position nil                     ; For region selection
-                :cursor-position {:line 0 :column 0}  ; Cursor position as line/column coordinates
-                :selection-range nil                   ; Selection range for future use
                 :major-mode :fundamental-mode          ; Active major mode
                 :minor-modes #{}                       ; Set of active minor modes
                 :buffer-local-vars {}                  ; Mode-specific configuration
@@ -22,8 +19,16 @@
                 :editor-version 0                      ; Increments on each edit (cache key)
                 :cache {:text ""                       ; Cached full text
                         :line-count 1}}}               ; Cached line count
-   :windows {1 {:id 1, :buffer-id 1, :viewport {:start-line 0, :end-line const/DEFAULT_VIEWPORT_LINES}}}
+   ;; Window tree structure (binary tree of splits)
+   :window-tree {:type :leaf
+                 :id 1
+                 :buffer-id 1
+                 :cursor-position {:line 0 :column 0}  ; Each window has its own cursor
+                 :mark-position nil                     ; Each window has its own mark
+                 :viewport {:start-line 0 :end-line const/DEFAULT_VIEWPORT_LINES}
+                 :dimensions {:x 0 :y 0 :width 100 :height 100}}
    :active-window-id 1
+   :next-window-id 2  ; Counter for generating new window IDs
    :line-height const/DEFAULT_LINE_HEIGHT
    :kill-ring []                                       ; Clipboard history
    :initialized? false                                 ; Whether WASM module is loaded
@@ -71,6 +76,11 @@
                      "M-x" :execute-extended-command   ; M-x command prompt
                      "C-x b" :switch-to-buffer         ; Switch buffer
                      "C-x k" :kill-buffer              ; Kill buffer
+                     "C-x 2" :split-window-below       ; Split horizontally
+                     "C-x 3" :split-window-right       ; Split vertically
+                     "C-x 0" :delete-window            ; Delete current window
+                     "C-x 1" :delete-other-windows     ; Delete all other windows
+                     "C-x o" :other-window             ; Switch to next window
                      "C-h b" :describe-bindings        ; Describe bindings
                      "C-u" :universal-argument         ; Universal argument
                      "C-/" :undo                       ; Undo
@@ -139,9 +149,6 @@
    :file-handle nil
    :name name
    :is-modified? false
-   :mark-position nil
-   :cursor-position {:line 0 :column 0}  ; Cursor position as line/column coordinates
-   :selection-range nil                   ; Selection range for future use
    :major-mode :fundamental-mode
    :minor-modes #{}
    :buffer-local-vars {}
@@ -167,3 +174,74 @@
   "Generate next available buffer ID"
   [buffers]
   (inc (apply max 0 (keys buffers))))
+
+;; -- Window Tree Functions --
+
+(defn next-window-id
+  "Generate next available window ID from window tree"
+  [db]
+  (:next-window-id db 2))  ; Start from 2 since 1 is initial window
+
+(defn create-leaf-window
+  "Create a leaf window node"
+  [window-id buffer-id]
+  {:type :leaf
+   :id window-id
+   :buffer-id buffer-id
+   :cursor-position {:line 0 :column 0}  ; Each window has its own cursor
+   :mark-position nil                     ; Each window has its own mark
+   :viewport {:start-line 0 :end-line const/DEFAULT_VIEWPORT_LINES}
+   :dimensions {:x 0 :y 0 :width 100 :height 100}})  ; Will be calculated during layout
+
+(defn create-split-window
+  "Create a split window node (internal node in window tree)"
+  [split-type window-id first-window second-window]
+  {:type split-type  ; :hsplit or :vsplit
+   :id window-id
+   :first first-window
+   :second second-window})
+
+(defn find-window-in-tree
+  "Find a window by ID in the window tree"
+  [tree window-id]
+  (when tree
+    (cond
+      (= (:type tree) :leaf)
+      (when (= (:id tree) window-id) tree)
+
+      (or (= (:type tree) :hsplit) (= (:type tree) :vsplit))
+      (or (find-window-in-tree (:first tree) window-id)
+          (find-window-in-tree (:second tree) window-id))
+
+      :else nil)))
+
+(defn get-all-leaf-windows
+  "Get all leaf windows from the tree (depth-first)"
+  [tree]
+  (when tree
+    (cond
+      (= (:type tree) :leaf)
+      [tree]
+
+      (or (= (:type tree) :hsplit) (= (:type tree) :vsplit))
+      (concat (get-all-leaf-windows (:first tree))
+              (get-all-leaf-windows (:second tree)))
+
+      :else [])))
+
+(defn update-window-in-tree
+  "Update a window in the tree by ID"
+  [tree window-id update-fn]
+  (when tree
+    (cond
+      (= (:type tree) :leaf)
+      (if (= (:id tree) window-id)
+        (update-fn tree)
+        tree)
+
+      (or (= (:type tree) :hsplit) (= (:type tree) :vsplit))
+      (assoc tree
+             :first (update-window-in-tree (:first tree) window-id update-fn)
+             :second (update-window-in-tree (:second tree) window-id update-fn))
+
+      :else tree)))
