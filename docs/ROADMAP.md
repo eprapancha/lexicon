@@ -327,7 +327,7 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ## Phase 2: Core Emacs - Buffers & Files
 
-**Status:** ⏳ In Progress
+**Status:** ✅ Complete
 **Goal:** Multi-buffer editing with file I/O
 **Timeline:** 2 weeks (Jan 24 - Feb 7, 2025)
 **Prerequisites:** ✅ Phase 1 complete, ✅ Subscription caching complete
@@ -355,11 +355,11 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ### Success Criteria
 
-- [ ] Can create, switch, and kill buffers
-- [ ] File open/save works reliably
-- [ ] Modified buffers show indicator
-- [ ] Switching buffers preserves state (cursor, content)
-- [ ] Can have multiple buffers open simultaneously
+- [x] Can create, switch, and kill buffers
+- [x] File open/save works reliably
+- [x] Modified buffers show indicator
+- [x] Switching buffers preserves state (cursor, content)
+- [x] Can have multiple buffers open simultaneously
 
 ---
 
