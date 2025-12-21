@@ -596,16 +596,16 @@
          current-pos (get-in db [:ui :cursor-position] 0)]
      (if wasm-instance
        (let [text (.getText wasm-instance)
+             buffer-length (.length wasm-instance)
              {:keys [line column]} (linear-pos-to-line-col text current-pos)
              lines (clojure.string/split text #"\n" -1)
              current-line (nth lines line "")
              line-length (count current-line)
-             ;; If at end of line (or only whitespace after cursor), kill the newline
-             ;; Otherwise kill to end of line
              end-of-line? (>= column line-length)
+             at-end-of-buffer? (>= current-pos buffer-length)
              kill-start current-pos
-             kill-end (if end-of-line?
-                       (inc current-pos)  ; Kill the newline
+             kill-end (if (and end-of-line? (not at-end-of-buffer?))
+                       (inc current-pos)  ; Kill the newline (only if not at end of buffer)
                        (line-col-to-linear-pos text line line-length))
              length (- kill-end kill-start)]
          (if (> length 0)
@@ -1040,7 +1040,25 @@
                    (rf/dispatch [:editor/transaction-failure
                                 {:error (str error)
                                  :operation operation}]))))
-             
+
+             :replace
+             (let [start (:start operation)
+                   length (:length operation)
+                   text (:text operation)]
+               (println "🔧 REPLACE at position:" start "length:" length "with:" (pr-str text))
+               (try
+                 ;; Use gap buffer's atomic replace API
+                 (.replace ^js wasm-instance start length text)
+                 (let [new-cursor (+ start (count text))]
+                   (rf/dispatch [:editor/transaction-success
+                                {:operation operation
+                                 :new-cursor new-cursor}]))  ; Cursor moves to end of replacement
+                 (catch js/Error error
+                   (println "❌ Replace error:" error)
+                   (rf/dispatch [:editor/transaction-failure
+                                {:error (str error)
+                                 :operation operation}]))))
+
              ;; Unknown operation type
              (do
                (println "Unknown operation type:" (:op operation))
@@ -2012,9 +2030,7 @@
                                      :kill-ring-index next-index})
                   (assoc :last-command :yank-pop))
           :fx [[:dispatch [:editor/queue-transaction
-                          {:op :delete-range :start position :length length}]]
-               [:dispatch [:editor/queue-transaction
-                          {:op :insert :text text-to-yank :position position}]]]})
+                          {:op :replace :start position :length length :text text-to-yank}]]]})
        (do
          (println "⚠ Cannot yank-pop: only works immediately after yank")
          {:db db})))))

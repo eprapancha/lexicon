@@ -33,6 +33,12 @@ impl WasmGapBuffer {
         self.buffer.delete(position, length);
     }
 
+    /// Replace length bytes at position with new text (atomic delete+insert)
+    #[wasm_bindgen]
+    pub fn replace(&mut self, position: usize, length: usize, text: &str) {
+        self.buffer.replace(position, length, text);
+    }
+
     /// Get the entire text
     #[wasm_bindgen(js_name = getText)]
     pub fn get_text(&self) -> String {

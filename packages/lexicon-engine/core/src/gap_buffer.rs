@@ -169,6 +169,33 @@ impl GapBuffer {
         self.gap_end += len;
     }
 
+    /// Replace len bytes starting at position with new text
+    /// This is an atomic operation that combines delete and insert
+    pub fn replace(&mut self, position: usize, len: usize, text: &str) {
+        let text_len = self.len();
+        if position + len > text_len {
+            panic!("Replace range {}..{} out of bounds (len: {})", position, position + len, text_len);
+        }
+
+        let bytes = text.as_bytes();
+        let new_len = bytes.len();
+
+        // Move gap to replacement point
+        self.move_gap_to(position);
+
+        // Expand gap to include text to be replaced
+        self.gap_end += len;
+
+        // Ensure gap is large enough for new text
+        self.ensure_gap_size(new_len);
+
+        // Copy new bytes into gap
+        self.buffer[self.gap_start..self.gap_start + new_len].copy_from_slice(bytes);
+
+        // Advance gap start
+        self.gap_start += new_len;
+    }
+
     /// Get the entire text as a String
     pub fn get_text(&self) -> String {
         let mut result = Vec::with_capacity(self.len());
@@ -359,5 +386,40 @@ mod tests {
         assert_eq!(buf.len(), 1001);
         assert!(buf.get_text().starts_with("x"));
         assert!(buf.get_text().ends_with("a"));
+    }
+
+    #[test]
+    fn test_replace_same_length() {
+        let mut buf = GapBuffer::new("Hello, World!");
+        buf.replace(7, 5, "Rust!");
+        assert_eq!(buf.get_text(), "Hello, Rust!!");
+    }
+
+    #[test]
+    fn test_replace_shorter() {
+        let mut buf = GapBuffer::new("Hello, World!");
+        buf.replace(7, 5, "Go");
+        assert_eq!(buf.get_text(), "Hello, Go!");
+    }
+
+    #[test]
+    fn test_replace_longer() {
+        let mut buf = GapBuffer::new("Hello, World!");
+        buf.replace(7, 5, "JavaScript");
+        assert_eq!(buf.get_text(), "Hello, JavaScript!");
+    }
+
+    #[test]
+    fn test_replace_at_start() {
+        let mut buf = GapBuffer::new("Hello, World!");
+        buf.replace(0, 5, "Hi");
+        assert_eq!(buf.get_text(), "Hi, World!");
+    }
+
+    #[test]
+    fn test_replace_at_end() {
+        let mut buf = GapBuffer::new("Hello, World!");
+        buf.replace(7, 6, "Earth!");
+        assert_eq!(buf.get_text(), "Hello, Earth!");
     }
 }
