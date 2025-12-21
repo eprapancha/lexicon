@@ -199,6 +199,51 @@
         ;; Return combined segments
         (into [:span.line-content {:style {:color "#d4d4d4"}}] @segments)))))
 
+(defn linear-to-line-col
+  "Convert linear position to line/column coordinates"
+  [text linear-pos]
+  (let [lines (clojure.string/split text #"\n" -1)
+        result (loop [remaining-pos linear-pos
+                      current-line 0]
+                 (if (>= current-line (count lines))
+                   {:line (dec current-line) :column 0}
+                   (let [line-length (count (nth lines current-line))
+                         line-length-with-newline (inc line-length)]
+                     (if (< remaining-pos line-length-with-newline)
+                       {:line current-line :column remaining-pos}
+                       (recur (- remaining-pos line-length-with-newline)
+                              (inc current-line))))))]
+    result))
+
+(defn create-region-decorations
+  "Create decorations for the active region (mark to cursor)"
+  [mark-position cursor-pos text]
+  (when (and mark-position cursor-pos text)
+    (let [cursor-linear (let [{:keys [line column]} cursor-pos
+                             lines (clojure.string/split text #"\n" -1)
+                             lines-before (take line lines)
+                             chars-before (reduce + (map #(inc (count %)) lines-before))]
+                         (+ chars-before column))
+          [start-pos end-pos] (if (< mark-position cursor-linear)
+                                [mark-position cursor-linear]
+                                [cursor-linear mark-position])
+          start-coords (linear-to-line-col text start-pos)
+          end-coords (linear-to-line-col text end-pos)
+          start-line (:line start-coords)
+          end-line (:line end-coords)]
+
+      ;; Create decorations for each line in the region
+      (for [line-num (range start-line (inc end-line))]
+        (let [start-col (if (= line-num start-line) (:column start-coords) 0)
+              line-text (nth (clojure.string/split text #"\n" -1) line-num "")
+              end-col (if (= line-num end-line)
+                        (:column end-coords)
+                        (count line-text))]
+          {:from {:line line-num :column start-col}
+           :to {:line line-num :column end-col}
+           :class "region-highlight"
+           :type :region})))))
+
 (defn editor-gutter
   "IDE-style gutter with line numbers and diagnostic markers"
   []
@@ -272,8 +317,17 @@
   (let [visible-lines @(rf/subscribe [:lexicon.subs/visible-lines])
         line-height @(rf/subscribe [:line-height])
         viewport @(rf/subscribe [:lexicon.subs/viewport])
-        decorations @(rf/subscribe [:lexicon.subs/all-decorations])
+        base-decorations @(rf/subscribe [:lexicon.subs/all-decorations])
         cursor-pos @(rf/subscribe [:lexicon.subs/cursor-position])
+        mark-position @(rf/subscribe [:mark-position])
+        region-active? @(rf/subscribe [:region-active?])
+        buffer-content @(rf/subscribe [:buffer-content])
+        ;; Add region decorations if region is active
+        region-decorations (when region-active?
+                            (create-region-decorations mark-position cursor-pos buffer-content))
+        decorations (if region-decorations
+                     (concat base-decorations region-decorations)
+                     base-decorations)
         handle-click (fn [e]
                        (println "📍 Text container clicked!")
                        (.stopPropagation e)  ; Stop event from bubbling to parent handlers
@@ -535,8 +589,13 @@
                             (do
                               (.preventDefault e)
                               (rf/dispatch [:minibuffer/confirm]))
-                            
-                            (or (= key "Escape") 
+
+                            (= key "Tab")
+                            (do
+                              (.preventDefault e)
+                              (rf/dispatch [:minibuffer/complete]))
+
+                            (or (= key "Escape")
                                 (and (.-ctrlKey e) (= key "g")))
                             (do
                               (.preventDefault e)

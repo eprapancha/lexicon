@@ -303,6 +303,22 @@
    "Get the line height for layout calculations"
    (:line-height db)))
 
+;; -- Region/Mark Subscriptions --
+
+(rf/reg-sub
+ :mark-position
+ :<- [:active-buffer]
+ (fn [active-buffer _]
+   "Get the mark position for the active buffer"
+   (:mark-position active-buffer)))
+
+(rf/reg-sub
+ :region-active?
+ :<- [:mark-position]
+ (fn [mark-position _]
+   "Check if a region is currently active (mark is set)"
+   (not (nil? mark-position))))
+
 ;; -- Minibuffer Subscriptions --
 
 (rf/reg-sub

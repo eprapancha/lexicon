@@ -39,7 +39,9 @@
         :view-needs-update? false                      ; Flag to trigger view reconciliation
         :text-cache {}                                 ; Text range cache for performance
         :viewport {:start 0 :end 1000}                ; Currently visible text range
-        :scroll-position 0}                            ; Current scroll position
+        :scroll-position 0                             ; Current scroll position
+        :prefix-argument nil                           ; Universal argument (C-u)
+        :prefix-argument-active? false}                ; Whether prefix argument is active
    :editor {:mode :emacs                              ; Editor mode - simple Emacs mode for now
             :keymap :emacs                             ; Active keymap
             :commands {}}                              ; Available commands
@@ -69,6 +71,8 @@
                      "M-x" :execute-extended-command   ; M-x command prompt
                      "C-x b" :switch-to-buffer         ; Switch buffer
                      "C-x k" :kill-buffer              ; Kill buffer
+                     "C-h b" :describe-bindings        ; Describe bindings
+                     "C-u" :universal-argument         ; Universal argument
                      "C-/" :undo                       ; Undo
                      "C-_" :undo                       ; Alternative undo
                      "C-w" :kill-region                ; Kill region
@@ -95,7 +99,7 @@
                      "ArrowLeft" :backward-char        ; Left arrow
                      "ArrowDown" :next-line            ; Down arrow
                      "ArrowUp" :previous-line}         ; Up arrow
-            :major {}                                  ; Major mode keymaps
+            :major {:buffer-menu-mode {"RET" :buffer-menu/select-buffer}}  ; Major mode keymaps
             :minor {}}                                 ; Minor mode keymaps
 
             ;; COMMENTED OUT: Evil mode keymaps - not ready yet, focus on basic Emacs first
@@ -120,7 +124,9 @@
                 :prompt ""                           ; Prompt text (e.g., "M-x ")
                 :input ""                            ; Current user input in minibuffer
                 :on-confirm nil                      ; Event vector to dispatch on Enter
-                :on-cancel [:minibuffer/deactivate]} ; Event vector to dispatch on Escape/C-g
+                :on-cancel [:minibuffer/deactivate]  ; Event vector to dispatch on Escape/C-g
+                :completions []                      ; List of possible completions
+                :completion-index 0}                 ; Current completion selection index
    :echo-area {:message ""                           ; Current message to display
                :timeout-id nil}                      ; Timeout ID for auto-clearing message
    })

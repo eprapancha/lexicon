@@ -160,8 +160,10 @@
    "Execute a command by name from the central registry"
    (let [command-def (get-in db [:commands command-name])]
      (if command-def
-       (let [handler (:handler command-def)]
-         {:fx [[:dispatch (into handler args)]]})
+       (let [handler (:handler command-def)
+             should-clear-prefix? (not= command-name :universal-argument)]
+         {:fx (cond-> [[:dispatch (into handler args)]]
+                should-clear-prefix? (conj [:dispatch [:clear-prefix-argument]]))})
        {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]}))))
 
 (rf/reg-event-db
@@ -645,6 +647,32 @@
      (println "✓ Mark set at position" current-pos)
      {:db (assoc-in db [:buffers active-buffer-id :mark-position] current-pos)})))
 
+;; -- Universal Argument (Prefix Argument) --
+
+(rf/reg-event-db
+ :universal-argument
+ (fn [db [_]]
+   "Set or multiply the universal argument (C-u)"
+   (let [current-prefix (get-in db [:ui :prefix-argument])
+         prefix-active? (get-in db [:ui :prefix-argument-active?])]
+     (if prefix-active?
+       ;; Already active, multiply by 4
+       (-> db
+           (assoc-in [:ui :prefix-argument] (* (or current-prefix 4) 4)))
+       ;; Not active, set to 4
+       (-> db
+           (assoc-in [:ui :prefix-argument] 4)
+           (assoc-in [:ui :prefix-argument-active?] true)
+           (assoc-in [:echo-area :message] "C-u "))))))
+
+(rf/reg-event-db
+ :clear-prefix-argument
+ (fn [db [_]]
+   "Clear the prefix argument after command execution"
+   (-> db
+       (assoc-in [:ui :prefix-argument] nil)
+       (assoc-in [:ui :prefix-argument-active?] false))))
+
 (rf/reg-event-fx
  :copy-region-as-kill
  (fn [{:keys [db]} [_]]
@@ -723,10 +751,16 @@
          [:dispatch [:register-command :list-buffers
                     {:docstring "Display a list of all buffers"
                      :handler [:list-buffers]}]]
-         [:dispatch [:register-command :keyboard-quit 
+         [:dispatch [:register-command :describe-bindings
+                    {:docstring "Display all current keybindings"
+                     :handler [:describe-bindings]}]]
+         [:dispatch [:register-command :keyboard-quit
                     {:docstring "Cancel current operation"
                      :handler [:keyboard-quit]}]]
-         [:dispatch [:register-command :undo 
+         [:dispatch [:register-command :universal-argument
+                    {:docstring "Set or multiply universal argument (C-u)"
+                     :handler [:universal-argument]}]]
+         [:dispatch [:register-command :undo
                     {:docstring "Undo last change"
                      :handler [:undo]}]]
          [:dispatch [:register-command :kill-region 
@@ -918,13 +952,14 @@
  (fn [{:keys [db]} [_]]
    "Activate minibuffer for buffer switching (C-x b)"
    (let [buffers (:buffers db)
-         buffer-names (map :name (vals buffers))
+         buffer-names (sort (map :name (vals buffers)))
          current-buffer (get buffers (get-in db [:windows (:active-window-id db) :buffer-id]))
          current-name (:name current-buffer)
          prompt (str "Switch to buffer (default " current-name "): ")]
      {:fx [[:dispatch [:minibuffer/activate
                        {:prompt prompt
-                        :on-confirm [:switch-to-buffer-by-name]}]]]})))
+                        :on-confirm [:switch-to-buffer-by-name]
+                        :completions buffer-names}]]]})))
 
 (rf/reg-event-fx
  :switch-to-buffer-by-name
@@ -1029,6 +1064,103 @@
                           :cursor-position {:line 0 :column 0}
                           :selection-range nil
                           :major-mode :buffer-menu-mode
+                          :minor-modes #{}
+                          :buffer-local-vars {}
+                          :ast nil
+                          :language :text
+                          :diagnostics []
+                          :undo-stack []
+                          :undo-in-progress? false
+                          :editor-version 0
+                          :cache {:text content
+                                  :line-count line-count}}]
+           {:db (-> db
+                    (assoc-in [:buffers buffer-id] new-buffer)
+                    (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))))))
+
+(rf/reg-event-fx
+ :buffer-menu/select-buffer
+ (fn [{:keys [db]} [_]]
+   "Select buffer at current line in buffer-menu-mode (RET key)"
+   (let [active-buffer-id (get-in db [:windows (:active-window-id db) :buffer-id])
+         active-buffer (get-in db [:buffers active-buffer-id])
+         cursor-line (get-in active-buffer [:cursor-position :line] 0)]
+     ;; Skip header lines (first 2 lines)
+     (if (< cursor-line 2)
+       {:db db}
+       (let [buffer-content (get-in active-buffer [:cache :text] "")
+             lines (clojure.string/split buffer-content #"\n" -1)
+             selected-line (nth lines cursor-line nil)
+             ;; Extract buffer name from line (format: " * BufferName  FilePath")
+             ;; Buffer name starts at column 4 and ends before two consecutive spaces
+             buffer-name (when selected-line
+                          (let [trimmed (subs selected-line 4) ; Skip "MR " prefix
+                                name-part (first (clojure.string/split trimmed #"\s{2,}"))]
+                            (clojure.string/trim name-part)))
+             ;; Find the buffer with this name
+             target-buffer (when buffer-name
+                            (first (filter #(= (:name %) buffer-name) (vals (:buffers db)))))
+             target-id (:id target-buffer)]
+         (if target-id
+           {:fx [[:dispatch [:switch-buffer target-id]]
+                 [:dispatch [:kill-buffer-by-id (:id active-buffer)]]]}
+           {:db db}))))))
+
+(rf/reg-event-fx
+ :describe-bindings
+ (fn [{:keys [db]} [_]]
+   "Display all current keybindings in a *Help* buffer (C-h b)"
+   (let [buffers (:buffers db)
+         keymaps (:keymaps db)
+         active-buffer-id (get-in db [:windows (:active-window-id db) :buffer-id])
+         active-buffer (get-in db [:buffers active-buffer-id])
+         major-mode (:major-mode active-buffer :fundamental-mode)
+
+         ;; Check if *Help* buffer already exists
+         help-buffer (first (filter #(= (:name %) "*Help*") (vals buffers)))]
+     (if help-buffer
+       ;; Just switch to existing help buffer
+       {:fx [[:dispatch [:switch-buffer (:id help-buffer)]]]}
+       ;; Create new help buffer with bindings
+       (let [buffer-id (db/next-buffer-id buffers)
+             WasmEditorCore (get-in db [:system :wasm-constructor])
+
+             ;; Format keybindings
+             global-bindings (get-in keymaps [:global])
+             major-bindings (get-in keymaps [:major major-mode])
+             minor-bindings (get-in keymaps [:minor])
+
+             format-bindings (fn [bindings title]
+                              (when (seq bindings)
+                                (str title ":\n"
+                                     (clojure.string/join "\n"
+                                       (map (fn [[key cmd]]
+                                             (str "  " key "\t\t" (name cmd)))
+                                            (sort-by first bindings)))
+                                     "\n\n")))
+
+             header "Key Bindings\n============\n\n"
+             major-section (when (seq major-bindings)
+                            (format-bindings major-bindings
+                                            (str (name major-mode) " Mode")))
+             global-section (format-bindings global-bindings "Global")
+
+             content (str header
+                         (or major-section "")
+                         global-section)
+             lines (clojure.string/split content #"\n" -1)
+             line-count (count lines)
+             wasm-instance (WasmEditorCore. content)]
+
+         (let [new-buffer {:id buffer-id
+                          :wasm-instance wasm-instance
+                          :file-handle nil
+                          :name "*Help*"
+                          :is-modified? false
+                          :mark-position nil
+                          :cursor-position {:line 0 :column 0}
+                          :selection-range nil
+                          :major-mode :help-mode
                           :minor-modes #{}
                           :buffer-local-vars {}
                           :ast nil
@@ -1829,7 +1961,9 @@
        (assoc-in [:minibuffer :prompt] (:prompt config ""))
        (assoc-in [:minibuffer :input] "")
        (assoc-in [:minibuffer :on-confirm] (:on-confirm config))
-       (assoc-in [:minibuffer :on-cancel] (or (:on-cancel config) [:minibuffer/deactivate])))))
+       (assoc-in [:minibuffer :on-cancel] (or (:on-cancel config) [:minibuffer/deactivate]))
+       (assoc-in [:minibuffer :completions] (or (:completions config) []))
+       (assoc-in [:minibuffer :completion-index] 0))))
 
 (rf/reg-fx
  :focus-editor
@@ -1855,6 +1989,48 @@
  (fn [db [_ input-text]]
    "Update the minibuffer input text"
    (assoc-in db [:minibuffer :input] input-text)))
+
+(rf/reg-event-db
+ :minibuffer/complete
+ (fn [db [_]]
+   "TAB completion in minibuffer - cycle through matching completions"
+   (let [minibuffer (:minibuffer db)
+         input (:input minibuffer)
+         completions (:completions minibuffer)
+         ;; Filter completions that start with current input
+         matches (if (clojure.string/blank? input)
+                  completions
+                  (filter #(clojure.string/starts-with? % input) completions))]
+     (cond
+       ;; No completions available
+       (empty? completions)
+       db
+
+       ;; Single match - complete it
+       (= (count matches) 1)
+       (assoc-in db [:minibuffer :input] (first matches))
+
+       ;; Multiple matches - find common prefix and complete to that
+       (> (count matches) 1)
+       (let [common-prefix (reduce (fn [prefix candidate]
+                                    (loop [i 0]
+                                      (if (and (< i (count prefix))
+                                              (< i (count candidate))
+                                              (= (nth prefix i) (nth candidate i)))
+                                        (recur (inc i))
+                                        (subs prefix 0 i))))
+                                  (first matches)
+                                  (rest matches))]
+         (if (> (count common-prefix) (count input))
+           ;; There's a longer common prefix, complete to it
+           (assoc-in db [:minibuffer :input] common-prefix)
+           ;; No longer prefix, show matches in echo area
+           (-> db
+               (assoc-in [:echo-area :message] (str "[" (clojure.string/join ", " matches) "]")))))
+
+       ;; No matches
+       :else
+       db))))
 
 ;;; -- Echo Area Events --
 
