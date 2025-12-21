@@ -7,14 +7,14 @@
    Returns [text-string success?] tuple."
   [^js wasm-handle start end]
   (try
-    (let [length (.getLength wasm-handle)
+    (let [length (.length wasm-handle)
           clamped-start (max 0 (min start length))
           clamped-end (max clamped-start (min end length))]
-      
+
       (if (= clamped-start clamped-end)
         ["" true]
-        (let [text (.getTextInRange wasm-handle clamped-start clamped-end)]
-          ;; getTextInRange returns string directly according to TypeScript definition
+        (let [text (.getRange wasm-handle clamped-start clamped-end)]
+          ;; getRange returns string directly according to TypeScript definition
           [text true])))
     (catch js/Error e
       (js/console.error "Failed to get text range:" (.-message e))
@@ -25,9 +25,9 @@
   "Get character at position with error handling."
   [^js wasm-handle position]
   (try
-    (let [length (.getLength wasm-handle)]
+    (let [length (.length wasm-handle)]
       (if (and (>= position 0) (< position length))
-        (.getCharacterAt wasm-handle position)
+        (.getRange wasm-handle position (inc position))
         nil))
     (catch js/Error e
       (js/console.error "Failed to get character:" (.-message e))
@@ -39,6 +39,6 @@
   [^js wasm-handle]
   (try
     (and wasm-handle
-         (>= (.getLength wasm-handle) 0))
+         (>= (.length wasm-handle) 0))
     (catch js/Error e
       false)))

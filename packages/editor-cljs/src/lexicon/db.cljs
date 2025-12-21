@@ -67,8 +67,17 @@
                      "C-w" :kill-region                ; Kill region
                      "M-w" :copy-region-as-kill        ; Copy region
                      "C-y" :yank                       ; Yank
-                     "DEL" :delete-backward-char        ; Backspace
-                     "DELETE" :delete-forward-char}     ; Delete
+                     "DEL" :delete-backward-char       ; Backspace
+                     "DELETE" :delete-forward-char     ; Delete
+                     ;; Cursor movement
+                     "C-f" :forward-char               ; Forward char
+                     "C-b" :backward-char              ; Backward char
+                     "C-n" :next-line                  ; Next line
+                     "C-p" :previous-line              ; Previous line
+                     "ArrowRight" :forward-char        ; Right arrow
+                     "ArrowLeft" :backward-char        ; Left arrow
+                     "ArrowDown" :next-line            ; Down arrow
+                     "ArrowUp" :previous-line}         ; Up arrow
             :major {}                                  ; Major mode keymaps
             :minor {}}                                 ; Minor mode keymaps
 

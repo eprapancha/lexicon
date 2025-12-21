@@ -1,7 +1,7 @@
 # Lexicon Development Roadmap
 
-**Last Updated:** 2025-12-20 (Late Evening Update)
-**Current Phase:** Phase 0 (Architecture Reset - 70% Complete!)
+**Last Updated:** 2025-12-21
+**Current Phase:** Phase 0 Complete! ✅ Ready for Phase 1
 
 ---
 
@@ -15,9 +15,9 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ## Phase 0: Architecture Reset & Foundation
 
-**Status:** 🔄 In Progress
+**Status:** ✅ COMPLETE (Dec 21, 2025)
 **Goal:** Separate core from packages, fix basic text input, establish clean architecture
-**Timeline:** 2-3 weeks (Dec 20 - Jan 10, 2025)
+**Timeline:** 2 days (Dec 20-21, 2025)
 
 ### Objectives
 
@@ -37,12 +37,17 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
    - ✅ UTF-8 correctness validated (emoji support)
    - ✅ Fixed nix-shell TMPDIR issue for testing
 
-3. **Fix Core Text Input**
-   - Verify basic typing works (characters appear on screen)
-   - Fix Enter key (inserts newline, cursor advances)
-   - Fix Backspace (deletes character before cursor)
-   - Fix cursor movement (arrow keys)
-   - Systematic testing of each operation
+3. **Fix Core Text Input** ✅ COMPLETE (Dec 21, 2025)
+   - ✅ Integrated gap buffer into ClojureScript
+   - ✅ Basic typing works (characters appear on screen)
+   - ✅ Enter key inserts newline and advances cursor
+   - ✅ Backspace deletes character before cursor
+   - ✅ Delete key deletes character at cursor
+   - ✅ Arrow keys move cursor (with C-f/C-b/C-n/C-p bindings)
+   - ✅ Mouse click positions cursor
+   - ✅ Multi-line editing works correctly
+   - ✅ Fixed cursor position calculation for newlines
+   - ✅ Fixed line rendering to show empty lines
 
 4. **Restructure Directories**
    ```
@@ -68,16 +73,18 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ### Success Criteria
 
-- [ ] Can type text and see it on screen (NEXT UP - needs WASM integration)
-- [ ] Enter key creates new line (NEXT - needs WASM integration)
-- [ ] Backspace deletes characters (NEXT - needs WASM integration)
-- [ ] Arrow keys move cursor (NEXT - needs WASM integration)
+- [x] **Can type text and see it on screen** ✅ Dec 21
+- [x] **Enter key creates new line** ✅ Dec 21
+- [x] **Backspace deletes characters** ✅ Dec 21
+- [x] **Arrow keys move cursor** ✅ Dec 21
+- [x] **Delete key works** ✅ Dec 21
+- [x] **Mouse click positions cursor** ✅ Dec 21
 - [x] **Core compiles without Evil-mode** ✅ Dec 20
 - [x] **Evil-mode code completely moved to `packages/evil-mode/`** ✅ Dec 20
 - [x] **Gap buffer passes all unit tests** ✅ Dec 20 (15/15 tests)
 - [x] **README accurately describes current state** ✅ Dec 20
 
-**Progress:** 4/8 complete (50%)
+**Progress:** 10/10 complete (100%) ✅ PHASE 0 COMPLETE!
 
 ### Risks & Mitigations
 
@@ -554,12 +561,18 @@ packages/evil-mode/
 
 ## Current Focus
 
-**Active Phase:** Phase 0 - Architecture Reset
-**Current Task:** Extracting Evil-mode from core
-**Next Milestone:** Gap buffer implementation
+**Active Phase:** Phase 0 ✅ COMPLETE!
+**Achievements:**
+- Evil-mode extracted to packages/
+- Gap buffer implemented and integrated
+- All basic text editing operations working
+- Core compiles cleanly with 0 errors
+
+**Next Phase:** Phase 1 - Core Emacs Basic Editing
+**Next Milestone:** Implement navigation commands (C-a, C-e, M-f, M-b, etc.)
 **Blocking Issues:** None
 
-**Last Updated:** 2025-12-20
+**Last Updated:** 2025-12-21
 
 ---
 

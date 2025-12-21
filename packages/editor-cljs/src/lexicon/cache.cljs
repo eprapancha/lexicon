@@ -33,7 +33,7 @@
   "Merge two overlapping cache entries"
   (let [merged-start (min (:start entry1) (:start entry2))
         merged-end (max (:end entry1) (:end entry2))
-        merged-content (.getTextInRange wasm-handle merged-start merged-end)]
+        merged-content (.getRange wasm-handle merged-start merged-end)]
     (->CacheEntry merged-start merged-end merged-content (js/Date.now) true)))
 
 (defn find-covering-entry [cache start end]

@@ -8,6 +8,40 @@
 
 ;; -- Helper Functions --
 
+;; Cursor position conversion helpers
+(defn linear-pos-to-line-col
+  "Convert linear position to line/column coordinates"
+  [text linear-pos]
+  (if (empty? text)
+    {:line 0 :column 0}
+    (let [lines (clojure.string/split text #"\n" -1)  ; -1 keeps trailing empty strings
+          lines-with-lengths (map count lines)]
+      (loop [pos 0
+             line 0
+             remaining-lengths lines-with-lengths]
+        (if (empty? remaining-lengths)
+          {:line (max 0 (dec line)) :column 0}
+          (let [line-len (first remaining-lengths)
+                line-end-pos (+ pos line-len)]
+            (if (<= linear-pos line-end-pos)
+              {:line line :column (- linear-pos pos)}
+              (recur (+ line-end-pos 1) ; +1 for newline
+                     (inc line)
+                     (rest remaining-lengths)))))))))
+
+(defn line-col-to-linear-pos
+  "Convert line/column coordinates to linear position"
+  [text line column]
+  (let [lines (clojure.string/split text #"\n" -1)]  ; -1 keeps trailing empty strings
+    (if (>= line (count lines))
+      (count text)
+      (let [lines-before (take line lines)
+            chars-before-line (reduce + 0 (map count lines-before))
+            newlines-before line ; One newline per line before current
+            line-content (nth lines line "")
+            safe-column (min column (count line-content))]
+        (+ chars-before-line newlines-before safe-column)))))
+
 ;; Language detection helper
 (defn detect-language-from-filename
   "Detect language from file name/extension"
@@ -344,6 +378,81 @@
    "Delete character after cursor (delete) - queue operation"
    {:fx [[:dispatch [:editor/queue-transaction {:op :delete-forward}]]]}))
 
+;; -- Cursor Movement Commands --
+
+(rf/reg-event-fx
+ :forward-char
+ (fn [{:keys [db]} [_]]
+   "Move cursor forward one character (C-f or Right arrow)"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [max-pos (.length wasm-instance)
+             new-pos (min max-pos (inc current-pos))]
+         {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+       {:db db}))))
+
+(rf/reg-event-fx
+ :backward-char
+ (fn [{:keys [db]} [_]]
+   "Move cursor backward one character (C-b or Left arrow)"
+   (let [current-pos (get-in db [:ui :cursor-position] 0)
+         new-pos (max 0 (dec current-pos))]
+     {:fx [[:dispatch [:update-cursor-position new-pos]]]})))
+
+(rf/reg-event-fx
+ :next-line
+ (fn [{:keys [db]} [_]]
+   "Move cursor to next line (C-n or Down arrow)"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             {:keys [line column]} (linear-pos-to-line-col text current-pos)
+             lines (clojure.string/split text #"\n" -1)
+             next-line-num (inc line)]
+         (if (< next-line-num (count lines))
+           (let [new-pos (line-col-to-linear-pos text next-line-num column)]
+             {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+           {:db db}))
+       {:db db}))))
+
+(rf/reg-event-fx
+ :previous-line
+ (fn [{:keys [db]} [_]]
+   "Move cursor to previous line (C-p or Up arrow)"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             {:keys [line column]} (linear-pos-to-line-col text current-pos)]
+         (if (> line 0)
+           (let [prev-line-num (dec line)
+                 new-pos (line-col-to-linear-pos text prev-line-num column)]
+             {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+           {:db db}))
+       {:db db}))))
+
+(rf/reg-event-fx
+ :click-to-position
+ (fn [{:keys [db]} [_ line column]]
+   "Move cursor to clicked position"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             new-pos (line-col-to-linear-pos text line column)]
+         (println "🖱️ Click position - line:" line "col:" column "→ linear pos:" new-pos)
+         {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+       {:db db}))))
+
 ;; Initialize cursor position when buffer is created
 (rf/reg-event-fx
  :initialize-buffer-cursor
@@ -354,38 +463,7 @@
        {:fx [[:dispatch [:update-cursor-position 0]]]}
        {:db db}))))
 
-;; -- Phase 3: New Cursor Coordinate Management --
-
-(defn linear-pos-to-line-col
-  "Convert linear position to line/column coordinates"
-  [text linear-pos]
-  (let [lines (clojure.string/split-lines text)
-        lines-with-lengths (map count lines)]
-    (loop [pos 0
-           line 0
-           remaining-lengths lines-with-lengths]
-      (if (empty? remaining-lengths)
-        {:line (max 0 (dec line)) :column 0}
-        (let [line-len (first remaining-lengths)
-              line-end-pos (+ pos line-len)]
-          (if (<= linear-pos line-end-pos)
-            {:line line :column (- linear-pos pos)}
-            (recur (+ line-end-pos 1) ; +1 for newline
-                   (inc line)
-                   (rest remaining-lengths))))))))
-
-(defn line-col-to-linear-pos
-  "Convert line/column coordinates to linear position"
-  [text line column]
-  (let [lines (clojure.string/split-lines text)]
-    (if (>= line (count lines))
-      (count text)
-      (let [lines-before (take line lines)
-            chars-before-line (reduce + 0 (map count lines-before))
-            newlines-before line ; One newline per line before current
-            line-content (nth lines line "")
-            safe-column (min column (count line-content))]
-        (+ chars-before-line newlines-before safe-column)))))
+;; -- Cursor Position Management --
 
 (rf/reg-event-fx
  :update-cursor-position
@@ -429,13 +507,25 @@
          [:dispatch [:register-command :yank 
                     {:docstring "Yank (paste) from kill ring"
                      :handler [:yank]}]]
-         [:dispatch [:register-command :delete-backward-char 
+         [:dispatch [:register-command :delete-backward-char
                     {:docstring "Delete character before cursor"
                      :handler [:delete-backward-char]}]]
-         [:dispatch [:register-command :delete-forward-char 
+         [:dispatch [:register-command :delete-forward-char
                     {:docstring "Delete character after cursor"
                      :handler [:delete-forward-char]}]]
-         [:dispatch [:register-command :execute-extended-command 
+         [:dispatch [:register-command :forward-char
+                    {:docstring "Move cursor forward one character"
+                     :handler [:forward-char]}]]
+         [:dispatch [:register-command :backward-char
+                    {:docstring "Move cursor backward one character"
+                     :handler [:backward-char]}]]
+         [:dispatch [:register-command :next-line
+                    {:docstring "Move cursor to next line"
+                     :handler [:next-line]}]]
+         [:dispatch [:register-command :previous-line
+                    {:docstring "Move cursor to previous line"
+                     :handler [:previous-line]}]]
+         [:dispatch [:register-command :execute-extended-command
                     {:docstring "Execute extended command (M-x)"
                      :handler [:execute-extended-command]}]]
          ;; Initialize mode commands
@@ -641,70 +731,66 @@
              ;; Immediately set the in-flight flag in the database to prevent concurrent operations
              (swap! re-frame.db/app-db assoc :transaction-in-flight? true)
              
-             ;; Process the operation based on its type
+             ;; Process the operation based on its type (using Gap Buffer API)
              (case (:op operation)
              :insert
-             (let [;; Use clj->js and JSON.stringify
-                   clj-map {:type const/TRANSACTION_INSERT
-                           :position current-cursor
-                           :text (:text operation)}
-                   transaction-json (js/JSON.stringify (clj->js clj-map))]
-               (println "🔧 INSERT transaction - text:" (pr-str (:text operation)) "position:" current-cursor)
-               (println "🔧 Transaction JSON (raw):" transaction-json)
-               (println "🔧 JSON char codes:" (mapv #(.charCodeAt transaction-json %) (range (count transaction-json))))
+             (let [text (:text operation)]
+               (println "🔧 INSERT - text:" (pr-str text) "position:" current-cursor)
                (try
-                 (let [patch-json (.applyTransaction wasm-instance transaction-json)]
-                   (rf/dispatch [:editor/transaction-success 
-                                {:patch-json patch-json
-                                 :operation operation}]))
+                 ;; Use gap buffer's direct insert API
+                 (.insert ^js wasm-instance current-cursor text)
+                 (rf/dispatch [:editor/transaction-success
+                              {:operation operation
+                               :new-cursor (+ current-cursor (count text))}])
                  (catch js/Error error
-                   (rf/dispatch [:editor/transaction-failure 
+                   (println "❌ Insert error:" error)
+                   (rf/dispatch [:editor/transaction-failure
                                 {:error (str error)
                                  :operation operation}]))))
-             
+
              :delete-backward
              (when (> current-cursor 0)
-               (let [wasm-transaction {:type const/TRANSACTION_DELETE 
-                                     :position (dec current-cursor) 
-                                     :length 1}
-                     transaction-json (js/JSON.stringify (clj->js wasm-transaction))]
-                 (try
-                   (let [patch-json (.applyTransaction wasm-instance transaction-json)]
-                     (rf/dispatch [:editor/transaction-success 
-                                  {:patch-json patch-json
-                                   :operation operation}]))
-                   (catch js/Error error
-                     (rf/dispatch [:editor/transaction-failure 
-                                  {:error (str error)
-                                   :operation operation}])))))
-             
-             :delete-forward
-             (let [wasm-transaction {:type const/TRANSACTION_DELETE 
-                                   :position current-cursor 
-                                   :length 1}
-                   transaction-json (js/JSON.stringify (clj->js wasm-transaction))]
+               (println "🔧 DELETE BACKWARD at position:" (dec current-cursor))
                (try
-                 (let [patch-json (.applyTransaction wasm-instance transaction-json)]
-                   (rf/dispatch [:editor/transaction-success 
-                                {:patch-json patch-json
-                                 :operation operation}]))
+                 ;; Use gap buffer's direct delete API
+                 (.delete ^js wasm-instance (dec current-cursor) 1)
+                 (rf/dispatch [:editor/transaction-success
+                              {:operation operation
+                               :new-cursor (dec current-cursor)}])
                  (catch js/Error error
-                   (rf/dispatch [:editor/transaction-failure 
+                   (println "❌ Delete backward error:" error)
+                   (rf/dispatch [:editor/transaction-failure
                                 {:error (str error)
                                  :operation operation}]))))
-             
-             :delete-range
-             (let [wasm-transaction {:type const/TRANSACTION_DELETE 
-                                   :position (:start operation) 
-                                   :length (:length operation)}
-                   transaction-json (js/JSON.stringify (clj->js wasm-transaction))]
+
+             :delete-forward
+             (do
+               (println "🔧 DELETE FORWARD at position:" current-cursor)
                (try
-                 (let [patch-json (.applyTransaction wasm-instance transaction-json)]
-                   (rf/dispatch [:editor/transaction-success 
-                                {:patch-json patch-json
-                                 :operation operation}]))
+                 ;; Use gap buffer's direct delete API
+                 (.delete ^js wasm-instance current-cursor 1)
+                 (rf/dispatch [:editor/transaction-success
+                              {:operation operation
+                               :new-cursor current-cursor}])  ; Cursor stays same after delete forward
                  (catch js/Error error
-                   (rf/dispatch [:editor/transaction-failure 
+                   (println "❌ Delete forward error:" error)
+                   (rf/dispatch [:editor/transaction-failure
+                                {:error (str error)
+                                 :operation operation}]))))
+
+             :delete-range
+             (let [start (:start operation)
+                   length (:length operation)]
+               (println "🔧 DELETE RANGE at position:" start "length:" length)
+               (try
+                 ;; Use gap buffer's direct delete API
+                 (.delete ^js wasm-instance start length)
+                 (rf/dispatch [:editor/transaction-success
+                              {:operation operation
+                               :new-cursor start}])  ; Cursor moves to start of deleted range
+                 (catch js/Error error
+                   (println "❌ Delete range error:" error)
+                   (rf/dispatch [:editor/transaction-failure
                                 {:error (str error)
                                  :operation operation}]))))
              
@@ -718,32 +804,21 @@
 ;; Transaction success handler - updates state and continues processing
 (rf/reg-event-fx
  :editor/transaction-success
- (fn [{:keys [db]} [_ {:keys [patch-json operation]}]]
+ (fn [{:keys [db]} [_ {:keys [new-cursor operation]}]]
    "Handle successful transaction completion"
-   (println "✅ Queue: Transaction success. Patch JSON:" patch-json)
+   (println "✅ Queue: Transaction success. New cursor:" new-cursor)
    (try
-     (let [patch            (js->clj (js/JSON.parse patch-json) :keywordize-keys true)
-           active-window    (get (:windows db) (:active-window-id db))
+     (let [active-window    (get (:windows db) (:active-window-id db))
            active-buffer-id (:buffer-id active-window)
-           new-cursor       (:cursor-position patch)
-           
-           ;; Calculate cursor position based on operation if not provided
-           current-cursor (get-in db [:ui :cursor-position] 0)
-           final-cursor   (or new-cursor 
-                              (case (:op operation)
-                                :insert          (+ current-cursor (count (:text operation)))
-                                :delete-backward (max 0 (dec current-cursor))
-                                :delete-forward  current-cursor
-                                :delete-range    (:start operation)
-                                current-cursor))
-           
-           _ (println "🎯 Transaction result - operation:" (:op operation) "current cursor:" current-cursor "final cursor:" final-cursor)
-           
+           final-cursor     new-cursor
+
+           _ (println "🎯 Transaction result - operation:" (:op operation) "final cursor:" final-cursor)
+
            ;; Calculate line/column coordinates for the new cursor position
            ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
            text              (when wasm-instance (.getText wasm-instance))
            line-col          (when text (linear-pos-to-line-col text final-cursor))
-           
+
            updated-db (-> db
                           ;; Remove completed operation from queue
                           (update :transaction-queue rest)
@@ -756,13 +831,12 @@
                           (assoc-in [:buffers active-buffer-id :is-modified?] true)
                           ;; Update system state
                           (update-in [:system :last-transaction-id] inc)
-                          (assoc-in [:system :last-patch] patch)
                           (assoc-in [:ui :view-needs-update?] true))]
-       
+
        ;; Continue processing the queue and trigger incremental parsing
        {:db updated-db
         :fx [[:editor/process-queue updated-db]
-             [:dispatch [:parser/request-incremental-parse 
+             [:dispatch [:parser/request-incremental-parse
                          {:op       (:op operation)
                           :position final-cursor
                           :text     (:text operation)}]]
@@ -987,8 +1061,9 @@
      (when wasm-instance
        ;; TODO: Implement text diffing algorithm
        ;; For now, replace entire content
-       (.deleteText ^js wasm-instance 0 (.getLength ^js wasm-instance))
-       (.insertText ^js wasm-instance 0 dom-content))
+       (let [current-length (.length ^js wasm-instance)]
+         (.delete ^js wasm-instance 0 current-length)
+         (.insert ^js wasm-instance 0 dom-content)))
      
      {:db (assoc-in db [:ui :view-needs-update?] true)})))
 
@@ -1625,7 +1700,7 @@
              end (max cursor-pos mark-position)
              length (- end start)]
          (if (> length 0)
-           (let [killed-text (.getTextInRange ^js wasm-instance start end)
+           (let [killed-text (.getRange ^js wasm-instance start end)
                  kill-ring (:kill-ring db)
                  updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))]
              {:db (-> db

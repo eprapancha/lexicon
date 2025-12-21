@@ -140,6 +140,7 @@
             :resize "none"
             :border "none"
             :outline "none"
+            :pointer-events "none"  ; Let clicks pass through to elements below
             :z-index "100"}}])
 
 (defn apply-decorations-to-line
@@ -212,7 +213,7 @@
      
      ;; Render line numbers and markers
      (when visible-lines
-       (let [lines (clojure.string/split visible-lines #"\n")
+       (let [lines (clojure.string/split visible-lines #"\n" -1)  ; -1 keeps trailing empty strings
              start-line (:start-line viewport 0)]
          (map-indexed
            (fn [idx line]
@@ -258,17 +259,38 @@
 
 (defn custom-rendered-pane
   "Read-only text display using divs per line with syntax highlighting"
-  []
+  [hidden-input-ref]
   (let [visible-lines @(rf/subscribe [:lexicon.subs/visible-lines])
         line-height @(rf/subscribe [:line-height])
         viewport @(rf/subscribe [:lexicon.subs/viewport])
         decorations @(rf/subscribe [:lexicon.subs/all-decorations])
-        cursor-pos @(rf/subscribe [:lexicon.subs/cursor-position])]
+        cursor-pos @(rf/subscribe [:lexicon.subs/cursor-position])
+        handle-click (fn [e]
+                       (println "📍 Text container clicked!")
+                       (.stopPropagation e)  ; Stop event from bubbling to parent handlers
+                       ;; Focus hidden input to receive keyboard events
+                       (when-let [hidden-input @hidden-input-ref]
+                         (.focus hidden-input))
+                       (let [rect (-> e .-currentTarget .getBoundingClientRect)
+                             click-x (- (.-clientX e) (.-left rect))
+                             click-y (- (.-clientY e) (.-top rect))
+                             char-width 8.4
+                             left-padding 8
+                             top-padding 20
+                             ;; Calculate line and column from click position
+                             clicked-line (int (/ (- click-y top-padding) line-height))
+                             clicked-column (max 0 (int (/ (- click-x left-padding) char-width)))
+                             ;; Add viewport offset to get absolute line number
+                             absolute-line (+ clicked-line (:start-line viewport 0))]
+                         (println "🖱️ Click at pixel" click-x "," click-y
+                                  "→ line" absolute-line "col" clicked-column)
+                         (rf/dispatch [:click-to-position absolute-line clicked-column])))]
 
     [:div.text-container
      {:style {:flex "1"
               :position "relative"
-              :overflow "hidden"}}
+              :overflow "hidden"}
+      :on-click handle-click}
 
      [:div.editable-area
       {:style {:background-color "rgba(37, 37, 38, 0.5)"  ; Semi-transparent highlight
@@ -280,12 +302,12 @@
                :line-height (str line-height "px")
                :color "#d4d4d4"
                :white-space "pre-wrap"
-               :pointer-events "none"
+               :pointer-events "auto"  ; Enable clicks for cursor positioning
                :min-height (str line-height "px")}}  ; At least one line tall
 
       ;; Render visible lines as individual divs with syntax highlighting
       (when visible-lines
-        (let [lines (clojure.string/split visible-lines #"\n")]
+        (let [lines (clojure.string/split visible-lines #"\n" -1)]  ; -1 keeps trailing empty strings
           (for [[idx line] (map-indexed vector lines)]
             (let [line-number (+ (:start-line viewport 0) idx)]
               ^{:key line-number}
@@ -342,7 +364,7 @@
      [:div.editor-content
       {:on-click (fn [e] (when-let [hidden-input @hidden-input-ref] (.focus hidden-input)) (.stopPropagation e)) :style {:display "flex" :flex-direction "row" :width "100%" :min-height "100%"}}
       [editor-gutter]
-      [custom-rendered-pane]]]))
+      [custom-rendered-pane hidden-input-ref]]]))
 
 (defn editor-view
   "Main editor view with virtualized scrolling and custom cursor architecture"

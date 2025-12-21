@@ -107,7 +107,7 @@
  (fn [^js wasm-instance _]
    "Get the length of the active buffer from WASM"
    (if wasm-instance
-     (.getLength wasm-instance)
+     (.length wasm-instance)
      0)))
 
 ;; -- New Buffer-Based Cursor Subscriptions --
@@ -285,11 +285,10 @@
  (fn [^js wasm-instance _]
    "Get the total number of lines in the document"
    (if wasm-instance
-     (do
-       (println "📊 Calling lineCount on WASM instance. Has method?" (boolean (.-lineCount wasm-instance)))
-       (let [result (.lineCount wasm-instance)]
-         (println "📊 lineCount returned:" result)
-         result))
+     (let [text (.getText wasm-instance)
+           line-count (count (clojure.string/split text #"\n" -1))]  ; -1 keeps trailing empty strings
+       (println "📊 Line count calculated:" line-count)
+       line-count)
      (do
        (println "❌ No WASM instance for total-lines")
        1))))
@@ -305,11 +304,13 @@
    (if (and wasm-instance viewport)
      (let [{:keys [start-line end-line]} viewport
            full-text (.getText wasm-instance)
-           wasm-length (.getLength wasm-instance)
-           result (.getTextForLineRange wasm-instance start-line end-line)]
+           wasm-length (.length wasm-instance)
+           all-lines (clojure.string/split full-text #"\n" -1)  ; -1 keeps trailing empty strings
+           visible-lines (subvec (vec all-lines) start-line (min (inc end-line) (count all-lines)))
+           result (clojure.string/join "\n" visible-lines)]
        (println "📝 Full text from WASM:" (pr-str full-text))
        (println "📝 WASM length:" wasm-length "Full text length:" (count full-text))
-       (println "📝 WASM getTextForLineRange(" start-line "," end-line ") returned:" (pr-str result))
+       (println "📝 Visible lines [" start-line "-" end-line "]:" (pr-str result))
        (println "📝 Result length:" (count result))
        result)
      (do
