@@ -760,6 +760,21 @@
          [:dispatch [:register-command :universal-argument
                     {:docstring "Set or multiply universal argument (C-u)"
                      :handler [:universal-argument]}]]
+         [:dispatch [:register-command :split-window-below
+                    {:docstring "Split window horizontally"
+                     :handler [:split-window-below]}]]
+         [:dispatch [:register-command :split-window-right
+                    {:docstring "Split window vertically"
+                     :handler [:split-window-right]}]]
+         [:dispatch [:register-command :delete-window
+                    {:docstring "Delete current window"
+                     :handler [:delete-window]}]]
+         [:dispatch [:register-command :delete-other-windows
+                    {:docstring "Delete all other windows"
+                     :handler [:delete-other-windows]}]]
+         [:dispatch [:register-command :other-window
+                    {:docstring "Switch to next window"
+                     :handler [:other-window]}]]
          [:dispatch [:register-command :undo
                     {:docstring "Undo last change"
                      :handler [:undo]}]]
@@ -1174,6 +1189,124 @@
            {:db (-> db
                     (assoc-in [:buffers buffer-id] new-buffer)
                     (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))))))
+
+;; -- Window Management (Phase 3) --
+
+(rf/reg-event-fx
+ :split-window-below
+ (fn [{:keys [db]} [_]]
+   "Split current window horizontally (C-x 2)"
+   (let [active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         active-window (db/find-window-in-tree window-tree active-window-id)
+
+         ;; Create new window with same buffer
+         new-window-id (db/next-window-id db)
+         new-window (db/create-leaf-window new-window-id (:buffer-id active-window))
+
+         ;; Create split node
+         split-id (inc new-window-id)
+         split-node (db/create-split-window :hsplit split-id active-window new-window)
+
+         ;; Function to replace the active window with the split
+         replace-window (fn replace-window [tree]
+                         (if (= (:id tree) active-window-id)
+                           split-node
+                           (cond
+                             (= (:type tree) :leaf) tree
+                             (or (= (:type tree) :hsplit) (= (:type tree) :vsplit))
+                             (assoc tree
+                                    :first (replace-window (:first tree))
+                                    :second (replace-window (:second tree)))
+                             :else tree)))
+
+         new-tree (replace-window window-tree)]
+
+     {:db (-> db
+              (assoc :window-tree new-tree)
+              (assoc :active-window-id new-window-id)
+              (assoc :next-window-id (+ new-window-id 2)))})))
+
+(rf/reg-event-fx
+ :split-window-right
+ (fn [{:keys [db]} [_]]
+   "Split current window vertically (C-x 3)"
+   (let [active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         active-window (db/find-window-in-tree window-tree active-window-id)
+
+         ;; Create new window with same buffer
+         new-window-id (db/next-window-id db)
+         new-window (db/create-leaf-window new-window-id (:buffer-id active-window))
+
+         ;; Create split node (vertical this time)
+         split-id (inc new-window-id)
+         split-node (db/create-split-window :vsplit split-id active-window new-window)
+
+         ;; Function to replace the active window with the split
+         replace-window (fn replace-window [tree]
+                         (if (= (:id tree) active-window-id)
+                           split-node
+                           (cond
+                             (= (:type tree) :leaf) tree
+                             (or (= (:type tree) :hsplit) (= (:type tree) :vsplit))
+                             (assoc tree
+                                    :first (replace-window (:first tree))
+                                    :second (replace-window (:second tree)))
+                             :else tree)))
+
+         new-tree (replace-window window-tree)]
+
+     {:db (-> db
+              (assoc :window-tree new-tree)
+              (assoc :active-window-id new-window-id)
+              (assoc :next-window-id (+ new-window-id 2)))})))
+
+(rf/reg-event-fx
+ :other-window
+ (fn [{:keys [db]} [_]]
+   "Switch to next window (C-x o)"
+   (let [window-tree (:window-tree db)
+         all-windows (db/get-all-leaf-windows window-tree)
+         active-window-id (:active-window-id db)
+
+         ;; Find current window index
+         current-index (first (keep-indexed
+                               (fn [idx window]
+                                 (when (= (:id window) active-window-id) idx))
+                               all-windows))
+
+         ;; Get next window (wrap around)
+         next-index (mod (inc (or current-index 0)) (count all-windows))
+         next-window (nth all-windows next-index)
+         next-window-id (:id next-window)]
+
+     {:db (assoc db :active-window-id next-window-id)})))
+
+(rf/reg-event-fx
+ :delete-window
+ (fn [{:keys [db]} [_]]
+   "Delete current window (C-x 0)"
+   (let [window-tree (:window-tree db)
+         all-windows (db/get-all-leaf-windows window-tree)
+         active-window-id (:active-window-id db)]
+
+     (if (<= (count all-windows) 1)
+       ;; Can't delete the last window
+       {:db db}
+       ;; TODO: Implement window deletion logic
+       ;; This requires removing the window from the tree and rebalancing
+       {:fx [[:dispatch [:echo/message "delete-window not yet implemented"]]]}))))
+
+(rf/reg-event-fx
+ :delete-other-windows
+ (fn [{:keys [db]} [_]]
+   "Delete all windows except current (C-x 1)"
+   (let [window-tree (:window-tree db)
+         active-window-id (:active-window-id db)
+         active-window (db/find-window-in-tree window-tree active-window-id)]
+
+     {:db (assoc db :window-tree active-window)})))
 
 ;; -- Serialized Transaction Queue System --
 
