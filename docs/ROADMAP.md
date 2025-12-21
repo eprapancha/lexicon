@@ -388,25 +388,61 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 **Status:** 🔲 Planned
 **Goal:** Fix critical UX gaps from Phase 1-2 before adding window complexity
-**Timeline:** 0.5-1 day
+**Timeline:** 1 day
 **Prerequisites:** Phase 2 complete
+
+### Critical UX Issues (Makes Phase 2 frustrating to use)
+
+**Problem 1: C-x b (switch-to-buffer) - No completion**
+- With multiple buffers, must type exact name character-by-character
+- No way to see available buffer names
+- No TAB completion or partial matching
+- **Impact:** Unusable with 5+ buffers
+
+**Problem 2: C-x C-b (list-buffers) - Read-only buffer list**
+- Shows buffer list but can't interact with it
+- Must memorize buffer name, exit, then use C-x b
+- Should be able to navigate and press RET to switch
+- **Impact:** Feature is essentially broken
 
 ### Essential Additions
 
-#### 1. Region Highlighting (30 min)
+#### 1. Region Highlighting (30 min) - HIGH PRIORITY
 **Why now:** Phase 1 commands (C-w, M-w) unusable without visual feedback
 - Add CSS for `.selected-region` with background color
 - Update view to render highlighted spans when mark is active
 - Calculate mark position to cursor position range
 
-#### 2. Basic Help - describe-bindings (1 hour)
+#### 2. Minibuffer TAB Completion for C-x b (1-2 hours) - **CRITICAL**
+**Why now:** Cannot effectively use multiple buffers without this
+- Add `:completion-candidates` to minibuffer state
+- Implement TAB handler to show/cycle completions
+- Display completion list (simple format below minibuffer input)
+- Partial name matching (prefix-based)
+- This is BASIC Emacs - not a "nice to have"
+
+**Simple completion UI:**
+```
+Switch to buffer: sh[TAB]
+Completions: *scratch*, shell.nix
+```
+
+#### 3. Interactive buffer-menu-mode (1 hour) - **CRITICAL**
+**Why now:** C-x C-b currently unusable for buffer switching
+- Add special keybindings for *Buffer List* buffer
+- `RET` on a line → switch to that buffer
+- Parse line to extract buffer name
+- Basic navigation with arrow keys (already works)
+- Foundation: This IS a major mode (buffer-menu-mode)
+
+#### 4. Basic Help - describe-bindings (1 hour)
 **Why now:** Need to discover implemented commands as list grows
 - `describe-bindings` (C-h b) - List all keybindings in buffer
 - Simple implementation: format keymap data, no completion yet
 - Foundation for full help system in Phase 4
 
-#### 3. Universal Argument (C-u) (2-3 hours)
-**Why now:** Simpler before window splits; fundamental Emacs feature
+#### 5. Universal Argument (C-u) (2-3 hours) - Can defer to Phase 2.6
+**Why later:** Useful but not blocking; simpler before window splits
 - Add `:prefix-argument` state to app-db
 - Implement C-u handler (accumulates 4, 16, 64...)
 - Modify motion commands to accept count parameter
@@ -415,11 +451,19 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ### Success Criteria
 - [ ] Can see region selection visually
+- [ ] C-x b shows completions on TAB, can select with arrow keys
+- [ ] C-x C-b allows RET to switch to buffer on current line
 - [ ] C-h b lists all current keybindings
-- [ ] C-u 5 C-n moves down 5 lines
-- [ ] C-u C-k kills line including newline
+- [ ] (Optional) C-u 5 C-n moves down 5 lines
 
-**Estimated Total Effort:** 3-4 hours
+### Implementation Priority
+1. Region highlighting (30 min)
+2. TAB completion for C-x b (1-2 hours) ← **BLOCKING**
+3. Interactive buffer-menu-mode (1 hour) ← **BLOCKING**
+4. C-h b describe-bindings (1 hour)
+5. C-u universal argument (2-3 hours) - Can wait
+
+**Estimated Total Effort:** 4-5 hours (without C-u), 6-8 hours (with C-u)
 
 ---
 
