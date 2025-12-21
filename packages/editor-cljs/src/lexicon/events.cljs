@@ -708,12 +708,21 @@
    {:fx [[:dispatch [:register-command :find-file 
                     {:docstring "Open a file"
                      :handler [:find-file]}]]
-         [:dispatch [:register-command :save-buffer 
+         [:dispatch [:register-command :save-buffer
                     {:docstring "Save current buffer"
                      :handler [:save-buffer]}]]
-         [:dispatch [:register-command :kill-buffer 
-                    {:docstring "Close current buffer"
-                     :handler [:close-buffer]}]]
+         [:dispatch [:register-command :write-file
+                    {:docstring "Write buffer to file (save as)"
+                     :handler [:write-file]}]]
+         [:dispatch [:register-command :switch-to-buffer
+                    {:docstring "Switch to another buffer"
+                     :handler [:switch-to-buffer]}]]
+         [:dispatch [:register-command :kill-buffer
+                    {:docstring "Kill (close) a buffer"
+                     :handler [:kill-buffer]}]]
+         [:dispatch [:register-command :list-buffers
+                    {:docstring "Display a list of all buffers"
+                     :handler [:list-buffers]}]]
          [:dispatch [:register-command :keyboard-quit 
                     {:docstring "Cancel current operation"
                      :handler [:keyboard-quit]}]]
@@ -997,7 +1006,6 @@
        ;; Create new buffer list buffer
        (let [buffer-id (db/next-buffer-id buffers)
              WasmEditorCore (get-in db [:system :wasm-constructor])
-             wasm-instance (WasmEditorCore.)
              ;; Generate buffer list content
              buffer-lines (map (fn [buf]
                                 (str (if (:is-modified? buf) " *" "  ")
@@ -1009,9 +1017,8 @@
              header "MR Buffer           File\n-- ------           ----\n"
              content (str header (clojure.string/join "\n" buffer-lines))
              lines (clojure.string/split content #"\n" -1)
-             line-count (count lines)]
-         ;; Initialize WASM instance with buffer list
-         (.init wasm-instance content)
+             line-count (count lines)
+             wasm-instance (WasmEditorCore. content)]
 
          (let [new-buffer {:id buffer-id
                           :wasm-instance wasm-instance
@@ -1678,14 +1685,10 @@
    "Handle successful file read - create new buffer and switch to it"
    (let [buffer-id (db/next-buffer-id (:buffers db))
          WasmEditorCore (get-in db [:system :wasm-constructor])
-         wasm-instance (WasmEditorCore.)]
-     ;; Initialize WASM instance with file content
-     (.init wasm-instance content)
-     
-     ;; Create new buffer and update app state
-     (let [detected-language (detect-language-from-filename name)
-           lines (clojure.string/split content #"\n" -1)
-           line-count (count lines)
+         wasm-instance (WasmEditorCore. content)
+         detected-language (detect-language-from-filename name)
+         lines (clojure.string/split content #"\n" -1)
+         line-count (count lines)
            new-buffer {:id buffer-id
                        :wasm-instance wasm-instance
                        :file-handle file-handle
@@ -1709,7 +1712,7 @@
                 (assoc-in [:buffers buffer-id] new-buffer)
                 (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))
         :fx [[:dispatch [:parser/request-parse buffer-id]]
-             [:dispatch [:lsp/on-buffer-opened buffer-id]]]}))))
+             [:dispatch [:lsp/on-buffer-opened buffer-id]]]})))
 
 ;; Debug helper to check parser worker state
 (rf/reg-event-fx
@@ -1754,8 +1757,7 @@
            ;; No buffers left - create a new default *scratch* buffer
            (let [new-buffer-id (inc (apply max 0 (keys buffers)))
                  WasmEditorCore (get-in db [:system :wasm-constructor])
-                 new-wasm-instance (WasmEditorCore.)]
-             (.init new-wasm-instance "")
+                 new-wasm-instance (WasmEditorCore. "")]
              {:db (-> db
                       (assoc :buffers {new-buffer-id {:id new-buffer-id
                                                       :wasm-instance new-wasm-instance
