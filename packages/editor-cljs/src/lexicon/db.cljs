@@ -18,7 +18,10 @@
                 :language :text                        ; Language for syntax highlighting
                 :diagnostics []                        ; LSP diagnostics for this buffer
                 :undo-stack []                         ; Stack of undo entries
-                :undo-in-progress? false}}             ; Prevent recording during undo
+                :undo-in-progress? false               ; Prevent recording during undo
+                :editor-version 0                      ; Increments on each edit (cache key)
+                :cache {:text ""                       ; Cached full text
+                        :line-count 1}}}               ; Cached line count
    :windows {1 {:id 1, :buffer-id 1, :viewport {:start-line 0, :end-line const/DEFAULT_VIEWPORT_LINES}}}
    :active-window-id 1
    :line-height const/DEFAULT_LINE_HEIGHT
@@ -136,7 +139,10 @@
    :language :text                        ; Language for syntax highlighting
    :diagnostics []
    :undo-stack []                         ; Stack of undo entries
-   :undo-in-progress? false})
+   :undo-in-progress? false
+   :editor-version 0                      ; Increments on each edit
+   :cache {:text ""                       ; Cached full text
+           :line-count 1}})
 
 (defn create-buffer-with-content
   "Create a new buffer with initial content"

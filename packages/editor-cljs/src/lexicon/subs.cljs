@@ -57,14 +57,10 @@
 
 (rf/reg-sub
  :buffer-content
- :<- [:active-wasm-instance]
- :<- [:view-needs-update?]
- :<- [:last-transaction-id]
- (fn [[^js wasm-instance view-needs-update? transaction-id] _]
-   "Get the content of the active buffer from WASM"
-   (if wasm-instance
-     (.getText wasm-instance)
-     "")))
+ :<- [:active-buffer]
+ (fn [active-buffer _]
+   "Get the content of the active buffer from cache"
+   (get-in active-buffer [:cache :text] "")))
 
 (rf/reg-sub
  :visible-content
@@ -281,41 +277,25 @@
 
 (rf/reg-sub
  ::total-lines
- :<- [:active-wasm-instance]
- (fn [^js wasm-instance _]
-   "Get the total number of lines in the document"
-   (if wasm-instance
-     (let [text (.getText wasm-instance)
-           line-count (count (clojure.string/split text #"\n" -1))]  ; -1 keeps trailing empty strings
-       (println "📊 Line count calculated:" line-count)
-       line-count)
-     (do
-       (println "❌ No WASM instance for total-lines")
-       1))))
+ :<- [:active-buffer]
+ (fn [active-buffer _]
+   "Get the total number of lines in the document from cache"
+   (get-in active-buffer [:cache :line-count] 1)))
 
 (rf/reg-sub
  ::visible-lines
  :<- [::viewport]
- :<- [:active-wasm-instance]
- :<- [:last-transaction-id]
- (fn [[viewport ^js wasm-instance transaction-id] _]
-   "Get the text for the visible lines"
-   (println "🔍 Visible lines sub. Viewport:" viewport "WASM instance:" (not (nil? wasm-instance)) "Transaction ID:" transaction-id)
-   (if (and wasm-instance viewport)
+ :<- [:active-buffer]
+ (fn [[viewport active-buffer] _]
+   "Get the text for the visible lines from cache"
+   (if (and active-buffer viewport)
      (let [{:keys [start-line end-line]} viewport
-           full-text (.getText wasm-instance)
-           wasm-length (.length wasm-instance)
+           full-text (get-in active-buffer [:cache :text] "")
            all-lines (clojure.string/split full-text #"\n" -1)  ; -1 keeps trailing empty strings
            visible-lines (subvec (vec all-lines) start-line (min (inc end-line) (count all-lines)))
            result (clojure.string/join "\n" visible-lines)]
-       (println "📝 Full text from WASM:" (pr-str full-text))
-       (println "📝 WASM length:" wasm-length "Full text length:" (count full-text))
-       (println "📝 Visible lines [" start-line "-" end-line "]:" (pr-str result))
-       (println "📝 Result length:" (count result))
        result)
-     (do
-       (println "❌ Missing viewport or WASM instance")
-       ""))))
+     "")))
 
 (rf/reg-sub
  :line-height

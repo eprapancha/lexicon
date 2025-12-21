@@ -117,13 +117,18 @@
  :wasm-module-loaded
  (fn [{:keys [db]} [_ {:keys [instance constructor]}]]
    "Store the loaded WASM module instance and constructor in the app state"
-   {:db (-> db
-            (assoc :initialized? true)
-            (assoc-in [:system :wasm-constructor] constructor)
-            (assoc-in [:buffers 1 :wasm-instance] instance))
-    :fx [[:dispatch [:initialize-buffer-cursor 1]]
-         [:parser/start-worker {:worker-path "/parser-worker.js"}]
-         [:dispatch [:ws/connect]]]}))
+   (let [initial-text (.getText instance)
+         initial-line-count (count (clojure.string/split initial-text #"\n" -1))]
+     {:db (-> db
+              (assoc :initialized? true)
+              (assoc-in [:system :wasm-constructor] constructor)
+              (assoc-in [:buffers 1 :wasm-instance] instance)
+              ;; Initialize cache with initial text and line count
+              (assoc-in [:buffers 1 :cache :text] initial-text)
+              (assoc-in [:buffers 1 :cache :line-count] initial-line-count))
+      :fx [[:dispatch [:initialize-buffer-cursor 1]]
+           [:parser/start-worker {:worker-path "/parser-worker.js"}]
+           [:dispatch [:ws/connect]]]})))
 
 ;; =============================================================================
 ;; REMOVED: FSM State Management (Evil-mode)
@@ -1141,6 +1146,10 @@
            text              (when wasm-instance (.getText wasm-instance))
            line-col          (when text (linear-pos-to-line-col text final-cursor))
 
+           ;; Invalidate cache by incrementing version and updating cached values
+           lines (when text (clojure.string/split text #"\n" -1))
+           line-count (if lines (count lines) 1)
+
            updated-db (-> db
                           ;; Remove completed operation from queue
                           (update :transaction-queue rest)
@@ -1151,6 +1160,11 @@
                           (assoc-in [:buffers active-buffer-id :cursor-position] (or line-col {:line 0 :column 0}))
                           ;; Mark buffer as modified
                           (assoc-in [:buffers active-buffer-id :is-modified?] true)
+                          ;; Increment editor version (invalidates cache)
+                          (update-in [:buffers active-buffer-id :editor-version] inc)
+                          ;; Update cache with fresh values
+                          (assoc-in [:buffers active-buffer-id :cache :text] (or text ""))
+                          (assoc-in [:buffers active-buffer-id :cache :line-count] line-count)
                           ;; Update system state
                           (update-in [:system :last-transaction-id] inc)
                           (assoc-in [:ui :view-needs-update?] true))]
