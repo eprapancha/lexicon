@@ -141,6 +141,190 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ---
 
+## Technical Debt & Code Quality Improvements
+
+**Source:** ClojureScript code review (Dec 21, 2025)
+**Status:** Ongoing - address incrementally across phases
+
+### 🚨 Critical (Before Phase 2)
+
+#### 1. Subscription Caching & Performance
+**Issue:** Subscriptions recompute derived data eagerly, calling WASM on every render
+```clojure
+;; Current: calls .getText on every subscription evaluation
+(rf/reg-sub ::visible-lines
+  (fn [wasm-instance ...]
+    (.getText wasm-instance)))  ;; EXPENSIVE!
+```
+
+**Impact:** Performance degradation with multiple buffers, large files
+**Solution:**
+- Add `:editor-version` to buffer state (increment on each edit)
+- Cache `:full-text` and `:line-count` in buffer state
+- Invalidate cache only when version changes
+- Make subscriptions use cached values
+
+**Timeline:** Before Phase 2 starts
+**Estimated Effort:** 1-2 hours
+
+---
+
+### ⚠️ High Priority (During Phase 2)
+
+#### 2. Overloaded app-db Structure
+**Issue:** Mixing authoritative state, derived state, and UI state
+```clojure
+;; Current - unclear boundaries:
+{:buffers {1 {:wasm-instance ...        ;; Authoritative (Rust)
+              :cursor-position {:line 0} ;; Derived from Rust
+              :undo-stack []}}           ;; Meta-state
+ :ui {:cursor-position 0}}               ;; Duplicate!
+```
+
+**Impact:** Risk of state divergence, unclear data flow
+**Solution:** Clearer state boundaries
+```clojure
+{:editor/core   {1 {:wasm-instance ... :version 42}}  ;; Opaque Rust state
+ :editor/view   {1 {:cursor ... :selection ...}}      ;; Derived view state
+ :editor/cache  {1 {:text ... :lines ...}}            ;; Cached computations
+ :editor/meta   {1 {:undo-stack ... :modified?}}      ;; Editor metadata
+ :ui            {:active-buffer-id 1}}                ;; UI-only state
+```
+
+**Timeline:** Refactor during Phase 2 buffer management work
+**Estimated Effort:** 4-6 hours
+
+---
+
+#### 3. Large Event Handlers - Excessive Complexity
+**Issue:** `:editor/process-queue` is 100+ lines with side effects
+```clojure
+(rf/reg-fx :editor/process-queue
+  (fn [db-state]
+    ;; 100+ lines of:
+    ;; - WASM calls
+    ;; - db reads
+    ;; - state updates
+    ;; - nested case statements
+```
+
+**Impact:** Hard to test, reason about, debug
+**Solution:** Extract into composable functions
+```clojure
+(defn apply-insert [wasm-instance pos text] ...)
+(defn apply-delete [wasm-instance pos len] ...)
+(defn record-undo-entry [operation] ...)
+
+(rf/reg-fx :editor/process-queue
+  (fn [db-state]
+    (let [operation (first-operation db-state)]
+      (apply-operation wasm-instance operation))))
+```
+
+**Timeline:** Refactor during Phase 2
+**Estimated Effort:** 3-4 hours
+
+---
+
+### 📋 Medium Priority (Phase 3-4)
+
+#### 4. Error Handling & Observability
+**Issue:** Errors are unstructured strings, no recovery strategy
+```clojure
+;; Current:
+{:error "Something broke"}
+
+;; Better:
+{:type :wasm-error
+ :severity :error
+ :message "..."
+ :context {:operation :insert :position 42}
+ :recoverable? true}
+```
+
+**Timeline:** Phase 3-4 (when adding LSP diagnostics)
+**Estimated Effort:** 2-3 hours
+
+---
+
+#### 5. Potential Over-rendering in Views
+**Issue:** Large editor state passed to components may cause excessive re-renders
+**Solution:**
+- Fine-grained subscriptions
+- Pass minimal props to components
+- Use `reaction` for stable references
+
+**Timeline:** Phase 3-4 (as performance issues emerge)
+**Estimated Effort:** 2-4 hours
+
+---
+
+### 📝 Low Priority (Ongoing)
+
+#### 6. Testing Coverage
+**Issue:** No meaningful ClojureScript tests
+**Impact:** Hard to refactor safely, regression risk
+**Solution:**
+- Unit test event handlers (pure functions)
+- Test command dispatch logic
+- Mock WASM for deterministic tests
+- Property-test command sequences
+
+**Timeline:** Add tests incrementally starting Phase 2
+**Target:** 70% coverage by Phase 5
+**Estimated Effort:** Ongoing (1-2 hours per phase)
+
+---
+
+#### 7. Documentation Gaps
+**Issue:**
+- No docstrings on public events/subs
+- No CLJS architecture documentation
+- No state flow diagrams
+
+**Solution:**
+- Add `docs/ARCHITECTURE_CLJS.md`
+- Document data flow: `UI → re-frame → WASM → patch → UI`
+- Add docstrings to all `reg-event-*` and `reg-sub`
+- Create state transition diagrams
+
+**Timeline:** Ongoing, improve incrementally
+**Estimated Effort:** 1 hour per phase
+
+---
+
+### ✅ Non-Issues (Reviewer Misunderstood)
+
+#### String-based WASM Protocol
+**Reviewer claimed:** Using JSON strings for WASM communication
+**Reality:** We use **wasm-bindgen** with compile-time type safety
+```clojure
+(.insert wasm-instance position text)  ;; Direct typed calls
+;; NOT: (.applyTransaction wasm-editor json-str)
+```
+**No action needed.**
+
+#### Patch Generation Logic
+**Reviewer claimed:** Patch-based operational transforms
+**Reality:** We use **direct gap buffer mutations**, no patches
+**No action needed.**
+
+---
+
+### Progress Tracking
+
+| Item | Priority | Phase | Status |
+|------|----------|-------|--------|
+| Subscription caching | 🚨 Critical | Before Phase 2 | 🔲 Planned |
+| app-db structure | ⚠️ High | Phase 2 | 🔲 Planned |
+| Event handler refactor | ⚠️ High | Phase 2 | 🔲 Planned |
+| Error handling | 📋 Medium | Phase 3-4 | 🔲 Planned |
+| Over-rendering | 📋 Medium | Phase 3-4 | 🔲 Planned |
+| Testing coverage | 📝 Low | Ongoing | 🔲 Planned |
+| Documentation | 📝 Low | Ongoing | 🔲 Planned |
+
+---
+
 ## Phase 2: Core Emacs - Buffers & Files
 
 **Status:** 🔲 Planned
