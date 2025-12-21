@@ -298,21 +298,31 @@
     [:div.text-container
      {:style {:flex "1"
               :position "relative"
-              :overflow "hidden"}
+              :overflow "hidden"
+              :min-height "100%"}  ; Ensure container fills height
       :on-click handle-click}
 
      [:div.editable-area
-      {:style {:background-color "rgba(37, 37, 38, 0.5)"  ; Semi-transparent highlight
+      {:on-click (fn [e]
+                   (when-let [hidden-input @hidden-input-ref]
+                     (.focus hidden-input)))
+       :style {:background-color "rgba(37, 37, 38, 0.5)"  ; Semi-transparent highlight
                :border-radius "4px"
-               :position "relative"
+               :position "absolute"  ; Changed from relative
+               :top "0"
+               :left "0"
+               :right "0"
+               :bottom "0"
                :padding "20px 8px"  ; Top/bottom 20px, left/right 8px
+               :box-sizing "border-box"  ; Include padding in width calculation
                :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
                :font-size "14px"
                :line-height (str line-height "px")
                :color "#d4d4d4"
                :white-space "pre-wrap"
-               :pointer-events "auto"  ; Enable clicks for cursor positioning
-               :min-height (str line-height "px")}}  ; At least one line tall
+               :cursor "text"  ; Show text cursor
+               :pointer-events "auto"  ; Enable clicks
+               :z-index "1"}}  ; Ensure it's above other elements
 
       ;; Render visible lines as individual divs with syntax highlighting
       (when visible-lines
@@ -353,16 +363,13 @@
     [:div.editor-wrapper
      {:tabIndex 0
       :on-click (fn [_]
-                  (println "🖱️ Editor wrapper clicked")
                   ;; Focus the hidden input when wrapper is clicked
                   (when-let [hidden-input @hidden-input-ref]
-                    (println "🎯 Focusing hidden input")
-                    (.focus hidden-input))
-                  ;; TODO: Dispatch click-to-cursor event
-                  ) 
-      :style {:position "relative"
+                    (.focus hidden-input)))
+      :style {:position "sticky"  ; Changed to sticky
+              :top "0"
               :width "100%"
-              :min-height "100%"
+              :height "calc(100vh - 24px)"  ; Fill viewport height
               :outline "none"}}
      
      ;; Hidden input handler - captures all keyboard input
@@ -371,7 +378,12 @@
      
      ;; Flexbox container for gutter + text
      [:div.editor-content
-      {:on-click (fn [e] (when-let [hidden-input @hidden-input-ref] (.focus hidden-input)) (.stopPropagation e)) :style {:display "flex" :flex-direction "row" :width "100%" :min-height "100%"}}
+      {:on-click (fn [e] (when-let [hidden-input @hidden-input-ref] (.focus hidden-input)) (.stopPropagation e))
+       :style {:display "flex"
+               :flex-direction "row"
+               :width "100%"
+               :height "100%"  ; Fill parent height
+               :min-height "100%"}}
       [editor-gutter]
       [custom-rendered-pane hidden-input-ref]]]))
 
@@ -407,9 +419,10 @@
                 (.addEventListener element "scroll" handle-scroll)))
        :style {:height "calc(100vh - 24px)"  ; Account for status bar only
                :overflow-y "auto"
+               :overflow-x "hidden"  ; Prevent horizontal scrollbar
                :position "relative"
                :background-color "#1e1e1e"}}
-      
+
       ;; Virtual space to create proper scrollbar height
       [:div.virtual-space
        {:style {:height (str (* total-lines line-height) "px")
@@ -536,6 +549,29 @@
                  :font-family "monospace"
                  :flex "1"}}]])))
 
+(defn echo-area
+  "Echo area for displaying transient messages (below status bar)"
+  []
+  (let [echo @(rf/subscribe [:echo-area])
+        message (:message echo)]
+    (when (not (clojure.string/blank? message))
+      [:div.echo-area
+       {:style {:position "fixed"
+                :bottom "32px"  ; Just above minibuffer
+                :left "0"
+                :right "0"
+                :height "24px"
+                :background-color "#1e1e1e"
+                :color "#cccccc"
+                :font-size "12px"
+                :font-family "monospace"
+                :display "flex"
+                :align-items "center"
+                :padding "0 10px"
+                :border-top "1px solid #3e3e42"
+                :z-index "999"}}
+       message])))
+
 (defn status-bar
   "Display editor status information"
   []
@@ -622,6 +658,7 @@
         [:<>
          [editor-view]
          [status-bar]
+         [echo-area]
          [minibuffer-view]]
         
         :else

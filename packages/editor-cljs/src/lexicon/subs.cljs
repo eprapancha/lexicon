@@ -311,6 +311,14 @@
    "Get the minibuffer state"
    (:minibuffer db)))
 
+;; -- Echo Area Subscriptions --
+
+(rf/reg-sub
+ :echo-area
+ (fn [db _]
+   "Get the echo area state"
+   (:echo-area db)))
+
 ;; -- Parser and Highlighting Subscriptions --
 
 (defn ast-to-decorations

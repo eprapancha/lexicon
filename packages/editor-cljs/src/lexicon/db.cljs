@@ -121,6 +121,8 @@
                 :input ""                            ; Current user input in minibuffer
                 :on-confirm nil                      ; Event vector to dispatch on Enter
                 :on-cancel [:minibuffer/deactivate]} ; Event vector to dispatch on Escape/C-g
+   :echo-area {:message ""                           ; Current message to display
+               :timeout-id nil}                      ; Timeout ID for auto-clearing message
    })
 
 (defn create-buffer

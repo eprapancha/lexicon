@@ -1641,7 +1641,8 @@
               (assoc-in [:buffers buffer-id :is-modified?] false)
               (assoc-in [:buffers buffer-id :file-handle] file-handle)
               (assoc-in [:buffers buffer-id :name] file-name))
-      :fx [[:dispatch [:lsp/on-buffer-saved buffer-id]]]})))
+      :fx [[:dispatch [:lsp/on-buffer-saved buffer-id]]
+           [:dispatch [:echo/message (str "Wrote " file-name)]]]})))
 
 (rf/reg-event-fx
  :find-file
@@ -1830,22 +1831,59 @@
        (assoc-in [:minibuffer :on-confirm] (:on-confirm config))
        (assoc-in [:minibuffer :on-cancel] (or (:on-cancel config) [:minibuffer/deactivate])))))
 
-(rf/reg-event-db
+(rf/reg-fx
+ :focus-editor
+ (fn [_]
+   "Focus the hidden input element to enable keyboard input"
+   (when-let [hidden-input (js/document.querySelector ".hidden-input")]
+     (.focus hidden-input))))
+
+(rf/reg-event-fx
  :minibuffer/deactivate
- (fn [db [_]]
-   "Deactivate the minibuffer and reset state"
-   (-> db
-       (assoc-in [:minibuffer :active?] false)
-       (assoc-in [:minibuffer :prompt] "")
-       (assoc-in [:minibuffer :input] "")
-       (assoc-in [:minibuffer :on-confirm] nil)
-       (assoc-in [:minibuffer :on-cancel] [:minibuffer/deactivate]))))
+ (fn [{:keys [db]} [_]]
+   "Deactivate the minibuffer and reset state, then focus editor"
+   {:db (-> db
+            (assoc-in [:minibuffer :active?] false)
+            (assoc-in [:minibuffer :prompt] "")
+            (assoc-in [:minibuffer :input] "")
+            (assoc-in [:minibuffer :on-confirm] nil)
+            (assoc-in [:minibuffer :on-cancel] [:minibuffer/deactivate]))
+    :fx [[:focus-editor]]}))
 
 (rf/reg-event-db
  :minibuffer/set-input
  (fn [db [_ input-text]]
    "Update the minibuffer input text"
    (assoc-in db [:minibuffer :input] input-text)))
+
+;;; -- Echo Area Events --
+
+(rf/reg-event-fx
+ :echo/message
+ (fn [{:keys [db]} [_ message]]
+   "Display a message in the echo area (auto-clears after 3 seconds)"
+   (let [old-timeout-id (get-in db [:echo-area :timeout-id])]
+     ;; Clear previous timeout if any
+     (when old-timeout-id
+       (js/clearTimeout old-timeout-id))
+     ;; Set new message and create new timeout
+     (let [timeout-id (js/setTimeout
+                        #(rf/dispatch [:echo/clear])
+                        3000)]
+       {:db (-> db
+                (assoc-in [:echo-area :message] message)
+                (assoc-in [:echo-area :timeout-id] timeout-id))}))))
+
+(rf/reg-event-db
+ :echo/clear
+ (fn [db [_]]
+   "Clear the echo area message"
+   (let [timeout-id (get-in db [:echo-area :timeout-id])]
+     (when timeout-id
+       (js/clearTimeout timeout-id))
+     (-> db
+         (assoc-in [:echo-area :message] "")
+         (assoc-in [:echo-area :timeout-id] nil)))))
 
 (rf/reg-event-fx
  :minibuffer/confirm
