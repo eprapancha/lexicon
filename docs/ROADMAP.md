@@ -386,14 +386,14 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ## Phase 2.5: Core Polish (Before Phase 3)
 
-**Status:** 🔲 Planned
+**Status:** ⏳ In Progress (Show-stoppers ✅ Complete)
 **Goal:** Fix critical UX gaps from Phase 1-2 before adding window complexity
-**Timeline:** 1.5-2 days
-**Prerequisites:** Phase 2 complete
+**Timeline:** 1.5-2 days (3 hours spent, 3.5-4.5 hours remaining)
+**Prerequisites:** ✅ Phase 2 complete
 
-### 🚨 SHOW-STOPPER Issues (Prevents basic usage)
+### 🚨 SHOW-STOPPER Issues ✅ **ALL FIXED** (Dec 21, 2025)
 
-**Problem 1: Layout/Focus - Two-area editor with dead zone**
+**Problem 1: Layout/Focus - Two-area editor with dead zone** ✅ **FIXED**
 - **Symptom:** Content only appears in narrow left column (~60px gutter width)
 - **Symptom:** Huge dark empty area on right doesn't accept clicks/focus
 - **Symptom:** Must click in specific narrow area to type
@@ -406,40 +406,26 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
   - Add explicit width calculations if needed
   - Fix z-index/pointer-events issues preventing click propagation
 
-**Problem 2: Focus management - Unpredictable focus behavior**
+**Problem 2: Focus management - Unpredictable focus behavior** ✅ **FIXED**
 - **Symptom:** Sometimes can't type without explicitly clicking in editor
 - **Symptom:** Minibuffer doesn't reliably return focus to buffer after cancel
 - **Impact:** **CRITICAL** - Using mouse in Emacs is "the biggest joke"
-- **Fix:** (30 min)
-  - Minibuffer cancel (Esc/C-g) must explicitly `.focus()` hidden input
-  - All navigation commands should ensure hidden input has focus
-  - Document-level click handler to always focus editor when clicking anywhere
+- **Solution implemented:** Added :focus-editor effect, minibuffer returns focus on cancel
 
-**Problem 3: C-g in minibuffer - Not working**
+**Problem 3: C-g in minibuffer - Not working** ✅ **FIXED (Already worked)**
 - **Symptom:** Esc works to cancel minibuffer, but C-g doesn't
 - **Impact:** HIGH - C-g is THE Emacs "get out of jail" key
-- **Fix:** (15 min)
-  - Minibuffer keydown handler already has C-g check (line 527 in views.cljs)
-  - Verify it's dispatching `:on-cancel` correctly
-  - Test that cancel handler focuses editor
+- **Solution:** Was already implemented, verified working (views.cljs:530)
 
-**Problem 4: Horizontal scrollbar - Shouldn't exist**
+**Problem 4: Horizontal scrollbar - Shouldn't exist** ✅ **FIXED**
 - **Symptom:** Ugly horizontal scrollbar just above mode line
 - **Impact:** MEDIUM - Visual pollution, suggests layout issue
-- **Fix:** (15 min)
-  - `.editor-scroller` should have `overflow-x: hidden`
-  - Ensure no child elements exceed container width
-  - Verify `.editable-area` doesn't have fixed width causing overflow
+- **Solution implemented:** Added `overflow-x: hidden` to .editor-scroller
 
-**Problem 5: No echo area - Messages have nowhere to go**
+**Problem 5: No echo area - Messages have nowhere to go** ✅ **FIXED**
 - **Symptom:** Mode line at very bottom, no blank line below for messages
 - **Impact:** MEDIUM - Can't show transient messages (saving, errors, etc.)
-- **Fix:** (30 min)
-  - Add `.echo-area` div below mode line
-  - Reserve space in layout (20-24px height)
-  - Add `:echo-message` to app-db
-  - Auto-clear messages after 2-3 seconds
-  - Essential for showing command feedback
+- **Solution implemented:** Added .echo-area component, shows "Wrote <file>", auto-clears
 
 ### Critical UX Issues (Makes Phase 2 frustrating to use)
 
@@ -509,11 +495,11 @@ Completions: *scratch*, shell.nix
 - Show "C-u -" or "C-u 4" in mode line
 
 ### Success Criteria
-- [ ] **Can type anywhere in editor without clicking narrow column first** ← CRITICAL
-- [ ] **M- commands work immediately after app loads** ← CRITICAL
-- [ ] **C-g cancels minibuffer and returns focus to editor** ← CRITICAL
-- [ ] No horizontal scrollbar visible
-- [ ] Echo area shows messages (e.g., "Saving...", "Saved")
+- [x] **Can type anywhere in editor without clicking narrow column first** ← CRITICAL ✅ FIXED
+- [x] **M- commands work immediately after app loads** ← CRITICAL ✅ FIXED
+- [x] **C-g cancels minibuffer and returns focus to editor** ← CRITICAL ✅ FIXED
+- [x] No horizontal scrollbar visible ✅ FIXED
+- [x] Echo area shows messages (e.g., "Saving...", "Saved") ✅ FIXED
 - [ ] Can see region selection visually
 - [ ] C-x b shows completions on TAB, can select with arrow keys
 - [ ] C-x C-b allows RET to switch to buffer on current line
@@ -521,26 +507,25 @@ Completions: *scratch*, shell.nix
 - [ ] (Optional) C-u 5 C-n moves down 5 lines
 
 ### Implementation Priority
-**PHASE 1 - SHOW-STOPPERS (Must fix first):**
-1. Layout/Focus - Fix two-area editor (1 hour) ← **BLOCKING EVERYTHING**
-2. Focus management - Reliable focus (30 min) ← **BLOCKING EVERYTHING**
-3. C-g in minibuffer (15 min) ← **BLOCKING**
-4. Horizontal scrollbar removal (15 min)
-5. Echo area implementation (30 min)
-6. **THOROUGH TESTING** - Ensure basic typing works
+**PHASE 1 - SHOW-STOPPERS (Must fix first):** ✅ **COMPLETE**
+1. ✅ Layout/Focus - Fix two-area editor (1 hour) - Buffer fills viewport
+2. ✅ Focus management - Reliable focus (30 min) - M-x works on load
+3. ✅ C-g in minibuffer (15 min) - Both Esc and C-g work
+4. ✅ Horizontal scrollbar removal (15 min) - Clean UI
+5. ✅ Echo area implementation (30 min) - Shows "Wrote <file>"
+6. ✅ **THOROUGH TESTING** - Basic typing works everywhere
 
-**PHASE 2 - USABILITY (After show-stoppers fixed):**
-7. Region highlighting (30 min)
-8. TAB completion for C-x b (1-2 hours) ← **BLOCKING multi-buffer use**
-9. Interactive buffer-menu-mode (1 hour) ← **BLOCKING C-x C-b**
-10. C-h b describe-bindings (1 hour)
-11. C-u universal argument (2-3 hours) - Can defer to Phase 2.6
+**PHASE 2 - USABILITY (In progress):**
+7. ⏳ Region highlighting (30 min) ← **NEXT**
+8. 🔲 TAB completion for C-x b (1-2 hours) ← **BLOCKING multi-buffer use**
+9. 🔲 Interactive buffer-menu-mode (1 hour) ← **BLOCKING C-x C-b**
+10. 🔲 C-h b describe-bindings (1 hour)
+11. 🔲 C-u universal argument (2-3 hours) - Can defer to Phase 2.6
 
-**Estimated Total Effort:**
-- Show-stoppers: 3 hours
-- Core usability: 2.5-3.5 hours
-- **Total: 5.5-6.5 hours** (without C-u)
-- **Total: 7.5-9.5 hours** (with C-u)
+**Estimated Remaining Effort:**
+- Show-stoppers: ✅ COMPLETE (3 hours spent)
+- Core usability (items 7-10): 3.5-4.5 hours remaining
+- Optional C-u: +2-3 hours
 
 ---
 
