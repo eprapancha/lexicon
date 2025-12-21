@@ -18,18 +18,18 @@
    (:active-window-id db)))
 
 (rf/reg-sub
- :windows
+ :window-tree
  (fn [db _]
-   "Get all windows"
-   (:windows db)))
+   "Get the window tree"
+   (:window-tree db)))
 
 (rf/reg-sub
  :active-window
- :<- [:windows]
+ :<- [:window-tree]
  :<- [:active-window-id]
- (fn [[windows active-id] _]
+ (fn [[window-tree active-id] _]
    "Get the currently active window"
-   (get windows active-id)))
+   (lexicon.db/find-window-in-tree window-tree active-id)))
 
 ;; -- Buffer Subscriptions --
 
@@ -106,14 +106,14 @@
      (.length wasm-instance)
      0)))
 
-;; -- New Buffer-Based Cursor Subscriptions --
+;; -- Window-Based Cursor Subscriptions (Phase 3) --
 
 (rf/reg-sub
  ::cursor-position
- :<- [:active-buffer]
- (fn [active-buffer _]
-   "Get the cursor position from the active buffer"
-   (:cursor-position active-buffer)))
+ :<- [:active-window]
+ (fn [active-window _]
+   "Get the cursor position from the active window"
+   (:cursor-position active-window)))
 
 (rf/reg-sub
  ::selection-range
@@ -307,10 +307,10 @@
 
 (rf/reg-sub
  :mark-position
- :<- [:active-buffer]
- (fn [active-buffer _]
-   "Get the mark position for the active buffer"
-   (:mark-position active-buffer)))
+ :<- [:active-window]
+ (fn [active-window _]
+   "Get the mark position for the active window"
+   (:mark-position active-window)))
 
 (rf/reg-sub
  :region-active?
