@@ -16,7 +16,9 @@
                 :buffer-local-vars {}                  ; Mode-specific configuration
                 :ast nil                               ; Parsed AST from Tree-sitter
                 :language :text                        ; Language for syntax highlighting
-                :diagnostics []}}                      ; LSP diagnostics for this buffer
+                :diagnostics []                        ; LSP diagnostics for this buffer
+                :undo-stack []                         ; Stack of undo entries
+                :undo-in-progress? false}}             ; Prevent recording during undo
    :windows {1 {:id 1, :buffer-id 1, :viewport {:start-line 0, :end-line const/DEFAULT_VIEWPORT_LINES}}}
    :active-window-id 1
    :line-height const/DEFAULT_LINE_HEIGHT
@@ -132,7 +134,9 @@
    :buffer-local-vars {}
    :ast nil                               ; Parsed AST from Tree-sitter
    :language :text                        ; Language for syntax highlighting
-   :diagnostics []})
+   :diagnostics []
+   :undo-stack []                         ; Stack of undo entries
+   :undo-in-progress? false})
 
 (defn create-buffer-with-content
   "Create a new buffer with initial content"

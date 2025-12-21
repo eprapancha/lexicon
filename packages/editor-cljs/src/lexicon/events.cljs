@@ -953,6 +953,60 @@
        {:fx [[:dispatch [:editor/queue-transaction operation]]]}
        {:db db}))))
 
+;; Helper function to record undo information
+(defn record-undo!
+  "Record undo entry for an operation. Returns undo entry or nil if recording disabled."
+  [wasm-instance active-buffer-id current-cursor operation]
+  (let [db @re-frame.db/app-db
+        undo-in-progress? (get-in db [:buffers active-buffer-id :undo-in-progress?])]
+    (when-not undo-in-progress?
+      (let [undo-entry (case (:op operation)
+                         :insert
+                         (let [text (:text operation)]
+                           {:op :delete-range
+                            :start current-cursor
+                            :length (count text)})
+
+                         :delete-backward
+                         (when (> current-cursor 0)
+                           (let [deleted-char (.getRange ^js wasm-instance (dec current-cursor) current-cursor)]
+                             {:op :insert
+                              :text deleted-char
+                              :position (dec current-cursor)}))
+
+                         :delete-forward
+                         (let [buffer-length (.length ^js wasm-instance)]
+                           (when (< current-cursor buffer-length)
+                             (let [deleted-char (.getRange ^js wasm-instance current-cursor (inc current-cursor))]
+                               {:op :insert
+                                :text deleted-char
+                                :position current-cursor})))
+
+                         :delete-range
+                         (let [start (:start operation)
+                               length (:length operation)
+                               deleted-text (.getRange ^js wasm-instance start (+ start length))]
+                           {:op :insert
+                            :text deleted-text
+                            :position start})
+
+                         :replace
+                         (let [start (:start operation)
+                               length (:length operation)
+                               old-text (.getRange ^js wasm-instance start (+ start length))
+                               new-text (:text operation)]
+                           {:op :replace
+                            :start start
+                            :length (count new-text)
+                            :text old-text})
+
+                         ;; Unknown operation - don't record
+                         nil)]
+        (when undo-entry
+          (swap! re-frame.db/app-db update-in [:buffers active-buffer-id :undo-stack] conj undo-entry)
+          (println "📝 Undo recorded:" undo-entry))
+        undo-entry))))
+
 ;; Core queue processor effect - ensures serialized execution
 (rf/reg-fx
  :editor/process-queue
@@ -977,7 +1031,10 @@
              (println "🔧 Processing operation:" (:op operation) "with WASM instance")
              ;; Immediately set the in-flight flag in the database to prevent concurrent operations
              (swap! re-frame.db/app-db assoc :transaction-in-flight? true)
-             
+
+             ;; Record undo information BEFORE executing operation
+             (record-undo! wasm-instance active-buffer-id current-cursor operation)
+
              ;; Process the operation based on its type (using Gap Buffer API)
              (case (:op operation)
              :insert
@@ -2034,3 +2091,34 @@
        (do
          (println "⚠ Cannot yank-pop: only works immediately after yank")
          {:db db})))))
+
+;; -- Undo Command --
+
+(rf/reg-event-fx
+ :undo
+ (fn [{:keys [db]} [_]]
+   "Undo the last operation (C-/ or C-_)"
+   (let [active-window    (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         active-buffer    (get (:buffers db) active-buffer-id)
+         wasm-instance    (:wasm-instance active-buffer)
+         undo-stack       (:undo-stack active-buffer)]
+
+     (if (and wasm-instance (seq undo-stack))
+       (let [undo-entry (peek undo-stack)
+             updated-stack (pop undo-stack)]
+         (println "⏪ Undo: applying" undo-entry)
+         {:db (-> db
+                  (assoc-in [:buffers active-buffer-id :undo-stack] updated-stack)
+                  (assoc-in [:buffers active-buffer-id :undo-in-progress?] true))
+          :fx [[:dispatch [:editor/queue-transaction undo-entry]]
+               [:dispatch-later [{:ms 10 :dispatch [:undo-complete active-buffer-id]}]]]})
+       (do
+         (println "⚠ Nothing to undo")
+         {:db db})))))
+
+(rf/reg-event-db
+ :undo-complete
+ (fn [db [_ buffer-id]]
+   "Reset undo-in-progress flag after undo operation completes"
+   (assoc-in db [:buffers buffer-id :undo-in-progress?] false)))

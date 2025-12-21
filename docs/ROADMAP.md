@@ -98,9 +98,9 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ## Phase 1: Core Emacs - Basic Editing
 
-**Status:** 🔲 Planned
+**Status:** ✅ COMPLETE (Dec 21, 2025)
 **Goal:** Implement essential Emacs editing commands
-**Timeline:** 2 weeks (Jan 10 - Jan 24, 2025)
+**Timeline:** 1 day (Dec 21, 2025)
 **Prerequisites:** Phase 0 complete
 
 ### Core Commands to Implement
@@ -131,11 +131,13 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ### Success Criteria
 
-- [ ] All navigation commands work correctly
-- [ ] Can select text with mark and region
-- [ ] Kill ring works (cut, copy, paste)
-- [ ] Undo works for all operations
-- [ ] Manual testing checklist passes
+- [x] All navigation commands work correctly (C-f/b/n/p, C-a/e, M-</>, M-f/b)
+- [x] Can select text with mark and region (C-SPC, M-w, C-w via M-x)
+- [x] Kill ring works (cut, copy, paste, C-k, C-y, M-y)
+- [x] Undo works for all operations (C-/, C-_)
+- [x] Manual testing checklist passes
+
+**Progress:** 5/5 complete (100%) ✅ PHASE 1 COMPLETE!
 
 ---
 
@@ -561,15 +563,18 @@ packages/evil-mode/
 
 ## Current Focus
 
-**Active Phase:** Phase 0 ✅ COMPLETE!
+**Active Phase:** Phase 1 ✅ COMPLETE!
 **Achievements:**
-- Evil-mode extracted to packages/
-- Gap buffer implemented and integrated
-- All basic text editing operations working
-- Core compiles cleanly with 0 errors
+- All navigation commands working (line, buffer, word boundaries)
+- Kill ring system with cut/copy/paste (C-k, M-w, C-y, M-y)
+- Mark and region selection (C-SPC)
+- Atomic :replace operation for gap buffer (eliminates race conditions)
+- Full undo system with inverse operation recording (C-/, C-_)
+- Fixed C-k end-of-buffer bug
+- Browser shortcut prevention for Emacs keybindings
 
-**Next Phase:** Phase 1 - Core Emacs Basic Editing
-**Next Milestone:** Implement navigation commands (C-a, C-e, M-f, M-b, etc.)
+**Next Phase:** Phase 2 - Core Emacs Buffers & Files
+**Next Milestone:** Multi-buffer support and file I/O
 **Blocking Issues:** None
 
 **Last Updated:** 2025-12-21
