@@ -904,6 +904,138 @@
      (assoc-in db [:windows (:active-window-id db) :buffer-id] buffer-id)
      db))) ; Ignore if buffer doesn't exist
 
+(rf/reg-event-fx
+ :switch-to-buffer
+ (fn [{:keys [db]} [_]]
+   "Activate minibuffer for buffer switching (C-x b)"
+   (let [buffers (:buffers db)
+         buffer-names (map :name (vals buffers))
+         current-buffer (get buffers (get-in db [:windows (:active-window-id db) :buffer-id]))
+         current-name (:name current-buffer)
+         prompt (str "Switch to buffer (default " current-name "): ")]
+     {:fx [[:dispatch [:minibuffer/activate
+                       {:prompt prompt
+                        :on-confirm [:switch-to-buffer-by-name]}]]]})))
+
+(rf/reg-event-fx
+ :switch-to-buffer-by-name
+ (fn [{:keys [db]} [_ buffer-name]]
+   "Switch to buffer by name, or stay on current if empty"
+   (let [buffers (:buffers db)
+         current-buffer-id (get-in db [:windows (:active-window-id db) :buffer-id])
+         current-buffer (get buffers current-buffer-id)
+         ;; If input is empty, use current buffer name
+         target-name (if (clojure.string/blank? buffer-name)
+                      (:name current-buffer)
+                      buffer-name)
+         ;; Find buffer with matching name
+         target-buffer (first (filter #(= (:name %) target-name) (vals buffers)))
+         target-id (:id target-buffer)]
+     (if target-id
+       {:fx [[:dispatch [:switch-buffer target-id]]]}
+       ;; TODO: Create new buffer if it doesn't exist (for now just stay on current)
+       {:fx []}))))
+
+(rf/reg-event-fx
+ :kill-buffer
+ (fn [{:keys [db]} [_]]
+   "Activate minibuffer for buffer killing (C-x k)"
+   (let [current-buffer (get (:buffers db) (get-in db [:windows (:active-window-id db) :buffer-id]))
+         current-name (:name current-buffer)
+         prompt (str "Kill buffer (default " current-name "): ")]
+     {:fx [[:dispatch [:minibuffer/activate
+                       {:prompt prompt
+                        :on-confirm [:kill-buffer-by-name]}]]]})))
+
+(rf/reg-event-fx
+ :kill-buffer-by-name
+ (fn [{:keys [db]} [_ buffer-name]]
+   "Kill buffer by name, or kill current if empty"
+   (let [buffers (:buffers db)
+         current-buffer-id (get-in db [:windows (:active-window-id db) :buffer-id])
+         current-buffer (get buffers current-buffer-id)
+         ;; If input is empty, use current buffer name
+         target-name (if (clojure.string/blank? buffer-name)
+                      (:name current-buffer)
+                      buffer-name)
+         ;; Find buffer with matching name
+         target-buffer (first (filter #(= (:name %) target-name) (vals buffers)))
+         target-id (:id target-buffer)]
+     (if target-id
+       ;; Don't allow killing the last buffer
+       (if (= (count buffers) 1)
+         {:fx []} ; Silently ignore
+         (let [;; Run kill-buffer hooks
+               hook-commands (get-in db [:hooks :kill-buffer-hook] [])
+               ;; If killing active buffer, switch to another one first
+               need-switch? (= target-id current-buffer-id)
+               ;; Find another buffer to switch to
+               other-buffer-id (first (filter #(not= % target-id) (keys buffers)))
+               updated-db (-> db
+                              ;; Remove the buffer
+                              (update :buffers dissoc target-id))]
+           {:db updated-db
+            :fx (concat
+                  ;; Run hook commands first
+                  (map (fn [cmd] [:dispatch [:execute-command cmd]]) hook-commands)
+                  ;; Switch to another buffer if needed
+                  (when (and need-switch? other-buffer-id)
+                    [[:dispatch [:switch-buffer other-buffer-id]]]))}))
+       ;; Buffer not found
+       {:fx []}))))
+
+(rf/reg-event-fx
+ :list-buffers
+ (fn [{:keys [db]} [_]]
+   "Display list of all buffers (C-x C-b)"
+   (let [buffers (:buffers db)
+         ;; Check if *Buffer List* buffer already exists
+         buffer-list-buffer (first (filter #(= (:name %) "*Buffer List*") (vals buffers)))]
+     (if buffer-list-buffer
+       ;; Just switch to existing buffer list
+       {:fx [[:dispatch [:switch-buffer (:id buffer-list-buffer)]]]}
+       ;; Create new buffer list buffer
+       (let [buffer-id (db/next-buffer-id buffers)
+             WasmEditorCore (get-in db [:system :wasm-constructor])
+             wasm-instance (WasmEditorCore.)
+             ;; Generate buffer list content
+             buffer-lines (map (fn [buf]
+                                (str (if (:is-modified? buf) " *" "  ")
+                                     " "
+                                     (:name buf)
+                                     "  "
+                                     (or (:file-handle buf) "")))
+                              (sort-by :id (vals buffers)))
+             header "MR Buffer           File\n-- ------           ----\n"
+             content (str header (clojure.string/join "\n" buffer-lines))
+             lines (clojure.string/split content #"\n" -1)
+             line-count (count lines)]
+         ;; Initialize WASM instance with buffer list
+         (.init wasm-instance content)
+
+         (let [new-buffer {:id buffer-id
+                          :wasm-instance wasm-instance
+                          :file-handle nil
+                          :name "*Buffer List*"
+                          :is-modified? false
+                          :mark-position nil
+                          :cursor-position {:line 0 :column 0}
+                          :selection-range nil
+                          :major-mode :buffer-menu-mode
+                          :minor-modes #{}
+                          :buffer-local-vars {}
+                          :ast nil
+                          :language :text
+                          :diagnostics []
+                          :undo-stack []
+                          :undo-in-progress? false
+                          :editor-version 0
+                          :cache {:text content
+                                  :line-count line-count}}]
+           {:db (-> db
+                    (assoc-in [:buffers buffer-id] new-buffer)
+                    (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))))))
+
 ;; -- Serialized Transaction Queue System --
 
 ;; Helper event to synchronously set the in-flight flag
@@ -1422,13 +1554,13 @@
 (rf/reg-event-fx
  :save-buffer
  (fn [{:keys [db]} [_]]
-   "Save the active buffer to disk"
+   "Save the active buffer to disk (C-x C-s)"
    (let [active-window (get (:windows db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer (get (:buffers db) active-buffer-id)
          wasm-instance (:wasm-instance active-buffer)
          file-handle (:file-handle active-buffer)]
-     
+
      (if wasm-instance
        (let [content (.getText ^js wasm-instance)]
          (if file-handle
@@ -1439,6 +1571,22 @@
            ;; Prompt for save location
            {:fx [[:save-file-picker {:content content
                                      :buffer-id active-buffer-id}]]}))
+       {:db db}))))
+
+(rf/reg-event-fx
+ :write-file
+ (fn [{:keys [db]} [_]]
+   "Save buffer to a new file (C-x C-w - Save As)"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         active-buffer (get (:buffers db) active-buffer-id)
+         wasm-instance (:wasm-instance active-buffer)]
+
+     (if wasm-instance
+       (let [content (.getText ^js wasm-instance)]
+         ;; Always prompt for save location (save as)
+         {:fx [[:save-file-picker {:content content
+                                   :buffer-id active-buffer-id}]]})
        {:db db}))))
 
 (rf/reg-fx
@@ -1536,6 +1684,8 @@
      
      ;; Create new buffer and update app state
      (let [detected-language (detect-language-from-filename name)
+           lines (clojure.string/split content #"\n" -1)
+           line-count (count lines)
            new-buffer {:id buffer-id
                        :wasm-instance wasm-instance
                        :file-handle file-handle
@@ -1549,7 +1699,12 @@
                        :buffer-local-vars {}
                        :ast nil
                        :language detected-language
-                       :diagnostics []}]
+                       :diagnostics []
+                       :undo-stack []
+                       :undo-in-progress? false
+                       :editor-version 0
+                       :cache {:text content
+                               :line-count line-count}}]
        {:db (-> db
                 (assoc-in [:buffers buffer-id] new-buffer)
                 (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))
