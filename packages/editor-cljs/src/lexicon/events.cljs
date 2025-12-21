@@ -8,6 +8,55 @@
 
 ;; -- Helper Functions --
 
+;; Word boundary detection
+(defn word-char?
+  "Check if a character is a word character (alphanumeric or underscore)"
+  [ch]
+  (and ch (re-matches #"[a-zA-Z0-9_]" (str ch))))
+
+(defn find-forward-word-boundary
+  "Find the position of the next word boundary moving forward"
+  [text pos]
+  (let [len (count text)]
+    (if (>= pos len)
+      len
+      (let [ch (get text pos)]
+        ;; If we're on a word char, skip to end of word
+        (if (word-char? ch)
+          (loop [p pos]
+            (if (or (>= p len) (not (word-char? (get text p))))
+              p
+              (recur (inc p))))
+          ;; If we're on non-word char, skip to start of next word
+          (loop [p pos]
+            (if (or (>= p len) (word-char? (get text p)))
+              p
+              (recur (inc p)))))))))
+
+(defn find-backward-word-boundary
+  "Find the position of the previous word boundary moving backward"
+  [text pos]
+  (if (<= pos 0)
+    0
+    (let [ch (get text (dec pos))]
+      ;; If we're after a word char, skip to beginning of word
+      (if (word-char? ch)
+        (loop [p (dec pos)]
+          (if (or (< p 0) (not (word-char? (get text p))))
+            (inc p)
+            (recur (dec p))))
+        ;; If we're after non-word char, skip backward to end of previous word
+        (loop [p (dec pos)]
+          (if (or (< p 0) (word-char? (get text p)))
+            (if (< p 0)
+              0
+              ;; Found a word char, now find its beginning
+              (loop [p2 p]
+                (if (or (< p2 0) (not (word-char? (get text p2))))
+                  (inc p2)
+                  (recur (dec p2)))))
+            (recur (dec p))))))))
+
 ;; Cursor position conversion helpers
 (defn linear-pos-to-line-col
   "Convert linear position to line/column coordinates"
@@ -144,27 +193,32 @@
       (= key "Meta") nil
       (= key "Alt") nil
       (= key "Shift") nil
-      
-      ;; Handle special keys
-      (= key "Escape") "ESC"
-      (= key "Enter") "RET"
-      (= key "Tab") "TAB"
-      (= key "Backspace") "DEL"
-      (= key "Delete") "DELETE"
-      (= key " ") "SPC"
-      
+
+      ;; Handle special keys (without modifiers)
+      (and (= key "Escape") (not ctrl?) (not meta?) (not alt?)) "ESC"
+      (and (= key "Enter") (not ctrl?) (not meta?) (not alt?)) "RET"
+      (and (= key "Tab") (not ctrl?) (not meta?) (not alt?)) "TAB"
+      (and (= key "Backspace") (not ctrl?) (not meta?) (not alt?)) "DEL"
+      (and (= key "Delete") (not ctrl?) (not meta?) (not alt?)) "DELETE"
+      (and (= key " ") (not ctrl?) (not meta?) (not alt?)) "SPC"
+
       ;; Function keys
-      (and (>= (.indexOf key "F") 0) 
+      (and (>= (.indexOf key "F") 0)
            (js/isNaN (js/parseInt (subs key 1))))
       key
-      
-      ;; Regular keys with modifiers
+
+      ;; Regular keys with modifiers (including special keys with modifiers)
       :else
-      (let [base-key (if (and shift? (= (count key) 1))
-                       ;; For shifted letters, use uppercase
-                       (.toUpperCase key)
-                       key)]
-        (str 
+      (let [base-key (cond
+                       (= key " ") "SPC"
+                       (= key "Enter") "RET"
+                       (= key "Tab") "TAB"
+                       (= key "Backspace") "DEL"
+                       (= key "Delete") "DELETE"
+                       (= key "Escape") "ESC"
+                       (and shift? (= (count key) 1)) (.toUpperCase key)
+                       :else key)]
+        (str
          (when ctrl? "C-")
          (when (or meta? alt?) "M-")  ; Map both Meta and Alt keys to M- (Emacs convention)
          base-key)))))
@@ -246,7 +300,6 @@
  :handle-key-sequence
  (fn [{:keys [db]} [_ key-str]]
    "Handle a key sequence and dispatch the appropriate command"
-   (println "🔤 Key sequence handler - key:" key-str)
    (let [prefix-state (get-in db [:ui :prefix-key-state])
          full-sequence (if prefix-state
                         (str prefix-state " " key-str)
@@ -453,6 +506,167 @@
          {:fx [[:dispatch [:update-cursor-position new-pos]]]})
        {:db db}))))
 
+(rf/reg-event-fx
+ :beginning-of-line
+ (fn [{:keys [db]} [_]]
+   "Move cursor to beginning of current line (C-a)"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             {:keys [line]} (linear-pos-to-line-col text current-pos)
+             new-pos (line-col-to-linear-pos text line 0)]
+         {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+       {:db db}))))
+
+(rf/reg-event-fx
+ :end-of-line
+ (fn [{:keys [db]} [_]]
+   "Move cursor to end of current line (C-e)"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             {:keys [line]} (linear-pos-to-line-col text current-pos)
+             lines (clojure.string/split text #"\n" -1)
+             line-length (count (nth lines line ""))
+             new-pos (line-col-to-linear-pos text line line-length)]
+         {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+       {:db db}))))
+
+(rf/reg-event-fx
+ :beginning-of-buffer
+ (fn [{:keys [db]} [_]]
+   "Move cursor to beginning of buffer (M-<)"
+   {:fx [[:dispatch [:update-cursor-position 0]]]}))
+
+(rf/reg-event-fx
+ :end-of-buffer
+ (fn [{:keys [db]} [_]]
+   "Move cursor to end of buffer (M->)"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])]
+     (if wasm-instance
+       (let [buffer-length (.length wasm-instance)]
+         {:fx [[:dispatch [:update-cursor-position buffer-length]]]})
+       {:db db}))))
+
+(rf/reg-event-fx
+ :forward-word
+ (fn [{:keys [db]} [_]]
+   "Move cursor forward one word (M-f)"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             new-pos (find-forward-word-boundary text current-pos)]
+         {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+       {:db db}))))
+
+(rf/reg-event-fx
+ :backward-word
+ (fn [{:keys [db]} [_]]
+   "Move cursor backward one word (M-b)"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             new-pos (find-backward-word-boundary text current-pos)]
+         {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+       {:db db}))))
+
+;; -- Editing Commands --
+
+(rf/reg-event-fx
+ :kill-line
+ (fn [{:keys [db]} [_]]
+   "Kill from cursor to end of line (C-k)"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             {:keys [line column]} (linear-pos-to-line-col text current-pos)
+             lines (clojure.string/split text #"\n" -1)
+             current-line (nth lines line "")
+             line-length (count current-line)
+             ;; If at end of line (or only whitespace after cursor), kill the newline
+             ;; Otherwise kill to end of line
+             end-of-line? (>= column line-length)
+             kill-start current-pos
+             kill-end (if end-of-line?
+                       (inc current-pos)  ; Kill the newline
+                       (line-col-to-linear-pos text line line-length))
+             length (- kill-end kill-start)]
+         (if (> length 0)
+           (let [killed-text (.getRange wasm-instance kill-start kill-end)
+                 kill-ring (:kill-ring db)
+                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))]
+             {:db (assoc db :kill-ring updated-kill-ring)
+              :fx [[:dispatch [:editor/queue-transaction
+                              {:op :delete-range :start kill-start :length length}]]]})
+           {:db db}))
+       {:db db}))))
+
+(rf/reg-event-fx
+ :open-line
+ (fn [{:keys [db]} [_]]
+   "Insert a newline after cursor without moving cursor (C-o)"
+   (let [current-pos (get-in db [:ui :cursor-position] 0)]
+     {:fx [[:dispatch [:editor/queue-transaction
+                      {:op :insert :text "\n"}]]
+           ;; After insertion, move cursor back to original position
+           [:dispatch-later [{:ms 50 :dispatch [:update-cursor-position current-pos]}]]]})))
+
+;; -- Mark and Region Commands --
+
+(rf/reg-event-fx
+ :set-mark-command
+ (fn [{:keys [db]} [_]]
+   "Set mark at current cursor position (C-SPC)"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (println "✓ Mark set at position" current-pos)
+     {:db (assoc-in db [:buffers active-buffer-id :mark-position] current-pos)})))
+
+(rf/reg-event-fx
+ :copy-region-as-kill
+ (fn [{:keys [db]} [_]]
+   "Copy region to kill ring without deleting (M-w)"
+   (let [active-window (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         mark-position (get-in db [:buffers active-buffer-id :mark-position])
+         cursor-pos (get-in db [:ui :cursor-position] 0)]
+
+     (if (and wasm-instance mark-position)
+       (let [start (min cursor-pos mark-position)
+             end (max cursor-pos mark-position)
+             length (- end start)]
+         (if (> length 0)
+           (let [copied-text (.getRange wasm-instance start end)
+                 kill-ring (:kill-ring db)
+                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons copied-text kill-ring))]
+             (println "✓ Copied" length "characters to kill ring")
+             {:db (-> db
+                      (assoc :kill-ring updated-kill-ring)
+                      (assoc-in [:buffers active-buffer-id :mark-position] nil))})
+           {:db db}))
+       (do
+         (println "⚠ No region selected (set mark with C-SPC first)")
+         {:db db})))))
+
 ;; Initialize cursor position when buffer is created
 (rf/reg-event-fx
  :initialize-buffer-cursor
@@ -504,9 +718,24 @@
          [:dispatch [:register-command :kill-region 
                     {:docstring "Kill (cut) the active region"
                      :handler [:kill-region]}]]
-         [:dispatch [:register-command :yank 
+         [:dispatch [:register-command :yank
                     {:docstring "Yank (paste) from kill ring"
                      :handler [:yank]}]]
+         [:dispatch [:register-command :yank-pop
+                    {:docstring "Replace last yank with next kill ring item"
+                     :handler [:yank-pop]}]]
+         [:dispatch [:register-command :kill-line
+                    {:docstring "Kill from cursor to end of line"
+                     :handler [:kill-line]}]]
+         [:dispatch [:register-command :open-line
+                    {:docstring "Insert newline without moving cursor"
+                     :handler [:open-line]}]]
+         [:dispatch [:register-command :set-mark-command
+                    {:docstring "Set mark at current position"
+                     :handler [:set-mark-command]}]]
+         [:dispatch [:register-command :copy-region-as-kill
+                    {:docstring "Copy region to kill ring"
+                     :handler [:copy-region-as-kill]}]]
          [:dispatch [:register-command :delete-backward-char
                     {:docstring "Delete character before cursor"
                      :handler [:delete-backward-char]}]]
@@ -525,6 +754,24 @@
          [:dispatch [:register-command :previous-line
                     {:docstring "Move cursor to previous line"
                      :handler [:previous-line]}]]
+         [:dispatch [:register-command :beginning-of-line
+                    {:docstring "Move cursor to beginning of line"
+                     :handler [:beginning-of-line]}]]
+         [:dispatch [:register-command :end-of-line
+                    {:docstring "Move cursor to end of line"
+                     :handler [:end-of-line]}]]
+         [:dispatch [:register-command :beginning-of-buffer
+                    {:docstring "Move cursor to beginning of buffer"
+                     :handler [:beginning-of-buffer]}]]
+         [:dispatch [:register-command :end-of-buffer
+                    {:docstring "Move cursor to end of buffer"
+                     :handler [:end-of-buffer]}]]
+         [:dispatch [:register-command :forward-word
+                    {:docstring "Move cursor forward one word"
+                     :handler [:forward-word]}]]
+         [:dispatch [:register-command :backward-word
+                    {:docstring "Move cursor backward one word"
+                     :handler [:backward-word]}]]
          [:dispatch [:register-command :execute-extended-command
                     {:docstring "Execute extended command (M-x)"
                      :handler [:execute-extended-command]}]]
@@ -1723,9 +1970,51 @@
          wasm-instance    (:wasm-instance active-buffer)
          kill-ring        (:kill-ring db)
          cursor-pos       (get-in db [:ui :cursor-position])]
-     
+
      (if (and wasm-instance (seq kill-ring))
-       (let [text-to-yank (first kill-ring)]
-         {:fx [[:dispatch [:editor/queue-transaction 
+       (let [text-to-yank (first kill-ring)
+             yank-length (count text-to-yank)]
+         (println "✓ Yanking" yank-length "chars at position" cursor-pos)
+         {:db (-> db
+                  (assoc :last-yank {:position cursor-pos
+                                     :length yank-length
+                                     :kill-ring-index 0})
+                  (assoc :last-command :yank))
+          :fx [[:dispatch [:editor/queue-transaction
                            {:op :insert :text text-to-yank}]]]})
        {:db db}))))
+
+(rf/reg-event-fx
+ :yank-pop
+ (fn [{:keys [db]} [_]]
+   "Replace last yank with next item in kill ring (M-y)"
+   (let [active-window    (get (:windows db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         active-buffer    (get (:buffers db) active-buffer-id)
+         wasm-instance    (:wasm-instance active-buffer)
+         kill-ring        (:kill-ring db)
+         last-yank        (:last-yank db)
+         last-command     (:last-command db)]
+
+     ;; Only allow yank-pop immediately after yank or yank-pop
+     (if (and wasm-instance
+              last-yank
+              (seq kill-ring)
+              (or (= last-command :yank) (= last-command :yank-pop)))
+       (let [{:keys [position length kill-ring-index]} last-yank
+             next-index (mod (inc kill-ring-index) (count kill-ring))
+             text-to-yank (nth kill-ring next-index)
+             new-length (count text-to-yank)]
+         (println "✓ Yank-pop: replacing" length "chars with" new-length "chars at position" position)
+         {:db (-> db
+                  (assoc :last-yank {:position position
+                                     :length new-length
+                                     :kill-ring-index next-index})
+                  (assoc :last-command :yank-pop))
+          :fx [[:dispatch [:editor/queue-transaction
+                          {:op :delete-range :start position :length length}]]
+               [:dispatch [:editor/queue-transaction
+                          {:op :insert :text text-to-yank :position position}]]]})
+       (do
+         (println "⚠ Cannot yank-pop: only works immediately after yank")
+         {:db db})))))

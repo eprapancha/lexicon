@@ -11,13 +11,21 @@
 (defn handle-keydown
   "Handle keydown events - the core of our new Emacs-style input system"
   [event]
-  (let [key-str (events/key-event-to-string event)]
-    (println "⌨️ keydown event:" key-str)
-    (when key-str
-      ;; Prevent default browser behavior for bound keys
+  (let [ctrl? (.-ctrlKey event)
+        key (.-key event)]
+    ;; Prevent dangerous browser shortcuts early and stop propagation
+    (when (and ctrl? (or (= key "w") (= key "t") (= key "n")))
       (.preventDefault event)
-      ;; Dispatch to our new key sequence handler
-      (rf/dispatch [:handle-key-sequence key-str]))))
+      (.stopPropagation event))
+
+    (let [key-str (events/key-event-to-string event)]
+      (println "⌨️ keydown event:" key-str)
+      (when key-str
+        ;; Prevent default browser behavior for bound keys
+        (.preventDefault event)
+        (.stopPropagation event)
+        ;; Dispatch to our new key sequence handler
+        (rf/dispatch [:handle-key-sequence key-str])))))
 
 (defn handle-beforeinput
   "Handle beforeinput events - fallback for unbound printable characters"
@@ -117,9 +125,10 @@
            (when element
              (println "📱 Hidden textarea element created")
              (reset! input-ref-atom element)
+             ;; Add keydown listener in capture phase to intercept browser shortcuts
+             (.addEventListener element "keydown" handle-keydown #js {:capture true})
              (.focus element)
              (println "📱 Hidden textarea focused")))
-    :on-key-down handle-keydown
     :on-input handle-beforeinput
     :on-before-input handle-beforeinput
     :on-paste (fn [e]
@@ -366,13 +375,29 @@
       [editor-gutter]
       [custom-rendered-pane hidden-input-ref]]]))
 
+;; Add document-level listener once to intercept browser shortcuts
+(defonce ^:private keydown-listener-installed?
+  (do
+    (println "🔒 Installing document-level keydown listener to block browser shortcuts")
+    (.addEventListener js/document "keydown"
+                       (fn [e]
+                         (let [ctrl? (.-ctrlKey e)
+                               key (.-key e)]
+                           (when (and ctrl? (or (= key "w") (= key "t") (= key "n")))
+                             (println "🚫 Blocking browser shortcut: C-" key)
+                             (.preventDefault e)
+                             (.stopPropagation e))))
+                       #js {:capture true})
+    (println "✓ Document-level listener installed")
+    true))
+
 (defn editor-view
   "Main editor view with virtualized scrolling and custom cursor architecture"
   []
   (let [total-lines @(rf/subscribe [:lexicon.subs/total-lines])
         line-height @(rf/subscribe [:line-height])
         scroller-ref (atom nil)]
-    
+
     [:div.editor-container
      ;; Scroller div - creates the scrollbar based on total document height
      [:div.editor-scroller

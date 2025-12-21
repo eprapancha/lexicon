@@ -67,6 +67,10 @@
                      "C-w" :kill-region                ; Kill region
                      "M-w" :copy-region-as-kill        ; Copy region
                      "C-y" :yank                       ; Yank
+                     "M-y" :yank-pop                   ; Yank pop (cycle kill ring)
+                     "C-k" :kill-line                  ; Kill line
+                     "C-o" :open-line                  ; Open line
+                     "C-SPC" :set-mark-command         ; Set mark
                      "DEL" :delete-backward-char       ; Backspace
                      "DELETE" :delete-forward-char     ; Delete
                      ;; Cursor movement
@@ -74,6 +78,12 @@
                      "C-b" :backward-char              ; Backward char
                      "C-n" :next-line                  ; Next line
                      "C-p" :previous-line              ; Previous line
+                     "C-a" :beginning-of-line          ; Beginning of line
+                     "C-e" :end-of-line                ; End of line
+                     "M-<" :beginning-of-buffer        ; Beginning of buffer
+                     "M->" :end-of-buffer              ; End of buffer
+                     "M-f" :forward-word               ; Forward word
+                     "M-b" :backward-word              ; Backward word
                      "ArrowRight" :forward-char        ; Right arrow
                      "ArrowLeft" :backward-char        ; Left arrow
                      "ArrowDown" :next-line            ; Down arrow
