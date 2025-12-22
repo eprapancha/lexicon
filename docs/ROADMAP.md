@@ -608,57 +608,65 @@ Completions: *scratch*, shell.nix
 
 ## Phase 4: Core Emacs - Minibuffer & Completion
 
-**Status:** 🔲 Planned
+**Status:** ⏳ In Progress (Dec 22, 2025)
 **Goal:** Interactive command input and completion
-**Timeline:** 2 weeks (Feb 18 - Mar 4, 2025)
-**Prerequisites:** Phase 3 complete
+**Timeline:** Started Dec 22, 2025
+**Prerequisites:** ✅ Phase 3 complete
 
 ### Features
 
-#### Minibuffer Basics
-- `minibuffer-mode` - Special mode for minibuffer
-- Minibuffer activation/deactivation
-- Prompt display
-- Input reading
+#### Minibuffer Basics (✅ Complete - Phase 2.5)
+- [x] `minibuffer-mode` - Special mode for minibuffer
+- [x] Minibuffer activation/deactivation
+- [x] Prompt display
+- [x] Input reading
 
-#### Reading Functions
-- `read-string` - Simple string input
-- `read-number` - Number input
-- `read-buffer` - Buffer name with completion
-- `read-file-name` - File name with completion
-- `completing-read` - Generic completion
+#### Reading Functions (Partial)
+- [ ] `read-string` - Simple string input
+- [ ] `read-number` - Number input
+- [x] `read-buffer` - Buffer name with completion (Phase 2.5)
+- [ ] `read-file-name` - File name with completion **TODO**
+- [x] `completing-read` - Generic completion (via minibuffer)
 
-#### Completion
-- Basic prefix completion (TAB)
-- Completion candidates display
-- Completion cycling
-- Match highlighting
+#### Completion (✅ Complete - Phase 2.5)
+- [x] Basic prefix completion (TAB)
+- [x] Completion candidates display (echo area)
+- [x] Completion cycling through matches
+- [x] Common prefix expansion
 
-#### M-x Command
-- `execute-extended-command` (M-x)
-- Command name completion
-- Show keybinding if available
-- Recent commands tracking
+#### M-x Command (✅ Complete - Phase 2)
+- [x] `execute-extended-command` (M-x)
+- [x] Command name completion
+- [ ] Show keybinding if available **TODO**
+- [ ] Recent commands tracking **TODO**
 
-#### Help System (C-h)
-- `describe-key` (C-h k) - Show what a key binding does
-- `describe-function` (C-h f) - Describe a command/function
-- `describe-bindings` (C-h b) - List all current key bindings
-- `apropos-command` (C-h a) - Search commands by keyword
-- `help-for-help` (C-h ?) - Show help menu
-- Command registry for introspection
-- Keybinding reverse lookup (command → key)
+#### Help System (C-h) (✅ Complete - Dec 22, 2025)
+- [x] `describe-key` (C-h k) - Show what a key binding does
+- [x] `describe-function` (C-h f) - Describe a command/function with keybindings
+- [x] `describe-bindings` (C-h b) - List all current key bindings
+- [x] `apropos-command` (C-h a) - Search commands by keyword/regex
+- [x] `help-for-help` (C-h ?) - Show help menu
+- [x] Command registry for introspection
+- [x] Keybinding reverse lookup (command → key)
 
 ### Success Criteria
 
-- [ ] M-x works with completion
-- [ ] File completion works in `find-file`
-- [ ] Buffer completion works in `switch-to-buffer`
-- [ ] TAB completes, RET confirms, C-g cancels
-- [ ] Minibuffer shows prompt and input correctly
-- [ ] C-h k shows keybinding documentation
-- [ ] C-h b lists all keybindings in a buffer
-- [ ] C-h f describes any command
+- [x] M-x works with completion
+- [ ] File completion works in `find-file` **TODO**
+- [x] Buffer completion works in `switch-to-buffer`
+- [x] TAB completes, RET confirms, C-g cancels
+- [x] Minibuffer shows prompt and input correctly
+- [x] C-h k shows keybinding documentation
+- [x] C-h b lists all keybindings in a buffer
+- [x] C-h f describes any command
+- [x] C-h a searches commands by pattern
+- [x] C-h ? shows help menu
+
+### Remaining Work
+
+1. **File name completion** - Implement browser File System Access API integration for `find-file`
+2. **read-file-name function** - Generic file reading with completion
+3. **M-x enhancements** - Show keybinding hints, track recent commands
 
 ---
 

@@ -82,6 +82,10 @@
                      "C-x 1" :delete-other-windows     ; Delete all other windows
                      "C-x o" :other-window             ; Switch to next window
                      "C-h b" :describe-bindings        ; Describe bindings
+                     "C-h k" :describe-key             ; Describe key
+                     "C-h f" :describe-function        ; Describe function
+                     "C-h a" :apropos-command          ; Search commands
+                     "C-h ?" :help-for-help            ; Help menu
                      "C-u" :universal-argument         ; Universal argument
                      "C-/" :undo                       ; Undo
                      "C-_" :undo                       ; Alternative undo
@@ -139,6 +143,8 @@
                 :completion-index 0}                 ; Current completion selection index
    :echo-area {:message ""                           ; Current message to display
                :timeout-id nil}                      ; Timeout ID for auto-clearing message
+   :help {:awaiting-key? false                      ; Waiting for key press for C-h k
+          :callback nil}                            ; Callback event vector for key press
    })
 
 (defn create-buffer

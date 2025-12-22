@@ -1,7 +1,8 @@
 (ns lexicon.subs
   (:require [re-frame.core :as rf]
             [lexicon.cache :as cache]
-            [lexicon.wasm-utils :as wasm]))
+            [lexicon.wasm-utils :as wasm]
+            [lexicon.db :as db]))
 
 ;; -- Base Subscriptions --
 
@@ -29,7 +30,7 @@
  :<- [:active-window-id]
  (fn [[window-tree active-id] _]
    "Get the currently active window"
-   (lexicon.db/find-window-in-tree window-tree active-id)))
+   (db/find-window-in-tree window-tree active-id)))
 
 ;; -- Buffer Subscriptions --
 
@@ -425,7 +426,7 @@
  :<- [:window-tree]
  (fn [window-tree [_ window-id]]
    "Get a specific window by ID"
-   (lexicon.db/find-window-in-tree window-tree window-id)))
+   (db/find-window-in-tree window-tree window-id)))
 
 (rf/reg-sub
  ::window-buffer
