@@ -46,7 +46,9 @@
         :viewport {:start 0 :end 1000}                ; Currently visible text range
         :scroll-position 0                             ; Current scroll position
         :prefix-argument nil                           ; Universal argument (C-u)
-        :prefix-argument-active? false}                ; Whether prefix argument is active
+        :prefix-argument-active? false                 ; Whether prefix argument is active
+        :show-line-numbers? true                       ; Show line numbers in status bar (Phase 5)
+        :show-column-number? true}                     ; Show column number in status bar (Phase 5)
    :editor {:mode :emacs                              ; Editor mode - simple Emacs mode for now
             :keymap :emacs                             ; Active keymap
             :commands {}}                              ; Available commands

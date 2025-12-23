@@ -150,6 +150,18 @@
    (get-in db [:ui :ime-composition-text])))
 
 (rf/reg-sub
+ :show-line-numbers?
+ (fn [db _]
+   "Check if line numbers should be shown in status bar (Phase 5)"
+   (get-in db [:ui :show-line-numbers?] true)))
+
+(rf/reg-sub
+ :show-column-number?
+ (fn [db _]
+   "Check if column number should be shown in status bar (Phase 5)"
+   (get-in db [:ui :show-column-number?] true)))
+
+(rf/reg-sub
  :view-needs-update?
  (fn [db _]
    "Check if view needs to be updated"

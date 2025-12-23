@@ -370,14 +370,18 @@
 
 ;; -- Major and Minor Mode Architecture --
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :set-major-mode
- (fn [db [_ mode-keyword]]
-   "Set the major mode for the active buffer"
+ (fn [{:keys [db]} [_ mode-keyword]]
+   "Set the major mode for the active buffer and run mode hook"
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-         active-buffer-id (:buffer-id active-window)]
-     ;; Update the buffer's major mode
-     (assoc-in db [:buffers active-buffer-id :major-mode] mode-keyword))))
+         active-buffer-id (:buffer-id active-window)
+         ;; Get mode-specific hook
+         mode-hook-name (keyword (str (name mode-keyword) "-hook"))
+         mode-hook-commands (get-in db [:hooks mode-hook-name] [])]
+     {:db (assoc-in db [:buffers active-buffer-id :major-mode] mode-keyword)
+      ;; Run mode hook commands
+      :fx (mapv (fn [cmd] [:dispatch cmd]) mode-hook-commands)})))
 
 (rf/reg-event-db
  :toggle-minor-mode
@@ -411,8 +415,38 @@
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          current-modes (get-in db [:buffers active-buffer-id :minor-modes] #{})]
-     (assoc-in db [:buffers active-buffer-id :minor-modes] 
+     (assoc-in db [:buffers active-buffer-id :minor-modes]
                (disj current-modes mode-keyword)))))
+
+;; -- Hook Management (Phase 5) --
+
+(rf/reg-event-db
+ :add-hook
+ (fn [db [_ hook-name command-event]]
+   "Add a command to a hook"
+   (update-in db [:hooks hook-name] (fnil conj []) command-event)))
+
+(rf/reg-event-db
+ :remove-hook
+ (fn [db [_ hook-name command-event]]
+   "Remove a command from a hook"
+   (update-in db [:hooks hook-name]
+              (fn [commands]
+                (vec (remove #(= % command-event) commands))))))
+
+;; -- Minor Mode Implementations (Phase 5) --
+
+(rf/reg-event-db
+ :line-number-mode
+ (fn [db [_]]
+   "Toggle line number display in mode line"
+   (update-in db [:ui :show-line-numbers?] not)))
+
+(rf/reg-event-db
+ :column-number-mode
+ (fn [db [_]]
+   "Toggle column number display in mode line"
+   (update-in db [:ui :show-column-number?] not)))
 
 ;; Register mode-related commands
 (rf/reg-event-fx

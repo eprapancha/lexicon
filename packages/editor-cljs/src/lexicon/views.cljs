@@ -853,7 +853,9 @@
         buffer-length @(rf/subscribe [:buffer-length])
         buffer-modified? @(rf/subscribe [:buffer-modified?])
         active-buffer @(rf/subscribe [:active-buffer])
-        minibuffer @(rf/subscribe [:minibuffer])]
+        minibuffer @(rf/subscribe [:minibuffer])
+        show-line-numbers? @(rf/subscribe [:show-line-numbers?])
+        show-column-number? @(rf/subscribe [:show-column-number?])]
 
     (when-not (:active? minibuffer)
       [:div.status-bar
@@ -878,7 +880,13 @@
        
        [:span.cursor-info
         (when cursor-pos
-          (str "Line " (inc (:line cursor-pos)) ", Col " (:column cursor-pos) " | " buffer-length " chars"))]])))
+          (str (when show-line-numbers?
+                 (str "Line " (inc (:line cursor-pos))))
+               (when (and show-line-numbers? show-column-number?) ", ")
+               (when show-column-number?
+                 (str "Col " (:column cursor-pos)))
+               (when (or show-line-numbers? show-column-number?) " | ")
+               buffer-length " chars"))]])))
 
 (defn main-app
   "Main application component"
