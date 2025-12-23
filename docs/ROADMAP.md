@@ -775,6 +775,130 @@ packages/evil-mode/
 
 ---
 
+## Phase 6.5: Testing & Quality Assurance
+
+**Status:** 🔲 Planned
+**Goal:** Comprehensive automated testing for core stability
+**Timeline:** 2 weeks (Before public release)
+**Prerequisites:** Phase 6 complete
+**Priority:** CRITICAL - Required before accepting external contributions
+
+### Rationale
+
+Before opening the project to external contributors and accepting pull requests, we need:
+- Confidence that changes don't break existing functionality
+- Automated regression testing for critical workflows
+- Test infrastructure that contributors can extend
+- Clear quality bar for new features
+
+### Test Infrastructure
+
+#### Unit Tests (ClojureScript + cljs.test)
+- **Command execution**: Test all registered commands in isolation
+- **Text operations**: Insert, delete, undo/redo correctness
+- **Window management**: Split, navigate, delete operations
+- **Buffer operations**: Create, switch, kill buffer logic
+- **Cursor movement**: All motion commands (C-f, C-b, C-n, C-p, M-f, M-b, etc.)
+- **Kill ring**: Copy, kill, yank operations
+- **Helper functions**: `linear-pos-to-line-col`, keymap resolution, etc.
+
+#### Integration Tests
+- **Multi-window workflows**: Split → edit → navigate → merge
+- **File operations**: Open → edit → save → reopen verification
+- **Undo/redo chains**: Complex edit sequences with undo
+- **Command sequences**: C-u prefix args, multi-key bindings (C-x C-f)
+- **Minibuffer**: Completion, confirmation, cancellation flows
+- **Help system**: C-h k, C-h f, C-h b output correctness
+
+#### Regression Tests (Critical Workflows)
+- **Basic editing**: Type text, move cursor, delete, verify buffer state
+- **Phase 3 regression**: Window tree cursor position updates (the bug we fixed)
+- **Line ending handling**: Newlines, empty lines render correctly
+- **UTF-8 correctness**: Emoji, multi-byte characters
+- **Region operations**: Mark → select → kill → yank
+- **Window state isolation**: Multiple windows showing same buffer, independent cursors
+
+#### WASM/Rust Unit Tests (Already Exists)
+- [x] Gap buffer operations (15 tests in `gap_buffer_core.rs`)
+- [x] UTF-8 boundary handling
+- [x] Insert/delete edge cases
+- [ ] Extend coverage for new Rust functionality
+
+### Testing Tools
+
+#### Framework: cljs.test
+```clojure
+(ns lexicon.core-test
+  (:require [cljs.test :refer-macros [deftest is testing]]
+            [lexicon.events :as events]
+            [lexicon.db :as db]))
+
+(deftest test-forward-char
+  (testing "C-f moves cursor forward by one character"
+    (let [db (-> db/default-db
+                 (assoc-in [:buffers 1 :wasm-instance] (mock-wasm "hello"))
+                 (assoc-in [:ui :cursor-position] 0))
+          result (events/forward-char {:db db} nil)]
+      (is (= 1 (get-in result [:db :ui :cursor-position]))))))
+```
+
+#### Test Runners
+- **Development**: `npm run test` - Run all tests with watch mode
+- **CI/CD**: `npm run test:ci` - Single run with coverage report
+- **Coverage**: Aim for >80% coverage of core commands
+
+#### Mock Infrastructure
+- **Mock WASM**: Lightweight gap buffer mock for unit tests
+- **Mock File System**: In-memory FS for file operation tests
+- **Mock Bridge**: Test WebSocket communication without server
+
+### Test Organization
+
+```
+packages/editor-cljs/test/
+├── lexicon/
+│   ├── commands_test.cljs      # All command handlers
+│   ├── events_test.cljs        # Event handler logic
+│   ├── subs_test.cljs          # Subscription correctness
+│   ├── window_test.cljs        # Window management
+│   ├── buffer_test.cljs        # Buffer operations
+│   ├── editing_test.cljs       # Text editing operations
+│   ├── killring_test.cljs      # Kill ring operations
+│   └── integration/
+│       ├── workflows_test.cljs # End-to-end workflows
+│       └── regression_test.cljs # Known bug regressions
+└── test_helpers.cljs           # Shared test utilities
+```
+
+### Success Criteria
+
+- [ ] 80%+ code coverage on core command handlers
+- [ ] All Phase 0-6 features have regression tests
+- [ ] CI/CD pipeline runs tests on every commit
+- [ ] Test suite runs in <10 seconds
+- [ ] Contributing guide includes "write tests for new features"
+- [ ] No PR merged without tests (enforced by CI)
+
+### Deliverables
+
+1. **Test suite**: Comprehensive tests for all core functionality
+2. **CI/CD pipeline**: GitHub Actions workflow running tests
+3. **Coverage reports**: Track test coverage over time
+4. **Test documentation**: Guide for writing tests, mocking patterns
+5. **Contributing guidelines**: Testing requirements for PRs
+
+### Timeline
+
+- **Week 1**: Unit tests for commands, events, window management
+- **Week 2**: Integration tests, regression tests, CI/CD setup
+
+**This phase MUST be complete before:**
+- Opening issues for external contributions
+- Accepting pull requests from others
+- Any "1.0" or public release announcement
+
+---
+
 ## Phase 7: Advanced Editing Features
 
 **Status:** 🔲 Planned
