@@ -1,7 +1,7 @@
-(ns lexicon.fsm.interceptors
+(ns lexicon.evil.fsm.interceptors
   "Re-frame interceptors for FSM state lifecycle hooks"
   (:require [re-frame.core :as rf]
-            [lexicon.fsm.events]))
+            [lexicon.evil.fsm.events]))
 
 ;; -- Hook Registry --
 

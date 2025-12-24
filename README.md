@@ -1,68 +1,150 @@
 # Lexicon: Emacs for the Modern Web
 
-> **A shameless recreation of GNU Emacs in the browser, built with Rust, ClojureScript, and WebAssembly**
+> **A faithful recreation of GNU Emacs in the browser, built with Rust, ClojureScript, and WebAssembly**
 
 ---
 
-## Current Status: Architecture Reset (Phase 0)
+## What is Lexicon?
 
-**⚠️ PROJECT UNDER ACTIVE REFACTORING ⚠️**
+Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-like, but **actual Emacs** with its core architecture faithfully implemented:
 
-Lexicon is currently undergoing a significant architectural realignment to stay true to Emacs principles. We got ahead of ourselves by implementing complex features (Evil-mode) before establishing a solid core, and basic functionality is currently broken.
-
-**What's Working:**
-- ✅ Development environment (Nix-based, reproducible)
-- ✅ WASM loading infrastructure
-- ✅ re-frame state management setup
-- ✅ Basic DOM rendering
-
-**What's Broken/In Progress:**
-- ⚠️ **Basic text input** - Enter key doesn't create newline (being fixed)
-- ⚠️ **Architecture** - Evil-mode code mixed into core (being separated)
-- ⚠️ **Buffer engine** - Piece tree being replaced with gap buffer
-
-**Current Focus:** Establishing a minimal, working Emacs core before adding packages.
-
-See [ROADMAP.md](./docs/ROADMAP.md) for detailed plan and [CORE_PRINCIPLES.md](./docs/CORE_PRINCIPLES.md) for architectural guidelines.
-
----
-
-## Vision
-
-Lexicon aims to be **GNU Emacs for the web** - not inspired by Emacs, not Emacs-like, but **actual Emacs** running in the browser. We faithfully implement Emacs's architecture:
-
-- **Gap buffer** for text storage (like Emacs C core)
+- **Gap buffer** text storage (like Emacs C core)
 - **Hierarchical keymaps** with exact Emacs precedence
 - **Major and minor modes** with buffer-local state
-- **Command dispatcher** with interactive specifications
-- **Minibuffer** for user interaction
+- **Command-oriented** editing model
 - **Package system** where Evil-mode, Vertico, etc. are external packages
+- **Minibuffer** for interactive commands
 
-**Why?** Because Emacs has the best editing architecture ever designed, and the web deserves it.
+**Technology Stack:** Rust/WASM (gap buffer), ClojureScript/re-frame (Emacs Lisp layer), Reagent (UI)
 
 ---
 
-## Core Principles
+## Current Status
 
-### 1. Emacs Purity
-When in doubt, do what Emacs does. Study `emacs/src/*.c` and Elisp before implementing.
+**Phase 6 of 10** - Package System & Evil-mode (In Progress)
 
-### 2. Core is Sacred
-Core = bare Emacs (`emacs -Q`). Everything else is a package.
-- ✅ Core: Buffers, windows, keymaps, commands, modes, minibuffer
-- ❌ Not Core: Evil-mode, Vertico, LSP, themes
+**What Works:**
+- ✅ **Phases 0-5 Complete** - Full working Emacs core!
+  - Text editing (insert, delete, undo, kill ring)
+  - Navigation (C-f/b/n/p, C-a/e, M-f/b, M-</>, arrows)
+  - Multi-buffer support (C-x b, C-x C-f, C-x C-s)
+  - Window management (C-x 2/3, C-x o, C-x 0/1)
+  - Minibuffer with completion (M-x, TAB completion)
+  - Help system (C-h k/f/b/a/?)
+  - Major/minor modes with hooks
+  - Universal argument (C-u)
+  - Mark and region (C-SPC, C-w, M-w, C-y)
 
-### 3. Gap Buffer
-We use gap buffers like Emacs, not piece trees. Simplicity and Emacs-alignment matter more than theoretical performance.
+**Current Work (Phase 6):**
+- ⏳ Package system infrastructure (✅ Complete)
+- ⏳ Evil-mode package (structure complete, integration pending)
 
-### 4. Userspace/Kernel Split
-- **Rust/WASM**: Low-level gap buffer operations (like Emacs C core)
-- **ClojureScript**: Everything else (like Emacs Lisp layer)
+**See [docs/ROADMAP.md](./docs/ROADMAP.md) for detailed progress and next steps**
 
-### 5. Packages are External
-Evil-mode lives in `packages/evil-mode/`, not in core. Packages interact with core via clean APIs.
+---
 
-Read the full principles: [CORE_PRINCIPLES.md](./docs/CORE_PRINCIPLES.md)
+## Quick Start
+
+### Prerequisites
+- **Nix** (with flakes enabled)
+- **Modern browser** (Chrome, Firefox, Edge)
+- **Node.js 18+** and **npm**
+
+### Run Lexicon
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/lexicon.git
+cd lexicon
+
+# Enter Nix development shell
+nix develop
+
+# Install dependencies and build WASM
+./scripts/setup.sh
+
+# Start development server
+cd packages/editor-cljs
+npx shadow-cljs watch app
+
+# Open browser to http://localhost:8080
+```
+
+### Try It Out
+
+Once loaded, try these commands:
+- Type text naturally
+- `C-x C-f` - Open file
+- `C-x 2` - Split window horizontally
+- `C-x o` - Switch windows
+- `M-x` - Execute command (with TAB completion)
+- `C-h k` - Describe what a key does
+- `C-h b` - List all keybindings
+- `C-h ?` - Help menu
+
+---
+
+## Documentation
+
+- **[ROADMAP.md](./docs/ROADMAP.md)** - Detailed phased development plan (read this to understand project status)
+- **[CORE_PRINCIPLES.md](./docs/CORE_PRINCIPLES.md)** - Architectural philosophy and guidelines
+- **[architecture.md](./docs/architecture.md)** - Technical architecture details
+
+---
+
+## Project Structure
+
+```
+lexicon/
+├── docs/
+│   ├── CORE_PRINCIPLES.md      # Architectural guidelines
+│   ├── ROADMAP.md              # Detailed phased plan
+│   └── architecture.md         # Technical architecture
+│
+├── packages/
+│   ├── editor-cljs/            # ClojureScript core (Emacs Lisp layer)
+│   ├── lexicon-engine/         # Rust/WASM gap buffer (Emacs C layer)
+│   ├── evil-mode/              # Vim emulation package
+│   └── backend-server/         # Bridge server (LSP, git, etc.)
+│
+└── scripts/                    # Build and dev scripts
+```
+
+---
+
+## Philosophy
+
+Lexicon is an **experiment in architectural fidelity**. Most "Emacs-inspired" editors borrow Emacs's keybindings but not its architecture. We're doing the opposite - building the actual Emacs architecture in the browser.
+
+**Why?** Because Emacs got it right. After 40+ years, Emacs's architecture remains the gold standard for extensible text editors:
+
+- **Gap buffers** for text storage
+- **Command-oriented** editing model with interactive specifications
+- **Hierarchical keymaps** with prefix keys
+- **Mode-based** extensibility (major modes, minor modes)
+- **Lisp-powered** configuration (ClojureScript instead of Elisp)
+- **Package system** for clean extensibility
+
+The web deserves this same power.
+
+**We may fail**, but we'll learn a lot trying. And if we succeed, we'll have Emacs in the browser.
+
+---
+
+## Contributing
+
+**Current Status:** Phase 6 in progress - infrastructure complete, integration work ongoing.
+
+We're **not yet ready for external contributions**, but you can:
+
+- ⭐ **Star the repo** to follow progress
+- 👀 **Watch** for updates
+- 💬 **Open issues** for questions or suggestions
+- 📖 **Read [CORE_PRINCIPLES.md](./docs/CORE_PRINCIPLES.md)** to understand our approach
+
+**After Phase 6.5** (Testing & Quality Assurance), we'll welcome contributions! This phase is CRITICAL before accepting PRs - we need automated tests to ensure changes don't break existing functionality.
+
+See [ROADMAP.md](./docs/ROADMAP.md) Phase 6.5 for testing plan.
 
 ---
 
@@ -72,223 +154,31 @@ Read the full principles: [CORE_PRINCIPLES.md](./docs/CORE_PRINCIPLES.md)
 ┌─────────────────────────────────────┐
 │         Browser (localhost:8080)    │
 │  ┌───────────────────────────────┐  │
-│  │   ClojureScript (re-frame)    │  │  ← Emacs Lisp layer equivalent
+│  │   ClojureScript (re-frame)    │  │  ← Emacs Lisp layer
 │  │   - Buffers, windows, modes   │  │
 │  │   - Commands, keymaps         │  │
 │  │   - UI rendering (Reagent)    │  │
 │  └───────────────┬───────────────┘  │
 │                  │ WASM FFI          │
 │  ┌───────────────┴───────────────┐  │
-│  │   Rust/WASM (Gap Buffer)      │  │  ← Emacs C core equivalent
+│  │   Rust/WASM (Gap Buffer)      │  │  ← Emacs C core
 │  │   - Text storage & operations │  │
 │  │   - UTF-8 handling            │  │
 │  └───────────────────────────────┘  │
 └─────────────────────────────────────┘
          │ WebSocket (future)
 ┌─────────────────────────────────────┐
-│   Lexicon Bridge (localhost:30303) │  ← For LSP, git, etc.
+│   Lexicon Bridge (localhost:30303) │  ← LSP, git, etc.
 │   - Language servers               │
 │   - Native tool integration        │
 └─────────────────────────────────────┘
 ```
 
 **Core Technologies:**
-- **ClojureScript** + **re-frame** - Functional reactive UI & state
+- **ClojureScript** + **re-frame** - Functional reactive UI & state management
 - **Rust** + **WebAssembly** - High-performance text engine
 - **Reagent** - React wrapper for ClojureScript
 - **Nix** - Reproducible development environment
-
----
-
-## Roadmap
-
-We're building Lexicon in phases, each delivering working software:
-
-### Phase 0: Architecture Reset (Current - Dec 2025)
-🔄 **In Progress**
-- Extract Evil-mode from core to `packages/evil-mode/`
-- Replace piece tree with gap buffer
-- Fix basic text input (typing, Enter, Backspace)
-- Establish clean core/package boundary
-
-### Phase 1: Basic Editing (Jan 2025)
-🔲 Planned
-- Navigation: C-f, C-b, C-n, C-p, C-a, C-e
-- Editing: insert, delete, newline, kill-line
-- Selection: C-SPC, C-w, M-w, C-y
-- Undo: C-/
-
-### Phase 2: Buffers & Files (Jan-Feb 2025)
-🔲 Planned
-- Multi-buffer support: C-x b, C-x k
-- File I/O: C-x C-f, C-x C-s
-- Buffer switching with minibuffer completion
-
-### Phase 3: Windows (Feb 2025)
-🔲 Planned
-- Window splitting: C-x 2, C-x 3
-- Window navigation: C-x o
-- Window deletion: C-x 0, C-x 1
-
-### Phase 4: Minibuffer & Completion (Feb-Mar 2025)
-🔲 Planned
-- M-x command execution
-- Completion (TAB)
-- File/buffer name completion
-
-### Phase 5: Modes & Keymaps (Mar 2025)
-🔲 Planned
-- Major modes: fundamental, text, clojure
-- Minor modes: auto-fill, line-number
-- Mode hooks
-- Keymap inheritance
-
-### Phase 6: Package System & Evil-mode (Mar-Apr 2025)
-🔲 Planned
-- Package loading system
-- Evil-mode as external package
-- Normal, Insert, Visual modes
-- Vim operators and motions
-
-**See [ROADMAP.md](./docs/ROADMAP.md) for complete phased plan**
-
----
-
-## Project Structure
-
-```
-lexicon/
-├── docs/
-│   ├── CORE_PRINCIPLES.md      # Architectural guidelines (READ THIS)
-│   ├── ROADMAP.md              # Detailed phased plan
-│   └── architecture.md         # Technical architecture
-│
-├── packages/
-│   ├── lexicon-core/           # THE BARE EMACS (future)
-│   │   ├── wasm/              # Rust gap buffer
-│   │   └── cljs/              # ClojureScript core
-│   │
-│   ├── editor-cljs/           # Current code (being refactored)
-│   ├── lexicon-engine/        # Current WASM (piece tree → gap buffer)
-│   │
-│   ├── evil-mode/             # Vim emulation package (future)
-│   ├── vertico/               # Completion UI (future)
-│   └── lexicon-bridge/        # LSP bridge server
-│
-└── scripts/                   # Build and dev scripts
-```
-
----
-
-## Getting Started (For Developers)
-
-### Prerequisites
-- **Nix** (with flakes enabled)
-- **Modern browser** (Chrome, Firefox, Edge)
-- **Node.js 18+** and **npm**
-
-### Development Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/lexicon.git
-cd lexicon
-
-# Enter Nix development shell
-nix-shell
-
-# Install JavaScript dependencies
-npm install
-
-# Build Rust/WASM engine
-cd packages/lexicon-engine/wasm
-wasm-pack build --target web --out-dir pkg
-cd ../../..
-
-# Start development server
-npm run dev
-
-# In another terminal, start bridge server (optional, for LSP)
-cd packages/lexicon-bridge
-node index.js
-```
-
-Open browser to `http://localhost:8080`
-
-**⚠️ Current State:** You'll see a basic editor, but Enter key doesn't work yet. We're fixing this!
-
----
-
-## Current Implementation Status
-
-### What Actually Works
-
-✅ **Infrastructure:**
-- Nix-based reproducible dev environment
-- Shadow-cljs build pipeline
-- WASM module loading
-- re-frame state management
-- Basic DOM rendering
-- Bridge server (for future LSP integration)
-
-### What's Being Fixed (Phase 0)
-
-🔄 **Core Editor:**
-- Gap buffer implementation (replacing piece tree)
-- Basic text input (Enter key broken)
-- Cursor positioning
-- Character insertion/deletion
-
-🔄 **Architecture:**
-- Extracting Evil-mode to separate package
-- Cleaning core namespace
-- Defining core API for packages
-
-### What's Coming Next (Phase 1)
-
-🔲 **Basic Editing:**
-- Navigation commands (C-f, C-b, C-n, C-p)
-- Kill ring (C-w, M-w, C-y)
-- Undo (C-/)
-- Line editing (C-k, C-a, C-e)
-
----
-
-## Documentation
-
-- **[CORE_PRINCIPLES.md](./docs/CORE_PRINCIPLES.md)** - Read this first! Architectural philosophy and guidelines
-- **[ROADMAP.md](./docs/ROADMAP.md)** - Detailed phased development plan
-- **[architecture.md](./docs/architecture.md)** - Technical architecture details
-- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Deployment guide (outdated, will update)
-
----
-
-## Contributing
-
-Lexicon is in active refactoring. We're not ready for external contributions yet, but you can:
-
-- ⭐ **Star the repo** to follow progress
-- 👀 **Watch** for updates
-- 💬 **Open issues** for questions or suggestions
-- 📖 **Read the principles** to understand our approach
-
-Once Phase 0 is complete (working basic editor), we'll welcome contributions!
-
----
-
-## Philosophy
-
-Lexicon is an **experiment in architectural fidelity**. Most "Emacs-inspired" editors borrow Emacs's keybindings but not its architecture. We're doing the opposite - building the actual Emacs architecture in the browser:
-
-- **Gap buffers** for text storage
-- **Command-oriented** editing model
-- **Hierarchical keymaps** with prefix keys
-- **Mode-based** extensibility
-- **Lisp-powered** configuration (ClojureScript instead of Elisp)
-
-Why? Because Emacs got it right. After 40+ years, Emacs's architecture remains the gold standard for extensible text editors. The web deserves that same power.
-
-**We may fail**, but we'll learn a lot trying. And if we succeed, we'll have Emacs in the browser.
 
 ---
 
@@ -299,26 +189,14 @@ Understanding Lexicon requires understanding Emacs:
 **Emacs Internals:**
 - [GNU Emacs Lisp Reference Manual](https://www.gnu.org/software/emacs/manual/html_node/elisp/)
 - [Emacs source code](https://github.com/emacs-mirror/emacs) - Especially `src/buffer.c`, `src/keyboard.c`
-- [Emacs Wiki - Architecture](https://www.emacswiki.org/)
 
 **Gap Buffers:**
-- [The Text Editor Sam](http://doc.cat-v.org/plan_9/4th_edition/papers/sam/) - Another gap buffer implementation
+- [The Text Editor Sam](http://doc.cat-v.org/plan_9/4th_edition/papers/sam/)
 - [Emacs Buffer Implementation](https://www.gnu.org/software/emacs/manual/html_node/elisp/Buffer-Internals.html)
 
 **Project Inspirations:**
 - [GNU Emacs](https://www.gnu.org/software/emacs/) - The original
 - [CodeMirror 6](https://codemirror.net/6/) - Modern web editor architecture
-- [Xi Editor](https://github.com/xi-editor/xi-editor) - High-performance editor (archived)
-
----
-
-## Status Updates
-
-Follow development progress:
-
-- **GitHub Issues** - Track bugs and features
-- **Commit History** - See daily progress
-- **ROADMAP.md** - Updated weekly with phase progress
 
 ---
 
@@ -337,8 +215,8 @@ MIT License - See [LICENSE](./LICENSE) for details.
 
 ---
 
-**Current Phase:** Architecture Reset (Phase 0)
-**Last Updated:** 2025-12-20
-**Status:** 🔄 Active Development
+**Current Phase:** Phase 6 - Package System & Evil-mode (In Progress)
+**Last Updated:** 2025-12-24
+**Status:** 🟢 Active Development - Phases 0-5 Complete!
 
 *Building Emacs for the web, one gap buffer at a time.*

@@ -1,4 +1,4 @@
-(ns lexicon.fsm.events
+(ns lexicon.evil.fsm.events
   "Pure FSM state transition system for modal editing"
   (:require [re-frame.core :as rf]
             [clojure.spec.alpha :as s]))

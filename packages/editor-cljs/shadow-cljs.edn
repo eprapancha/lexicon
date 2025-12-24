@@ -1,4 +1,4 @@
-{:source-paths ["src"]
+{:source-paths ["src" "../evil-mode/src"]
  :dependencies [[re-frame/re-frame "1.4.2"]
                 [reagent/reagent "1.2.0"]
                 [binaryage/devtools "1.0.7"]]

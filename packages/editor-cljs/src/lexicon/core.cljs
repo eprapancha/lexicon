@@ -6,7 +6,8 @@
             [lexicon.events]    ; Load event handlers
             [lexicon.subs]      ; Load subscriptions
             [lexicon.lsp]       ; Load LSP handlers
-            [lexicon.views :as views]))
+            [lexicon.views :as views]
+            [lexicon.package-loader])) ; Load all packages
 
 (defn load-wasm-module
   "Asynchronously load the WebAssembly module using dynamic import"

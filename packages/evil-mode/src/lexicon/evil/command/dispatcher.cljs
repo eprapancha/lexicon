@@ -1,7 +1,7 @@
-(ns lexicon.command.dispatcher
+(ns lexicon.evil.command.dispatcher
   "Command dispatcher with metadata inspection and operator-motion composition"
   (:require [re-frame.core :as rf]
-            [lexicon.fsm.events]))
+            [lexicon.evil.fsm.events]))
 
 ;; -- Command Registry --
 
@@ -11,7 +11,7 @@
   "Register a command function in the command registry with metadata"
   [command-key command-fn]
   (swap! command-registry assoc command-key command-fn)
-  (js/console.log \"🎮 Registered command:\" command-key \"with metadata:\" (meta command-fn)))
+  (js/console.log "🎮 Registered command:" command-key "with metadata:" (meta command-fn)))
 
 (defn get-command
   "Get a command function from the registry"
@@ -97,8 +97,8 @@
                (:operator? operator-metadata)
                (:motion? motion-metadata))
       
-      (js/console.log \"🔄 Executing operator-motion composition:\" 
-                      operator-key \"+\" motion-key)
+      (js/console.log "🔄 Executing operator-motion composition:"
+                      operator-key "+" motion-key)
       
       ;; Get current cursor position from app state
       (let [cursor-pos (get-in @re-frame.db/app-db [:ui :cursor-position] 0)
@@ -126,7 +126,7 @@
 (rf/reg-event-fx
  :command/dispatch
  (fn [{:keys [db]} [_ command-key & args]]
-   \"Enhanced command dispatcher with metadata inspection\"
+   "Enhanced command dispatcher with metadata inspection"
    (let [command-fn (get-command command-key)
          command-metadata (get-command-metadata command-key)
          fsm-state (:fsm db)
@@ -138,38 +138,38 @@
        ;; No command found
        (not command-fn)
        (do
-         (js/console.warn \"Command not found:\" command-key)
+         (js/console.warn "Command not found:" command-key)
          {:db db})
        
        ;; We're in operator-pending state and received a motion
        (and operator-pending (:motion? command-metadata))
        (let [result (execute-operator-with-motion operator-pending command-key)]
-         (js/console.log \"✅ Operator-motion composition completed:\", result)
+         (js/console.log "✅ Operator-motion composition completed:" result)
          {:db db})
        
        ;; Received an operator command
        (:operator? command-metadata)
        (do
-         (js/console.log \"⏳ Setting operator pending:\" command-key)
+         (js/console.log "⏳ Setting operator pending:" command-key)
          {:fx [[:dispatch [:fsm/enter-operator-pending-mode command-key]]]})
        
        ;; Simple command execution
        :else
        (do
-         (js/console.log \"▶️ Executing command:\" command-key)
-         
+         (js/console.log "▶️ Executing command:" command-key)
+
          ;; Execute command with appropriate arguments
          (let [final-args (if (:count? command-metadata)
                            (cons (or count-register 1) args)
                            args)]
-           (apply command-fn final-args))
-         
-         ;; Record command for repeat if repeatable
-         (when (:repeatable? command-metadata)
-           (rf/dispatch [:fsm/set-repeat-command 
-                        {:command command-key 
-                         :args final-args}]))
-         
+           (apply command-fn final-args)
+
+           ;; Record command for repeat if repeatable
+           (when (:repeatable? command-metadata)
+             (rf/dispatch [:fsm/set-repeat-command
+                          {:command command-key
+                           :args final-args}])))
+
          {:db db})))))
 
 ;; -- Repeat Command Support --
@@ -177,18 +177,18 @@
 (rf/reg-event-fx
  :command/repeat-last
  (fn [{:keys [db]} [_]]
-   \"Repeat the last repeatable command (. in Vim)\"
+   "Repeat the last repeatable command (. in Vim)"
    (let [last-command (get-in db [:fsm :repeat-last-command])]
      (if last-command
        (do
-         (js/console.log \"🔁 Repeating last command:\" last-command)
+         (js/console.log "🔁 Repeating last command:" last-command)
          (cond
            ;; Operator-motion composition
            (and (:operator last-command) (:motion last-command))
-           (let [result (execute-operator-with-motion 
-                        (:operator last-command) 
+           (let [result (execute-operator-with-motion
+                        (:operator last-command)
                         (:motion last-command))]
-             (js/console.log \"🔁 Repeated operator-motion:\" result)
+             (js/console.log "🔁 Repeated operator-motion:" result)
              {:db db})
            
            ;; Simple command
@@ -198,17 +198,17 @@
            
            :else
            (do
-             (js/console.warn \"Invalid repeat command format:\" last-command)
+             (js/console.warn "Invalid repeat command format:" last-command)
              {:db db})))
-       
+
        (do
-         (js/console.log \"No command to repeat\")
+         (js/console.log "No command to repeat")
          {:db db})))))
 
 ;; -- Text Object Support --
 
 (defn execute-text-object
-  \"Execute a text object and return the selected range\"
+  "Execute a text object and return the selected range"
   [text-object-key inner? cursor-pos]
   (when-let [text-object-fn (get-command text-object-key)]
     (let [metadata (get-command-metadata text-object-key)]
@@ -220,7 +220,7 @@
 (rf/reg-event-fx
  :command/set-count
  (fn [{:keys [db]} [_ digit]]
-   \"Build up count register from numeric input\"
+   "Build up count register from numeric input"
    (let [current-count (get-in db [:fsm :count-register] 0)
          new-count (+ (* current-count 10) digit)]
      {:fx [[:dispatch [:fsm/set-count-register new-count]]]})))
@@ -228,25 +228,25 @@
 (rf/reg-event-fx
  :command/clear-count
  (fn [{:keys [db]} [_]]
-   \"Clear the count register\"
+   "Clear the count register"
    {:fx [[:dispatch [:fsm/set-count-register nil]]]}))
 
 ;; -- Command Inspection and Debug Support --
 
 (rf/reg-event-fx
  :command/inspect
- (fn [_ [_ command-key]]
-   \"Inspect a command's metadata for debugging\"
+ (fn [{:keys [db]} [_ command-key]]
+   "Inspect a command's metadata for debugging"
    (let [metadata (get-command-metadata command-key)]
-     (js/console.log \"🔍 Command inspection for\" command-key \":\" metadata)
+     (js/console.log "🔍 Command inspection for" command-key ":" metadata)
      {:db db})))
 
 (rf/reg-event-fx
  :command/list-by-type
- (fn [_ [_ type]]
-   \"List all commands of a specific type\"
+ (fn [{:keys [db]} [_ type]]
+   "List all commands of a specific type"
    (let [commands (list-commands-by-type type)]
-     (js/console.log \"📋 Commands of type\" type \":\" commands)
+     (js/console.log "📋 Commands of type" type ":" commands)
      {:db db})))
 
 ;; -- Integration with Existing Command System --
@@ -254,7 +254,7 @@
 (rf/reg-event-fx
  :modal/dispatch-key
  (fn [{:keys [db]} [_ key-input]]
-   \"FSM-aware command dispatcher that handles operator-motion composition\"
+   "FSM-aware command dispatcher that handles operator-motion composition"
    (let [fsm-state (:fsm db)
          current-state (:current-state fsm-state)
          active-keymap (:active-keymap fsm-state)
@@ -264,22 +264,22 @@
      (if command-key
        {:fx [[:dispatch [:command/dispatch command-key]]]}
        (do
-         (js/console.log \"No command bound to key:\" key-input \"in keymap:\" active-keymap)
+         (js/console.log "No command bound to key:" key-input "in keymap:" active-keymap)
          {:db db})))))
 
 ;; -- Utility Functions --
 
 (defn get-all-motions
-  \"Get all registered motion commands\"
+  "Get all registered motion commands"
   []
   (list-commands-by-type :motion))
 
 (defn get-all-operators
-  \"Get all registered operator commands\"
+  "Get all registered operator commands"
   []
   (list-commands-by-type :operator))
 
 (defn get-all-text-objects
-  \"Get all registered text object commands\"
+  "Get all registered text object commands"
   []
   (list-commands-by-type :text-object))

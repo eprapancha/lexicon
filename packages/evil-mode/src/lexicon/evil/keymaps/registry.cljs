@@ -1,12 +1,12 @@
-(ns lexicon.keymaps.registry
-  \"Centralized keymap registry with context partitioning and precedence handling\"
+(ns lexicon.evil.keymaps.registry
+  "Centralized keymap registry with context partitioning and precedence handling"
   (:require [re-frame.core :as rf]
             [clojure.string :as str]))
 
 ;; -- Keymap Context Specification --
 
 (defn make-context
-  \"Create a keymap context with state, major mode, and minor modes\"
+  "Create a keymap context with state, major mode, and minor modes"
   [& {:keys [state major-mode minor-modes buffer-id]
       :or {state :normal
            major-mode :fundamental-mode
@@ -18,7 +18,7 @@
    :buffer-id buffer-id})
 
 (defn context-matches?
-  \"Check if a binding context matches the current editor context\"
+  "Check if a binding context matches the current editor context"
   [binding-context current-context]
   (and 
    ;; State must match exactly
@@ -38,7 +38,7 @@
        (= (:buffer-id binding-context) (:buffer-id current-context)))))
 
 (defn context-specificity
-  \"Calculate specificity score for a context (higher = more specific)\"
+  "Calculate specificity score for a context (higher = more specific)"
   [context]
   (+ (if (:state context) 10 0)
      (if (:major-mode context) 5 0)
@@ -47,16 +47,11 @@
 
 ;; -- Keymap Registry Data Structure --
 
-(defonce keymap-registry 
-  \"Central registry of all keybindings with context information\"
-  (atom {}))
+;; Central registry of all keybindings with context information
+(defonce keymap-registry (atom {}))
 
 (defn register-binding!
-  \"Register a key binding with context information
-   
-   Usage:
-   (register-binding! \"j\" :next-line 
-                     {:state :normal :major-mode :text-mode})\"
+  "Register a key binding with context information"
   [key-sequence command context]
   (let [context-with-defaults (merge (make-context) context)
         binding-id (str (hash [key-sequence context-with-defaults]))]
@@ -68,18 +63,18 @@
             :specificity (context-specificity context-with-defaults)
             :id binding-id})
     
-    (js/console.log \"🔑 Registered key binding:\" key-sequence \"->\" command 
-                    \"in context:\" context-with-defaults)
+    (js/console.log "🔑 Registered key binding:" key-sequence "->" command 
+                    "in context:" context-with-defaults)
     binding-id))
 
 (defn unregister-binding!
-  \"Remove a key binding by its ID\"
+  "Remove a key binding by its ID"
   [binding-id]
   (swap! keymap-registry dissoc binding-id)
-  (js/console.log \"🗑️ Unregistered key binding:\" binding-id))
+  (js/console.log "🗑️ Unregistered key binding:" binding-id))
 
 (defn clear-bindings-for-context!
-  \"Remove all bindings that match a specific context\"
+  "Remove all bindings that match a specific context"
   [context]
   (let [matching-ids (reduce-kv
                       (fn [acc id binding]
@@ -90,13 +85,12 @@
                       @keymap-registry)]
     (doseq [id matching-ids]
       (swap! keymap-registry dissoc id))
-    (js/console.log \"🧹 Cleared\" (count matching-ids) \"bindings for context:\" context)))
+    (js/console.log "🧹 Cleared" (count matching-ids) "bindings for context:" context)))
 
 ;; -- Key Sequence Resolution --
 
 (defn resolve-key-binding
-  \"Resolve a key sequence to a command in the given context.
-   Returns the most specific matching binding.\"
+  "Resolve a key sequence to a command in the given context"
   [key-sequence current-context]
   (let [matching-bindings (->> @keymap-registry
                                vals
@@ -105,12 +99,12 @@
                                (sort-by :specificity >))] ; Most specific first
     
     (when-let [best-match (first matching-bindings)]
-      (js/console.log \"🎯 Resolved key:\" key-sequence \"->\" (:command best-match)
-                      \"with specificity:\" (:specificity best-match))
+      (js/console.log "🎯 Resolved key:" key-sequence "->" (:command best-match)
+                      "with specificity:" (:specificity best-match))
       (:command best-match))))
 
 (defn list-bindings-for-context
-  \"List all key bindings available in a given context\"
+  "List all key bindings available in a given context"
   [context]
   (->> @keymap-registry
        vals
@@ -118,7 +112,7 @@
        (sort-by :specificity >)))
 
 (defn find-bindings-for-command
-  \"Find all key sequences bound to a specific command\"
+  "Find all key sequences bound to a specific command"
   [command]
   (->> @keymap-registry
        vals
@@ -129,28 +123,28 @@
 (rf/reg-event-db
  :keymap/register
  (fn [db [_ key-sequence command context]]
-   \"Register a key binding via re-frame event\"
+   "Register a key binding via re-frame event"
    (register-binding! key-sequence command context)
    db))
 
 (rf/reg-event-db
  :keymap/unregister
  (fn [db [_ binding-id]]
-   \"Unregister a key binding via re-frame event\"
+   "Unregister a key binding via re-frame event"
    (unregister-binding! binding-id)
    db))
 
 (rf/reg-event-db
  :keymap/clear-context
  (fn [db [_ context]]
-   \"Clear all bindings for a context via re-frame event\"
+   "Clear all bindings for a context via re-frame event"
    (clear-bindings-for-context! context)
    db))
 
 (rf/reg-event-fx
  :keymap/resolve-and-dispatch
  (fn [{:keys [db]} [_ key-sequence]]
-   \"Resolve key sequence and dispatch command\"
+   "Resolve key sequence and dispatch command"
    (let [current-context (make-context
                           :state (get-in db [:fsm :current-state])
                           :major-mode (get-in db [:buffers (:active-buffer-id db) :major-mode])
@@ -161,17 +155,13 @@
      (if command
        {:fx [[:dispatch [:command/dispatch command]]]}
        (do
-         (js/console.log \"🚫 No command bound to key:\" key-sequence \"in context:\" current-context)
+         (js/console.log "🚫 No command bound to key:" key-sequence "in context:" current-context)
          {:db db})))))
 
 ;; -- State-scoped Binding Functions (Evil-define-key equivalent) --
 
 (defn evil-define-key
-  \"Define key bindings for a specific state (equivalent to Emacs evil-define-key)
-   
-   Usage:
-   (evil-define-key :normal {\"j\" :next-line \"k\" :previous-line})
-   (evil-define-key :normal :clojure-mode {\"gd\" :goto-definition})\"
+  "Define key bindings for a specific state (equivalent to Emacs evil-define-key)"
   ([state keymap]
    (evil-define-key state nil keymap))
   ([state major-mode keymap]
@@ -181,20 +171,14 @@
        (register-binding! key command context)))))
 
 (defn evil-define-minor-mode-key
-  \"Define key bindings for a minor mode
-   
-   Usage:
-   (evil-define-minor-mode-key :paredit-mode {\"(\" :paredit-open-round})\"
+  "Define key bindings for a minor mode"
   [minor-mode keymap & {:keys [state] :or {state :normal}}]
   (let [context {:state state :minor-modes #{minor-mode}}]
     (doseq [[key command] keymap]
       (register-binding! key command context))))
 
 (defn evil-define-buffer-local-key
-  \"Define key bindings local to a specific buffer
-   
-   Usage:
-   (evil-define-buffer-local-key buffer-id :normal {\"C-c C-e\" :eval-buffer})\"
+  "Define key bindings local to a specific buffer"
   [buffer-id state keymap]
   (let [context {:state state :buffer-id buffer-id}]
     (doseq [[key command] keymap]
@@ -205,7 +189,7 @@
 (rf/reg-sub
  :keymap/bindings-for-context
  (fn [db _]
-   \"Get all key bindings for the current context\"
+   "Get all key bindings for the current context"
    (let [current-context (make-context
                           :state (get-in db [:fsm :current-state])
                           :major-mode (get-in db [:buffers (:active-buffer-id db) :major-mode])
@@ -216,111 +200,111 @@
 (rf/reg-sub
  :keymap/command-bindings
  (fn [db [_ command]]
-   \"Get all key sequences bound to a specific command\"
+   "Get all key sequences bound to a specific command"
    (find-bindings-for-command command)))
 
 ;; -- Built-in Keymap Definitions --
 
 (defn initialize-default-keymaps!
-  \"Initialize default keymaps for all states\"
+  "Initialize default keymaps for all states"
   []
   
   ;; Normal mode bindings
   (evil-define-key :normal 
-    {\"h\" :backward-char
-     \"j\" :next-line
-     \"k\" :previous-line
-     \"l\" :forward-char
-     \"w\" :forward-word
-     \"b\" :backward-word
-     \"e\" :forward-word-end
-     \"0\" :beginning-of-line
-     \"$\" :end-of-line
-     \"gg\" :goto-first-line
-     \"G\" :goto-last-line
-     \"x\" :delete-char
-     \"d\" :delete-operator
-     \"y\" :yank-operator
-     \"c\" :change-operator
-     \"p\" :paste-after
-     \"P\" :paste-before
-     \"u\" :undo
-     \"C-r\" :redo
-     \"i\" :enter-insert-mode
-     \"a\" :append-after-cursor
-     \"A\" :append-end-of-line
-     \"o\" :open-line-below
-     \"O\" :open-line-above
-     \"v\" :enter-visual-mode
-     \"V\" :enter-visual-line-mode
-     \"C-v\" :enter-visual-block-mode
-     \"/\" :search-forward
-     \"?\" :search-backward
-     \"n\" :search-next
-     \"N\" :search-previous
-     \".\" :repeat-last-command
-     \"ESC\" :normal-mode})
+    {"h" :backward-char
+     "j" :next-line
+     "k" :previous-line
+     "l" :forward-char
+     "w" :forward-word
+     "b" :backward-word
+     "e" :forward-word-end
+     "0" :beginning-of-line
+     "$" :end-of-line
+     "gg" :goto-first-line
+     "G" :goto-last-line
+     "x" :delete-char
+     "d" :delete-operator
+     "y" :yank-operator
+     "c" :change-operator
+     "p" :paste-after
+     "P" :paste-before
+     "u" :undo
+     "C-r" :redo
+     "i" :enter-insert-mode
+     "a" :append-after-cursor
+     "A" :append-end-of-line
+     "o" :open-line-below
+     "O" :open-line-above
+     "v" :enter-visual-mode
+     "V" :enter-visual-line-mode
+     "C-v" :enter-visual-block-mode
+     "/" :search-forward
+     "?" :search-backward
+     "n" :search-next
+     "N" :search-previous
+     "." :repeat-last-command
+     "ESC" :normal-mode})
   
   ;; Insert mode bindings
   (evil-define-key :insert
-    {\"ESC\" :exit-insert-mode
-     \"C-c\" :exit-insert-mode
-     \"C-[\" :exit-insert-mode})
+    {"ESC" :exit-insert-mode
+     "C-c" :exit-insert-mode
+     "C-[" :exit-insert-mode})
   
   ;; Visual mode bindings
   (evil-define-key :visual
-    {\"h\" :extend-backward-char
-     \"j\" :extend-next-line
-     \"k\" :extend-previous-line
-     \"l\" :extend-forward-char
-     \"w\" :extend-forward-word
-     \"b\" :extend-backward-word
-     \"0\" :extend-beginning-of-line
-     \"$\" :extend-end-of-line
-     \"d\" :delete-region
-     \"y\" :yank-region
-     \"c\" :change-region
-     \"x\" :delete-region
-     \"ESC\" :exit-visual-mode
-     \"C-c\" :exit-visual-mode})
+    {"h" :extend-backward-char
+     "j" :extend-next-line
+     "k" :extend-previous-line
+     "l" :extend-forward-char
+     "w" :extend-forward-word
+     "b" :extend-backward-word
+     "0" :extend-beginning-of-line
+     "$" :extend-end-of-line
+     "d" :delete-region
+     "y" :yank-region
+     "c" :change-region
+     "x" :delete-region
+     "ESC" :exit-visual-mode
+     "C-c" :exit-visual-mode})
   
   ;; Operator-pending mode bindings
   (evil-define-key :operator-pending
-    {\"h\" :backward-char
-     \"j\" :next-line
-     \"k\" :previous-line
-     \"l\" :forward-char
-     \"w\" :forward-word
-     \"b\" :backward-word
-     \"e\" :forward-word-end
-     \"0\" :beginning-of-line
-     \"$\" :end-of-line
-     \"gg\" :goto-first-line
-     \"G\" :goto-last-line
-     \"ESC\" :cancel-operator
-     \"C-c\" :cancel-operator})
+    {"h" :backward-char
+     "j" :next-line
+     "k" :previous-line
+     "l" :forward-char
+     "w" :forward-word
+     "b" :backward-word
+     "e" :forward-word-end
+     "0" :beginning-of-line
+     "$" :end-of-line
+     "gg" :goto-first-line
+     "G" :goto-last-line
+     "ESC" :cancel-operator
+     "C-c" :cancel-operator})
   
-  (js/console.log \"🗝️ Initialized default keymaps for all states\"))
+  (js/console.log "🗝️ Initialized default keymaps for all states"))
 
 ;; -- Keymap Export/Import for Configuration --
 
 (defn export-keymaps
-  \"Export all keymaps to a serializable format\"
+  "Export all keymaps to a serializable format"
   []
   (let [bindings @keymap-registry]
-    (js/console.log \"📤 Exported\" (count bindings) \"key bindings\")
+    (js/console.log "📤 Exported" (count bindings) "key bindings")
     bindings))
 
 (defn import-keymaps
-  \"Import keymaps from a serialized format\"
+  "Import keymaps from a serialized format"
   [keymaps]
   (reset! keymap-registry keymaps)
-  (js/console.log \"📥 Imported\" (count keymaps) \"key bindings\"))
+  (js/console.log "📥 Imported" (count keymaps) "key bindings"))
 
 ;; -- Initialize on namespace load --
-
-(defonce ^:private initialized? (atom false))
-
-(when (not @initialized?)
-  (initialize-default-keymaps!)
-  (reset! initialized? true))
+;; NOTE: Disabled for package system - initialize explicitly via package initialization
+;; (defonce ^:private initialized? (atom false))
+;;
+;; (when (not @initialized?)
+;;   (initialize-default-keymaps!)
+;;   (reset! initialized? true))

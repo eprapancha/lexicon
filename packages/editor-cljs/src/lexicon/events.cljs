@@ -4,6 +4,7 @@
             [lexicon.db :as db]
             [lexicon.cache :as cache]
             [lexicon.constants :as const]
+            [lexicon.packages :as packages]
             [re-frame.std-interceptors :refer [debug]]))
 
 ;; -- Helper Functions --
@@ -447,6 +448,22 @@
  (fn [db [_]]
    "Toggle column number display in mode line"
    (update-in db [:ui :show-column-number?] not)))
+
+;; -- Package Management Commands (Phase 6) --
+
+(rf/reg-event-fx
+ :load-package
+ (fn [{:keys [db]} [_ package-name]]
+   "Load a package by name"
+   (packages/load-package! package-name)
+   {:db db}))
+
+(rf/reg-event-fx
+ :unload-package
+ (fn [{:keys [db]} [_ package-name]]
+   "Unload a package by name"
+   (packages/unload-package! package-name)
+   {:db db}))
 
 ;; Register mode-related commands
 (rf/reg-event-fx

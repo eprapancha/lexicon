@@ -1,0 +1,8 @@
+{:name :evil-mode
+ :version "0.1.0"
+ :description "Vim emulation layer for Lexicon"
+ :author "Lexicon Contributors"
+ :license "MIT"
+ :entry-point lexicon.evil.core
+ :dependencies []
+ :keywords [:vim :modal-editing :evil]}

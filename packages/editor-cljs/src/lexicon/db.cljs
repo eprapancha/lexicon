@@ -147,6 +147,7 @@
                :timeout-id nil}                      ; Timeout ID for auto-clearing message
    :help {:awaiting-key? false                      ; Waiting for key press for C-h k
           :callback nil}                            ; Callback event vector for key press
+   :packages {}                                     ; Loaded packages (Phase 6)
    })
 
 (defn create-buffer
