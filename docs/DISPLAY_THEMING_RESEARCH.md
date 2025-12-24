@@ -18,6 +18,13 @@ This research reveals that **we've been building the wrong foundation**. We focu
 
 **Recommendation:** **Pause all package work**. Implement display/theming foundation first (4 weeks), then completion framework (6 weeks), then Evil-mode integration.
 
+**Complementary Research:** See `docs/TheMissingParts.md` for low-level implementation details and code structure proposals. That document provides detailed API designs, data structures, and TDD plans that complement the architectural analysis in this document. Key contributions from TheMissingParts:
+- CSS variables approach for dynamic theming (superior to static CSS generation)
+- thing-at-point subsystem for context-aware commands
+- Child frames (popups) for Corfu
+- Advanced undo grouping with boundaries
+- special-mode for read-only buffers
+
 ---
 
 ## 1. The Face System: Foundation of Visual Presentation

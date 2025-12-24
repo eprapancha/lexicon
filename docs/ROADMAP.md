@@ -386,10 +386,11 @@ See `docs/DISPLAY_THEMING_RESEARCH.md` for detailed analysis of Evil-mode depend
 - [ ] `font-lock-*` faces - Syntax highlighting (comment, keyword, string, etc.)
 - [ ] `completions-*` faces - Completion UI
 
-#### CSS Generation (🔲 Planned)
-- [ ] Convert face attributes to CSS classes
+#### CSS Generation with CSS Variables (🔲 Planned)
+- [ ] Use CSS custom properties (variables) for dynamic theming (e.g., `--lexicon-fg-default`)
+- [ ] Generate static face classes that reference variables (e.g., `.face-default { color: var(--lexicon-fg-default); }`)
 - [ ] Apply CSS to rendered text spans
-- [ ] Dynamic CSS updates when faces change
+- [ ] Dynamic updates via CSS variable changes (no stylesheet regeneration needed)
 
 ### Week 2: Text Properties & Overlays
 
@@ -418,9 +419,25 @@ See `docs/DISPLAY_THEMING_RESEARCH.md` for detailed analysis of Evil-mode depend
 - [ ] Merge multiple face attributes
 - [ ] Render text with correct face CSS
 
-### Week 3: Mode Line System
+#### Child Frames (Popups) (🔲 Planned)
+- [ ] `make-frame` - Create popup frame (absolutely positioned div)
+- [ ] Frame properties: `:x`, `:y`, `:width`, `:height`, `:visible?`, `:content`, `:face`
+- [ ] `show-frame` / `hide-frame` commands
+- [ ] Render frames at top level (outside main editor)
+- [ ] Used by Corfu for in-buffer completion popups
 
-**Goal:** Customizable status bar with rich formatting
+### Week 3: Mode Line & Built-in Modes
+
+**Goal:** Customizable status bar with rich formatting + essential built-in modes
+
+#### Built-in Modes (🔲 Planned)
+- [ ] Read-only buffer enforcement (`:is-read-only?` flag checked in all edit operations)
+- [ ] `fundamental-mode` - Base mode (empty keymap, no special behavior)
+- [ ] `special-mode` - Base for `*Help*`, `*Buffer List*` buffers
+  - Sets buffer read-only
+  - Provides `q` to quit buffer, `g` to revert
+  - Parent mode for all special buffers
+- [ ] Update existing special buffers to use `special-mode`
 
 #### Mode Line Format Interpreter (🔲 Planned)
 - [ ] Parse `mode-line-format` structure (strings, symbols, lists, `:eval` forms)
@@ -445,43 +462,50 @@ See `docs/DISPLAY_THEMING_RESEARCH.md` for detailed analysis of Evil-mode depend
 - [ ] Mode line updates when buffer changes
 - [ ] Mode line reflects current window state
 
-### Week 4: Theme System
+### Week 4: Theme System (CSS Variables)
 
-**Goal:** Load/unload color schemes, light/dark variants
+**Goal:** Load/unload color schemes, light/dark variants using CSS custom properties
 
 #### Theme Infrastructure (🔲 Planned)
-- [ ] `deftheme` - Define theme with face specs
-- [ ] Theme loading/unloading (only one theme active at a time)
-- [ ] Theme registry (`:themes {}` in app-db)
+- [ ] `deftheme` - Define theme as map of CSS variables to values
+- [ ] Theme data structure: `{:base {"--lexicon-fg-default" "#000" ...} :user {}}`
+- [ ] `:active-themes` stack (e.g., `[:base :user]`) - later themes override earlier
+- [ ] Theme loading updates `:root` CSS variables in one operation
 - [ ] Theme switching command (M-x load-theme)
 
-#### Palette System (🔲 Planned)
-- [ ] Named colors in theme (e.g., `:bg-main`, `:fg-main`, `:blue-warmer`)
+#### Palette System with CSS Variables (🔲 Planned)
+- [ ] All colors as CSS variables (e.g., `--lexicon-bg-main`, `--lexicon-fg-prompt`)
+- [ ] Font settings as variables (e.g., `--lexicon-font-family-mono`, `--lexicon-font-size`)
 - [ ] Semantic color mappings (not just RGB values)
-- [ ] Palette overrides for light/dark variants
+- [ ] Light/dark themes swap variable values, faces remain unchanged
 
-#### Default Theme (🔲 Planned)
-- [ ] `lexicon-default-light` theme
-- [ ] `lexicon-default-dark` theme
+#### Default Themes (🔲 Planned)
+- [ ] `lexicon-base-light` theme (default variable values)
+- [ ] `lexicon-base-dark` theme (dark variable values)
 - [ ] WCAG AAA contrast compliance for accessibility
-- [ ] All standard faces defined
+- [ ] All CSS variables defined with sensible defaults
 
 #### Theme Application (🔲 Planned)
-- [ ] Apply theme face specs to face registry
-- [ ] Regenerate CSS when theme changes
+- [ ] `theme->css-vars` - Convert theme map to `:root { ... }` CSS
+- [ ] `:theme/initialize` - Inject face stylesheet + theme variables on startup
+- [ ] `:theme/set-user-customization` - Allow runtime variable changes (M-x set-font-size)
+- [ ] No stylesheet regeneration needed - CSS variables update instantly
 - [ ] Persist theme choice (future: save to local storage)
 
 ### Success Criteria
 
 - [ ] Can define and apply faces to text
-- [ ] Text renders with correct colors, fonts, and styling
+- [ ] Text renders with correct colors, fonts, and styling via CSS variables
 - [ ] Overlays can highlight regions independently of text properties
+- [ ] Child frames (popups) can be shown at arbitrary positions
+- [ ] special-mode works for read-only buffers (`q` to quit, `g` to revert)
 - [ ] Mode line displays buffer info with % constructs
-- [ ] Can load/unload themes and see visual changes
+- [ ] Can load/unload themes and see visual changes instantly (CSS variables)
+- [ ] Can customize colors/fonts at runtime (M-x set-font-size)
 - [ ] Default light and dark themes look professional
 - [ ] All standard faces defined and applied correctly
 
-**Progress:** 0/7 complete (0%) - Not started (NEXT phase after 6A)
+**Progress:** 0/10 complete (0%) - Not started (NEXT phase after 6A)
 
 ---
 
@@ -635,7 +659,7 @@ These are fundamental Emacs features that **packages assume exist**:
 - [ ] `change-major-mode-hook` - Run when major mode changes
 - [ ] Buffer-local hooks (`:add-hook ... nil t`)
 
-### Week 2: Advice System
+### Week 2: Advice System & Advanced Features
 
 #### Advice Infrastructure (🔲 Planned)
 - [ ] `advice-add` - Add advice to function
@@ -652,15 +676,35 @@ These are fundamental Emacs features that **packages assume exist**:
 - [ ] Advice arguments and return values
 - [ ] Packages can modify existing Lexicon functions
 
+#### thing-at-point Subsystem (🔲 Planned)
+- [ ] `thing-at-point` multimethod (dispatch on type: `:symbol`, `:url`, `:filename`, `:word`)
+- [ ] `:symbol` - Find symbol boundaries around cursor
+- [ ] `:url` - Find URL boundaries (http://, https://)
+- [ ] `:filename` - Find file path at point
+- [ ] `bounds-of-thing-at-point` - Return `{:start N :end M}` for thing
+- [ ] Used by Embark for context-aware actions
+- [ ] Used by `find-file-at-point` command
+
+#### Advanced Undo System (🔲 Planned)
+- [ ] `:undo-boundary` markers in undo stack
+- [ ] `undo-boundary` command - Insert boundary marker
+- [ ] `:undo/begin-change-group` - Start grouped undo
+- [ ] `:undo/end-change-group` - End grouped undo
+- [ ] Update `:undo` to respect boundaries (undo entire group at once)
+- [ ] `:undo-recording-enabled?` flag to prevent recording during undo
+- [ ] Used by complex commands (format-buffer, completion insertion)
+
 ### Success Criteria
 
 - [ ] Buffer-local variables work (each buffer has own value)
 - [ ] pre-command-hook and post-command-hook fire correctly
 - [ ] Advice can wrap existing functions
 - [ ] Multiple advice can stack on same function
-- [ ] Packages can use these features
+- [ ] thing-at-point finds symbols, URLs, and filenames
+- [ ] Advanced undo groups multiple edits into single undo step
+- [ ] Packages can use all these features
 
-**Progress:** 0/5 complete (0%)
+**Progress:** 0/7 complete (0%)
 
 ---
 
@@ -917,9 +961,13 @@ Now that infrastructure exists, we can make Evil-mode work.
 - ✅ Package loading/unloading system implemented
 - ✅ Evil-mode package structure created (deferred to Phase 7)
 - ✅ All compilation errors fixed (0 warnings, 0 errors)
-- ✅ **Course correction based on research** - Discovered need for display infrastructure
-- ✅ Created comprehensive research document (`docs/DISPLAY_THEMING_RESEARCH.md`)
-- ✅ Roadmap updated with new phases 6B/6C/6D based on findings
+- ✅ **Course correction based on dual research** - Discovered need for display infrastructure
+- ✅ Created comprehensive research documents:
+  - `docs/DISPLAY_THEMING_RESEARCH.md` - Display infrastructure deep dive
+  - `docs/TheMissingParts.md` - Low-level design for standard library (by Gemini)
+- ✅ Roadmap updated with new phases 6B/6C/6D incorporating both research findings
+- ✅ Incorporated superior CSS variables approach for theming
+- ✅ Added missing features: thing-at-point, child frames, special-mode, advanced undo
 
 **Strategic Course Correction:**
 
@@ -939,10 +987,22 @@ Research revealed we've been building the wrong foundation. **All sophisticated 
 **Next Steps:**
 1. Begin Phase 6B Week 1: Face System
    - Implement face data structure and registry
-   - Define standard faces (default, region, mode-line, etc.)
-   - CSS generation from face attributes
-2. Continue with overlays, mode line, and themes
-3. Then proceed to completion framework (Phase 6C)
+   - Define standard faces (default, region, mode-line, font-lock-*, etc.)
+   - CSS generation using CSS custom properties (variables)
+   - Static face classes that reference variables
+2. Week 2: Text Properties, Overlays & Child Frames
+   - Text properties (face, invisible, read-only)
+   - Overlay system with priority
+   - Child frames for popups (Corfu needs this)
+3. Week 3: Mode Line & Built-in Modes
+   - Mode line format interpreter with % constructs
+   - special-mode for read-only buffers
+   - Read-only buffer enforcement
+4. Week 4: Theme System with CSS Variables
+   - CSS variables-based theming (superior to static generation)
+   - Runtime customization without stylesheet regeneration
+   - Light/dark theme variants
+5. Then proceed to completion framework (Phase 6C)
 
 **Why This Matters:**
 Building display infrastructure first ensures that when we implement completion framework and packages, they can render properly with colors, annotations, and visual feedback - making Lexicon feel like real Emacs.
