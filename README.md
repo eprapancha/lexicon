@@ -21,10 +21,10 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 
 ## Current Status
 
-**Phase 6 of 10** - Package System & Evil-mode (In Progress)
+**Phase 6A of 11** - Package Infrastructure (Complete) | **Next: Phase 6B - Display & Theming**
 
 **What Works:**
-- ✅ **Phases 0-5 Complete** - Full working Emacs core!
+- ✅ **Phases 0-6A Complete** - Full working Emacs core + package system!
   - Text editing (insert, delete, undo, kill ring)
   - Navigation (C-f/b/n/p, C-a/e, M-f/b, M-</>, arrows)
   - Multi-buffer support (C-x b, C-x C-f, C-x C-s)
@@ -35,9 +35,10 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
   - Universal argument (C-u)
   - Mark and region (C-SPC, C-w, M-w, C-y)
 
-**Current Work (Phase 6):**
-- ⏳ Package system infrastructure (✅ Complete)
-- ⏳ Evil-mode package (structure complete, integration pending)
+**Current Work:**
+- ✅ **Phase 6A Complete** - Package system infrastructure
+- 🔄 **Strategic Course Correction** - Research revealed need for display infrastructure first
+- 📋 **Next: Phase 6B** - Display & Theming Foundation (faces, overlays, mode line, themes)
 
 **See [docs/ROADMAP.md](./docs/ROADMAP.md) for detailed progress and next steps**
 
@@ -133,7 +134,7 @@ The web deserves this same power.
 
 ## Contributing
 
-**Current Status:** Phase 6 in progress - infrastructure complete, integration work ongoing.
+**Current Status:** Phase 6A complete - infrastructure done. Phase 6B (Display & Theming) next.
 
 We're **not yet ready for external contributions**, but you can:
 
@@ -215,8 +216,8 @@ MIT License - See [LICENSE](./LICENSE) for details.
 
 ---
 
-**Current Phase:** Phase 6 - Package System & Evil-mode (In Progress)
+**Current Phase:** Phase 6A Complete | Next: Phase 6B - Display & Theming
 **Last Updated:** 2025-12-24
-**Status:** 🟢 Active Development - Phases 0-5 Complete!
+**Status:** 🟢 Active Development - Phases 0-6A Complete!
 
 *Building Emacs for the web, one gap buffer at a time.*

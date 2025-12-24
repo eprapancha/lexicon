@@ -267,12 +267,14 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 
 ---
 
-## Phase 6: Package System & Evil-mode
+## Phase 6A: Package System Infrastructure
 
-**Status:** ⏳ IN PROGRESS (Dec 24, 2025)
-**Goal:** External package loading, Evil-mode as first package
-**Timeline:** Started Dec 24, 2025
+**Status:** ✅ COMPLETE (Dec 24, 2025)
+**Goal:** External package loading infrastructure
+**Timeline:** Completed Dec 24, 2025
 **Prerequisites:** ✅ Phase 5 complete
+
+**Note:** This phase was originally "Phase 6: Package System & Evil-mode" but research revealed we need display infrastructure before Evil-mode can work properly. Phase 6 is now split into 6A (complete), 6B (display), 6C (completion), 6D (infrastructure), and Phase 7 (Evil-mode integration).
 
 ### Package System Infrastructure ✅ COMPLETE (Dec 24, 2025)
 
@@ -312,72 +314,353 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 - [x] FSM state initialization/cleanup lifecycle
 - [x] Keymap initialization disabled (called explicitly by package)
 
-### Evil-mode Features (🔲 Not Yet Functional)
+### Evil-mode Package Structure (✅ Created, Not Yet Integrated)
 
-**Note:** Infrastructure is complete but Evil-mode is not yet functional. The following features exist in code but are not connected to the editor:
+**Note:** Evil-mode package structure exists and compiles but is **not functional** because it depends on display infrastructure (overlays, faces, text properties) we don't have yet. Evil-mode integration deferred to **Phase 7**.
 
-#### FSM State Machine (Exists but not active)
-- [ ] Normal, Insert, Visual modes
-- [ ] State transitions with validation
-- [ ] Operator-pending mode
-- [ ] Visual-line and visual-block modes
-- [ ] Command-line mode
+**What exists:**
+- ✅ Package metadata (`package.edn`)
+- ✅ FSM state machine (states, transitions, validation)
+- ✅ Command dispatcher with operator-motion composition
+- ✅ Keymap registry (normal, insert, visual modes)
+- ✅ Package lifecycle (initialize!/cleanup!)
 
-#### Commands (Exist but not registered)
-- [ ] Operators: `d`, `c`, `y`, `>`, `<`
-- [ ] Motions: `w`, `b`, `e`, `$`, `0`, `gg`, `G`
-- [ ] Text objects: `iw`, `aw`, `i"`, `a"`
-- [ ] Operator-motion composition (`dw`, `ciw`, etc.)
+**Why deferred:**
+- ❌ Needs overlay system for visual mode highlighting
+- ❌ Needs face system for cursor shapes and colors
+- ❌ Needs buffer-local variables for per-buffer state
+- ❌ Needs pre/post-command hooks for state transitions
+- ❌ Needs advice system to wrap Emacs functions
 
-#### Keymaps (Defined but not active)
-- [ ] Normal mode keymap (h/j/k/l, d/c/y, etc.)
-- [ ] Insert mode keymap (ESC to exit)
-- [ ] Visual mode keymap
-- [ ] Operator-pending keymap
-
-### Remaining Work for Phase 6
-
-1. **Connect Evil-mode to Editor** (HIGH PRIORITY)
-   - [ ] Add `:load-package` and `:unload-package` commands accessible via M-x
-   - [ ] Integrate Evil FSM state with editor key handling
-   - [ ] Connect Evil keymaps to global keymap system
-   - [ ] Register Evil commands in command registry
-
-2. **Test Package System** (HIGH PRIORITY)
-   - [ ] Test loading evil-mode via M-x or console
-   - [ ] Verify FSM state is added to app-db
-   - [ ] Verify Evil keymaps override Emacs keymaps
-   - [ ] Test unloading removes Evil state cleanly
-   - [ ] Test toggling between Emacs and Evil modes
-
-3. **Implement Basic Evil Commands** (MEDIUM PRIORITY)
-   - [ ] Implement motion commands (forward-char, next-line, etc. as Evil versions)
-   - [ ] Implement operators (delete, change, yank)
-   - [ ] Connect to existing kill-ring system
-   - [ ] Test operator-motion composition
-
-4. **Polish & Documentation** (LOW PRIORITY)
-   - [ ] Update package README with usage instructions
-   - [ ] Add examples to package loader
-   - [ ] Document package API for future packages
+See `docs/DISPLAY_THEMING_RESEARCH.md` for detailed analysis of Evil-mode dependencies.
 
 ### Success Criteria
 
-**Infrastructure (✅ COMPLETE):**
 - [x] Package loading system compiles without errors
 - [x] Evil-mode registers as external package
 - [x] Package metadata available via `package-info`
 - [x] Initialize/cleanup lifecycle works
+- [x] Evil-mode compiles without warnings or errors
+- [x] Package structure complete and documented
 
-**Functionality (🔲 IN PROGRESS):**
-- [ ] Can load evil-mode via command
-- [ ] Evil normal mode works (hjkl navigation)
-- [ ] Evil insert mode works (i, a, o, O)
-- [ ] Operators + motions work (dw, ciw, etc.)
-- [ ] Disabling Evil-mode returns to pure Emacs
-- [ ] No Evil code in core (already satisfied)
+**Progress:** 6/6 complete (100%) ✅ PHASE 6A COMPLETE!
 
-**Progress:** 4/10 complete (40%) - Infrastructure done, integration pending
+---
+
+## Phase 6B: Display & Theming Foundation
+
+**Status:** 🔲 NEXT (Planned)
+**Goal:** Implement face system, overlays, text properties, mode line, and themes
+**Timeline:** 4 weeks
+**Prerequisites:** ✅ Phase 6A complete
+
+### Rationale
+
+**Critical Discovery:** Research (see `docs/DISPLAY_THEMING_RESEARCH.md`) revealed that **all sophisticated packages depend on display infrastructure** we don't have:
+
+- **Completion framework** needs faces for annotations (Marginalia, Vertico)
+- **Evil-mode** needs overlays for visual selection, faces for cursor feedback
+- **Themes** need face system to propagate colors to packages
+- **All packages** assume text properties and overlays exist
+
+**This phase must come BEFORE completion framework or Evil-mode integration.**
+
+### Week 1: Face System
+
+**Goal:** Named visual attributes for text styling
+
+#### Face Data Structure (🔲 Planned)
+- [ ] Face registry in app-db (`:faces {}`)
+- [ ] Face attributes: `:foreground`, `:background`, `:font-family`, `:font-size`, `:font-weight`, `:font-slant`, `:underline`, `:box`, `:inherit`, `:extend`
+- [ ] Face inheritance (faces can inherit from other faces)
+- [ ] Face merging rules (combine multiple face attributes)
+
+#### Standard Faces (🔲 Planned)
+- [ ] `default` - Base face for all text
+- [ ] `region` - Selected region
+- [ ] `mode-line` / `mode-line-inactive` - Mode line faces
+- [ ] `minibuffer-prompt` - Minibuffer prompt
+- [ ] `highlight` - Generic highlighting
+- [ ] `isearch` / `lazy-highlight` - Search matches
+- [ ] `error`, `warning`, `success` - Semantic colors
+- [ ] `font-lock-*` faces - Syntax highlighting (comment, keyword, string, etc.)
+- [ ] `completions-*` faces - Completion UI
+
+#### CSS Generation (🔲 Planned)
+- [ ] Convert face attributes to CSS classes
+- [ ] Apply CSS to rendered text spans
+- [ ] Dynamic CSS updates when faces change
+
+### Week 2: Text Properties & Overlays
+
+**Goal:** Attach visual and semantic properties to buffer text
+
+#### Text Properties (🔲 Planned)
+- [ ] `put-text-property` - Apply property to range
+- [ ] `get-text-property` - Read property at position
+- [ ] `remove-text-property` - Remove property from range
+- [ ] Property types: `face`, `font-lock-face`, `invisible`, `read-only`, `help-echo`, `display`
+- [ ] Properties stored in gap buffer metadata (Rust side) or ClojureScript side
+- [ ] Properties move with text when edited
+
+#### Overlay System (🔲 Planned)
+- [ ] `make-overlay` - Create overlay on range
+- [ ] `delete-overlay` - Remove overlay
+- [ ] `overlay-put` - Set overlay property
+- [ ] `overlay-get` - Read overlay property
+- [ ] Overlay priority system (higher priority wins)
+- [ ] Overlay properties: all text properties + `priority`, `before-string`, `after-string`, `evaporate`
+- [ ] Overlays independent of text (don't move when text edited)
+
+#### Face Priority & Merging (🔲 Planned)
+- [ ] Overlay faces sorted by priority
+- [ ] Text property `face` > `font-lock-face`
+- [ ] Merge multiple face attributes
+- [ ] Render text with correct face CSS
+
+### Week 3: Mode Line System
+
+**Goal:** Customizable status bar with rich formatting
+
+#### Mode Line Format Interpreter (🔲 Planned)
+- [ ] Parse `mode-line-format` structure (strings, symbols, lists, `:eval` forms)
+- [ ] Evaluate format recursively
+- [ ] % constructs: `%b` (buffer), `%f` (file), `%l` (line), `%c` (column), `%p` (percentage), `%*` (modified), `%-` (fill)
+- [ ] Conditional display based on variables
+
+#### Standard Mode Line Components (🔲 Planned)
+- [ ] `mode-line-modified` - Modified indicator (** or --)
+- [ ] `mode-line-buffer-identification` - Buffer name
+- [ ] `mode-line-position` - Line/column/percentage
+- [ ] `mode-line-modes` - Major mode + minor mode list
+- [ ] `mode-line-misc-info` - Additional info area
+
+#### Mode Line Faces (🔲 Planned)
+- [ ] Apply `mode-line` face to active window mode line
+- [ ] Apply `mode-line-inactive` face to inactive windows
+- [ ] Support clickable mode line elements (future: mouse events)
+
+#### Buffer-Local Mode Lines (🔲 Planned)
+- [ ] Each buffer can customize `mode-line-format`
+- [ ] Mode line updates when buffer changes
+- [ ] Mode line reflects current window state
+
+### Week 4: Theme System
+
+**Goal:** Load/unload color schemes, light/dark variants
+
+#### Theme Infrastructure (🔲 Planned)
+- [ ] `deftheme` - Define theme with face specs
+- [ ] Theme loading/unloading (only one theme active at a time)
+- [ ] Theme registry (`:themes {}` in app-db)
+- [ ] Theme switching command (M-x load-theme)
+
+#### Palette System (🔲 Planned)
+- [ ] Named colors in theme (e.g., `:bg-main`, `:fg-main`, `:blue-warmer`)
+- [ ] Semantic color mappings (not just RGB values)
+- [ ] Palette overrides for light/dark variants
+
+#### Default Theme (🔲 Planned)
+- [ ] `lexicon-default-light` theme
+- [ ] `lexicon-default-dark` theme
+- [ ] WCAG AAA contrast compliance for accessibility
+- [ ] All standard faces defined
+
+#### Theme Application (🔲 Planned)
+- [ ] Apply theme face specs to face registry
+- [ ] Regenerate CSS when theme changes
+- [ ] Persist theme choice (future: save to local storage)
+
+### Success Criteria
+
+- [ ] Can define and apply faces to text
+- [ ] Text renders with correct colors, fonts, and styling
+- [ ] Overlays can highlight regions independently of text properties
+- [ ] Mode line displays buffer info with % constructs
+- [ ] Can load/unload themes and see visual changes
+- [ ] Default light and dark themes look professional
+- [ ] All standard faces defined and applied correctly
+
+**Progress:** 0/7 complete (0%) - Not started (NEXT phase after 6A)
+
+---
+
+## Phase 6C: Completion Framework
+
+**Status:** 🔲 Planned
+**Goal:** Metadata, styles, completion tables, CAPFs
+**Timeline:** 6 weeks
+**Prerequisites:** ✅ Phase 6A complete, ✅ Phase 6B complete
+
+### Rationale
+
+The completion framework is the **foundation of the package ecosystem**. Packages like Vertico, Orderless, Marginalia, and Consult all depend on:
+- Completion metadata (categories, annotations)
+- Completion styles (prefix, substring, flex, orderless)
+- Completion tables (dynamic, programmed)
+- CAPFs (completion-at-point-functions)
+
+**Why after Phase 6B:** Completion UI packages (Marginalia, Vertico) need **faces** to render annotations and style candidates. Without faces, they can't display properly.
+
+### Week 1-2: Completion Metadata System
+
+#### Completion Categories (🔲 Planned)
+- [ ] Category system (`:command`, `:file`, `:buffer`, `:variable`, `:function`, `:face`, `:theme`)
+- [ ] Category-specific defaults (sort order, completion style)
+- [ ] Metadata association with completion tables
+
+#### Completion Metadata Properties (🔲 Planned)
+- [ ] `:annotation-function` - Add annotations to candidates (e.g., "(keybinding)" for commands)
+- [ ] `:affixation-function` - Prefix/suffix/annotation in one pass
+- [ ] `:group-function` - Group candidates (e.g., by mode)
+- [ ] `:display-sort-function` - Custom sort order
+- [ ] `:category` - Semantic category of candidates
+- [ ] `:cycle-sort-function` - Cycling behavior
+
+#### Metadata Application (🔲 Planned)
+- [ ] Attach metadata to `completing-read` calls
+- [ ] Metadata propagates to completion UI
+- [ ] Packages can extend metadata for custom categories
+
+### Week 3-4: Completion Styles
+
+#### Style System (🔲 Planned)
+- [ ] `completion-styles` - Ordered list of styles to try
+- [ ] `completion-category-overrides` - Per-category style preferences
+- [ ] Style precedence resolution
+
+#### Built-in Styles (🔲 Planned)
+- [x] `basic` - Prefix matching (already exists)
+- [ ] `substring` - Match anywhere in candidate
+- [ ] `flex` - Flexible matching (characters in order, gaps allowed)
+- [ ] `initials` - Match initials (e.g., "fb" matches "forward-button")
+- [ ] `partial-completion` - Complete parts separately (e.g., "f-b" matches "forward-button")
+
+#### Orderless Style (🔲 Planned)
+- [ ] Space-separated patterns (all must match)
+- [ ] Flex matching per pattern
+- [ ] Highlighting of matched portions (using faces!)
+- [ ] Configurable pattern matching (regexp, literal, prefix)
+
+### Week 5: Completion Tables & CAPFs
+
+#### Completion Tables (🔲 Planned)
+- [ ] Static tables (simple lists)
+- [ ] Programmed completion (function returns candidates)
+- [ ] Dynamic tables (candidates change based on input)
+- [ ] Boundary detection (where completion starts/ends)
+
+#### Completion-at-Point Functions (🔲 Planned)
+- [ ] `completion-at-point-functions` hook
+- [ ] CAPF protocol (`:company-prefix-length`, `:exit-function`)
+- [ ] `completion-at-point` command (TAB in buffer)
+- [ ] Multiple CAPFs per buffer (try in order)
+
+#### Built-in CAPFs (🔲 Planned)
+- [ ] Symbol completion (Elisp symbols in `*scratch*`)
+- [ ] File name completion
+- [ ] Command completion (M-x)
+
+### Week 6: Built-in Packages for Completion
+
+#### project.el (🔲 Planned)
+- [ ] `project-current` - Detect project root
+- [ ] `project-root` - Get project directory
+- [ ] `project-files` - List project files
+- [ ] Git-based project detection (check for `.git`)
+- [ ] Integration with `find-file` (C-x C-f respects project context)
+
+#### imenu (🔲 Planned)
+- [ ] `imenu-create-index-function` - Extract buffer structure
+- [ ] Default implementation (scan for `defun`, `defvar`, etc.)
+- [ ] `imenu` command - Jump to definition with completion
+- [ ] Integration with completion (category: `:imenu`)
+
+#### recentf (🔲 Planned)
+- [ ] Track recently opened files
+- [ ] `recentf-mode` - Minor mode to enable tracking
+- [ ] Persist recent files to local storage
+- [ ] `recentf-open-files` command
+
+#### savehist (🔲 Planned)
+- [ ] Persist minibuffer history across sessions
+- [ ] `savehist-mode` - Minor mode to enable persistence
+- [ ] Save to local storage
+- [ ] Restore on startup
+
+### Success Criteria
+
+- [ ] Completion metadata (annotations, categories) works
+- [ ] Multiple completion styles (substring, flex) work
+- [ ] Orderless style matches space-separated patterns
+- [ ] CAPFs work for in-buffer completion
+- [ ] project.el detects Git projects
+- [ ] imenu extracts buffer structure
+- [ ] recentf tracks recent files
+- [ ] savehist persists minibuffer history
+
+**Progress:** 0/8 complete (0%)
+
+---
+
+## Phase 6D: Missing Emacs Infrastructure
+
+**Status:** 🔲 Planned
+**Goal:** Buffer-local variables, enhanced hooks, advice system
+**Timeline:** 2 weeks
+**Prerequisites:** ✅ Phase 6A complete, ✅ Phase 6B complete, ✅ Phase 6C complete
+
+### Rationale
+
+These are fundamental Emacs features that **packages assume exist**:
+- Buffer-local variables (every mode uses them)
+- Pre/post-command hooks (Evil-mode needs these for state transitions)
+- Advice system (packages wrap/modify existing functions)
+
+### Week 1: Buffer-Local Variables & Hooks
+
+#### Buffer-Local Variables (🔲 Planned)
+- [ ] `make-local-variable` - Make variable buffer-local in current buffer
+- [ ] `make-variable-buffer-local` - Auto buffer-local for all buffers
+- [ ] Each buffer has own value for buffer-local vars
+- [ ] Global value vs buffer-local value distinction
+- [ ] `setq-local` - Set buffer-local value
+- [ ] `defvar-local` - Define buffer-local variable
+
+#### Enhanced Hooks (🔲 Planned)
+- [ ] `pre-command-hook` - Run before every command
+- [ ] `post-command-hook` - Run after every command
+- [ ] `window-configuration-change-hook` - Run when windows change
+- [ ] `kill-buffer-hook` - Run when buffer is killed
+- [ ] `change-major-mode-hook` - Run when major mode changes
+- [ ] Buffer-local hooks (`:add-hook ... nil t`)
+
+### Week 2: Advice System
+
+#### Advice Infrastructure (🔲 Planned)
+- [ ] `advice-add` - Add advice to function
+- [ ] `advice-remove` - Remove advice from function
+- [ ] `:before` advice - Run before original function
+- [ ] `:after` advice - Run after original function
+- [ ] `:around` advice - Wrap original function
+- [ ] `:override` advice - Replace original function
+- [ ] Multiple advice can stack on same function
+
+#### Advice Application (🔲 Planned)
+- [ ] Track advised functions in registry
+- [ ] Generate wrapped function with advice chain
+- [ ] Advice arguments and return values
+- [ ] Packages can modify existing Lexicon functions
+
+### Success Criteria
+
+- [ ] Buffer-local variables work (each buffer has own value)
+- [ ] pre-command-hook and post-command-hook fire correctly
+- [ ] Advice can wrap existing functions
+- [ ] Multiple advice can stack on same function
+- [ ] Packages can use these features
+
+**Progress:** 0/5 complete (0%)
 
 ---
 
@@ -386,7 +669,7 @@ This roadmap tracks Lexicon's evolution from the current state (architecture mis
 **Status:** 🔲 Planned
 **Goal:** Comprehensive automated testing for core stability
 **Timeline:** 2 weeks (Before public release)
-**Prerequisites:** Phase 6 complete
+**Prerequisites:** ✅ Phase 6A-6D complete
 **Priority:** CRITICAL - Required before accepting external contributions
 
 ### Rationale
@@ -446,11 +729,89 @@ Before opening the project to external contributors and accepting pull requests,
 
 ---
 
-## Phase 7: Advanced Editing Features
+## Phase 7: Evil-mode Integration
+
+**Status:** 🔲 Planned
+**Goal:** Complete Evil-mode integration and make it functional
+**Timeline:** 2 weeks
+**Prerequisites:** ✅ Phase 6A-6D complete, ✅ Phase 6.5 complete (testing)
+
+### Rationale
+
+Evil-mode package structure was created in Phase 6A but is **not functional** because it depends on infrastructure from Phases 6B-6D:
+- ✅ **Overlays** (from 6B) - For visual mode highlighting
+- ✅ **Faces** (from 6B) - For cursor shapes and colors
+- ✅ **Buffer-local variables** (from 6D) - For per-buffer Evil state
+- ✅ **Pre/post-command hooks** (from 6D) - For state transitions
+- ✅ **Advice system** (from 6D) - To wrap Emacs functions
+
+Now that infrastructure exists, we can make Evil-mode work.
+
+### Week 1: Evil-mode Core Integration
+
+#### State Machine Integration (🔲 Planned)
+- [ ] Add `:load-package` and `:unload-package` commands (M-x)
+- [ ] Test loading evil-mode package
+- [ ] Integrate Evil FSM with editor key handling
+- [ ] Connect Evil keymaps to global keymap system
+- [ ] Verify state transitions work (normal → insert → visual)
+- [ ] Use buffer-local variables for Evil state per buffer
+
+#### Visual Feedback (🔲 Planned)
+- [ ] Cursor shape changes based on state (box for normal, bar for insert)
+- [ ] Cursor color changes based on state (using faces)
+- [ ] Mode line shows Evil state (<N>, <I>, <V>)
+- [ ] Visual mode uses overlays to highlight selection
+
+### Week 2: Commands & Operators
+
+#### Motion Commands (🔲 Planned)
+- [ ] Basic motions: h, j, k, l, w, b, e, $, 0, gg, G
+- [ ] Connect to existing cursor movement functions
+- [ ] Count prefixes (5j, 10w)
+- [ ] Range calculation for operator-motion composition
+
+#### Operators (🔲 Planned)
+- [ ] Delete operator (d + motion)
+- [ ] Change operator (c + motion)
+- [ ] Yank operator (y + motion)
+- [ ] Connect to existing kill-ring system
+- [ ] Operator-motion composition (dw, ciw, d$, etc.)
+
+#### Insert Mode (🔲 Planned)
+- [ ] i, a, o, O to enter insert mode
+- [ ] ESC to return to normal mode
+- [ ] Insert mode uses regular Emacs keybindings
+
+#### Visual Mode (🔲 Planned)
+- [ ] v for character-wise visual
+- [ ] V for line-wise visual
+- [ ] Operators work on visual selection (d, c, y)
+- [ ] ESC to exit visual mode
+
+### Success Criteria
+
+- [ ] Can load evil-mode via M-x load-package
+- [ ] Evil normal mode works (hjkl navigation, motions)
+- [ ] Evil insert mode works (i, a, o, O, ESC)
+- [ ] Evil visual mode works (v, V, visual selection with overlays)
+- [ ] Operators work (d, c, y with motions and visual selection)
+- [ ] Operator-motion composition works (dw, ciw, d$, etc.)
+- [ ] Count prefixes work (5j, 10w, 3dd)
+- [ ] Mode line shows Evil state
+- [ ] Cursor changes shape/color based on state
+- [ ] Can unload evil-mode and return to pure Emacs
+- [ ] Evil state is buffer-local (each buffer has independent state)
+
+**Progress:** 0/11 complete (0%)
+
+---
+
+## Phase 8: Advanced Editing Features
 
 **Status:** 🔲 Planned
 **Goal:** Polish core editing experience
-**Prerequisites:** Phase 6.5 complete
+**Prerequisites:** ✅ Phase 7 complete
 
 ### Features
 
@@ -461,26 +822,60 @@ Before opening the project to external contributors and accepting pull requests,
 
 ---
 
-## Phase 8: Package Ecosystem
+## Phase 9: Package Ecosystem
 
 **Status:** 🔲 Planned
-**Goal:** Essential packages for modern editing
-**Prerequisites:** Phase 7 complete
+**Goal:** Essential packages for modern editing (Vertico, Orderless, Consult, Corfu)
+**Timeline:** 4 weeks
+**Prerequisites:** ✅ Phase 6B-6D complete (display, completion, infrastructure)
 
 ### Packages to Implement
 
-- Vertico (Completion UI)
-- Orderless (Completion Style)
-- Consult (Enhanced Commands)
-- Corfu (In-buffer Completion)
+**Week 1: Vertico** (Vertical completion UI)
+- [ ] Replace echo area completion with vertical list
+- [ ] Up/down arrow navigation
+- [ ] Candidate highlighting (uses faces from 6B!)
+- [ ] Metadata integration (annotations, groups)
+
+**Week 2: Orderless** (Completion style)
+- [ ] Implement as external package (already planned in 6C)
+- [ ] Space-separated pattern matching
+- [ ] Highlight matched portions in candidates
+
+**Week 3: Marginalia** (Completion annotations)
+- [ ] Rich annotations for commands (keybindings, docstrings)
+- [ ] Annotations for buffers (size, mode, path)
+- [ ] Annotations for files (permissions, size)
+- [ ] Uses completion metadata from 6C
+
+**Week 4: Consult** (Enhanced commands)
+- [ ] `consult-buffer` - Enhanced buffer switching with preview
+- [ ] `consult-line` - Search lines in buffer with preview
+- [ ] `consult-imenu` - Navigate buffer structure
+- [ ] Uses completion framework and imenu from 6C
+
+**Future: Corfu** (In-buffer completion popup)
+- [ ] Defer to later (needs more UI infrastructure)
+
+### Success Criteria
+
+- [ ] Vertico shows vertical completion list
+- [ ] Orderless matches space-separated patterns
+- [ ] Marginalia shows rich annotations
+- [ ] Consult commands work with preview
+- [ ] All packages load/unload cleanly
+- [ ] Package ecosystem feels cohesive
+
+**Progress:** 0/6 complete (0%)
 
 ---
 
-## Phase 9: Syntax Highlighting & Tree-sitter
+## Phase 10: Syntax Highlighting & Tree-sitter
 
 **Status:** 🔲 Planned
-**Goal:** Modern syntax highlighting
-**Prerequisites:** Phase 8 complete
+**Goal:** Modern syntax highlighting using Tree-sitter
+**Timeline:** 3 weeks
+**Prerequisites:** ✅ Phase 6B complete (faces system required)
 
 ### Features
 
@@ -490,11 +885,12 @@ Before opening the project to external contributors and accepting pull requests,
 
 ---
 
-## Phase 10: LSP Integration
+## Phase 11: LSP Integration
 
 **Status:** 🔲 Planned
 **Goal:** Language server protocol support
-**Prerequisites:** Phase 9 complete, Bridge server working
+**Timeline:** 4 weeks
+**Prerequisites:** ✅ Phase 6B-6D complete (overlays for diagnostics, faces for highlights), Bridge server working
 
 ### Features
 
@@ -503,7 +899,7 @@ Before opening the project to external contributors and accepting pull requests,
 
 ---
 
-## Long-term Vision (Beyond Phase 10)
+## Long-term Vision (Beyond Phase 11)
 
 - Org-mode (Outline editing, TODO items, Agenda, Export)
 - Magit (Git Interface)
@@ -514,24 +910,44 @@ Before opening the project to external contributors and accepting pull requests,
 
 ## Current Focus
 
-**Active Phase:** Phase 6 - Package System & Evil-mode ⏳ IN PROGRESS
+**Active Phase:** Phase 6A ✅ COMPLETE | **Next Phase:** Phase 6B - Display & Theming Foundation
 
 **Recent Achievements (Dec 24, 2025):**
-- ✅ Package system infrastructure complete
-- ✅ Evil-mode package structure complete
-- ✅ Fixed all namespace declarations in evil-mode
-- ✅ Fixed all compilation errors (escaped quotes, scope issues)
-- ✅ Package compiles cleanly with 0 warnings
-- ✅ Evil-mode self-registers on load
+- ✅ **Phase 6A COMPLETE** - Package system infrastructure
+- ✅ Package loading/unloading system implemented
+- ✅ Evil-mode package structure created (deferred to Phase 7)
+- ✅ All compilation errors fixed (0 warnings, 0 errors)
+- ✅ **Course correction based on research** - Discovered need for display infrastructure
+- ✅ Created comprehensive research document (`docs/DISPLAY_THEMING_RESEARCH.md`)
+- ✅ Roadmap updated with new phases 6B/6C/6D based on findings
+
+**Strategic Course Correction:**
+
+Research revealed we've been building the wrong foundation. **All sophisticated packages depend on display infrastructure we don't have:**
+- Completion framework needs **faces** for annotations (Marginalia, Vertico)
+- Evil-mode needs **overlays** for visual selection and **faces** for feedback
+- Themes need **face system** to propagate colors
+- All packages assume **text properties** and **overlays** exist
+
+**New Implementation Order:**
+1. **Phase 6B: Display & Theming** (4 weeks) - Faces, overlays, mode line, themes
+2. **Phase 6C: Completion Framework** (6 weeks) - Metadata, styles, CAPFs, built-in packages
+3. **Phase 6D: Infrastructure** (2 weeks) - Buffer-local vars, hooks, advice
+4. **Phase 6.5: Testing** (2 weeks) - Comprehensive test coverage
+5. **Phase 7: Evil-mode Integration** (2 weeks) - Now that dependencies exist
 
 **Next Steps:**
-1. Add `:load-package` and `:unload-package` commands to core
-2. Test loading evil-mode package via M-x
-3. Integrate Evil FSM with editor key handling
-4. Connect Evil keymaps to global keymap system
-5. Implement basic Evil commands (navigation, operators, motions)
+1. Begin Phase 6B Week 1: Face System
+   - Implement face data structure and registry
+   - Define standard faces (default, region, mode-line, etc.)
+   - CSS generation from face attributes
+2. Continue with overlays, mode line, and themes
+3. Then proceed to completion framework (Phase 6C)
 
-**Blocking Issues:** None - infrastructure complete, integration work remaining
+**Why This Matters:**
+Building display infrastructure first ensures that when we implement completion framework and packages, they can render properly with colors, annotations, and visual feedback - making Lexicon feel like real Emacs.
+
+**Blocking Issues:** None - clear path forward established
 
 **Last Updated:** 2025-12-24
 
