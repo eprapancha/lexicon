@@ -6,6 +6,8 @@
             [lexicon.events]    ; Load event handlers
             [lexicon.subs]      ; Load subscriptions
             [lexicon.lsp]       ; Load LSP handlers
+            [lexicon.effects]   ; Load DOM effect handlers
+            [lexicon.ui.faces]  ; Load face system
             [lexicon.views :as views]
             [lexicon.package-loader])) ; Load all packages
 
@@ -30,7 +32,7 @@
                  (println "✅ WASM JS module loaded")
                  ;; Initialize the WASM module - the default export is the init function
                  (let [^js init-fn (.-default wasm-module)]
-                   (-> (init-fn wasm-bg-path)
+                   (-> (init-fn #js {:module_or_path wasm-bg-path})
                      (.then (fn []
                               (println "✅ WASM initialized")
                               ;; WasmGapBuffer is available as a named export
@@ -59,13 +61,16 @@
   "Initialize the Lexicon editor application"
   []
   (println "🚀 Initializing Lexicon editor...")
-  
+
   ;; Initialize re-frame database
   (rf/dispatch [:initialize-db])
-  
+
+  ;; Initialize face system (Phase 6B)
+  (rf/dispatch [:faces/initialize])
+
   ;; Mount the React application
   (mount-app)
-  
+
   ;; Load WASM module asynchronously
   (load-wasm-module))
 

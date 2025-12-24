@@ -148,6 +148,48 @@
    :help {:awaiting-key? false                      ; Waiting for key press for C-h k
           :callback nil}                            ; Callback event vector for key press
    :packages {}                                     ; Loaded packages (Phase 6)
+
+   ;; Phase 6B: Face System - Visual styling with CSS variables
+   :faces {;; Default faces - every face maps attributes to CSS variable names
+           :default {:foreground "--lexicon-fg-default"
+                     :background "--lexicon-bg-default"
+                     :font-family "--lexicon-font-family-mono"
+                     :font-size "--lexicon-font-size"}
+           :region {:background "--lexicon-bg-region"
+                    :extend true}  ; Extend to window edge
+           :highlight {:background "--lexicon-bg-highlight"}
+           :mode-line {:foreground "--lexicon-fg-mode-line"
+                       :background "--lexicon-bg-mode-line"
+                       :box {:line-width 1 :color "--lexicon-border-mode-line"}}
+           :mode-line-inactive {:foreground "--lexicon-fg-mode-line-inactive"
+                                :background "--lexicon-bg-mode-line-inactive"}
+           :minibuffer-prompt {:foreground "--lexicon-fg-prompt"
+                               :font-weight "bold"}
+           :isearch {:foreground "--lexicon-fg-isearch"
+                     :background "--lexicon-bg-isearch"
+                     :font-weight "bold"}
+           :lazy-highlight {:background "--lexicon-bg-lazy-highlight"}
+           :error {:foreground "--lexicon-fg-error"
+                   :font-weight "bold"}
+           :warning {:foreground "--lexicon-fg-warning"}
+           :success {:foreground "--lexicon-fg-success"}
+           :shadow {:foreground "--lexicon-fg-shadow"}
+           ;; Font-lock faces for syntax highlighting
+           :font-lock-comment-face {:foreground "--lexicon-fg-comment"
+                                    :font-slant "italic"}
+           :font-lock-string-face {:foreground "--lexicon-fg-string"}
+           :font-lock-keyword-face {:foreground "--lexicon-fg-keyword"
+                                    :font-weight "bold"}
+           :font-lock-builtin-face {:foreground "--lexicon-fg-builtin"}
+           :font-lock-function-name-face {:foreground "--lexicon-fg-function"}
+           :font-lock-variable-name-face {:foreground "--lexicon-fg-variable"}
+           :font-lock-type-face {:foreground "--lexicon-fg-type"}
+           :font-lock-constant-face {:foreground "--lexicon-fg-constant"}
+           ;; Completion faces
+           :completions-common-part {:foreground "--lexicon-fg-completion-match"
+                                     :font-weight "bold"}
+           :completions-first-difference {:foreground "--lexicon-fg-completion-diff"}
+           :completions-annotations {:foreground "--lexicon-fg-completion-annotation"}}
    })
 
 (defn create-buffer

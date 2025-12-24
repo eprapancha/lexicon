@@ -420,20 +420,8 @@
                (disj current-modes mode-keyword)))))
 
 ;; -- Hook Management (Phase 5) --
-
-(rf/reg-event-db
- :add-hook
- (fn [db [_ hook-name command-event]]
-   "Add a command to a hook"
-   (update-in db [:hooks hook-name] (fnil conj []) command-event)))
-
-(rf/reg-event-db
- :remove-hook
- (fn [db [_ hook-name command-event]]
-   "Remove a command from a hook"
-   (update-in db [:hooks hook-name]
-              (fn [commands]
-                (vec (remove #(= % command-event) commands))))))
+;; NOTE: :add-hook and :remove-hook are defined later in the file
+;; (see Hook System Implementation section around line 929)
 
 ;; -- Minor Mode Implementations (Phase 5) --
 
