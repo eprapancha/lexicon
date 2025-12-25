@@ -15,6 +15,7 @@
             [lexicon.ui.mode-line]        ; Load mode-line formatter (Phase 6B Week 3)
             [lexicon.modes.help-mode]     ; Load help-mode (Phase 6B Week 3)
             [lexicon.modes.buffer-menu-mode]  ; Load buffer-menu-mode (Phase 6B Week 3)
+            [lexicon.ui.themes]           ; Load theme system (Phase 6B Week 4)
             [lexicon.views :as views]
             [lexicon.package-loader])) ; Load all packages
 
@@ -72,8 +73,11 @@
   ;; Initialize re-frame database
   (rf/dispatch [:initialize-db])
 
-  ;; Initialize face system (Phase 6B)
+  ;; Initialize face system (Phase 6B Week 1)
   (rf/dispatch [:faces/initialize])
+
+  ;; Initialize theme system (Phase 6B Week 4)
+  (rf/dispatch [:theme/initialize])
 
   ;; Mount the React application
   (mount-app)
