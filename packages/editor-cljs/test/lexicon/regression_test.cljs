@@ -2,36 +2,60 @@
   "Regression tests for critical workflows and past bugs.
 
   These tests ensure that bugs we've fixed stay fixed."
-  (:require [cljs.test :refer [deftest is testing run-tests]]
+  (:require [cljs.test :refer [deftest is testing run-tests use-fixtures async]]
             [re-frame.core :as rf]
             [re-frame.db :as rfdb]
-            [lexicon.db :as db]))
+            [lexicon.db :as db]
+            [lexicon.test-setup :as setup]  ; MUST load first - initializes WASM
+            [lexicon.events]    ; Register re-frame event handlers
+            [lexicon.subs]      ; Register re-frame subscriptions
+            [lexicon.test-events]))    ; Register test-specific event handlers
+
+;; Wait for WASM before running tests
+(use-fixtures :once
+  {:before (fn []
+             (async done
+               (-> setup/wasm-load-promise
+                   (.then (fn [_]
+                            (.log js/console "✅ WASM ready for regression-test")
+                            (done)))
+                   (.catch (fn [e]
+                             (.error js/console "❌ WASM failed in regression-test:" e)
+                             (done))))))})
 
 ;; -- Test Helpers --
 
 (defn reset-db!
   "Reset re-frame database to initial state for testing."
   []
-  (reset! rfdb/app-db (db/initial-db)))
+  ;; Preserve WASM constructor when resetting, but NOT wasm-instance
+  ;; Each buffer needs its own fresh WASM instance to avoid Rust borrow checker errors
+  (let [wasm-constructor (get-in @rfdb/app-db [:system :wasm-constructor])]
+    (reset! rfdb/app-db db/default-db)
+    (when wasm-constructor
+      (swap! rfdb/app-db assoc-in [:system :wasm-constructor] wasm-constructor))))
 
 (defn create-test-buffer
   "Create a test buffer with CONTENT and return buffer-id."
   [content]
-  (let [buffer-id (random-uuid)]
-    (rf/dispatch-sync [:create-buffer "test-buffer"
-                      :buffer-id buffer-id
-                      :content content])
-    buffer-id))
+  (let [WasmGapBuffer (get-in @rfdb/app-db [:system :wasm-constructor])
+        _ (when-not WasmGapBuffer
+            (.error js/console "❌ No WASM constructor found in db"))
+        wasm-instance (when WasmGapBuffer (new WasmGapBuffer content))]
+    (when wasm-instance
+      (rf/dispatch-sync [:create-buffer "test-buffer" wasm-instance])
+      ;; Get the actual buffer-id that was created (not a random one!)
+      (first (keys (get-in @rfdb/app-db [:buffers]))))))
 
 (defn get-buffer-text
   "Get text content of BUFFER-ID."
   [buffer-id]
   (let [db @rfdb/app-db
         buffer (get-in db [:buffers buffer-id])
-        wasm (:wasm-instance buffer)]
-    (when wasm
+        ^js wasm-instance (:wasm-instance buffer)]
+    (when wasm-instance
       (try
-        (.getText wasm)
+        (.getText ^js wasm-instance)
         (catch js/Error _ nil)))))
 
 ;; -- Phase 0: Basic Text Input Regression --
@@ -78,7 +102,6 @@
 (deftest test-window-tree-cursor-update
   (testing "REGRESSION: Cursor position updates correctly in window tree (Phase 3 fix)"
     (reset-db!)
-    (rf/dispatch-sync [:initialize-db])
     (let [buffer-id (create-test-buffer "Line 1\nLine 2\nLine 3")]
       (rf/dispatch-sync [:set-current-buffer buffer-id])
 
@@ -201,7 +224,6 @@
 (deftest test-minibuffer-completion
   (testing "REGRESSION: Minibuffer completion works"
     (reset-db!)
-    (rf/dispatch-sync [:initialize-db])
     (let [buffer-id (create-test-buffer "")]
       (rf/dispatch-sync [:set-current-buffer buffer-id])
 

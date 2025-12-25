@@ -31,14 +31,28 @@ Tests run in a real browser environment using **shadow-cljs :browser-test**:
 
 ### Quick Start
 
+**Option A: Run app + tests together** (recommended during development):
 ```bash
-# Start test server with hot reload
+cd /home/nixos/projects/lexicon/packages/editor-cljs
+./scripts/dev-with-tests.sh
+
+# Opens TWO builds:
+# - App:   http://localhost:8080
+# - Tests: http://localhost:8021/test-index.html
+```
+
+**Option B: Run tests only** (separate terminal):
+```bash
+# Keep your existing "npx shadow-cljs watch app" running
+# Open a NEW terminal and run:
 cd /home/nixos/projects/lexicon/packages/editor-cljs
 npx shadow-cljs watch test
 
 # Open browser to http://localhost:8021/test-index.html
-# Tests run automatically and display results
 ```
+
+**Important**: The test build (`:test`) is SEPARATE from the app build (`:app`).
+They run on different ports and can run simultaneously.
 
 ### Test Infrastructure
 

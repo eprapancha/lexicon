@@ -118,9 +118,9 @@
 
 (rf/reg-event-fx
  :wasm-module-loaded
- (fn [{:keys [db]} [_ {:keys [instance constructor]}]]
+ (fn [{:keys [db]} [_ {:keys [^js instance constructor]}]]
    "Store the loaded WASM module instance and constructor in the app state"
-   (let [initial-text (.getText instance)
+   (let [initial-text (.getText ^js instance)
          initial-line-count (count (clojure.string/split initial-text #"\n" -1))]
      {:db (-> db
               (assoc :initialized? true)
@@ -2706,19 +2706,19 @@ C-h ?   This help menu
  (fn [{:keys [db]} [_ buffer-id]]
    "Request full parse of buffer content"
    (let [buffer (get-in db [:buffers buffer-id])
-         wasm-instance (:wasm-instance buffer)
+         ^js wasm-instance (:wasm-instance buffer)
          language (:language buffer :text)
          worker (get-in db [:system :parser-worker])
          worker-ready? (get-in db [:system :parser-worker-ready?])]
-     
-     (println "🎯 Parse request for buffer" buffer-id 
-              "Language:" language 
+
+     (println "🎯 Parse request for buffer" buffer-id
+              "Language:" language
               "Worker:" (if worker "exists" "missing")
               "Ready:" worker-ready?
               "WASM:" (if wasm-instance "exists" "missing"))
-     
+
      (if (and worker worker-ready? wasm-instance)
-       (let [text (.getText wasm-instance)]
+       (let [text (.getText ^js wasm-instance)]
          (println "📝 Sending text to parser, length:" (count text))
          (.postMessage worker 
            (clj->js {:type "parse"
@@ -2740,12 +2740,12 @@ C-h ?   This help menu
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          buffer (get-in db [:buffers active-buffer-id])
-         wasm-instance (:wasm-instance buffer)
+         ^js wasm-instance (:wasm-instance buffer)
          worker (get-in db [:system :parser-worker])
          worker-ready? (get-in db [:system :parser-worker-ready?])]
-     
+
      (if (and worker worker-ready? wasm-instance)
-       (let [text (.getText wasm-instance)]
+       (let [text (.getText ^js wasm-instance)]
          (.postMessage worker 
            (clj->js {:type "edit"
                      :payload {:edit edit-details

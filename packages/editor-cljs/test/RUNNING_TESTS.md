@@ -18,23 +18,60 @@ Lexicon uses **shadow-cljs browser-test** for automated testing. Tests are writt
 
 ## Running Tests
 
-### Method 1: Manual Browser Testing (Recommended for Now)
+**IMPORTANT**: Lexicon has TWO separate shadow-cljs builds:
+- **App build** (`:app`) → Main application on port **8080**
+- **Test build** (`:test`) → Test suite on port **8021**
 
-1. **Start the test server**:
-   ```bash
-   cd /home/nixos/projects/lexicon/packages/editor-cljs
-   npx shadow-cljs watch test
-   ```
+You can run them **simultaneously** in separate terminals or together with a script.
 
-2. **Open test page in browser**:
-   - URL: http://localhost:8021/test-index.html
-   - Tests will run automatically and display results
-   - Watch mode will recompile tests when you save changes
+### Method 1: Run Both Builds Together (Recommended)
 
-3. **View results**:
-   - Test results appear in the browser UI
-   - Console output shows detailed test execution
-   - Failures are highlighted with error messages
+**Use the provided script to run app + tests concurrently**:
+
+```bash
+cd /home/nixos/projects/lexicon/packages/editor-cljs
+./scripts/dev-with-tests.sh
+```
+
+This starts:
+- ✅ App at http://localhost:8080
+- ✅ Tests at http://localhost:8021/test-index.html
+
+Both watch for changes and auto-reload. Press Ctrl+C to stop both.
+
+### Method 2: Run Tests in Separate Terminal
+
+**Keep your app development running** and open a new terminal:
+
+```bash
+# Terminal 1: Keep your existing app build running
+npx shadow-cljs watch app
+
+# Terminal 2: Start test build (new terminal)
+cd /home/nixos/projects/lexicon/packages/editor-cljs
+npx shadow-cljs watch test
+```
+
+Open http://localhost:8021/test-index.html to see tests.
+
+### Method 3: Run Only Tests (No App)
+
+**If you only want to run tests** without the main app:
+
+```bash
+cd /home/nixos/projects/lexicon/packages/editor-cljs
+npx shadow-cljs watch test
+```
+
+Open http://localhost:8021/test-index.html to see tests.
+
+### Viewing Test Results
+
+1. **Open test page**: http://localhost:8021/test-index.html
+2. **Tests run automatically** when page loads
+3. **Results display in browser** with pass/fail status
+4. **Console shows details** - open DevTools to see assertions
+5. **Auto-reload**: Tests recompile when you save changes
 
 ### Method 2: Headless Browser Testing (Future)
 

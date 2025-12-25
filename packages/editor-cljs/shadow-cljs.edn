@@ -17,7 +17,6 @@
 
   :test {:target :browser-test
          :test-dir "resources/public/test"
-         :runner-ns lexicon.test-runner
          :devtools {:http-root "resources/public"
                     :http-port 8021}
          :ns-regexp "lexicon.*-test$"}}}}}

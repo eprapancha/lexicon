@@ -62,9 +62,9 @@
                       (when (= (:name buf) buffer-name) buf))
                     (:buffers db))]
     (if buffer
-      (let [size (if-let [wasm (:wasm-instance buffer)]
+      (let [size (if-let [^js wasm (:wasm-instance buffer)]
                   (try
-                    (count (.getText wasm))
+                    (count (.getText ^js wasm))
                     (catch js/Error _ 0))
                   0)
             mode-name (name (:major-mode buffer :fundamental-mode))
