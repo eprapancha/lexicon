@@ -21,11 +21,11 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 
 ## Current Status
 
-**Phase 6B of 11** - Display & Theming ✅ COMPLETE | **Next: Phase 6C - Completion Framework**
+**Phase 6D of 11** - Missing Emacs Infrastructure ✅ COMPLETE | **Next: Phase 6.5 - Testing & QA**
 
 **What Works:**
-- ✅ **Phases 0-6B Complete** - Full working Emacs core + display & theming!
-- ✅ **Phase 6B Complete** - Face system, overlays, text properties, mode line, themes!
+- ✅ **Phases 0-6D Complete** - Full Emacs infrastructure ready for packages!
+- ✅ **Phase 6D Complete** - Buffer-local variables, hooks, advice, thing-at-point, advanced undo!
   - Text editing (insert, delete, undo, kill ring)
   - Navigation (C-f/b/n/p, C-a/e, M-f/b, M-</>, arrows)
   - Multi-buffer support (C-x b, C-x C-f, C-x C-s)
@@ -35,10 +35,16 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
   - Major/minor modes with hooks
   - Universal argument (C-u)
   - Mark and region (C-SPC, C-w, M-w, C-y)
+  - Completion framework (metadata, styles, tables, CAPFs)
+  - Built-in packages (project.el, imenu, recentf, savehist)
+  - Buffer-local variables & enhanced hooks
+  - Advice system for function wrapping
+  - Thing-at-point subsystem
+  - Advanced undo with boundaries and groups
 
 **Current Work:**
-- ✅ **Phase 6B Complete** - Display & Theming Foundation (4 weeks, all complete!)
-- 📋 **Next: Phase 6C** - Completion Framework (metadata, styles, CAPFs, built-in packages)
+- ✅ **Phase 6A-6D Complete** - All core Emacs infrastructure implemented!
+- 📋 **Next: Phase 6.5** - Testing & Quality Assurance (CRITICAL before external contributions)
 
 **See [docs/ROADMAP.md](./docs/ROADMAP.md) for detailed progress and next steps**
 
@@ -216,8 +222,8 @@ MIT License - See [LICENSE](./LICENSE) for details.
 
 ---
 
-**Current Phase:** Phase 6B Complete | Next: Phase 6C - Completion Framework
+**Current Phase:** Phase 6D Complete | Next: Phase 6.5 - Testing & QA
 **Last Updated:** 2025-12-25
-**Status:** 🟢 Active Development - Phases 0-6B Complete!
+**Status:** 🟢 Active Development - Phases 0-6D Complete!
 
 *Building Emacs for the web, one gap buffer at a time.*

@@ -1,7 +1,7 @@
 # Lexicon Development Roadmap
 
 **Last Updated:** 2025-12-25
-**Current Phase:** Phase 6B - Display & Theming Foundation ✅ COMPLETE
+**Current Phase:** Phase 6D - Missing Emacs Infrastructure ✅ COMPLETE
 
 ---
 
@@ -630,7 +630,7 @@ The completion framework is the **foundation of the package ecosystem**. Package
 
 ## Phase 6D: Missing Emacs Infrastructure
 
-**Status:** 🔲 Planned
+**Status:** ✅ COMPLETE (Dec 25, 2025)
 **Goal:** Buffer-local variables, enhanced hooks, advice system
 **Timeline:** 2 weeks
 **Prerequisites:** ✅ Phase 6A complete, ✅ Phase 6B complete, ✅ Phase 6C complete
@@ -644,68 +644,68 @@ These are fundamental Emacs features that **packages assume exist**:
 
 ### Week 1: Buffer-Local Variables & Hooks
 
-#### Buffer-Local Variables (🔲 Planned)
-- [ ] `make-local-variable` - Make variable buffer-local in current buffer
-- [ ] `make-variable-buffer-local` - Auto buffer-local for all buffers
-- [ ] Each buffer has own value for buffer-local vars
-- [ ] Global value vs buffer-local value distinction
-- [ ] `setq-local` - Set buffer-local value
-- [ ] `defvar-local` - Define buffer-local variable
+#### Buffer-Local Variables (✅ COMPLETE)
+- [x] `make-local-variable` - Make variable buffer-local in current buffer
+- [x] `make-variable-buffer-local` - Auto buffer-local for all buffers
+- [x] Each buffer has own value for buffer-local vars
+- [x] Global value vs buffer-local value distinction
+- [x] `setq-local` - Set buffer-local value
+- [x] `defvar-local` - Define buffer-local variable
 
-#### Enhanced Hooks (🔲 Planned)
-- [ ] `pre-command-hook` - Run before every command
-- [ ] `post-command-hook` - Run after every command
-- [ ] `window-configuration-change-hook` - Run when windows change
-- [ ] `kill-buffer-hook` - Run when buffer is killed
-- [ ] `change-major-mode-hook` - Run when major mode changes
-- [ ] Buffer-local hooks (`:add-hook ... nil t`)
+#### Enhanced Hooks (✅ COMPLETE)
+- [x] `pre-command-hook` - Run before every command
+- [x] `post-command-hook` - Run after every command
+- [x] `window-configuration-change-hook` - Run when windows change
+- [x] `kill-buffer-hook` - Run when buffer is killed
+- [x] `change-major-mode-hook` - Run when major mode changes
+- [x] Buffer-local hooks (`:add-hook ... nil t`)
 
 ### Week 2: Advice System & Advanced Features
 
-#### Advice Infrastructure (🔲 Planned)
-- [ ] `advice-add` - Add advice to function
-- [ ] `advice-remove` - Remove advice from function
-- [ ] `:before` advice - Run before original function
-- [ ] `:after` advice - Run after original function
-- [ ] `:around` advice - Wrap original function
-- [ ] `:override` advice - Replace original function
-- [ ] Multiple advice can stack on same function
+#### Advice Infrastructure (✅ COMPLETE)
+- [x] `advice-add` - Add advice to function
+- [x] `advice-remove` - Remove advice from function
+- [x] `:before` advice - Run before original function
+- [x] `:after` advice - Run after original function
+- [x] `:around` advice - Wrap original function
+- [x] `:override` advice - Replace original function
+- [x] Multiple advice can stack on same function
 
-#### Advice Application (🔲 Planned)
-- [ ] Track advised functions in registry
-- [ ] Generate wrapped function with advice chain
-- [ ] Advice arguments and return values
-- [ ] Packages can modify existing Lexicon functions
+#### Advice Application (✅ COMPLETE)
+- [x] Track advised functions in registry
+- [x] Generate wrapped function with advice chain
+- [x] Advice arguments and return values
+- [x] Packages can modify existing Lexicon functions
 
-#### thing-at-point Subsystem (🔲 Planned)
-- [ ] `thing-at-point` multimethod (dispatch on type: `:symbol`, `:url`, `:filename`, `:word`)
-- [ ] `:symbol` - Find symbol boundaries around cursor
-- [ ] `:url` - Find URL boundaries (http://, https://)
-- [ ] `:filename` - Find file path at point
-- [ ] `bounds-of-thing-at-point` - Return `{:start N :end M}` for thing
-- [ ] Used by Embark for context-aware actions
-- [ ] Used by `find-file-at-point` command
+#### thing-at-point Subsystem (✅ COMPLETE)
+- [x] `thing-at-point` multimethod (dispatch on type: `:symbol`, `:url`, `:filename`, `:word`)
+- [x] `:symbol` - Find symbol boundaries around cursor
+- [x] `:url` - Find URL boundaries (http://, https://)
+- [x] `:filename` - Find file path at point
+- [x] `bounds-of-thing-at-point` - Return `{:start N :end M}` for thing
+- [x] Used by Embark for context-aware actions
+- [x] Used by `find-file-at-point` command
 
-#### Advanced Undo System (🔲 Planned)
-- [ ] `:undo-boundary` markers in undo stack
-- [ ] `undo-boundary` command - Insert boundary marker
-- [ ] `:undo/begin-change-group` - Start grouped undo
-- [ ] `:undo/end-change-group` - End grouped undo
-- [ ] Update `:undo` to respect boundaries (undo entire group at once)
-- [ ] `:undo-recording-enabled?` flag to prevent recording during undo
-- [ ] Used by complex commands (format-buffer, completion insertion)
+#### Advanced Undo System (✅ COMPLETE)
+- [x] `:undo-boundary` markers in undo stack
+- [x] `undo-boundary` command - Insert boundary marker
+- [x] `:undo/begin-change-group` - Start grouped undo
+- [x] `:undo/end-change-group` - End grouped undo
+- [x] Update `:undo` to respect boundaries (undo entire group at once)
+- [x] `:undo-recording-enabled?` flag to prevent recording during undo
+- [x] Used by complex commands (format-buffer, completion insertion)
 
 ### Success Criteria
 
-- [ ] Buffer-local variables work (each buffer has own value)
-- [ ] pre-command-hook and post-command-hook fire correctly
-- [ ] Advice can wrap existing functions
-- [ ] Multiple advice can stack on same function
-- [ ] thing-at-point finds symbols, URLs, and filenames
-- [ ] Advanced undo groups multiple edits into single undo step
-- [ ] Packages can use all these features
+- [x] Buffer-local variables work (each buffer has own value)
+- [x] pre-command-hook and post-command-hook fire correctly
+- [x] Advice can wrap existing functions
+- [x] Multiple advice can stack on same function
+- [x] thing-at-point finds symbols, URLs, and filenames
+- [x] Advanced undo groups multiple edits into single undo step
+- [x] Packages can use all these features
 
-**Progress:** 0/7 complete (0%)
+**Progress:** 7/7 complete (100%) ✅ PHASE 6D COMPLETE!
 
 ---
 
