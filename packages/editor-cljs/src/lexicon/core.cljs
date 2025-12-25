@@ -24,6 +24,11 @@
             [lexicon.packages.imenu]      ; Load imenu (Phase 6C Week 6)
             [lexicon.packages.recentf]    ; Load recentf (Phase 6C Week 6)
             [lexicon.packages.savehist]   ; Load savehist (Phase 6C Week 6)
+            [lexicon.buffer-local]        ; Load buffer-local variables (Phase 6D Week 1)
+            [lexicon.hooks]               ; Load enhanced hooks (Phase 6D Week 1)
+            [lexicon.advice]              ; Load advice system (Phase 6D Week 2)
+            [lexicon.thing-at-point]      ; Load thing-at-point (Phase 6D Week 2)
+            [lexicon.advanced-undo]       ; Load advanced undo (Phase 6D Week 2)
             [lexicon.views :as views]
             [lexicon.package-loader])) ; Load all packages
 
