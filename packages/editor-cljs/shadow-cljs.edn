@@ -17,6 +17,6 @@
 
   :test {:target :browser-test
          :test-dir "resources/public/test"
-         :devtools {:http-root "resources/public/test"
+         :devtools {:http-root "resources/public"
                     :http-port 8021}
-         :ns-regexp "lexicon.*-test$"}}}}
+         :ns-regexp "lexicon.*-test$"}}}}}

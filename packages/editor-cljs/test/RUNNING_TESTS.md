@@ -27,7 +27,7 @@ Lexicon uses **shadow-cljs browser-test** for automated testing. Tests are writt
    ```
 
 2. **Open test page in browser**:
-   - URL: http://localhost:8021/index.html
+   - URL: http://localhost:8021/test-index.html
    - Tests will run automatically and display results
    - Watch mode will recompile tests when you save changes
 

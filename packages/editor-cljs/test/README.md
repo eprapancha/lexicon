@@ -36,7 +36,7 @@ Tests run in a real browser environment using **shadow-cljs :browser-test**:
 cd /home/nixos/projects/lexicon/packages/editor-cljs
 npx shadow-cljs watch test
 
-# Open browser to http://localhost:8021/index.html
+# Open browser to http://localhost:8021/test-index.html
 # Tests run automatically and display results
 ```
 

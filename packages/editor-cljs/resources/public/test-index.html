@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Lexicon Test Suite</title>
+    <style>
+        body {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            margin: 20px;
+        }
+        h1 {
+            color: #4fc1ff;
+        }
+        #app {
+            margin-top: 20px;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .pass {
+            background-color: #1e4620;
+            border-left: 4px solid #4caf50;
+        }
+        .fail {
+            background-color: #4a1616;
+            border-left: 4px solid #f44336;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Lexicon Test Suite</h1>
+    <div id="app"></div>
+
+    <!-- Browser polyfills for Node.js globals -->
+    <script>
+        // Polyfill for Node.js global object
+        window.global = window;
+
+        // Polyfill for process.env if needed
+        window.process = window.process || { env: {} };
+    </script>
+
+    <!-- Load test bundle -->
+    <script src="/test/js/test.js"></script>
+
+    <!-- Initialize shadow-cljs test runner -->
+    <script>
+        if (typeof shadow !== 'undefined' && shadow.test && shadow.test.browser) {
+            shadow.test.browser.init();
+        } else {
+            console.error('Shadow-cljs test runner not loaded properly');
+            document.getElementById('app').innerHTML =
+                '<div class="fail">❌ Test runner failed to load. Check console for errors.</div>';
+        }
+    </script>
+</body>
+</html>
