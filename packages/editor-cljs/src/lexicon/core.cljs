@@ -11,6 +11,10 @@
             [lexicon.ui.text-properties]  ; Load text properties (Phase 6B Week 2)
             [lexicon.ui.overlays]         ; Load overlay system (Phase 6B Week 2)
             [lexicon.ui.frames]           ; Load child frames (Phase 6B Week 2)
+            [lexicon.modes.special-mode]  ; Load special-mode (Phase 6B Week 3)
+            [lexicon.ui.mode-line]        ; Load mode-line formatter (Phase 6B Week 3)
+            [lexicon.modes.help-mode]     ; Load help-mode (Phase 6B Week 3)
+            [lexicon.modes.buffer-menu-mode]  ; Load buffer-menu-mode (Phase 6B Week 3)
             [lexicon.views :as views]
             [lexicon.package-loader])) ; Load all packages
 

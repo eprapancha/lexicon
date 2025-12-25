@@ -1810,9 +1810,19 @@ C-h ?   This help menu
              active-buffer-id (:buffer-id active-window)
              active-buffer (get (:buffers db) active-buffer-id)
              wasm-instance (:wasm-instance active-buffer)
-             current-cursor (get-in db [:ui :cursor-position] 0)]
-         
-         (if wasm-instance
+             current-cursor (get-in db [:ui :cursor-position] 0)
+             is-read-only? (:is-read-only? active-buffer false)]
+
+         ;; Phase 6B Week 3: Read-only buffer enforcement
+         (if is-read-only?
+           (do
+             (println "🚫 Buffer is read-only, rejecting operation:" (:op operation))
+             (rf/dispatch [:echo/message "Buffer is read-only"])
+             ;; Remove transaction from queue without processing
+             (swap! re-frame.db/app-db update :transaction-queue rest)
+             ;; Continue processing queue in case there are other operations
+             (rf/dispatch [:editor/process-queue]))
+           (if wasm-instance
            (do
              (println "🔧 Processing operation:" (:op operation) "with WASM instance")
              ;; Immediately set the in-flight flag in the database to prevent concurrent operations
@@ -1907,7 +1917,7 @@ C-h ?   This help menu
                (println "Unknown operation type:" (:op operation))
                (rf/dispatch [:editor/transaction-failure 
                             {:error "Unknown operation type"
-                             :operation operation}]))))))))))
+                             :operation operation}])))))))))))
 
 ;; Transaction success handler - updates state and continues processing
 (rf/reg-event-fx
