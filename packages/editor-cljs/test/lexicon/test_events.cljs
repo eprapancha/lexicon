@@ -89,9 +89,8 @@
  :forward-char
  (fn [db [_]]
    "Move cursor forward one character (for testing)"
-   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-         active-buffer-id (:buffer-id active-window)
-         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+   (let [buffer-id (get-in db [:editor :current-buffer-id])
+         ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)]
      (if wasm-instance
        (let [max-pos (.length wasm-instance)
@@ -111,9 +110,8 @@
  :beginning-of-line
  (fn [db [_]]
    "Move to beginning of line (for testing)"
-   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-         active-buffer-id (:buffer-id active-window)
-         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+   (let [buffer-id (get-in db [:editor :current-buffer-id])
+         ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)]
      (if wasm-instance
        (let [text (.getText wasm-instance)
@@ -128,9 +126,8 @@
  :end-of-line
  (fn [db [_]]
    "Move to end of line (for testing)"
-   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-         active-buffer-id (:buffer-id active-window)
-         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+   (let [buffer-id (get-in db [:editor :current-buffer-id])
+         ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)]
      (if wasm-instance
        (let [text (.getText wasm-instance)
@@ -143,6 +140,81 @@
          (assoc-in db [:ui :cursor-position] new-pos))
        db))))
 
+;; Mark and region events
+(rf/reg-event-db
+ :set-mark-command
+ (fn [db [_]]
+   "Set mark at current point (for testing)"
+   (let [point (get-in db [:ui :cursor-position] 0)]
+     (assoc-in db [:ui :mark] point))))
+
+(rf/reg-event-db
+ :kill-region
+ (fn [db [_]]
+   "Kill text between mark and point (for testing)"
+   (let [buffer-id (get-in db [:editor :current-buffer-id])
+         buffer (get-in db [:buffers buffer-id])
+         ^js wasm (:wasm-instance buffer)
+         point (get-in db [:ui :cursor-position] 0)
+         mark (get-in db [:ui :mark] 0)
+         start (min mark point)
+         end (max mark point)]
+     (if wasm
+       (let [killed-text (.getText wasm start end)]
+         ;; Delete the region
+         (.delete wasm start end)
+         ;; Add to kill ring and update state
+         (-> db
+             (assoc-in [:ui :cursor-position] start)
+             (assoc-in [:ui :kill-ring] [killed-text])
+             (update-in [:buffers buffer-id :editor-version] (fnil inc 0))))
+       db))))
+
+(rf/reg-event-db
+ :yank
+ (fn [db [_]]
+   "Yank text from kill ring at point (for testing)"
+   (let [buffer-id (get-in db [:editor :current-buffer-id])
+         buffer (get-in db [:buffers buffer-id])
+         ^js wasm (:wasm-instance buffer)
+         point (get-in db [:ui :cursor-position] 0)
+         kill-ring (get-in db [:ui :kill-ring])
+         text-to-yank (first kill-ring)]
+     (if (and wasm text-to-yank)
+       (do
+         (.insert wasm point text-to-yank)
+         (-> db
+             (assoc-in [:ui :cursor-position] (+ point (count text-to-yank)))
+             (update-in [:buffers buffer-id :editor-version] (fnil inc 0))))
+       db))))
+
+(rf/reg-event-db
+ :delete-backward-char
+ (fn [db [_]]
+   "Delete character before point (for testing)"
+   (let [buffer-id (get-in db [:editor :current-buffer-id])
+         buffer (get-in db [:buffers buffer-id])
+         ^js wasm (:wasm-instance buffer)
+         point (get-in db [:ui :cursor-position] 0)]
+     (if (and wasm (> point 0))
+       (do
+         (.delete wasm (dec point) point)
+         (-> db
+             (assoc-in [:ui :cursor-position] (dec point))
+             (update-in [:buffers buffer-id :editor-version] (fnil inc 0))))
+       db))))
+
+(rf/reg-event-db
+ :undo
+ (fn [db [_]]
+   "Undo last operation (for testing)"
+   (let [buffer-id (get-in db [:editor :current-buffer-id])
+         buffer (get-in db [:buffers buffer-id])
+         ^js wasm (:wasm-instance buffer)]
+     (when wasm
+       (.undo wasm))
+     db)))
+
 (rf/reg-event-fx
  :split-window-horizontally
  (fn [{:keys [db]} [_]]
@@ -154,3 +226,28 @@
  (fn [{:keys [db]} [_]]
    "Split current window vertically (for testing)"
    {:fx [[:dispatch [:split-window-below]]]}))
+
+;; Minibuffer events
+(rf/reg-event-db
+ :minibuffer/activate
+ (fn [db [_ options]]
+   "Activate minibuffer with prompt and completions (for testing)"
+   (assoc db :minibuffer
+          {:active? true
+           :prompt (:prompt options)
+           :completions (:completions options)
+           :on-confirm (:on-confirm options)
+           :input ""})))
+
+(rf/reg-event-db
+ :minibuffer/complete
+ (fn [db [_]]
+   "Complete minibuffer input (for testing)"
+   (let [minibuffer (:minibuffer db)
+         completions (:completions minibuffer)
+         input (:input minibuffer "")
+         ;; Simple completion: find first match
+         match (first (filter #(clojure.string/starts-with? % input) completions))]
+     (if match
+       (assoc-in db [:minibuffer :input] match)
+       db))))
