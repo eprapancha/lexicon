@@ -59,7 +59,8 @@
    (let [buffer (get-in db [:buffers buffer-id])
          ^js wasm (:wasm-instance buffer)]
      (when wasm
-       (.delete ^js wasm start end))
+       ;; WASM delete takes (position, length), not (start, end)
+       (.delete ^js wasm start (- end start)))
      (update-in db [:buffers buffer-id :editor-version] (fnil inc 0)))))
 
 (rf/reg-event-db
@@ -188,8 +189,8 @@
      (if wasm
        (let [full-text (.getText wasm)
              killed-text (subs full-text start end)]
-         ;; Delete the region
-         (.delete wasm start end)
+         ;; Delete the region - WASM delete takes (position, length)
+         (.delete wasm start (- end start))
          ;; Add to kill ring and update state
          (-> db
              (assoc-in [:ui :cursor-position] start)
@@ -225,7 +226,8 @@
          point (get-in db [:ui :cursor-position] 0)]
      (if (and buffer-id buffer wasm (> point 0))
        (try
-         (.delete wasm (dec point) point)
+         ;; WASM delete takes (position, length), not (start, end)
+         (.delete wasm (dec point) 1)
          (-> db
              (assoc-in [:ui :cursor-position] (dec point))
              (update-in [:buffers buffer-id :editor-version] (fnil inc 0)))

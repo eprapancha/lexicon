@@ -30,10 +30,15 @@
   []
   ;; Preserve WASM constructor when resetting, but NOT wasm-instance
   ;; Each buffer needs its own fresh WASM instance to avoid Rust borrow checker errors
-  (let [wasm-constructor (get-in @rfdb/app-db [:system :wasm-constructor])]
+  (let [wasm-constructor (get-in @rfdb/app-db [:system :wasm-constructor])
+        initial-window-id (random-uuid)]
     (reset! rfdb/app-db db/default-db)
     (when wasm-constructor
-      (swap! rfdb/app-db assoc-in [:system :wasm-constructor] wasm-constructor))))
+      (swap! rfdb/app-db assoc-in [:system :wasm-constructor] wasm-constructor))
+    ;; Set up flat window structure for tests
+    (swap! rfdb/app-db assoc :windows {initial-window-id {:window-id initial-window-id
+                                                           :buffer-id nil}})
+    (swap! rfdb/app-db assoc-in [:editor :active-window-id] initial-window-id)))
 
 (defn create-test-buffer
   "Create a test buffer with CONTENT and return buffer-id."
@@ -55,10 +60,16 @@
   (let [db @rfdb/app-db
         buffer (get-in db [:buffers buffer-id])
         ^js wasm-instance (:wasm-instance buffer)]
+    (when-not buffer
+      (.error js/console "❌ get-buffer-text: Buffer not found for id" buffer-id))
+    (when-not wasm-instance
+      (.error js/console "❌ get-buffer-text: No WASM instance for buffer" buffer-id))
     (when wasm-instance
       (try
         (.getText ^js wasm-instance)
-        (catch js/Error _ nil)))))
+        (catch js/Error e
+          (.error js/console "❌ get-buffer-text: getText failed" e)
+          nil)))))
 
 ;; -- Phase 0: Basic Text Input Regression --
 

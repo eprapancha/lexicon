@@ -89,8 +89,8 @@
 (deftest test-delete-text
   (testing "Deleting text from buffer"
     (let [buffer-id (create-test-buffer "Hello, World!")]
-      ;; Delete ", World!" (from position 5 to end)
-      (rf/dispatch-sync [:buffer/delete buffer-id 5 8])
+      ;; Delete ", World!" (from position 5 to end at position 13)
+      (rf/dispatch-sync [:buffer/delete buffer-id 5 13])
       (is (= "Hello" (get-buffer-text buffer-id))
           "Text should be deleted from buffer"))))
 
