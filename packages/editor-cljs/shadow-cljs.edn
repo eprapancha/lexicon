@@ -13,5 +13,9 @@
         :compiler-options {:optimizations :simple
                           :pretty-print false
                           :pseudo-names false
-                          :externs ["wasm-externs.js"]}
-}}}
+                          :externs ["wasm-externs.js"]}}
+
+  :test {:target :node-test
+         :output-to "target/test.cjs"
+         :autorun true
+         :ns-regexp "lexicon.*-test$"}}}
