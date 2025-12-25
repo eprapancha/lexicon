@@ -11,6 +11,31 @@
 ;; Buffer manipulation events for tests
 
 (rf/reg-event-db
+ :create-buffer
+ (fn [db [_ name & rest]]
+   "Create a buffer (for testing) - handles both signatures"
+   (let [WasmGapBuffer (get-in db [:system :wasm-constructor])]
+     (if (keyword? (first rest))
+       ;; Signature 2: [:create-buffer name :buffer-id id :content text]  (from test)
+       (let [{:keys [buffer-id content]} (apply hash-map rest)
+             wasm-instance (when WasmGapBuffer (new WasmGapBuffer (or content "")))]
+         (when (and buffer-id wasm-instance)
+           (-> db
+               (assoc-in [:buffers buffer-id] {:buffer-id buffer-id
+                                               :name name
+                                               :wasm-instance wasm-instance
+                                               :editor-version 0}))))
+       ;; Signature 1: [:create-buffer name wasm-instance]
+       (let [wasm-instance (first rest)
+             buffer-id (db/next-buffer-id (:buffers db))]
+         (when wasm-instance
+           (-> db
+               (assoc-in [:buffers buffer-id] {:buffer-id buffer-id
+                                               :name name
+                                               :wasm-instance wasm-instance
+                                               :editor-version 0}))))))))
+
+(rf/reg-event-db
  :buffer/goto-char
  (fn [db [_ buffer-id pos]]
    "Move point to position POS in BUFFER-ID (for testing)"
@@ -160,13 +185,14 @@
          start (min mark point)
          end (max mark point)]
      (if wasm
-       (let [killed-text (.getText wasm start end)]
+       (let [full-text (.getText wasm)
+             killed-text (subs full-text start end)]
          ;; Delete the region
          (.delete wasm start end)
          ;; Add to kill ring and update state
          (-> db
              (assoc-in [:ui :cursor-position] start)
-             (assoc-in [:ui :kill-ring] [killed-text])
+             (update :kill-ring (fnil conj []) killed-text)
              (update-in [:buffers buffer-id :editor-version] (fnil inc 0))))
        db))))
 
@@ -178,7 +204,7 @@
          buffer (get-in db [:buffers buffer-id])
          ^js wasm (:wasm-instance buffer)
          point (get-in db [:ui :cursor-position] 0)
-         kill-ring (get-in db [:ui :kill-ring])
+         kill-ring (:kill-ring db)
          text-to-yank (first kill-ring)]
      (if (and wasm text-to-yank)
        (do
@@ -196,24 +222,25 @@
          buffer (get-in db [:buffers buffer-id])
          ^js wasm (:wasm-instance buffer)
          point (get-in db [:ui :cursor-position] 0)]
-     (if (and wasm (> point 0))
-       (do
+     (if (and buffer-id buffer wasm (> point 0))
+       (try
          (.delete wasm (dec point) point)
          (-> db
              (assoc-in [:ui :cursor-position] (dec point))
-             (update-in [:buffers buffer-id :editor-version] (fnil inc 0))))
+             (update-in [:buffers buffer-id :editor-version] (fnil inc 0)))
+         (catch js/Error e
+           (.error js/console "delete-backward-char failed:" e)
+           db))
        db))))
 
 (rf/reg-event-db
  :undo
  (fn [db [_]]
    "Undo last operation (for testing)"
-   (let [buffer-id (get-in db [:editor :current-buffer-id])
-         buffer (get-in db [:buffers buffer-id])
-         ^js wasm (:wasm-instance buffer)]
-     (when wasm
-       (.undo wasm))
-     db)))
+   ;; TODO: WASM doesn't expose undo API yet
+   ;; This is a stub that will fail tests but not error
+   (.warn js/console "Undo not yet implemented in WASM")
+   db))
 
 (rf/reg-event-fx
  :split-window-horizontally
