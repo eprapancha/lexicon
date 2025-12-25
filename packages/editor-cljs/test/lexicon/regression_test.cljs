@@ -38,6 +38,7 @@
 (defn create-test-buffer
   "Create a test buffer with CONTENT and return buffer-id."
   [content]
+  (reset-db!)
   (let [WasmGapBuffer (get-in @rfdb/app-db [:system :wasm-constructor])
         _ (when-not WasmGapBuffer
             (.error js/console "❌ No WASM constructor found in db"))

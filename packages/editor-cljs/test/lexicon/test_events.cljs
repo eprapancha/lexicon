@@ -82,14 +82,14 @@
          ^js wasm (:wasm-instance buffer)
          point (get-in db [:ui :cursor-position] 0)]
      (if wasm
-       (let [;; Calculate UTF-8 byte length for proper cursor positioning
-             utf8-length (.-length (.encode (js/TextEncoder.) char))]
+       (do
          ;; Insert character at current position
          (.insert ^js wasm point char)
-         ;; Update cursor position by UTF-8 byte length, not character count
-         (-> db
-             (assoc-in [:ui :cursor-position] (+ point utf8-length))
-             (update-in [:buffers buffer-id :editor-version] (fnil inc 0))))
+         ;; Query WASM for new length to get accurate UTF-8 byte position
+         (let [new-pos (.length wasm)]
+           (-> db
+               (assoc-in [:ui :cursor-position] new-pos)
+               (update-in [:buffers buffer-id :editor-version] (fnil inc 0)))))
        db))))
 
 (rf/reg-event-db
