@@ -43,11 +43,12 @@
   (let [WasmGapBuffer (get-in @rfdb/app-db [:system :wasm-constructor])
         _ (when-not WasmGapBuffer
             (.error js/console "❌ No WASM constructor found in db"))
-        wasm-instance (when WasmGapBuffer (new WasmGapBuffer content))]
+        wasm-instance (when WasmGapBuffer (new WasmGapBuffer content))
+        ;; Compute the buffer-id that will be created (next-buffer-id)
+        buffer-id (db/next-buffer-id (get-in @rfdb/app-db [:buffers]))]
     (when wasm-instance
       (rf/dispatch-sync [:create-buffer "test-buffer" wasm-instance])
-      ;; Get the actual buffer-id that was created (not a random one!)
-      (first (keys (get-in @rfdb/app-db [:buffers]))))))
+      buffer-id)))
 
 (defn get-buffer-text
   "Get text content of BUFFER-ID."
