@@ -1034,16 +1034,23 @@
 (rf/reg-event-fx
  :switch-to-buffer
  (fn [{:keys [db]} [_]]
-   "Activate minibuffer for buffer switching (C-x b)"
+   "Activate minibuffer for buffer switching (C-x b) with metadata"
    (let [buffers (:buffers db)
          buffer-names (sort (map :name (vals buffers)))
          current-buffer (get buffers (get-in db [:windows (:active-window-id db) :buffer-id]))
          current-name (:name current-buffer)
-         prompt (str "Switch to buffer (default " current-name "): ")]
+         prompt (str "Switch to buffer (default " current-name "): ")
+         ;; Create metadata for buffer completion
+         metadata (lexicon.completion.metadata/make-metadata
+                   :category :buffer
+                   :annotation-function :buffer
+                   :affixation-function :buffer
+                   :display-sort-function :recent-first)]
      {:fx [[:dispatch [:minibuffer/activate
                        {:prompt prompt
-                        :on-confirm [:switch-to-buffer-by-name]
-                        :completions buffer-names}]]]})))
+                        :completions buffer-names
+                        :metadata metadata
+                        :on-confirm [:switch-to-buffer-by-name]}]]]})))
 
 (rf/reg-event-fx
  :switch-to-buffer-by-name
@@ -2480,7 +2487,13 @@ C-h ?   This help menu
 (rf/reg-event-db
  :minibuffer/activate
  (fn [db [_ config]]
-   "Activate the minibuffer with given configuration"
+   "Activate the minibuffer with given configuration.
+   Config keys:
+   - :prompt - Prompt string
+   - :on-confirm - Event to dispatch on RET
+   - :on-cancel - Event to dispatch on C-g
+   - :completions - List of completion candidates
+   - :metadata - Completion metadata (Phase 6C)"
    (-> db
        (assoc-in [:minibuffer :active?] true)
        (assoc-in [:minibuffer :prompt] (:prompt config ""))
@@ -2488,7 +2501,8 @@ C-h ?   This help menu
        (assoc-in [:minibuffer :on-confirm] (:on-confirm config))
        (assoc-in [:minibuffer :on-cancel] (or (:on-cancel config) [:minibuffer/deactivate]))
        (assoc-in [:minibuffer :completions] (or (:completions config) []))
-       (assoc-in [:minibuffer :completion-index] 0))))
+       (assoc-in [:minibuffer :completion-index] 0)
+       (assoc-in [:minibuffer :completion-metadata] (:metadata config)))))
 
 (rf/reg-fx
  :focus-editor
@@ -2893,11 +2907,19 @@ C-h ?   This help menu
 (rf/reg-event-fx
  :execute-extended-command
  (fn [{:keys [db]} [_]]
-   "Open minibuffer for M-x command execution"
-   {:fx [[:dispatch [:minibuffer/activate 
-                     {:prompt "M-x "
-                      :on-confirm [:execute-command-by-name]}]]]}))
-
+   "Open minibuffer for M-x command execution with completion metadata"
+   (let [;; Get all registered command names
+         command-names (map name (keys (:commands db)))
+         ;; Create metadata for command completion
+         metadata (lexicon.completion.metadata/make-metadata
+                   :category :command
+                   :annotation-function :command
+                   :display-sort-function :alphabetical)]
+     {:fx [[:dispatch [:minibuffer/activate
+                       {:prompt "M-x "
+                        :completions command-names
+                        :metadata metadata
+                        :on-confirm [:execute-command-by-name]}]]]})))
 (rf/reg-event-fx
  :execute-command-by-name
  (fn [{:keys [db]} [_ command-name-str]]

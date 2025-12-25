@@ -16,6 +16,7 @@
             [lexicon.modes.help-mode]     ; Load help-mode (Phase 6B Week 3)
             [lexicon.modes.buffer-menu-mode]  ; Load buffer-menu-mode (Phase 6B Week 3)
             [lexicon.ui.themes]           ; Load theme system (Phase 6B Week 4)
+            [lexicon.completion.metadata] ; Load completion metadata (Phase 6C Week 1-2)
             [lexicon.views :as views]
             [lexicon.package-loader])) ; Load all packages
 
