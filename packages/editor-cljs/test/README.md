@@ -18,19 +18,38 @@ This directory contains automated tests for the Lexicon editor, covering:
 
 ### Current Status
 
-The test infrastructure is **in place** but requires a browser environment to run properly because:
+✅ **Browser-based test automation is SET UP and READY!**
 
-1. Tests use `re-frame` which requires browser APIs
-2. Tests interact with React/Reagent components
-3. Tests use the WASM gap buffer which requires WebAssembly support
+Tests run in a real browser environment using **shadow-cljs :browser-test**:
+1. Tests use `re-frame` with full browser API support ✅
+2. Tests interact with React/Reagent components ✅
+3. Tests use the WASM gap buffer with WebAssembly ✅
+4. Test server runs on http://localhost:8021 ✅
+5. Hot reload watches for changes ✅
 
-### Manual Testing (Current Approach)
+**📖 See [RUNNING_TESTS.md](./RUNNING_TESTS.md) for complete documentation**
 
-Until browser-based test automation is set up, tests serve as:
-1. **Documentation** of expected behavior
-2. **Regression checklist** for manual testing
-3. **Specification** for future automated testing
+### Quick Start
 
+```bash
+# Start test server with hot reload
+cd /home/nixos/projects/lexicon/packages/editor-cljs
+npx shadow-cljs watch test
+
+# Open browser to http://localhost:8021/index.html
+# Tests run automatically and display results
+```
+
+### Test Infrastructure
+
+- **37 automated tests** covering core functionality
+- **Automatic re-running** when files change
+- **Browser UI** shows pass/fail status with details
+- **Console output** for debugging
+
+### Manual Verification Checklist (Deprecated)
+
+The following checklist is kept for reference but is now automated by the test suite.
 To manually verify functionality, open the Lexicon editor and:
 
 #### Core Editing Tests

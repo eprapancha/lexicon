@@ -15,7 +15,8 @@
                           :pseudo-names false
                           :externs ["wasm-externs.js"]}}
 
-  :test {:target :node-test
-         :output-to "target/test.cjs"
-         :autorun true
-         :ns-regexp "lexicon.*-test$"}}}
+  :test {:target :browser-test
+         :test-dir "resources/public/test"
+         :devtools {:http-root "resources/public/test"
+                    :http-port 8021}
+         :ns-regexp "lexicon.*-test$"}}}}
