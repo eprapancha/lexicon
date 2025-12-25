@@ -1,4 +1,4 @@
-{:source-paths ["src" "../evil-mode/src"]
+{:source-paths ["src" "test" "../evil-mode/src"]
  :dependencies [[re-frame/re-frame "1.4.2"]
                 [reagent/reagent "1.2.0"]
                 [binaryage/devtools "1.0.7"]]
@@ -17,6 +17,7 @@
 
   :test {:target :browser-test
          :test-dir "resources/public/test"
+         :runner-ns lexicon.test-runner
          :devtools {:http-root "resources/public"
                     :http-port 8021}
          :ns-regexp "lexicon.*-test$"}}}}}
