@@ -1,7 +1,7 @@
 # Lexicon Development Roadmap
 
 **Last Updated:** 2025-12-25
-**Current Phase:** Phase 6B - Display & Theming Foundation (Week 3 Complete) ⏳ IN PROGRESS
+**Current Phase:** Phase 6B - Display & Theming Foundation ✅ COMPLETE
 
 ---
 
@@ -349,7 +349,7 @@ See `docs/DISPLAY_THEMING_RESEARCH.md` for detailed analysis of Evil-mode depend
 
 ## Phase 6B: Display & Theming Foundation
 
-**Status:** ⏳ IN PROGRESS (Week 3 Complete)
+**Status:** ✅ COMPLETE (Dec 25, 2025)
 **Goal:** Implement face system, overlays, text properties, mode line, and themes
 **Timeline:** 4 weeks
 **Prerequisites:** ✅ Phase 6A complete
@@ -462,35 +462,36 @@ See `docs/DISPLAY_THEMING_RESEARCH.md` for detailed analysis of Evil-mode depend
 - [x] Mode line updates when buffer changes
 - [x] Mode line reflects current window state (cursor position, modified status)
 
-### Week 4: Theme System (CSS Variables)
+### Week 4: Theme System (CSS Variables) ✅ COMPLETE (Dec 25, 2025)
 
 **Goal:** Load/unload color schemes, light/dark variants using CSS custom properties
 
-#### Theme Infrastructure (🔲 Planned)
-- [ ] `deftheme` - Define theme as map of CSS variables to values
-- [ ] Theme data structure: `{:base {"--lexicon-fg-default" "#000" ...} :user {}}`
-- [ ] `:active-themes` stack (e.g., `[:base :user]`) - later themes override earlier
-- [ ] Theme loading updates `:root` CSS variables in one operation
-- [ ] Theme switching command (M-x load-theme)
+#### Theme Infrastructure (✅ Complete)
+- [x] `deftheme` - Define theme as map of CSS variables to values
+- [x] Theme data structure: `{:name "..." :kind :light :palette {"--lexicon-fg-default" "#000" ...}}`
+- [x] Theme registry in app-db (`:theme/registry`, `:theme/active`, `:theme/current`)
+- [x] Theme loading updates `:root` CSS variables in one operation
+- [x] Theme switching command (M-x load-theme)
 
-#### Palette System with CSS Variables (🔲 Planned)
-- [ ] All colors as CSS variables (e.g., `--lexicon-bg-main`, `--lexicon-fg-prompt`)
-- [ ] Font settings as variables (e.g., `--lexicon-font-family-mono`, `--lexicon-font-size`)
-- [ ] Semantic color mappings (not just RGB values)
-- [ ] Light/dark themes swap variable values, faces remain unchanged
+#### Palette System with CSS Variables (✅ Complete)
+- [x] All colors as CSS variables (50+ variables: fg/bg colors, semantic, syntax, search, etc.)
+- [x] Font settings as variables (`--lexicon-font-family-mono`, `--lexicon-font-size`, `--lexicon-line-height`)
+- [x] Semantic color mappings (error, warning, success, info)
+- [x] Light/dark themes swap variable values, faces remain unchanged
 
-#### Default Themes (🔲 Planned)
-- [ ] `lexicon-base-light` theme (default variable values)
-- [ ] `lexicon-base-dark` theme (dark variable values)
-- [ ] WCAG AAA contrast compliance for accessibility
-- [ ] All CSS variables defined with sensible defaults
+#### Default Themes (✅ Complete)
+- [x] `lexicon-base-light` theme (WCAG AAA compliant light theme)
+- [x] `lexicon-base-dark` theme (One Dark inspired dark theme)
+- [x] WCAG AAA contrast compliance for accessibility
+- [x] All CSS variables defined with sensible defaults
 
-#### Theme Application (🔲 Planned)
-- [ ] `theme->css-vars` - Convert theme map to `:root { ... }` CSS
-- [ ] `:theme/initialize` - Inject face stylesheet + theme variables on startup
-- [ ] `:theme/set-user-customization` - Allow runtime variable changes (M-x set-font-size)
-- [ ] No stylesheet regeneration needed - CSS variables update instantly
-- [ ] Persist theme choice (future: save to local storage)
+#### Theme Application (✅ Complete)
+- [x] `theme->css` - Convert theme map to `:root { ... }` CSS
+- [x] `:theme/initialize` - Inject theme variables on startup
+- [x] `:theme/set-variable` - Allow runtime variable changes
+- [x] `:theme/set-font-size` - Convenience command for font size (M-x set-font-size)
+- [x] No stylesheet regeneration needed - CSS variables update instantly
+- [ ] Persist theme choice (deferred: save to local storage)
 
 ### Success Criteria
 
@@ -500,12 +501,12 @@ See `docs/DISPLAY_THEMING_RESEARCH.md` for detailed analysis of Evil-mode depend
 - [x] Child frames (popups) can be shown at arbitrary positions
 - [x] special-mode works for read-only buffers (`q` to quit, `g` to revert)
 - [x] Mode line displays buffer info with % constructs
-- [ ] Can load/unload themes and see visual changes instantly (CSS variables)
-- [ ] Can customize colors/fonts at runtime (M-x set-font-size)
-- [ ] Default light and dark themes look professional
-- [ ] All standard faces defined and applied correctly
+- [x] Can load/unload themes and see visual changes instantly (CSS variables)
+- [x] Can customize colors/fonts at runtime (M-x set-font-size)
+- [x] Default light and dark themes look professional
+- [x] All standard faces defined and applied correctly
 
-**Progress:** 6/10 complete (60%) - Week 3 complete, Week 4 (theming) remaining
+**Progress:** 10/10 complete (100%) ✅ PHASE 6B COMPLETE!
 
 ---
 
@@ -954,20 +955,26 @@ Now that infrastructure exists, we can make Evil-mode work.
 
 ## Current Focus
 
-**Active Phase:** Phase 6B Week 3 ✅ COMPLETE | **Next Phase:** Phase 6B Week 4 - Theme System
+**Active Phase:** Phase 6B ✅ COMPLETE | **Next Phase:** Phase 6C - Completion Framework
 
 **Recent Achievements (Dec 25, 2025):**
-- ✅ **Phase 6B Week 3 COMPLETE** - Mode Line & Built-in Modes
-- ✅ Read-only buffer enforcement in transaction processor
-- ✅ special-mode base mode for read-only buffers (q/g/SPC/DEL bindings)
-- ✅ Mode-line formatter with % constructs (%b, %l:%c, %p, %*, %m, etc.)
-- ✅ help-mode for documentation display
-- ✅ buffer-menu-mode for interactive buffer list
-- ✅ 824 lines added across 7 files (4 new namespaces)
-- ✅ All features compile cleanly (0 warnings, 0 errors)
+- ✅ **Phase 6B COMPLETE** - Display & Theming Foundation (all 4 weeks)
+- ✅ **Week 4 COMPLETE** - Theme System with CSS Variables
+  - Complete theming system using CSS custom properties
+  - 50+ CSS variables for colors and typography
+  - lexicon-base-light and lexicon-base-dark themes (WCAG AAA compliant)
+  - M-x load-theme and M-x set-font-size commands
+  - Instant theme switching (no stylesheet regeneration)
+  - 647 lines added across 3 files
+- ✅ **Week 3 COMPLETE** - Mode Line & Built-in Modes
+  - Read-only buffer enforcement, special-mode, help-mode, buffer-menu-mode
+  - Mode-line formatter with % constructs
+  - 824 lines added across 7 files
+- ✅ **Weeks 1-2 COMPLETE** - Face System, Text Properties, Overlays
+  - 23 standard faces, overlay system with priority, child frames
+  - Text properties API, face priority resolution
 
 **Previous Achievements (Dec 24, 2025):**
-- ✅ **Phase 6B Weeks 1-2 COMPLETE** - Face System, Text Properties, Overlays
 - ✅ **Phase 6A COMPLETE** - Package system infrastructure
 - ✅ Course correction based on dual research - Display infrastructure first
 - ✅ Created comprehensive research documents (DISPLAY_THEMING_RESEARCH.md, TheMissingParts.md)
@@ -988,7 +995,7 @@ Research revealed we've been building the wrong foundation. **All sophisticated 
 4. **Phase 6.5: Testing** (2 weeks) - Comprehensive test coverage
 5. **Phase 7: Evil-mode Integration** (2 weeks) - Now that dependencies exist
 
-**Next Steps:**
+**Completed Steps (Phase 6B):**
 1. ✅ Week 1 Complete: Face System
    - ✅ Face data structure and registry
    - ✅ Standard faces defined (23 faces including default, region, mode-line, font-lock-*, etc.)
@@ -1004,12 +1011,17 @@ Research revealed we've been building the wrong foundation. **All sophisticated 
    - ✅ special-mode for read-only buffers
    - ✅ Read-only buffer enforcement
    - ✅ help-mode and buffer-menu-mode
-4. **NEXT: Week 4 - Theme System with CSS Variables**
-   - Theme data structure and loading
-   - CSS variables-based theming (no stylesheet regeneration)
-   - Light/dark theme variants (lexicon-base-light, lexicon-base-dark)
-   - Runtime customization (M-x set-font-size, etc.)
-5. Then proceed to completion framework (Phase 6C)
+4. ✅ Week 4 Complete: Theme System with CSS Variables
+   - ✅ Theme data structure and loading
+   - ✅ CSS variables-based theming (no stylesheet regeneration)
+   - ✅ Light/dark theme variants (lexicon-base-light, lexicon-base-dark)
+   - ✅ Runtime customization (M-x load-theme, M-x set-font-size)
+
+**Next: Phase 6C - Completion Framework** (6 weeks)
+- Completion metadata (categories, annotations)
+- Completion styles (substring, flex, orderless)
+- Completion tables and CAPFs
+- Built-in packages (project.el, imenu, recentf, savehist)
 
 **Why This Matters:**
 Building display infrastructure first ensures that when we implement completion framework and packages, they can render properly with colors, annotations, and visual feedback - making Lexicon feel like real Emacs.

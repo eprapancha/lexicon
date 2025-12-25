@@ -21,11 +21,11 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 
 ## Current Status
 
-**Phase 6B of 11** - Display & Theming (Week 3 Complete) | **Next: Week 4 - Theme System**
+**Phase 6B of 11** - Display & Theming ✅ COMPLETE | **Next: Phase 6C - Completion Framework**
 
 **What Works:**
-- ✅ **Phases 0-6A Complete** - Full working Emacs core + package system!
-- ✅ **Phase 6B Weeks 1-3 Complete** - Face system, overlays, text properties, mode line, special-mode!
+- ✅ **Phases 0-6B Complete** - Full working Emacs core + display & theming!
+- ✅ **Phase 6B Complete** - Face system, overlays, text properties, mode line, themes!
   - Text editing (insert, delete, undo, kill ring)
   - Navigation (C-f/b/n/p, C-a/e, M-f/b, M-</>, arrows)
   - Multi-buffer support (C-x b, C-x C-f, C-x C-s)
@@ -37,8 +37,8 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
   - Mark and region (C-SPC, C-w, M-w, C-y)
 
 **Current Work:**
-- ✅ **Phase 6B Week 3 Complete** - Mode line, special-mode, help-mode, buffer-menu-mode
-- 📋 **Next: Phase 6B Week 4** - Theme System (load/unload themes, light/dark variants, CSS variables)
+- ✅ **Phase 6B Complete** - Display & Theming Foundation (4 weeks, all complete!)
+- 📋 **Next: Phase 6C** - Completion Framework (metadata, styles, CAPFs, built-in packages)
 
 **See [docs/ROADMAP.md](./docs/ROADMAP.md) for detailed progress and next steps**
 
@@ -134,7 +134,7 @@ The web deserves this same power.
 
 ## Contributing
 
-**Current Status:** Phase 6B Week 3 complete - mode line and special modes done. Week 4 (Theme System) next.
+**Current Status:** Phase 6B complete - display & theming foundation complete. Phase 6C (Completion Framework) next.
 
 We're **not yet ready for external contributions**, but you can:
 
@@ -216,8 +216,8 @@ MIT License - See [LICENSE](./LICENSE) for details.
 
 ---
 
-**Current Phase:** Phase 6B Week 3 Complete | Next: Phase 6B Week 4 - Theme System
+**Current Phase:** Phase 6B Complete | Next: Phase 6C - Completion Framework
 **Last Updated:** 2025-12-25
-**Status:** 🟢 Active Development - Phases 0-6A + 6B Weeks 1-3 Complete!
+**Status:** 🟢 Active Development - Phases 0-6B Complete!
 
 *Building Emacs for the web, one gap buffer at a time.*
