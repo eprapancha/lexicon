@@ -5,6 +5,8 @@
             [lexicon.cache :as cache]
             [lexicon.constants :as const]
             [lexicon.packages :as packages]
+            [lexicon.completion.styles :as completion-styles]
+            [lexicon.completion.metadata :as completion-metadata]
             [re-frame.std-interceptors :refer [debug]]))
 
 ;; -- Helper Functions --
@@ -1041,7 +1043,7 @@
          current-name (:name current-buffer)
          prompt (str "Switch to buffer (default " current-name "): ")
          ;; Create metadata for buffer completion
-         metadata (lexicon.completion.metadata/make-metadata
+         metadata (completion-metadata/make-metadata
                    :category :buffer
                    :annotation-function :buffer
                    :affixation-function :buffer
@@ -2532,14 +2534,19 @@ C-h ?   This help menu
 (rf/reg-event-db
  :minibuffer/complete
  (fn [db [_]]
-   "TAB completion in minibuffer - cycle through matching completions"
+   "TAB completion in minibuffer using completion styles (Phase 6C)"
    (let [minibuffer (:minibuffer db)
          input (:input minibuffer)
          completions (:completions minibuffer)
-         ;; Filter completions that start with current input
+         ;; Get effective styles for current completion
+         styles (or (get-in db [:completion :styles]) [:basic :substring :flex])
+         ;; Filter completions using styles
          matches (if (clojure.string/blank? input)
                   completions
-                  (filter #(clojure.string/starts-with? % input) completions))]
+                  (completion-styles/filter-candidates
+                   input
+                   completions
+                   :styles-list styles))]
      (cond
        ;; No completions available
        (empty? completions)
@@ -2911,7 +2918,7 @@ C-h ?   This help menu
    (let [;; Get all registered command names
          command-names (map name (keys (:commands db)))
          ;; Create metadata for command completion
-         metadata (lexicon.completion.metadata/make-metadata
+         metadata (completion-metadata/make-metadata
                    :category :command
                    :annotation-function :command
                    :display-sort-function :alphabetical)]

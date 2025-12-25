@@ -17,6 +17,13 @@
             [lexicon.modes.buffer-menu-mode]  ; Load buffer-menu-mode (Phase 6B Week 3)
             [lexicon.ui.themes]           ; Load theme system (Phase 6B Week 4)
             [lexicon.completion.metadata] ; Load completion metadata (Phase 6C Week 1-2)
+            [lexicon.completion.styles]   ; Load completion styles (Phase 6C Week 3-4)
+            [lexicon.completion.tables]   ; Load completion tables (Phase 6C Week 5)
+            [lexicon.completion.capf]     ; Load completion-at-point (Phase 6C Week 5)
+            [lexicon.packages.project]    ; Load project.el (Phase 6C Week 6)
+            [lexicon.packages.imenu]      ; Load imenu (Phase 6C Week 6)
+            [lexicon.packages.recentf]    ; Load recentf (Phase 6C Week 6)
+            [lexicon.packages.savehist]   ; Load savehist (Phase 6C Week 6)
             [lexicon.views :as views]
             [lexicon.package-loader])) ; Load all packages
 
