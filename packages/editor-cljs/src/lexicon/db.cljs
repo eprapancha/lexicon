@@ -8,6 +8,7 @@
                 :file-handle nil
                 :name "*scratch*"
                 :is-modified? false
+                :is-read-only? false                   ; Phase 6B: Read-only buffer flag
                 :major-mode :fundamental-mode          ; Active major mode
                 :minor-modes #{}                       ; Set of active minor modes
                 :buffer-local-vars {}                  ; Mode-specific configuration
@@ -18,7 +19,13 @@
                 :undo-in-progress? false               ; Prevent recording during undo
                 :editor-version 0                      ; Increments on each edit (cache key)
                 :cache {:text ""                       ; Cached full text
-                        :line-count 1}}}               ; Cached line count
+                        :line-count 1}
+                ;; Phase 6B Week 2: Text Properties & Overlays
+                :text-properties {}                    ; Map of position ranges to property maps
+                                                       ; {start-pos {end-pos {:face :highlight :read-only true}}}
+                :overlays {}                           ; Map of overlay-id to overlay data
+                                                       ; {1 {:id 1 :start 10 :end 20 :face :highlight :priority 0}}
+                :next-overlay-id 1}}               ; Counter for generating overlay IDs
    ;; Window tree structure (binary tree of splits)
    :window-tree {:type :leaf
                  :id 1
@@ -149,6 +156,15 @@
           :callback nil}                            ; Callback event vector for key press
    :packages {}                                     ; Loaded packages (Phase 6)
 
+   ;; Phase 6B Week 2: Child Frames (Popups)
+   :child-frames {}                                 ; Map of frame-id to frame data
+                                                    ; {:corfu-popup {:id :corfu-popup
+                                                    ;                :visible? false
+                                                    ;                :x 0 :y 0
+                                                    ;                :width 300 :height 200
+                                                    ;                :content ["item1" "item2"]
+                                                    ;                :face :default}}
+
    ;; Phase 6B: Face System - Visual styling with CSS variables
    :faces {;; Default faces - every face maps attributes to CSS variable names
            :default {:foreground "--lexicon-fg-default"
@@ -200,6 +216,7 @@
    :file-handle nil
    :name name
    :is-modified? false
+   :is-read-only? false                   ; Phase 6B: Read-only buffer flag
    :major-mode :fundamental-mode
    :minor-modes #{}
    :buffer-local-vars {}
@@ -210,7 +227,11 @@
    :undo-in-progress? false
    :editor-version 0                      ; Increments on each edit
    :cache {:text ""                       ; Cached full text
-           :line-count 1}})
+           :line-count 1}
+   ;; Phase 6B Week 2: Text Properties & Overlays
+   :text-properties {}                    ; Map of position ranges to property maps
+   :overlays {}                           ; Map of overlay-id to overlay data
+   :next-overlay-id 1})
 
 (defn create-buffer-with-content
   "Create a new buffer with initial content"

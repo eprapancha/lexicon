@@ -8,6 +8,9 @@
             [lexicon.lsp]       ; Load LSP handlers
             [lexicon.effects]   ; Load DOM effect handlers
             [lexicon.ui.faces]  ; Load face system
+            [lexicon.ui.text-properties]  ; Load text properties (Phase 6B Week 2)
+            [lexicon.ui.overlays]         ; Load overlay system (Phase 6B Week 2)
+            [lexicon.ui.frames]           ; Load child frames (Phase 6B Week 2)
             [lexicon.views :as views]
             [lexicon.package-loader])) ; Load all packages
 
