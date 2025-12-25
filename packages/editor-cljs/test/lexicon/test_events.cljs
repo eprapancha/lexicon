@@ -67,7 +67,7 @@
  (fn [db [_ buffer-id]]
    "Set the current buffer to BUFFER-ID (for testing)"
    (if (get-in db [:buffers buffer-id])
-     (let [active-window-id (get-in db [:active-window-id])]
+     (let [active-window-id (get-in db [:editor :active-window-id])]
        (cond-> db
          true (assoc-in [:editor :current-buffer-id] buffer-id)
          active-window-id (assoc-in [:windows active-window-id :buffer-id] buffer-id)))
