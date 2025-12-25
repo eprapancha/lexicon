@@ -3,7 +3,10 @@
 
   These events are simplified versions that bypass normal editor workflows
   to allow direct manipulation of buffers for testing purposes."
-  (:require [re-frame.core :as rf]))
+  (:require [re-frame.core :as rf]
+            [lexicon.db :as db]
+            [lexicon.events :as events]
+            [clojure.string]))
 
 ;; Buffer manipulation events for tests
 
@@ -39,37 +42,106 @@
  (fn [db [_ buffer-id]]
    "Set the current buffer to BUFFER-ID (for testing)"
    (if (get-in db [:buffers buffer-id])
-     (let [active-window-id (get-in db [:editor :active-window-id])]
+     (let [active-window-id (get-in db [:active-window-id])]
        (-> db
            (assoc-in [:editor :current-buffer-id] buffer-id)
            (assoc-in [:windows active-window-id :buffer-id] buffer-id)))
      db)))
 
-(rf/reg-event-fx
+(rf/reg-event-db
  :self-insert-command
- (fn [{:keys [db]} [_ char]]
+ (fn [db [_ char]]
    "Insert CHAR at point in current buffer (for testing)"
    (let [buffer-id (get-in db [:editor :current-buffer-id])
          buffer (get-in db [:buffers buffer-id])
          ^js wasm (:wasm-instance buffer)
-         point (get-in db [:ui :cursor-position] 0)]  ; Get from db, not WASM
+         point (get-in db [:ui :cursor-position] 0)]
      (if wasm
-       {:db (-> db
-                (update-in [:buffers buffer-id :editor-version] (fnil inc 0)))
-        :fx [[:dispatch [:buffer/insert buffer-id point char]]]}
-       {:db db}))))
+       (do
+         ;; Insert character at current position
+         (.insert ^js wasm point char)
+         ;; Update cursor position and version
+         (-> db
+             (assoc-in [:ui :cursor-position] (inc point))
+             (update-in [:buffers buffer-id :editor-version] (fnil inc 0))))
+       db))))
 
-(rf/reg-event-fx
+(rf/reg-event-db
  :newline
- (fn [{:keys [db]} [_]]
+ (fn [db [_]]
    "Insert newline at point in current buffer (for testing)"
    (let [buffer-id (get-in db [:editor :current-buffer-id])
          buffer (get-in db [:buffers buffer-id])
          ^js wasm (:wasm-instance buffer)
-         point (get-in db [:ui :cursor-position] 0)]  ; Get from db, not WASM
+         point (get-in db [:ui :cursor-position] 0)]
      (if wasm
-       {:fx [[:dispatch [:buffer/insert buffer-id point "\n"]]]}
-       {:db db}))))
+       (do
+         ;; Insert newline at current position
+         (.insert ^js wasm point "\n")
+         ;; Update cursor position and version
+         (-> db
+             (assoc-in [:ui :cursor-position] (inc point))
+             (update-in [:buffers buffer-id :editor-version] (fnil inc 0))))
+       db))))
+
+;; Cursor movement events (synchronous for testing)
+(rf/reg-event-db
+ :forward-char
+ (fn [db [_]]
+   "Move cursor forward one character (for testing)"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [max-pos (.length wasm-instance)
+             new-pos (min max-pos (inc current-pos))]
+         (assoc-in db [:ui :cursor-position] new-pos))
+       db))))
+
+(rf/reg-event-db
+ :backward-char
+ (fn [db [_]]
+   "Move cursor backward one character (for testing)"
+   (let [current-pos (get-in db [:ui :cursor-position] 0)
+         new-pos (max 0 (dec current-pos))]
+     (assoc-in db [:ui :cursor-position] new-pos))))
+
+(rf/reg-event-db
+ :beginning-of-line
+ (fn [db [_]]
+   "Move to beginning of line (for testing)"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             ;; Find start of current line by searching backward for newline
+             text-before (subs text 0 current-pos)
+             last-newline (.lastIndexOf text-before "\n")
+             new-pos (if (= last-newline -1) 0 (inc last-newline))]
+         (assoc-in db [:ui :cursor-position] new-pos))
+       db))))
+
+(rf/reg-event-db
+ :end-of-line
+ (fn [db [_]]
+   "Move to end of line (for testing)"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             ;; Find end of current line by searching forward for newline
+             text-after (subs text current-pos)
+             next-newline (.indexOf text-after "\n")
+             new-pos (if (= next-newline -1)
+                       (count text)
+                       (+ current-pos next-newline))]
+         (assoc-in db [:ui :cursor-position] new-pos))
+       db))))
 
 (rf/reg-event-fx
  :split-window-horizontally
