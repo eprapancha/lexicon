@@ -68,9 +68,9 @@
    "Set the current buffer to BUFFER-ID (for testing)"
    (if (get-in db [:buffers buffer-id])
      (let [active-window-id (get-in db [:active-window-id])]
-       (-> db
-           (assoc-in [:editor :current-buffer-id] buffer-id)
-           (assoc-in [:windows active-window-id :buffer-id] buffer-id)))
+       (cond-> db
+         true (assoc-in [:editor :current-buffer-id] buffer-id)
+         active-window-id (assoc-in [:windows active-window-id :buffer-id] buffer-id)))
      db)))
 
 (rf/reg-event-db
@@ -82,12 +82,13 @@
          ^js wasm (:wasm-instance buffer)
          point (get-in db [:ui :cursor-position] 0)]
      (if wasm
-       (do
+       (let [;; Calculate UTF-8 byte length for proper cursor positioning
+             utf8-length (.-length (.encode (js/TextEncoder.) char))]
          ;; Insert character at current position
          (.insert ^js wasm point char)
-         ;; Update cursor position and version
+         ;; Update cursor position by UTF-8 byte length, not character count
          (-> db
-             (assoc-in [:ui :cursor-position] (inc point))
+             (assoc-in [:ui :cursor-position] (+ point utf8-length))
              (update-in [:buffers buffer-id :editor-version] (fnil inc 0))))
        db))))
 
@@ -103,7 +104,7 @@
        (do
          ;; Insert newline at current position
          (.insert ^js wasm point "\n")
-         ;; Update cursor position and version
+         ;; Newline is 1 byte in UTF-8
          (-> db
              (assoc-in [:ui :cursor-position] (inc point))
              (update-in [:buffers buffer-id :editor-version] (fnil inc 0))))
@@ -242,17 +243,65 @@
    (.warn js/console "Undo not yet implemented in WASM")
    db))
 
-(rf/reg-event-fx
+(rf/reg-event-db
  :split-window-horizontally
- (fn [{:keys [db]} [_]]
+ (fn [db [_]]
    "Split current window horizontally (for testing)"
-   {:fx [[:dispatch [:split-window-right]]]}))
+   (let [current-window-id (get-in db [:editor :active-window-id])
+         current-buffer-id (get-in db [:windows current-window-id :buffer-id])
+         new-window-id (random-uuid)]
+     (-> db
+         (assoc-in [:windows new-window-id] {:buffer-id current-buffer-id
+                                              :window-id new-window-id})
+         (assoc-in [:editor :active-window-id] new-window-id)))))
 
-(rf/reg-event-fx
+(rf/reg-event-db
  :split-window-vertically
- (fn [{:keys [db]} [_]]
+ (fn [db [_]]
    "Split current window vertically (for testing)"
-   {:fx [[:dispatch [:split-window-below]]]}))
+   (let [current-window-id (get-in db [:editor :active-window-id])
+         current-buffer-id (get-in db [:windows current-window-id :buffer-id])
+         new-window-id (random-uuid)]
+     (-> db
+         (assoc-in [:windows new-window-id] {:buffer-id current-buffer-id
+                                              :window-id new-window-id})
+         (assoc-in [:editor :active-window-id] new-window-id)))))
+
+(rf/reg-event-db
+ :other-window
+ (fn [db [_]]
+   "Switch to another window (for testing)"
+   (let [current-window-id (get-in db [:editor :active-window-id])
+         all-window-ids (keys (get-in db [:windows]))
+         other-windows (remove #(= % current-window-id) all-window-ids)
+         next-window-id (first other-windows)]
+     (if next-window-id
+       (assoc-in db [:editor :active-window-id] next-window-id)
+       db))))
+
+(rf/reg-event-db
+ :delete-window
+ (fn [db [_]]
+   "Delete current window (for testing)"
+   (let [current-window-id (get-in db [:editor :active-window-id])
+         all-window-ids (keys (get-in db [:windows]))
+         other-windows (remove #(= % current-window-id) all-window-ids)
+         next-window-id (first other-windows)]
+     (if (and next-window-id (> (count all-window-ids) 1))
+       (-> db
+           (update :windows dissoc current-window-id)
+           (assoc-in [:editor :active-window-id] next-window-id))
+       db))))
+
+(rf/reg-event-db
+ :delete-other-windows
+ (fn [db [_]]
+   "Delete all windows except current (for testing)"
+   (let [current-window-id (get-in db [:editor :active-window-id])
+         current-window (get-in db [:windows current-window-id])]
+     (if current-window
+       (assoc db :windows {current-window-id current-window})
+       db))))
 
 ;; Minibuffer events
 (rf/reg-event-db
