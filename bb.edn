@@ -1,0 +1,246 @@
+{:min-bb-version "1.3.0"
+ :tasks
+ {:requires ([clojure.string :as str]
+             [babashka.fs :as fs]
+             [babashka.process :as proc])
+
+  :init
+  (do
+    (defn run-cmd
+      "Run a shell command, printing output and failing on errors"
+      [cmd & {:keys [dir] :or {dir "."}}]
+      (let [result (proc/shell {:dir dir :out :inherit :err :inherit :continue true}
+                               cmd)]
+        (when-not (zero? (:exit result))
+          (System/exit (:exit result)))))
+
+    (defn print-step [emoji msg]
+      (println (str emoji " " msg)))
+
+    (defn check-command [cmd]
+      (try
+        (-> (proc/shell {:out :string :err :string :continue true}
+                       (str "command -v " cmd))
+            :exit
+            zero?)
+        (catch Exception _ false)))
+
+    (defn ensure-dir [path]
+      (fs/create-dirs path))
+
+    (defn setup-cljs-deps! []
+      (print-step "📦" "Setting up ClojureScript dependencies...")
+      (ensure-dir "packages/editor-cljs/resources/public/js")
+
+      (when (fs/exists? "packages/editor-cljs/node_modules/web-tree-sitter")
+        (print-step "📁" "Copying web-tree-sitter files...")
+        (fs/copy "packages/editor-cljs/node_modules/web-tree-sitter/tree-sitter.js"
+                "packages/editor-cljs/resources/public/js/web-tree-sitter.js"
+                {:replace-existing true})
+        (fs/copy "packages/editor-cljs/node_modules/web-tree-sitter/tree-sitter.wasm"
+                "packages/editor-cljs/resources/public/js/tree-sitter.wasm"
+                {:replace-existing true}))
+
+      (print-step "✅" "Dependencies setup complete!"))
+
+    (defn install-cljs! []
+      (print-step "📦" "Installing ClojureScript dependencies...")
+      (run-cmd "npm install --no-workspaces" :dir "packages/editor-cljs")
+      (print-step "✅" "ClojureScript dependencies installed!"))
+
+    (defn build-wasm! [mode]
+      (print-step "🦀" (str "Building Lexicon WASM module (" mode ")..."))
+      (when-not (check-command "wasm-pack")
+        (print-step "❌" "wasm-pack not found. Please install it:")
+        (println "   nix-shell -p wasm-pack")
+        (println "   or")
+        (println "   curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh")
+        (System/exit 1))
+
+      (print-step "📦" "Compiling Rust to WebAssembly...")
+      (let [flag (if (= mode "release") "--release" "--dev")]
+        (run-cmd (str "wasm-pack build --target web --out-dir pkg " flag)
+                 :dir "packages/lexicon-engine/wasm"))
+
+      (print-step "📁" "Copying WASM files to ClojureScript resources...")
+      (ensure-dir "packages/editor-cljs/resources/public/lexicon-engine/wasm/pkg")
+      (doseq [f (fs/list-dir "packages/lexicon-engine/wasm/pkg")]
+        (fs/copy f
+                (str "packages/editor-cljs/resources/public/lexicon-engine/wasm/pkg/"
+                     (fs/file-name f))
+                {:replace-existing true}))
+
+      (print-step "✅" "WASM build complete!"))
+
+    (defn build-grammars! []
+      (print-step "🌳" "Building Tree-sitter grammars...")
+      (let [grammars-dir "packages/language-grammars"
+            grammar-dirs (filter (fn [d]
+                                  (and (fs/directory? d)
+                                       (fs/exists? (fs/path d "grammar.js"))))
+                                (fs/list-dir grammars-dir))]
+
+        (doseq [grammar-dir grammar-dirs]
+          (let [grammar-name (fs/file-name grammar-dir)]
+            (print-step "📦" (str "Building grammar: " grammar-name))
+
+            (when (fs/exists? (fs/path grammar-dir "package.json"))
+              (run-cmd "npm install" :dir (str grammar-dir)))
+
+            (if (check-command "tree-sitter")
+              (run-cmd "tree-sitter build --wasm" :dir (str grammar-dir))
+              (if (check-command "npx")
+                (run-cmd "npx tree-sitter build --wasm" :dir (str grammar-dir))
+                (print-step "⚠️" (str "Skipping " grammar-name " - tree-sitter not found"))))))
+
+        (ensure-dir "packages/editor-cljs/resources/public/grammars")
+        (doseq [wasm-file (fs/glob grammars-dir "**/*.wasm")]
+          (fs/copy wasm-file
+                  (str "packages/editor-cljs/resources/public/grammars/"
+                       (fs/file-name wasm-file))
+                  {:replace-existing true}))
+
+        (print-step "✅" "Grammars built successfully!")))
+
+    (defn build-cljs! [mode]
+      (let [cmd (if (= mode "release")
+                  "npx shadow-cljs release app"
+                  "npx shadow-cljs compile app")
+            msg (if (= mode "release") "production" "development")]
+        (print-step "🔨" (str "Building ClojureScript frontend (" msg ")..."))
+        (run-cmd cmd :dir "packages/editor-cljs")
+        (print-step "✅" "ClojureScript build complete!"))))
+
+  ;; Individual build tasks
+  build-wasm
+  {:doc "Build the Rust WASM module (release)"
+   :task (build-wasm! "release")}
+
+  build-wasm-debug
+  {:doc "Build the Rust WASM module (debug)"
+   :task (build-wasm! "debug")}
+
+  build-grammars
+  {:doc "Build all Tree-sitter grammars to WebAssembly"
+   :task (build-grammars!)}
+
+  setup-cljs-deps
+  {:doc "Setup ClojureScript dependencies (copy static assets)"
+   :task (setup-cljs-deps!)}
+
+  install-cljs
+  {:doc "Install ClojureScript npm dependencies"
+   :task (install-cljs!)}
+
+  build-cljs
+  {:doc "Build ClojureScript frontend (production)"
+   :task (build-cljs! "release")}
+
+  build-cljs-dev
+  {:doc "Build ClojureScript frontend (development)"
+   :task (build-cljs! "dev")}
+
+  ;; Composite tasks
+  build
+  {:doc "Build the entire project (WASM + grammars + ClojureScript)"
+   :task
+   (do
+     (install-cljs!)
+     (setup-cljs-deps!)
+     (build-wasm! "release")
+     (build-grammars!)
+     (build-cljs! "release")
+     (print-step "🎉" "Full build completed successfully!"))}
+
+  build-dev
+  {:doc "Build the entire project in development mode"
+   :task
+   (do
+     (install-cljs!)
+     (setup-cljs-deps!)
+     (build-wasm! "debug")
+     (build-cljs! "dev")
+     (print-step "🎉" "Development build completed successfully!"))}
+
+  dev
+  {:doc "Start the development environment"
+   :task
+   (do
+     (print-step "🚀" "Starting Lexicon development environment...")
+     (install-cljs!)
+     (setup-cljs-deps!)
+     (print-step "🔄" "Starting ClojureScript watch mode...")
+     (println "Frontend: http://localhost:8080")
+     (println "")
+     (println "Press Ctrl+C to stop")
+     (run-cmd "npx shadow-cljs watch app" :dir "packages/editor-cljs"))}
+
+  dev-server
+  {:doc "Start the development server"
+   :task
+   (do
+     (print-step "🌐" "Starting development server...")
+     (run-cmd "node dev-server.js" :dir "packages/editor-cljs"))}
+
+  test
+  {:doc "Run all tests"
+   :task
+   (do
+     (print-step "🧪" "Running tests...")
+
+     (when (fs/exists? "packages/editor-cljs/shadow-cljs.edn")
+       (print-step "📝" "Testing ClojureScript...")
+       (run-cmd "npx shadow-cljs compile test" :dir "packages/editor-cljs"))
+
+     (when (fs/exists? "packages/lexicon-engine/wasm/Cargo.toml")
+       (print-step "🦀" "Testing Rust...")
+       (run-cmd "cargo test" :dir "packages/lexicon-engine/wasm"))
+
+     (print-step "✅" "All tests completed!"))}
+
+  clean
+  {:doc "Clean all build artifacts"
+   :task
+   (do
+     (print-step "🧹" "Cleaning build artifacts...")
+
+     (when (fs/exists? "packages/lexicon-engine/wasm/pkg")
+       (fs/delete-tree "packages/lexicon-engine/wasm/pkg"))
+     (when (fs/exists? "packages/lexicon-engine/wasm/target")
+       (fs/delete-tree "packages/lexicon-engine/wasm/target"))
+
+     (when (fs/exists? "packages/editor-cljs/resources/public/js")
+       (fs/delete-tree "packages/editor-cljs/resources/public/js"))
+     (when (fs/exists? "packages/editor-cljs/.shadow-cljs")
+       (fs/delete-tree "packages/editor-cljs/.shadow-cljs"))
+
+     (when (fs/exists? "packages/editor-cljs/resources/public/lexicon-engine")
+       (fs/delete-tree "packages/editor-cljs/resources/public/lexicon-engine"))
+
+     (print-step "✅" "Clean complete!"))}
+
+  serve
+  {:doc "Serve the built application locally for testing"
+   :task
+   (do
+     (print-step "🌐" "Starting local server...")
+     (println "Open http://localhost:8000")
+     (println "Press Ctrl+C to stop")
+     (run-cmd "python3 -m http.server 8000"
+              :dir "packages/editor-cljs/resources/public"))}
+
+  build-and-serve
+  {:doc "Build the project and serve it locally"
+   :task
+   (do
+     (install-cljs!)
+     (setup-cljs-deps!)
+     (build-wasm! "release")
+     (build-grammars!)
+     (build-cljs! "release")
+     (print-step "🎉" "Full build completed successfully!")
+     (print-step "🌐" "Starting local server...")
+     (println "Open http://localhost:8000")
+     (println "Press Ctrl+C to stop")
+     (run-cmd "python3 -m http.server 8000"
+              :dir "packages/editor-cljs/resources/public"))}}}

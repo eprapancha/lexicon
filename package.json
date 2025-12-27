@@ -8,13 +8,16 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/dev.sh",
-    "build": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/build.sh",
-    "build-wasm": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/build-wasm.sh",
-    "test": "PATH=/home/nixos/.nix-profile/bin:$PATH ./scripts/test.sh",
-    "test-integration": "PATH=/home/nixos/.nix-profile/bin:$PATH ./test-integration.sh",
-    "dev-editor": "cd packages/editor-cljs && PATH=/home/nixos/.nix-profile/bin:$PATH npm run dev",
-    "dev-server": "cd packages/editor-cljs && PATH=/home/nixos/.nix-profile/bin:$PATH npm run dev-server"
+    "dev": "bb dev",
+    "build": "bb build",
+    "build-dev": "bb build-dev",
+    "build-wasm": "bb build-wasm",
+    "build-grammars": "bb build-grammars",
+    "test": "bb test",
+    "clean": "bb clean",
+    "serve": "bb serve",
+    "build-and-serve": "bb build-and-serve",
+    "dev-server": "bb dev-server"
   },
   "devDependencies": {},
   "engines": {
