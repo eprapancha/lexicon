@@ -52,9 +52,8 @@
       (print-step "🦀" (str "Building Lexicon WASM module (" mode ")..."))
       (when-not (check-command "wasm-pack")
         (print-step "❌" "wasm-pack not found. Please install it:")
-        (println "   nix-shell -p wasm-pack")
-        (println "   or")
         (println "   curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh")
+        (println "   See: https://rustwasm.github.io/wasm-pack/installer/")
         (System/exit 1))
 
       (print-step "📦" "Compiling Rust to WebAssembly...")
@@ -277,7 +276,8 @@
 
        (when (= wasm-pack-version "NOT INSTALLED")
          (print-step "❌" "wasm-pack not found. Install it first:")
-         (println "   nix-shell -p wasm-pack")
+         (println "   curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh")
+         (println "   See: https://rustwasm.github.io/wasm-pack/installer/")
          (System/exit 1)))
 
      (print-step "📦" "Installing ClojureScript dependencies...")

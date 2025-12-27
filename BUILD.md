@@ -141,12 +141,10 @@ See `.github/LOCAL_TESTING.md` for detailed instructions.
 
 ### Missing wasm-pack
 ```bash
-# NixOS
-nix-shell -p wasm-pack
-
-# Or install directly
 curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 ```
+
+See: https://rustwasm.github.io/wasm-pack/installer/
 
 ### Missing tree-sitter
 ```bash
