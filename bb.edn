@@ -151,13 +151,12 @@
 
   ;; Composite tasks
   build
-  {:doc "Build the entire project (WASM + grammars + ClojureScript)"
+  {:doc "Build the entire project (WASM + ClojureScript)"
    :task
    (do
      (install-cljs!)
      (setup-cljs-deps!)
      (build-wasm! "release")
-     (build-grammars!)
      (build-cljs! "release")
      (print-step "🎉" "Full build completed successfully!"))}
 

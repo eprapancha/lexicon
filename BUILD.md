@@ -30,10 +30,10 @@ Run `bb tasks` to see all available tasks:
 - `bb build-dev` - Development build (faster, debug mode)
 
 ### Production Build
-- `bb build` - Full production build (WASM + grammars + ClojureScript)
+- `bb build` - Full production build (WASM + ClojureScript)
 - `bb build-wasm` - Build Rust WASM module (release)
-- `bb build-grammars` - Build Tree-sitter grammars
 - `bb build-cljs` - Build ClojureScript (production)
+- `bb build-grammars` - Build Tree-sitter grammars (optional)
 
 ### Individual Components
 - `bb install-cljs` - Install npm dependencies
@@ -87,8 +87,9 @@ lexicon/
 1. Install ClojureScript npm dependencies
 2. Setup static assets (web-tree-sitter)
 3. Build Rust WASM module (release)
-4. Build Tree-sitter grammars to WASM
-5. Build ClojureScript frontend (production)
+4. Build ClojureScript frontend (production)
+
+**Note:** Tree-sitter grammars are optional and can be built separately with `bb build-grammars`
 
 ### Development Build (`bb build-dev`)
 1. Install ClojureScript npm dependencies
@@ -151,9 +152,12 @@ curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
 See: https://rustwasm.github.io/wasm-pack/installer/
 
-### Missing tree-sitter
+### Missing tree-sitter (optional)
+Tree-sitter grammars are optional for development. To build them:
+
 ```bash
 npm install -g tree-sitter-cli
+bb build-grammars
 ```
 
 ### Clean build

@@ -65,12 +65,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
 
-    - name: Install Tree-sitter CLI
-      run: npm install -g tree-sitter-cli
-
-    - name: Install dependencies
-      run: bb install-cljs
-
     - name: Build project
       run: bb build
 

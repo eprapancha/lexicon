@@ -57,9 +57,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
 
-    - name: Install ClojureScript dependencies
-      run: bb install-cljs
-
     - name: Build project
       run: bb build
 
