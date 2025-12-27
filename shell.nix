@@ -14,11 +14,13 @@ pkgs.mkShell {
 
     # Node.js and npm
     nodejs_20
+    tree-sitter  # Tree-sitter CLI for grammar builds
 
     # Rust toolchain for WASM
     rustc
     cargo
     wasm-pack
+    lld  # LLVM linker (required for wasm32 target)
 
     # Build tools
     pkg-config

@@ -19,10 +19,9 @@
 
     (defn check-command [cmd]
       (try
-        (-> (proc/shell {:out :string :err :string :continue true}
-                       (str "command -v " cmd))
-            :exit
-            zero?)
+        (let [result (proc/shell {:out :string :err :string :continue true}
+                                 (str cmd " --version"))]
+          (zero? (:exit result)))
         (catch Exception _ false)))
 
     (defn ensure-dir [path]
@@ -73,33 +72,44 @@
 
     (defn build-grammars! []
       (print-step "🌳" "Building Tree-sitter grammars...")
-      (let [grammars-dir "packages/language-grammars"
-            grammar-dirs (filter (fn [d]
-                                  (and (fs/directory? d)
-                                       (fs/exists? (fs/path d "grammar.js"))))
-                                (fs/list-dir grammars-dir))]
 
-        (doseq [grammar-dir grammar-dirs]
-          (let [grammar-name (fs/file-name grammar-dir)]
-            (print-step "📦" (str "Building grammar: " grammar-name))
+      (if-not (or (check-command "tree-sitter") (check-command "tree-sitter-cli"))
+        (do
+          (print-step "⚠️" "tree-sitter CLI not found - skipping grammar builds")
+          (println "   Grammars are optional for development")
+          (println "   To build grammars, install: npm install -g tree-sitter-cli"))
 
-            (when (fs/exists? (fs/path grammar-dir "package.json"))
-              (run-cmd "npm install" :dir (str grammar-dir)))
+        (let [grammars-dir "packages/language-grammars"
+              grammar-dirs (filter (fn [d]
+                                    (and (fs/directory? d)
+                                         (fs/exists? (fs/path d "grammar.js"))))
+                                  (fs/list-dir grammars-dir))]
 
-            (if (check-command "tree-sitter")
-              (run-cmd "tree-sitter build --wasm" :dir (str grammar-dir))
-              (if (check-command "npx")
-                (run-cmd "npx tree-sitter build --wasm" :dir (str grammar-dir))
-                (print-step "⚠️" (str "Skipping " grammar-name " - tree-sitter not found"))))))
+          (if (empty? grammar-dirs)
+            (print-step "⚠️" "No grammars found to build")
+            (doseq [grammar-dir grammar-dirs]
+              (let [grammar-name (fs/file-name grammar-dir)]
+                (print-step "📦" (str "Building grammar: " grammar-name))
 
-        (ensure-dir "packages/editor-cljs/resources/public/grammars")
-        (doseq [wasm-file (fs/glob grammars-dir "**/*.wasm")]
-          (fs/copy wasm-file
-                  (str "packages/editor-cljs/resources/public/grammars/"
-                       (fs/file-name wasm-file))
-                  {:replace-existing true}))
+                (when (fs/exists? (fs/path grammar-dir "package.json"))
+                  (run-cmd "npm install" :dir (str grammar-dir)))
 
-        (print-step "✅" "Grammars built successfully!")))
+                (try
+                  (run-cmd "tree-sitter build-wasm" :dir (str grammar-dir))
+                  (catch Exception e
+                    (print-step "⚠️" (str "Failed to build " grammar-name " - skipping")))))))
+
+          (ensure-dir "packages/editor-cljs/resources/public/grammars")
+          (let [wasm-files (fs/glob grammars-dir "**/*.wasm")]
+            (if (empty? wasm-files)
+              (print-step "⚠️" "No grammar WASM files found")
+              (doseq [wasm-file wasm-files]
+                (fs/copy wasm-file
+                        (str "packages/editor-cljs/resources/public/grammars/"
+                             (fs/file-name wasm-file))
+                        {:replace-existing true}))))
+
+          (print-step "✅" "Grammar build complete!"))))
 
     (defn build-cljs! [mode]
       (let [cmd (if (= mode "release")
