@@ -43,6 +43,7 @@ Run `bb tasks` to see all available tasks:
 
 ### Testing & Utilities
 - `bb test` - Run all tests
+- `bb ci-test` - Test CI workflow locally (simulates GitHub Actions)
 - `bb clean` - Clean build artifacts
 - `bb serve` - Serve built application on :8000
 - `bb build-and-serve` - Build and serve
@@ -108,6 +109,30 @@ Both workflows:
 3. Run `bb build`
 4. Run `bb test` (CI only)
 5. Deploy to GitHub Pages (deploy only)
+
+## Testing CI Locally
+
+Before pushing to GitHub, test the CI workflow locally:
+
+### Quick test (recommended)
+```bash
+bb ci-test
+```
+
+This simulates what GitHub Actions will run (checks dependencies, builds, and tests).
+
+### Advanced: Using act
+For full GitHub Actions simulation, use [act](https://github.com/nektos/act):
+
+```bash
+# Install act
+nix-shell -p act
+
+# Run CI workflow
+act pull_request -j test
+```
+
+See `.github/LOCAL_TESTING.md` for detailed instructions.
 
 ## Troubleshooting
 

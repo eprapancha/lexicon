@@ -17,7 +17,8 @@
     "clean": "bb clean",
     "serve": "bb serve",
     "build-and-serve": "bb build-and-serve",
-    "dev-server": "bb dev-server"
+    "dev-server": "bb dev-server",
+    "ci-test": "bb ci-test"
   },
   "devDependencies": {},
   "engines": {

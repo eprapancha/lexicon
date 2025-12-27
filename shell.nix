@@ -7,6 +7,7 @@ pkgs.mkShell {
 
     # Clojure tooling
     clojure
+    babashka
 
     # Node.js and npm
     nodejs_20
@@ -26,12 +27,14 @@ pkgs.mkShell {
     echo "Java version: $(java -version 2>&1 | head -n 1)"
     echo "Node version: $(node --version)"
     echo "Rust version: $(rustc --version)"
+    echo "Babashka version: $(bb --version 2>&1 || echo 'not installed')"
     echo ""
     echo "Quick start:"
-    echo "  1. npm install"
-    echo "  2. ./scripts/build-wasm.sh"
-    echo "  3. cd packages/lexicon-bridge && node index.js"
-    echo "  4. (new terminal) cd packages/editor-cljs && npx shadow-cljs watch app"
+    echo "  bb dev           # Start development environment"
+    echo "  bb build         # Full production build"
+    echo "  bb ci-test       # Test CI workflow locally"
+    echo ""
+    echo "See 'bb tasks' for all available tasks"
     echo ""
   '';
 }

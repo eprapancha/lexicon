@@ -243,4 +243,64 @@
      (println "Open http://localhost:8000")
      (println "Press Ctrl+C to stop")
      (run-cmd "python3 -m http.server 8000"
-              :dir "packages/editor-cljs/resources/public"))}}}
+              :dir "packages/editor-cljs/resources/public"))}
+
+  ci-test
+  {:doc "Test CI workflow locally (simulates GitHub Actions)"
+   :task
+   (do
+     (print-step "🧪" "Testing CI workflow locally...")
+     (println "================================")
+     (println "")
+
+     (print-step "📋" "Checking dependencies...")
+     (let [node-version (try (str/trim (:out (proc/shell {:out :string} "node --version")))
+                            (catch Exception _ "NOT INSTALLED"))
+           java-version (try (-> (proc/shell {:out :string} "java -version")
+                                :err
+                                str/split-lines
+                                first)
+                            (catch Exception _ "NOT INSTALLED"))
+           bb-version (try (str/trim (:out (proc/shell {:out :string} "bb --version")))
+                          (catch Exception _ "NOT INSTALLED"))
+           rust-version (try (str/trim (:out (proc/shell {:out :string} "rustc --version")))
+                            (catch Exception _ "NOT INSTALLED"))
+           wasm-pack-version (try (str/trim (:out (proc/shell {:out :string} "wasm-pack --version")))
+                                 (catch Exception _ "NOT INSTALLED"))]
+
+       (println (str "  Node.js: " node-version))
+       (println (str "  Java: " java-version))
+       (println (str "  Babashka: " bb-version))
+       (println (str "  Rust: " rust-version))
+       (println (str "  wasm-pack: " wasm-pack-version))
+       (println "")
+
+       (when (= wasm-pack-version "NOT INSTALLED")
+         (print-step "❌" "wasm-pack not found. Install it first:")
+         (println "   nix-shell -p wasm-pack")
+         (System/exit 1)))
+
+     (print-step "📦" "Installing ClojureScript dependencies...")
+     (install-cljs!)
+     (println "")
+
+     (print-step "🏗️" "Building project...")
+     (setup-cljs-deps!)
+     (build-wasm! "release")
+     (build-grammars!)
+     (build-cljs! "release")
+     (println "")
+
+     (print-step "🧪" "Running tests...")
+     (when (fs/exists? "packages/editor-cljs/shadow-cljs.edn")
+       (print-step "📝" "Testing ClojureScript...")
+       (run-cmd "npx shadow-cljs compile test" :dir "packages/editor-cljs"))
+
+     (when (fs/exists? "packages/lexicon-engine/wasm/Cargo.toml")
+       (print-step "🦀" "Testing Rust...")
+       (run-cmd "cargo test" :dir "packages/lexicon-engine/wasm"))
+     (println "")
+
+     (print-step "✅" "All CI steps completed successfully!")
+     (println "")
+     (println "Your changes should pass CI on GitHub."))}}}
