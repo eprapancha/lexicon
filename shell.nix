@@ -5,6 +5,9 @@ pkgs.mkShell {
     # Java 21 (required for shadow-cljs)
     jdk21
 
+    # test gh action locally
+    act
+
     # Clojure tooling
     clojure
     babashka

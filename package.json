@@ -18,7 +18,10 @@
     "serve": "bb serve",
     "build-and-serve": "bb build-and-serve",
     "dev-server": "bb dev-server",
-    "ci-test": "bb ci-test"
+    "ci-test": "bb ci-test",
+    "install-act": "bb install-act",
+    "act-ci": "bb act-ci",
+    "act-list": "bb act-list"
   },
   "devDependencies": {},
   "engines": {

@@ -115,25 +115,30 @@ All tools are installed using official sources - no third-party actions with ver
 
 ## Testing CI Locally
 
-Before pushing to GitHub, test the CI workflow locally:
+You have two options for testing before pushing to GitHub:
 
-### Quick test (recommended)
+### Option 1: Quick Test (Fast)
 ```bash
 bb ci-test
 ```
 
-This simulates what GitHub Actions will run (checks dependencies, builds, and tests).
+Simulates GitHub Actions locally without Docker (fast, but not 100% identical).
 
-### Advanced: Using act
-For full GitHub Actions simulation, use [act](https://github.com/nektos/act):
-
+### Option 2: Full Simulation with act (Accurate)
 ```bash
-# Install act
-nix-shell -p act
+# Install act (one-time setup)
+bb install-act
 
-# Run CI workflow
-act pull_request -j test
+# List available workflows
+bb act-list
+
+# Run the full CI workflow in Docker (exactly like GitHub)
+bb act-ci
 ```
+
+**Recommended workflow:**
+1. Use `bb ci-test` for quick iterations
+2. Use `bb act-ci` for final verification before pushing
 
 See `.github/LOCAL_TESTING.md` for detailed instructions.
 

@@ -244,6 +244,53 @@
      (run-cmd "python3 -m http.server 8000"
               :dir "packages/editor-cljs/resources/public"))}
 
+  install-act
+  {:doc "Install act for local GitHub Actions testing"
+   :task
+   (do
+     (if (check-command "act")
+       (println "✅ act is already installed")
+       (do
+         (print-step "📦" "Installing act...")
+         (println "")
+         (println "Choose installation method:")
+         (println "  1. Download binary (recommended)")
+         (println "  2. Use Nix (if you have nix-shell)")
+         (println "")
+         (print "Enter choice [1-2]: ")
+         (flush)
+         (let [choice (read-line)]
+           (case choice
+             "1" (do
+                   (run-cmd "bash -c 'curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash'")
+                   (print-step "✅" "act installed!"))
+             "2" (println "Run: nix-shell -p act")
+             (println "Invalid choice"))))))}
+
+  act-ci
+  {:doc "Run CI workflow locally with act"
+   :task
+   (do
+     (when-not (check-command "act")
+       (print-step "❌" "act not installed. Run: bb install-act")
+       (System/exit 1))
+
+     (print-step "🎬" "Running CI workflow with act...")
+     (println "")
+     (println "This will run the GitHub Actions CI workflow in Docker")
+     (println "")
+     (run-cmd "act pull_request -j test"))}
+
+  act-list
+  {:doc "List available GitHub Actions workflows"
+   :task
+   (do
+     (when-not (check-command "act")
+       (print-step "❌" "act not installed. Run: bb install-act")
+       (System/exit 1))
+
+     (run-cmd "act -l"))}
+
   ci-test
   {:doc "Test CI workflow locally (simulates GitHub Actions)"
    :task
