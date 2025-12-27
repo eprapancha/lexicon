@@ -24,17 +24,19 @@ This runs the exact same steps as GitHub Actions:
 
 You can also test GitHub Actions locally using [act](https://github.com/nektos/act), which runs your workflows in Docker containers.
 
-## Install act
+### Install act
 
-### NixOS
+**NixOS:**
 ```bash
 nix-shell -p act
 ```
 
-### Or use the installer
+**Other platforms:**
 ```bash
 curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
 ```
+
+**Note:** Our workflows now install Babashka using the official installer script instead of a third-party action, making them more reliable and easier to test with act.
 
 ## Basic Usage
 

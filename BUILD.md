@@ -104,11 +104,14 @@ GitHub Actions workflows use Babashka:
 - **Deploy** (`.github/workflows/deploy.yml`) - Build and deploy to GitHub Pages
 
 Both workflows:
-1. Setup Node.js, Java, Babashka, Rust, and wasm-pack
-2. Run `bb install-cljs`
-3. Run `bb build`
-4. Run `bb test` (CI only)
-5. Deploy to GitHub Pages (deploy only)
+1. Setup Node.js, Java, Rust, and wasm-pack (via official actions)
+2. Install Babashka (via official installer script)
+3. Run `bb install-cljs`
+4. Run `bb build`
+5. Run `bb test` (CI only)
+6. Deploy to GitHub Pages (deploy only)
+
+All tools are installed using official sources - no third-party actions with version bugs.
 
 ## Testing CI Locally
 

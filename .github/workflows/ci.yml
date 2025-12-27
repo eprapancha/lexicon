@@ -28,9 +28,11 @@ jobs:
         java-version: '17'
 
     - name: Setup Babashka
-      uses: turtlequeue/setup-babashka@v1.7.0
-      with:
-        babashka-version: 'latest'
+      run: |
+        curl -sLO https://raw.githubusercontent.com/babashka/babashka/master/install
+        chmod +x install
+        sudo ./install
+        bb --version
 
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
