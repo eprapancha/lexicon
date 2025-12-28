@@ -915,10 +915,10 @@
     (type-text "modified content")
     (Thread/sleep 200)
 
-    ;; Check mode line for modified indicator (**)
-    (let [mode-line (e/get-element-text *driver* {:css ".mode-line"})]
-      (is (.contains mode-line "**")
-          (str "Mode line should show ** for modified buffer. Got: " mode-line)))))
+    ;; Check status bar (mode line) for modified indicator (**)
+    (let [status-bar (e/get-element-text *driver* {:css ".status-bar"})]
+      (is (.contains status-bar "**")
+          (str "Status bar should show ** for modified buffer. Got: " status-bar)))))
 
 (deftest ^:skip test-p2-05-save-buffer
   (testing "P2-05: Verify save-buffer (C-x C-s) - SKIPPED: Browser file dialog"
@@ -1014,7 +1014,7 @@
     (Thread/sleep 300)
 
     ;; Check for multiple windows
-    (let [windows (e/query-all *driver* {:css ".window"})]
+    (let [windows (e/query-all *driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           (str "Should have at least 2 windows. Got: " (count windows))))))
 
@@ -1031,7 +1031,7 @@
     (Thread/sleep 300)
 
     ;; Check for multiple windows
-    (let [windows (e/query-all *driver* {:css ".window"})]
+    (let [windows (e/query-all *driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           (str "Should have at least 2 windows. Got: " (count windows))))))
 
@@ -1054,7 +1054,7 @@
     (Thread/sleep 300)
 
     ;; Check that windows exist (cycling doesn't change count)
-    (let [windows (e/query-all *driver* {:css ".window"})]
+    (let [windows (e/query-all *driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           "Windows should still exist after cycling"))
 
@@ -1064,7 +1064,7 @@
     (press-key "o")
     (Thread/sleep 300)
 
-    (let [windows (e/query-all *driver* {:css ".window"})]
+    (let [windows (e/query-all *driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           "Windows should still exist after cycling twice"))))
 
@@ -1119,7 +1119,7 @@
     (Thread/sleep 300)
 
     ;; Verify multiple windows exist
-    (let [windows-before (e/query-all *driver* {:css ".window"})]
+    (let [windows-before (e/query-all *driver* {:css ".window-pane"})]
       (is (>= (count windows-before) 2)
           "Should have multiple windows before C-x 1"))
 
@@ -1130,7 +1130,7 @@
     (Thread/sleep 300)
 
     ;; Should have only one window now
-    (let [windows-after (e/query-all *driver* {:css ".window"})]
+    (let [windows-after (e/query-all *driver* {:css ".window-pane"})]
       (is (= (count windows-after) 1)
           (str "Should have 1 window after C-x 1. Got: " (count windows-after))))))
 
@@ -1147,7 +1147,7 @@
     (Thread/sleep 300)
 
     ;; Get all windows
-    (let [windows (e/query-all *driver* {:css ".window"})]
+    (let [windows (e/query-all *driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           "Should have at least 2 windows")
 
@@ -1188,12 +1188,12 @@
     (Thread/sleep 200)
 
     ;; Mode line should show Text mode or command should execute
-    (let [mode-line (try
-                      (e/get-element-text *driver* {:css ".mode-line"})
+    (let [status-bar (try
+                      (e/get-element-text *driver* {:css ".status-bar"})
                       (catch Exception _ ""))]
-      (is (or (.contains mode-line "Text")
-              (.contains mode-line "text"))
-          (str "Mode should change or command execute. Got: " mode-line)))))
+      (is (or (.contains status-bar "Text")
+              (.contains status-bar "text"))
+          (str "Mode should change or command execute. Got: " status-bar)))))
 
 (deftest test-p4-02-describe-key
   (testing "P4-02: Verify describe-key (C-h k)"
@@ -1261,8 +1261,8 @@
     (Thread/sleep 300)
 
     ;; Check mode line for changes
-    (let [mode-line-1 (try
-                        (e/get-element-text *driver* {:css ".mode-line"})
+    (let [status-bar-1 (try
+                        (e/get-element-text *driver* {:css ".status-bar"})
                         (catch Exception _ ""))]
       ;; Toggle again
       (press-meta-key "x")
@@ -1272,12 +1272,12 @@
       (press-key "Enter")
       (Thread/sleep 300)
 
-      (let [mode-line-2 (try
-                          (e/get-element-text *driver* {:css ".mode-line"})
+      (let [status-bar-2 (try
+                          (e/get-element-text *driver* {:css ".status-bar"})
                           (catch Exception _ ""))]
         ;; Mode line should have changed (at least one toggle happened)
-        (is (or (not= mode-line-1 mode-line-2)
-                (.contains mode-line-1 "L"))
+        (is (or (not= status-bar-1 status-bar-2)
+                (.contains status-bar-1 "L"))
             "Minor mode should toggle")))))
 
 (deftest test-p6a-01-package-list
@@ -1360,16 +1360,16 @@
               (empty? echo-text))
           "Font size command should execute"))))
 
-(deftest test-p6b-03-mode-line-formatting
+(deftest test-p6b-03-status-bar-formatting
   (testing "P6B-03: Verify Mode Line Formatting"
     (e/go *driver* app-url)
     (wait-for-editor-ready)
     (click-editor)
 
     ;; Check initial mode line
-    (let [mode-line (e/get-element-text *driver* {:css ".mode-line"})]
-      (is (or (.contains mode-line "*scratch*")
-              (.contains mode-line "scratch"))
+    (let [status-bar (e/get-element-text *driver* {:css ".status-bar"})]
+      (is (or (.contains status-bar "*scratch*")
+              (.contains status-bar "scratch"))
           "Mode line should show buffer name"))
 
     ;; Type to modify buffer
@@ -1377,8 +1377,8 @@
     (Thread/sleep 200)
 
     ;; Check for modified indicator
-    (let [mode-line (e/get-element-text *driver* {:css ".mode-line"})]
-      (is (.contains mode-line "**")
+    (let [status-bar (e/get-element-text *driver* {:css ".status-bar"})]
+      (is (.contains status-bar "**")
           "Mode line should show ** for modified buffer"))))
 
 (deftest ^:skip test-p6d-01-thing-at-point
