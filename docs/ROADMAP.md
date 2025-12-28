@@ -1156,9 +1156,15 @@ Now that infrastructure exists, we can make Evil-mode work.
 
 ## Current Focus
 
-**Active Phase:** Phase 6B ✅ COMPLETE | **Next Phase:** Phase 6C - Completion Framework
+**Active Phase:** Phase 6.6 🔲 In Progress - Testing Infrastructure Migration | **Next Phase:** Phase 7 - Evil-mode Integration
 
-**Recent Achievements (Dec 25, 2025):**
+**Recent Achievements (Dec 28, 2025):**
+- ✅ **Fixed backspace-at-position-0 bug** - Transaction queue no longer stalls when backspacing at buffer start
+- ✅ **Playwright E2E baseline established** - 7 passing browser automation tests (commit 2433cbc)
+- ✅ **Phase 6.6 roadmap complete** - Comprehensive testing migration plan documented
+- 🔲 **In Progress:** Migrating to Etaoin (ClojureScript) for language consistency
+
+**Previous Achievements (Dec 25, 2025):**
 - ✅ **Phase 6B COMPLETE** - Display & Theming Foundation (all 4 weeks)
 - ✅ **Week 4 COMPLETE** - Theme System with CSS Variables
   - Complete theming system using CSS custom properties
