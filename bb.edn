@@ -225,7 +225,7 @@
        (println "   Install Firefox or update test to use Chrome"))
 
      (print-step "🧪" "Running E2E tests...")
-     (run-cmd "clojure -M:e2e -m lexicon.basic-editing-test")
+     (run-cmd "clojure -M:e2e -m kaocha.runner --config-file tests.edn")
      (print-step "✅" "E2E tests completed!"))}
 
   test
@@ -246,7 +246,7 @@
      (println "")
      (print-step "🌐" "Running E2E tests...")
      (when (fs/exists? "e2e_tests")
-       (run-cmd "clojure -M:e2e -m lexicon.basic-editing-test"))
+       (run-cmd "clojure -M:e2e -m kaocha.runner --config-file tests.edn"))
      (println "")
 
      (print-step "✅" "All tests completed!"))}

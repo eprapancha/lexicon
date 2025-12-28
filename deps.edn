@@ -4,5 +4,7 @@
 
  :aliases
  {:e2e
-  {:extra-deps {etaoin/etaoin {:mvn/version "1.1.41"}}
+  {:extra-deps {etaoin/etaoin {:mvn/version "1.1.41"}
+                lambdaisland/kaocha {:mvn/version "1.91.1392"}
+                lambdaisland/kaocha-junit-xml {:mvn/version "1.17.101"}}
    :extra-paths ["e2e_tests"]}}}

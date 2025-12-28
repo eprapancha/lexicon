@@ -1,0 +1,15 @@
+{:kaocha/reporter [kaocha.report/documentation
+                   kaocha.report.progress/report]
+ :kaocha/color? true
+ :kaocha/fail-fast? false
+
+ :kaocha/plugins [:kaocha.plugin/junit-xml]
+
+ :kaocha.plugin.junit-xml/target-file "test-results/junit.xml"
+
+ :kaocha/tests
+ [{:kaocha.testable/type :kaocha.type/clojure.test
+   :kaocha.testable/id :e2e
+   :kaocha/source-paths []
+   :kaocha/test-paths ["e2e_tests"]
+   :kaocha/ns-patterns [".*-test$"]}]}
