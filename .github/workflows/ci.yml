@@ -34,6 +34,22 @@ jobs:
         sudo ./install
         bb --version
 
+    - name: Setup Clojure
+      uses: DeLaGuardo/setup-clojure@12.5
+      with:
+        cli: latest
+
+    - name: Setup Firefox and geckodriver
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y firefox
+        wget https://github.com/mozilla/geckodriver/releases/download/v0.34.0/geckodriver-v0.34.0-linux64.tar.gz
+        tar -xzf geckodriver-v0.34.0-linux64.tar.gz
+        sudo mv geckodriver /usr/local/bin/
+        sudo chmod +x /usr/local/bin/geckodriver
+        firefox --version
+        geckodriver --version
+
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
       with:
@@ -59,6 +75,12 @@ jobs:
 
     - name: Build project
       run: bb build
+
+    - name: Start dev server
+      run: |
+        bb dev &
+        sleep 15
+        curl --retry 10 --retry-delay 2 --retry-connrefused http://localhost:8080
 
     - name: Run tests
       run: bb test

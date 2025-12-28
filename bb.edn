@@ -229,7 +229,7 @@
      (print-step "✅" "E2E tests completed!"))}
 
   test
-  {:doc "Run all tests (unit + E2E)"
+  {:doc "Run all tests (unit + E2E + Rust)"
    :task
    (do
      (print-step "🧪" "Running all tests...")
@@ -244,8 +244,9 @@
        (run-cmd "cargo test" :dir "packages/lexicon-engine/wasm"))
 
      (println "")
-     (print-step "🌐" "E2E tests...")
-     (print-step "⚠️" "E2E tests not yet implemented - migration in progress")
+     (print-step "🌐" "Running E2E tests...")
+     (when (fs/exists? "e2e_tests")
+       (run-cmd "clojure -M:e2e -m lexicon.basic-editing-test"))
      (println "")
 
      (print-step "✅" "All tests completed!"))}
