@@ -190,19 +190,63 @@
      (print-step "🌐" "Starting development server...")
      (run-cmd "node dev-server.js" :dir "packages/editor-cljs"))}
 
-  test
-  {:doc "Run all tests"
+  test:unit
+  {:doc "Run ClojureScript unit tests"
    :task
    (do
-     (print-step "🧪" "Running tests...")
-
+     (print-step "🧪" "Running ClojureScript unit tests...")
      (when (fs/exists? "packages/editor-cljs/shadow-cljs.edn")
-       (print-step "📝" "Testing ClojureScript...")
+       (run-cmd "npx shadow-cljs compile test" :dir "packages/editor-cljs"))
+     (print-step "✅" "Unit tests completed!"))}
+
+  test:unit:watch
+  {:doc "Watch ClojureScript unit tests (continuous feedback)"
+   :task
+   (do
+     (print-step "👀" "Watching ClojureScript unit tests...")
+     (println "Tests will auto-run on file changes")
+     (println "Open http://localhost:8021 in browser to see results")
+     (println "Press Ctrl+C to stop")
+     (run-cmd "npx shadow-cljs watch test" :dir "packages/editor-cljs"))}
+
+  test:e2e
+  {:doc "Run E2E tests with Etaoin (requires Firefox/Chrome WebDriver)"
+   :task
+   (do
+     (print-step "🌐" "Running E2E tests with Etaoin...")
+     (println "")
+     (print-step "📋" "Prerequisites:")
+     (println "   1. Firefox installed (or Chrome with geckodriver/chromedriver)")
+     (println "   2. App running at http://localhost:8080 (run 'bb dev' in another terminal)")
+     (println "")
+
+     (when-not (check-command "firefox")
+       (print-step "⚠️" "Firefox not found - tests may fail")
+       (println "   Install Firefox or update test to use Chrome"))
+
+     (print-step "🧪" "Running E2E tests...")
+     (run-cmd "clojure -M:e2e -m lexicon.basic-editing-test")
+     (print-step "✅" "E2E tests completed!"))}
+
+  test
+  {:doc "Run all tests (unit + E2E)"
+   :task
+   (do
+     (print-step "🧪" "Running all tests...")
+     (println "")
+
+     (print-step "📝" "Running unit tests...")
+     (when (fs/exists? "packages/editor-cljs/shadow-cljs.edn")
        (run-cmd "npx shadow-cljs compile test" :dir "packages/editor-cljs"))
 
      (when (fs/exists? "packages/lexicon-engine/wasm/Cargo.toml")
        (print-step "🦀" "Testing Rust...")
        (run-cmd "cargo test" :dir "packages/lexicon-engine/wasm"))
+
+     (println "")
+     (print-step "🌐" "E2E tests...")
+     (print-step "⚠️" "E2E tests not yet implemented - migration in progress")
+     (println "")
 
      (print-step "✅" "All tests completed!"))}
 

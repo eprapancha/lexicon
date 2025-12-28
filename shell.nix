@@ -24,6 +24,11 @@ pkgs.mkShell {
 
     # Build tools
     pkg-config
+
+    # for UI testing
+    firefox
+    geckodriver
+
   ];
 
   shellHook = ''
