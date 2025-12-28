@@ -50,3 +50,6 @@ temp/
 /packages/editor-cljs/node_modules
 /Screenshots
 /packages/editor-cljs/resources/public/lexicon-engine/
+
+# Test artifacts
+test-results/
