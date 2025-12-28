@@ -812,6 +812,169 @@ Before opening the project to external contributors and accepting pull requests,
 
 ---
 
+## Phase 6.6: Testing Infrastructure Migration
+
+**Status:** 🔲 In Progress
+**Goal:** Migrate from Playwright (JavaScript) to Etaoin (ClojureScript) for E2E tests, establish three-tier testing strategy
+**Timeline:** 2 weeks
+**Prerequisites:** ✅ Phase 6.5 complete (Playwright baseline established)
+**Priority:** HIGH - Must maintain language consistency and testing workflow
+
+### Rationale
+
+**Current Problem:**
+- Playwright E2E tests written in JavaScript - introduces new language into ClojureScript project
+- Build scripts migrated to Babashka, but tests remain in JS (inconsistency)
+- ClojureScript unit tests exist but lack command-line feedback (browser-only at :8021)
+- No clear separation between unit tests, integration tests, and E2E tests
+- shadow-cljs test endpoint outputs to browser, not terminal (poor developer experience)
+
+**Solution:**
+- Migrate to **Etaoin** (ClojureScript WebDriver library) for E2E tests
+- Establish three-tier testing strategy (Unit → E2E → CI/CD)
+- Configure command-line test feedback (no browser required for units)
+- Integrate with Babashka for unified build/test workflow
+
+### Week 1: Etaoin Migration
+
+#### Phase 1: Setup & Baseline (✅ COMPLETE - Dec 28, 2025)
+- [x] Commit Playwright baseline for comparison reference (commit 2433cbc)
+- [x] Document current Playwright setup in commit history
+- [x] Add Phase 6.6 to roadmap
+
+#### Phase 2: Etaoin Setup (🔲 Planned)
+- [ ] Remove Playwright dependencies (package.json)
+- [ ] Add Etaoin to deps.edn
+- [ ] Create basic Etaoin test harness
+- [ ] Convert one Playwright test to Etaoin to prove approach works
+- [ ] Compare with Playwright baseline to verify behavior matches
+
+#### Phase 3: E2E Test Migration (🔲 Planned)
+- [ ] Convert all 7 Playwright tests to Etaoin
+- [ ] Migrate remaining ManualTestingPlan.md tests to E2E
+- [ ] Organize E2E tests in `e2e_tests/lexicon/` directory
+- [ ] Delete Playwright files (e2e-tests/, playwright.config.js)
+
+### Week 2: Testing Strategy & CI/CD
+
+#### Unit Test Refactoring (🔲 Planned)
+- [ ] Configure shadow-cljs for command-line test output (not browser-based)
+- [ ] Add `:node-test` target for terminal-only testing
+- [ ] Ensure tests can run without browser (headless)
+- [ ] Add watch mode for continuous testing during development
+- [ ] Test output format: TAP or JUnit for CI integration
+
+#### Critical Function Coverage (🔲 Planned)
+- [ ] Audit critical functions in codebase
+- [ ] Add unit tests for:
+  - Buffer operations (insert, delete, undo/redo) in events.cljs
+  - Transaction queue logic (in-flight flag, success/failure)
+  - Key sequence parsing and binding lookup
+  - Window tree manipulation (split, delete, rebalance)
+  - Rope data structure operations (if exposed)
+- [ ] Target 80% coverage of critical paths
+
+#### Babashka Integration (🔲 Planned)
+- [ ] Create `bb.edn` tasks:
+  - `bb test:unit` - Run unit tests (terminal output)
+  - `bb test:unit:watch` - Watch unit tests (continuous feedback)
+  - `bb test:e2e` - Run E2E tests (requires browser/WebDriver)
+  - `bb test:all` - Run all tests
+  - `bb ci` - Full CI pipeline (setup → build → test)
+- [ ] Update package.json scripts to use Babashka
+- [ ] Document test workflow in README
+
+#### GitHub Actions Integration (🔲 Planned)
+- [ ] Update `.github/workflows/*.yml` for new test structure
+- [ ] Unit tests run on every push
+- [ ] E2E tests run on pull requests
+- [ ] Add test coverage reporting
+- [ ] Configure WebDriver (Firefox/Chromium) for CI environment
+
+### Testing Strategy (Three-Tier)
+
+**Tier 1: Unit Tests (ClojureScript) - Fast, Isolated**
+- **Location:** `test/lexicon/*.cljs`
+- **Target:** shadow-cljs `:node-test` (command-line output)
+- **Run via:** `bb test:unit` or `bb test:unit:watch`
+- **Coverage:**
+  - Pure functions (buffer operations, data structures)
+  - Event handlers (re-frame events)
+  - Subscriptions (re-frame queries)
+  - Utility functions (string parsing, key sequences)
+- **No WASM:** Mock WASM layer if needed for isolation
+- **No Browser:** Runs in Node.js or headless environment
+- **Feedback:** Direct terminal output (TAP/JUnit format)
+
+**Tier 2: E2E Tests (ClojureScript/Etaoin) - Slow, Realistic**
+- **Location:** `e2e_tests/lexicon/*.cljs`
+- **Target:** Etaoin WebDriver (Firefox/Chromium)
+- **Run via:** `bb test:e2e`
+- **Coverage:**
+  - Full user workflows (typing, navigation, commands)
+  - Browser integration (DOM events, rendering)
+  - WASM integration (real gap buffer operations)
+  - Manual test plan automation (ManualTestingPlan.md)
+- **Requires Browser:** Real browser via WebDriver
+- **Feedback:** Terminal output + HTML reports
+
+**Tier 3: CI/CD (GitHub Actions) - Automated**
+- **Trigger:** Every push/PR
+- **Pipeline:**
+  1. Setup (install deps)
+  2. Build (compile ClojureScript + WASM)
+  3. Unit tests (fast feedback)
+  4. E2E tests (slow, comprehensive)
+  5. Coverage report
+  6. Deploy (if main branch)
+
+### Success Criteria
+
+- [x] Playwright baseline committed for reference
+- [ ] All Playwright tests migrated to Etaoin (7 tests)
+- [ ] Unit tests run from command line with terminal output
+- [ ] Watch mode works for rapid unit test development
+- [ ] Babashka tasks integrate testing into build workflow
+- [ ] GitHub Actions run tests on every push/PR
+- [ ] No JavaScript test code remains in project
+- [ ] Test coverage ≥ 80% for critical functions
+- [ ] Documentation updated (README, test workflow)
+- [ ] ManualTestingPlan.md tests automated in E2E suite
+
+### Deferred / Out of Scope
+
+- **Integration Tests (WASM + ClojureScript):** Deferred - E2E tests cover this, or mock WASM for units
+- **Performance Testing:** Deferred to Phase 8+
+- **Accessibility Testing:** Deferred (covered in manual testing plan)
+- **Cross-browser Testing:** Focus on Firefox for now, add Chromium later
+
+### Developer Workflow
+
+**During Development (Unit Tests):**
+```bash
+bb test:unit:watch  # Continuous feedback in terminal
+```
+
+**Before Commit (Full Test Suite):**
+```bash
+bb test:all  # Run unit + E2E tests
+```
+
+**CI Pipeline (Automated):**
+```bash
+bb ci  # Full build + test + coverage
+```
+
+### Known Issues
+
+1. **shadow-cljs :browser-test limitation:** Currently requires browser at :8021 for unit tests
+2. **WASM undo not implemented:** 6 failing unit tests (acknowledged in Phase 6.5)
+3. **Playwright removal:** May lose some test infrastructure insights (mitigated by commit baseline)
+
+**Progress:** 1/18 complete (6%) - Baseline established, migration planning complete
+
+---
+
 ## Phase 7: Evil-mode Integration
 
 **Status:** 🔲 Planned
