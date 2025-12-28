@@ -31,14 +31,19 @@
   ;; Preserve WASM constructor when resetting, but NOT wasm-instance
   ;; Each buffer needs its own fresh WASM instance to avoid Rust borrow checker errors
   (let [wasm-constructor (get-in @rfdb/app-db [:system :wasm-constructor])
-        initial-window-id (random-uuid)]
+        initial-window-id 1]  ; Use ID 1 to match default buffer
     (reset! rfdb/app-db db/default-db)
     (when wasm-constructor
       (swap! rfdb/app-db assoc-in [:system :wasm-constructor] wasm-constructor))
-    ;; Set up flat window structure for tests
-    (swap! rfdb/app-db assoc :windows {initial-window-id {:window-id initial-window-id
-                                                           :buffer-id nil}})
-    (swap! rfdb/app-db assoc-in [:editor :active-window-id] initial-window-id)))
+    ;; Set up window tree structure (not flat :windows map)
+    (swap! rfdb/app-db assoc :window-tree {:type :leaf
+                                            :id initial-window-id
+                                            :buffer-id nil
+                                            :cursor-position {:line 0 :column 0}
+                                            :mark-position nil
+                                            :viewport {:start-line 0 :end-line 50}
+                                            :dimensions {:x 0 :y 0 :width 100 :height 100}})
+    (swap! rfdb/app-db assoc :active-window-id initial-window-id)))
 
 (defn create-test-buffer
   "Create a test buffer with CONTENT and return buffer-id."
@@ -109,6 +114,114 @@
 
       (is (= "Hell" (get-buffer-text buffer-id))
           "Backspace should delete character before point"))))
+
+(deftest test-backspace-all-then-type
+  (testing "REGRESSION: Typing should work after backspacing entire buffer (P0-01 → P0-02 transition bug)"
+    (let [buffer-id (create-test-buffer "")]
+      (rf/dispatch-sync [:set-current-buffer buffer-id])
+
+      ;; Simulate P0-01: Type a sentence
+      (let [sentence "The quick brown fox jumps over the lazy dog."]
+        (doseq [ch sentence]
+          (rf/dispatch-sync [:self-insert-command (str ch)])))
+
+      (is (= "The quick brown fox jumps over the lazy dog." (get-buffer-text buffer-id))
+          "Initial text should be typed correctly (P0-01)")
+
+      ;; User wants clean slate for P0-02: Backspace everything
+      (let [length (count "The quick brown fox jumps over the lazy dog.")]
+        (dotimes [_ length]
+          (rf/dispatch-sync [:delete-backward-char])))
+
+      (is (= "" (get-buffer-text buffer-id))
+          "Buffer should be empty after backspacing all content")
+
+      ;; Critical test: Try to type again (P0-02 scenario)
+      ;; This is where the bug manifests - typing doesn't appear on screen
+      (rf/dispatch-sync [:self-insert-command "l"])
+      (rf/dispatch-sync [:self-insert-command "i"])
+      (rf/dispatch-sync [:self-insert-command "n"])
+      (rf/dispatch-sync [:self-insert-command "e"])
+      (rf/dispatch-sync [:self-insert-command " "])
+      (rf/dispatch-sync [:self-insert-command "1"])
+
+      (is (= "line 1" (get-buffer-text buffer-id))
+          "Typing should still work after clearing buffer with backspace"))))
+
+(deftest test-backspace-all-then-type-via-dom-events
+  (testing "REGRESSION: DOM event handlers should work after backspacing entire buffer"
+    (async done
+      (let [buffer-id (create-test-buffer "")]
+        (rf/dispatch-sync [:set-current-buffer buffer-id])
+
+        ;; Type initial text via self-insert-command
+        (doseq [ch "abcd"]
+          (rf/dispatch-sync [:self-insert-command (str ch)]))
+
+        (is (= "abcd" (get-buffer-text buffer-id))
+            "Initial text should be present")
+
+        ;; Backspace all characters
+        (dotimes [_ 4]
+          (rf/dispatch-sync [:delete-backward-char]))
+
+        (is (= "" (get-buffer-text buffer-id))
+            "Buffer should be empty after backspacing")
+
+        ;; Check immediately after backspace - before setTimeout
+        (let [db @rfdb/app-db
+              active-window-id (:active-window-id db)
+              window-tree (:window-tree db)
+              active-window (when active-window-id
+                              (lexicon.db/find-window-in-tree window-tree active-window-id))
+              active-buffer-id (:buffer-id active-window)
+              active-buffer (get-in db [:buffers active-buffer-id])
+              wasm-instance (:wasm-instance active-buffer)]
+          (println "🔍 IMMEDIATE after backspace (before setTimeout):")
+          (println "  buffer-id from test:" buffer-id)
+          (println "  active-buffer-id from window:" active-buffer-id)
+          (println "  wasm-instance:" (if wasm-instance "PRESENT" "NIL")))
+
+        ;; Wait a tick for DOM updates
+        (js/setTimeout
+         (fn []
+           ;; Debug: Check state before attempting to insert
+           (let [db @rfdb/app-db
+                 active-window-id (:active-window-id db)
+                 window-tree (:window-tree db)
+                 active-window (when active-window-id
+                                 (lexicon.db/find-window-in-tree window-tree active-window-id))
+                 active-buffer-id (:buffer-id active-window)
+                 active-buffer (get-in db [:buffers active-buffer-id])
+                 wasm-instance (:wasm-instance active-buffer)]
+
+             (println "🔍 DEBUG after backspace:")
+             (println "  active-window-id:" active-window-id)
+             (println "  active-window:" active-window)
+             (println "  active-buffer-id:" active-buffer-id)
+             (println "  active-buffer:" (keys active-buffer))
+             (println "  wasm-instance:" (if wasm-instance "PRESENT" "NIL"))
+
+             (is (some? active-window-id) "active-window-id should exist")
+             (is (some? active-window) "active-window should exist")
+             (is (some? active-buffer-id) "active-buffer-id should exist")
+             (is (some? wasm-instance) "wasm-instance should exist after backspace"))
+
+           ;; Try to trigger input via handle-text-input event (simulating DOM input)
+           ;; Use :self-insert-command instead since :handle-text-input uses async effects
+           ;; that don't flush in test environment
+           (rf/dispatch-sync [:self-insert-command "a"])
+           (rf/dispatch-sync [:self-insert-command "b"])
+           (rf/dispatch-sync [:self-insert-command "c"])
+           (rf/dispatch-sync [:self-insert-command "d"])
+
+           ;; Check if text was inserted
+           (let [result (get-buffer-text buffer-id)]
+             (is (= "abcd" result)
+                 (str "Text should be inserted after backspace. Got: " result)))
+
+           (done))
+         100)))))
 
 ;; -- Phase 3: Window Tree Cursor Bug --
 

@@ -1858,19 +1858,26 @@ C-h ?   This help menu
                                  :operation operation}]))))
 
              :delete-backward
-             (when (> current-cursor 0)
-               (println "🔧 DELETE BACKWARD at position:" (dec current-cursor))
-               (try
-                 ;; Use gap buffer's direct delete API
-                 (.delete ^js wasm-instance (dec current-cursor) 1)
+             (if (> current-cursor 0)
+               (do
+                 (println "🔧 DELETE BACKWARD at position:" (dec current-cursor))
+                 (try
+                   ;; Use gap buffer's direct delete API
+                   (.delete ^js wasm-instance (dec current-cursor) 1)
+                   (rf/dispatch [:editor/transaction-success
+                                {:operation operation
+                                 :new-cursor (dec current-cursor)}])
+                   (catch js/Error error
+                     (println "❌ Delete backward error:" error)
+                     (rf/dispatch [:editor/transaction-failure
+                                  {:error (str error)
+                                   :operation operation}]))))
+               ;; At beginning of buffer - no-op but still signal success
+               (do
+                 (println "⚠️ DELETE BACKWARD at position 0 (no-op)")
                  (rf/dispatch [:editor/transaction-success
                               {:operation operation
-                               :new-cursor (dec current-cursor)}])
-                 (catch js/Error error
-                   (println "❌ Delete backward error:" error)
-                   (rf/dispatch [:editor/transaction-failure
-                                {:error (str error)
-                                 :operation operation}]))))
+                               :new-cursor current-cursor}])))
 
              :delete-forward
              (do

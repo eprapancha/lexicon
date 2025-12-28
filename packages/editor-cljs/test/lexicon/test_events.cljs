@@ -68,10 +68,13 @@
  (fn [db [_ buffer-id]]
    "Set the current buffer to BUFFER-ID (for testing)"
    (if (get-in db [:buffers buffer-id])
-     (let [active-window-id (get-in db [:editor :active-window-id])]
+     (let [active-window-id (:active-window-id db)
+           window-tree (:window-tree db)
+           new-tree (lexicon.db/update-window-in-tree window-tree active-window-id
+                                                      #(assoc % :buffer-id buffer-id))]
        (cond-> db
          true (assoc-in [:editor :current-buffer-id] buffer-id)
-         active-window-id (assoc-in [:windows active-window-id :buffer-id] buffer-id)))
+         new-tree (assoc :window-tree new-tree)))
      db)))
 
 (rf/reg-event-db

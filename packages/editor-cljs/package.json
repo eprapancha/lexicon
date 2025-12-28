@@ -8,6 +8,9 @@
     "build": "npx shadow-cljs release app",
     "build:dev": "npx shadow-cljs compile app",
     "test": "npx shadow-cljs compile test",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui",
+    "test:e2e:debug": "npx playwright test --debug",
     "dev-server": "node dev-server.js"
   },
   "type": "module",
@@ -20,6 +23,8 @@
     "web-tree-sitter": "^0.20.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "playwright": "^1.57.0",
     "shadow-cljs": "^2.25.8"
   }
 }
