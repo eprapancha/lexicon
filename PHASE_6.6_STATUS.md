@@ -2,7 +2,7 @@
 
 **Date:** 2025-12-28
 **Phase:** 6.6 - Testing Infrastructure Migration (Playwright → Etaoin)
-**Progress:** Phase 2 Complete (Setup) - Ready for Phase 3 (Test Conversion)
+**Progress:** Phase 3 Complete (Test Migration) - All 7 Playwright tests migrated and passing
 
 ## What Was Completed
 
@@ -150,23 +150,83 @@ bb test                   # Unit + E2E (+ Rust if exists)
 2. **5f65340** - Add Phase 6.6: Testing Infrastructure Migration to roadmap
 3. **2639798** - Update ROADMAP.md current focus to Phase 6.6
 
-## What's NOT Committed Yet
+### ✅ Phase 3: Test Migration Complete (2025-12-28)
 
-- deps.edn
-- bb.edn updates
-- e2e_tests/ directory
-- package.json changes
+1. **Fixed Etaoin setup**
+   - Upgraded from Etaoin 1.0.40 to 1.1.41 (W3C WebDriver support)
+   - Fixed `wait` function signature for new API
+   - Implemented JavaScript-based key event dispatching for special keys
 
-**These will be committed after verifying the first Etaoin test passes.**
+2. **Migrated all 7 Playwright tests** to Etaoin:
+   - ✅ P0-01: Basic text input
+   - ✅ P0-02: Enter/Return key creates newline
+   - ✅ P0-03: Backspace deletes character
+   - ✅ REGRESSION: Typing after backspacing entire buffer
+   - ✅ P0-04: Delete key deletes character forward
+   - ✅ P0-05: Arrow key navigation
+   - ✅ P0-06: Mouse click positioning
+
+3. **Test Results:**
+   ```bash
+   bb test:e2e
+   # Ran 7 tests containing 10 assertions.
+   # 0 failures, 0 errors.
+   # ✅ E2E tests completed!
+   ```
+
+4. **Fixed shadow-cljs configuration**
+   - Removed duplicate `:dev-http` configuration causing port 8080 conflict
+   - Shadow-cljs now cleanly binds to single port
+
+## What's Ready to Commit
+
+- ✅ deps.edn (with Etaoin 1.1.41)
+- ✅ shadow-cljs.edn (fixed duplicate port binding)
+- ✅ e2e_tests/lexicon/basic_editing_test.clj (all 7 tests passing)
+- ✅ All changes verified working
 
 ---
 
-## For Next Claude Session
+## Next Steps
 
-**Context:** We're migrating E2E tests from Playwright (JavaScript) to Etaoin (ClojureScript) to maintain language consistency. Setup is complete. First test is ready to run.
+### Phase 4: Cleanup (Next Session)
 
-**First Task:** Verify `bb test:e2e` runs successfully with Firefox.
+1. **Delete Playwright files:**
+   ```bash
+   rm -rf packages/editor-cljs/e2e-tests/
+   rm packages/editor-cljs/playwright.config.js
+   rm -rf packages/editor-cljs/test-results/
+   rm -rf packages/editor-cljs/playwright-report/
+   ```
 
-**Expected Behavior:** Firefox opens, navigates to localhost:8080, types text, verifies it appears, test passes.
+2. **Commit the migration:**
+   ```bash
+   git add -A
+   git commit -m "Phase 6.6 Complete: Migrate E2E tests from Playwright to Etaoin
 
-**Success Criteria:** One passing Etaoin test that matches Playwright baseline behavior.
+   - Remove Playwright dependency and config
+   - Add Etaoin 1.1.41 for E2E testing
+   - Migrate all 7 E2E tests to ClojureScript
+   - Fix shadow-cljs duplicate port binding issue
+   - All tests passing (7 tests, 10 assertions, 0 failures)
+
+   Tests migrated:
+   - P0-01: Basic text input
+   - P0-02: Enter/Return key creates newline
+   - P0-03: Backspace deletes character
+   - REGRESSION: Typing after backspacing entire buffer
+   - P0-04: Delete key deletes character forward
+   - P0-05: Arrow key navigation
+   - P0-06: Mouse click positioning
+
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+   Co-Authored-By: Claude <noreply@anthropic.com>"
+   ```
+
+3. **Update ROADMAP.md** to mark Phase 6.6 complete
+
+### Future Enhancements
+
+- Add more E2E tests from ManualTestingPlan.md
+- Consider adding unit test runner improvements (Phase 6.6 Week 2)

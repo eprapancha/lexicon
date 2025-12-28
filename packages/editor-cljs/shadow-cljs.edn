@@ -2,7 +2,6 @@
  :dependencies [[re-frame/re-frame "1.4.2"]
                 [reagent/reagent "1.2.0"]
                 [binaryage/devtools "1.0.7"]]
- :dev-http {8080 "resources/public"}
  :builds
  {:app {:target :browser
         :output-dir "resources/public/js"
