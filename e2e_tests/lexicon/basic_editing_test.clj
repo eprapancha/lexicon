@@ -31,7 +31,7 @@
       (finally
         (stop-driver driver)))))
 
-(use-fixtures :each with-driver)
+(use-fixtures :once with-driver)
 
 ;; Helper functions
 (defn wait-for-editor-ready []
@@ -67,7 +67,7 @@
     input.dispatchEvent(event);
   ")]
     (e/js-execute *driver* script))
-  (Thread/sleep 50))
+  (Thread/sleep 10))
 
 (defn press-ctrl-key
   "Press Ctrl+key combination (e.g., 'f' for C-f)"
@@ -85,7 +85,7 @@
     input.dispatchEvent(event);
   ")]
     (e/js-execute *driver* script))
-  (Thread/sleep 50))
+  (Thread/sleep 10))
 
 (defn press-meta-key
   "Press Meta/Alt+key combination (e.g., 'f' for M-f)"
@@ -103,7 +103,7 @@
     input.dispatchEvent(event);
   ")]
     (e/js-execute *driver* script))
-  (Thread/sleep 50))
+  (Thread/sleep 10))
 
 (defn get-cursor-position
   "Get current cursor position as {:row N :col N}"
@@ -147,7 +147,7 @@
       (type-text sentence)
 
       ;; Wait for updates to propagate
-      (Thread/sleep 100)
+      (Thread/sleep 20)
 
       ;; Verify text appears in the buffer
       (let [editor-text (get-editor-text)]
@@ -165,11 +165,11 @@
 
     ;; Press Enter
     (press-key "Enter")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Type second line
     (type-text "line 2")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Verify both lines are present
     (let [editor-text (get-editor-text)]
@@ -184,13 +184,13 @@
 
     ;; Type text
     (type-text "abcde")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Press Backspace twice
     (press-key "Backspace")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "Backspace")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Verify text is now "abc"
     (let [editor-text (get-editor-text)]
@@ -205,24 +205,24 @@
 
     ;; Step 1: Type initial text
     (type-text "abcd")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (.contains editor-text "abcd")))
 
     ;; Step 2: Backspace everything
     (press-key "Backspace")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "Backspace")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "Backspace")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "Backspace")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Step 3: Try to type again - this should work
     (type-text "line 1")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (.contains editor-text "line 1")))))
@@ -235,7 +235,7 @@
 
     ;; Type text
     (type-text "abcde")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Move cursor to between 'b' and 'c' using left arrow
     (press-key "ArrowLeft")
@@ -243,13 +243,13 @@
     (press-key "ArrowLeft")
     (Thread/sleep 30)
     (press-key "ArrowLeft")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Press Delete twice
     (press-key "Delete")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "Delete")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Should be "abe"
     (let [editor-text (get-editor-text)]
@@ -263,19 +263,19 @@
 
     ;; Type two lines
     (type-text "line 1")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "Enter")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (type-text "line 2")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Test Up Arrow - should move to line 1
     (press-key "ArrowUp")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Type something - should appear on line 1
     (type-text "X")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (or (.contains editor-text "line 1X")
@@ -289,23 +289,23 @@
 
     ;; Type several lines
     (type-text "First line")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "Enter")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (type-text "Second line")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "Enter")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (type-text "Third line")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Click somewhere in the middle
     (e/click *driver* {:css ".editable-area"})
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Type a character - should insert at clicked position
     (type-text "X")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (.contains editor-text "X")))))
@@ -322,11 +322,11 @@
 
     ;; Type "hello world"
     (type-text "hello world")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Move cursor to beginning
     (press-ctrl-key "a")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Press C-f five times to move to space after "hello"
     (dotimes [_ 5]
@@ -335,7 +335,7 @@
 
     ;; Verify position by typing a character
     (type-text "X")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (.contains editor-text "helloX")
@@ -343,11 +343,11 @@
 
     ;; Move to beginning again and test C-b
     (press-ctrl-key "a")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Move to end
     (press-ctrl-key "e")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Press C-b three times
     (dotimes [_ 3]
@@ -356,7 +356,7 @@
 
     ;; Type character - should be before "rld"
     (type-text "Y")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (.contains editor-text "woYrld")
@@ -371,21 +371,21 @@
     ;; Type three lines
     (type-text "line 1")
     (press-key "Enter")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (type-text "line 2")
     (press-key "Enter")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (type-text "line 3")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Cursor should be at end of line 3
     ;; Press C-p to move to line 2
     (press-ctrl-key "p")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Type character to verify on line 2
     (type-text "X")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (.contains editor-text "line 2X")
@@ -393,11 +393,11 @@
 
     ;; Press C-n once to move back to line 3
     (press-ctrl-key "n")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Type character to verify on line 3
     (type-text "Y")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (.contains editor-text "line 3")
@@ -411,7 +411,7 @@
 
     ;; Type text
     (type-text "this is a test")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Move cursor to middle (using C-b)
     (dotimes [_ 5]
@@ -420,11 +420,11 @@
 
     ;; Press C-a to go to beginning of line
     (press-ctrl-key "a")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Type character to verify at beginning
     (type-text "X")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (.contains editor-text "Xthis is a test")
@@ -432,11 +432,11 @@
 
     ;; Press C-e to go to end of line
     (press-ctrl-key "e")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Type character to verify at end
     (type-text "Y")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (.contains editor-text "Xthis is a testY")
@@ -450,19 +450,19 @@
 
     ;; Type text
     (type-text "the quick brown fox")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Move to beginning
     (press-ctrl-key "a")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Press M-f once to move forward one word
     (press-meta-key "f")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Type character to verify we moved forward
     (type-text "X")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (or (.contains editor-text "theX")
@@ -471,11 +471,11 @@
 
     ;; Press M-b once to move back one word
     (press-meta-key "b")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Type character to verify we moved backward
     (type-text "Y")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (or (.contains editor-text "Ythe")
@@ -491,28 +491,28 @@
     ;; Type multiple lines
     (type-text "first line")
     (press-key "Enter")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (type-text "second line")
     (press-key "Enter")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (type-text "third line")
     (press-key "Enter")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (type-text "fourth line")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Move to middle
     (press-ctrl-key "p")
     (press-ctrl-key "p")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Press M-> to go to end of buffer
     (press-meta-key ">")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Type character to verify at end
     (type-text "X")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (.contains editor-text "fourth lineX")
@@ -520,11 +520,11 @@
 
     ;; Press M-< to go to beginning of buffer
     (press-meta-key "<")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Type character to verify at beginning
     (type-text "Y")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     (let [editor-text (get-editor-text)]
       (is (.contains editor-text "Yfirst line")
@@ -538,11 +538,11 @@
 
     ;; Type text
     (type-text "select this text")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Move to beginning
     (press-ctrl-key "a")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Set mark with C-SPC (Ctrl+Space)
     (let [script "
@@ -557,13 +557,13 @@
       input.dispatchEvent(event);
     "]
       (e/js-execute *driver* script))
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Move forward to select "select this"
     (dotimes [_ 11]
       (press-ctrl-key "f")
       (Thread/sleep 10))
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Check if region exists by trying to verify mark was set
     ;; We can't easily check visual highlighting, so we'll verify
@@ -578,11 +578,11 @@
 
     ;; Type text
     (type-text "select this text")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Move to beginning and set mark
     (press-ctrl-key "a")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Set mark
     (let [script "
@@ -596,17 +596,17 @@
       input.dispatchEvent(event);
     "]
       (e/js-execute *driver* script))
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Move forward to select "select this"
     (dotimes [_ 11]
       (press-ctrl-key "f")
       (Thread/sleep 10))
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Kill region with C-w
     (press-ctrl-key "w")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; NOTE: C-w is captured by browser (close tab) - cannot test in E2E
     ;; This must be verified manually or in native desktop tests
@@ -620,9 +620,9 @@
 
     ;; Type and kill text
     (type-text "select this text")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-ctrl-key "a")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Set mark and select "select this"
     (let [script "
@@ -636,24 +636,24 @@
       input.dispatchEvent(event);
     "]
       (e/js-execute *driver* script))
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     (dotimes [_ 11]
       (press-ctrl-key "f")
       (Thread/sleep 10))
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Kill it
     (press-ctrl-key "w")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Move to end
     (press-ctrl-key "e")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Yank it back
     (press-ctrl-key "y")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Verify yanked text appears
     (let [editor-text (get-editor-text)]
@@ -668,11 +668,11 @@
 
     ;; Type text
     (type-text "copy this")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Move to beginning and set mark
     (press-ctrl-key "a")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Set mark
     (let [script "
@@ -686,15 +686,15 @@
       input.dispatchEvent(event);
     "]
       (e/js-execute *driver* script))
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Select all text
     (press-ctrl-key "e")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Copy with M-w
     (press-meta-key "w")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Verify original text still exists
     (let [editor-text-before (get-editor-text)]
@@ -703,9 +703,9 @@
 
     ;; Add newline and yank
     (press-key "Enter")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-ctrl-key "y")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Verify copied text was yanked
     (let [editor-text (get-editor-text)]
@@ -721,19 +721,19 @@
 
     ;; Type text
     (type-text "kill the rest of the line")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Move to before "the"
     (press-ctrl-key "a")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (dotimes [_ 5]
       (press-ctrl-key "f")
       (Thread/sleep 10))
-    (Thread/sleep 50)
+    (Thread/sleep 10)
 
     ;; Kill rest of line with C-k
     (press-ctrl-key "k")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Verify killed
     (let [editor-text (get-editor-text)]
@@ -750,11 +750,11 @@
 
     ;; Type some text
     (type-text "hello")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "Enter")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (type-text "world")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Verify initial state
     (let [editor-text (get-editor-text)]
@@ -776,7 +776,7 @@
         input.dispatchEvent(event);
       "]
         (e/js-execute *driver* script))
-      (Thread/sleep 100))
+      (Thread/sleep 20))
 
     ;; After undoing, should have less text
     (let [editor-text (get-editor-text)]
@@ -794,13 +794,13 @@
 
     ;; Type text in *scratch*
     (type-text "scratch buffer content")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Press C-x b to switch buffer
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "b")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; Minibuffer should be active
     (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
@@ -808,9 +808,9 @@
 
     ;; Type new buffer name
     (type-text "test-buffer")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "Enter")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; New buffer should be created
     (let [editor-text (get-editor-text)]
@@ -826,29 +826,29 @@
 
     ;; Type in scratch buffer
     (type-text "original scratch")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Switch to test-buffer
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "b")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
     (type-text "test-buffer")
     (press-key "Enter")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; Type in test-buffer
     (type-text "hello from test")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Switch back to *scratch*
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "b")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
     (type-text "*scratch*")
     (press-key "Enter")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; Verify scratch content preserved
     (let [editor-text (get-editor-text)]
@@ -857,12 +857,12 @@
 
     ;; Switch back to test-buffer
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "b")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
     (type-text "test-buffer")
     (press-key "Enter")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; Verify test-buffer content preserved
     (let [editor-text (get-editor-text)]
@@ -877,26 +877,26 @@
 
     ;; Create a couple of buffers first
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "b")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
     (type-text "buffer1")
     (press-key "Enter")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "b")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
     (type-text "buffer2")
     (press-key "Enter")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; Now list buffers with C-x C-b
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-ctrl-key "b")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Buffer list should appear
     (let [editor-text (get-editor-text)]
@@ -913,7 +913,7 @@
 
     ;; Type text to modify buffer
     (type-text "modified content")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; Check status bar (mode line) for modified indicator (**)
     (let [status-bar (e/get-element-text *driver* {:css ".status-bar"})]
@@ -928,13 +928,13 @@
 
     ;; Type content
     (type-text "content to save")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Press C-x C-s
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-ctrl-key "s")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; NOTE: Browser file save dialog cannot be automated in E2E tests
     ;; This must be tested manually
@@ -948,9 +948,9 @@
 
     ;; Open minibuffer with C-x b
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "b")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; Verify minibuffer is open
     (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
@@ -958,7 +958,7 @@
 
     ;; Press C-g to quit
     (press-ctrl-key "g")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; Minibuffer should close or echo area should show quit message
     (let [echo-text (try
@@ -976,9 +976,9 @@
 
     ;; Press C-u and type 'a'
     (press-ctrl-key "u")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
     (type-text "a")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; Should have 4 a's
     (let [editor-text (get-editor-text)]
@@ -987,11 +987,11 @@
 
     ;; Press C-u C-u and type 'b'
     (press-ctrl-key "u")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-ctrl-key "u")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
     (type-text "b")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; Should have 16 b's
     (let [editor-text (get-editor-text)
@@ -1009,9 +1009,9 @@
 
     ;; Press C-x 2 to split horizontally
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "2")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Check for multiple windows
     (let [windows (e/query-all *driver* {:css ".window-pane"})]
@@ -1026,9 +1026,9 @@
 
     ;; Press C-x 3 to split vertically
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "3")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Check for multiple windows
     (let [windows (e/query-all *driver* {:css ".window-pane"})]
@@ -1043,15 +1043,15 @@
 
     ;; Split horizontally
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "2")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Press C-x o to cycle windows
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "o")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Check that windows exist (cycling doesn't change count)
     (let [windows (e/query-all *driver* {:css ".window-pane"})]
@@ -1060,9 +1060,9 @@
 
     ;; Cycle again
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "o")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     (let [windows (e/query-all *driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
@@ -1076,23 +1076,23 @@
 
     ;; Split horizontally
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "2")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Type in current window
     (type-text "bottom window")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Cycle to other window
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "o")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Type in top window
     (type-text "top window")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; Content should be shared (same buffer) but windows should maintain position
     (let [editor-text (get-editor-text)]
@@ -1109,14 +1109,14 @@
 
     ;; Create multiple splits
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "2")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "3")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Verify multiple windows exist
     (let [windows-before (e/query-all *driver* {:css ".window-pane"})]
@@ -1125,9 +1125,9 @@
 
     ;; Press C-x 1 to delete other windows
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "1")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Should have only one window now
     (let [windows-after (e/query-all *driver* {:css ".window-pane"})]
@@ -1142,9 +1142,9 @@
 
     ;; Split horizontally
     (press-ctrl-key "x")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "2")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Get all windows
     (let [windows (e/query-all *driver* {:css ".window-pane"})]
@@ -1154,11 +1154,11 @@
       ;; Click on the first window
       (when (>= (count windows) 2)
         (e/click *driver* (first windows))
-        (Thread/sleep 200)
+        (Thread/sleep 30)
 
         ;; Type text
         (type-text "clicked")
-        (Thread/sleep 100)
+        (Thread/sleep 20)
 
         ;; Verify text appears
         (let [editor-text (get-editor-text)]
@@ -1175,7 +1175,7 @@
 
     ;; Press M-x
     (press-meta-key "x")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Minibuffer should be active with M-x prompt
     (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
@@ -1183,9 +1183,9 @@
 
     ;; Type command
     (type-text "text-mode")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
     (press-key "Enter")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; Mode line should show Text mode or command should execute
     (let [status-bar (try
@@ -1203,9 +1203,9 @@
 
     ;; Press C-h k
     (press-ctrl-key "h")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "k")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Minibuffer should prompt for key
     (let [minibuffer-text (try
@@ -1217,7 +1217,7 @@
 
     ;; Press C-f
     (press-ctrl-key "f")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Help buffer should appear
     (let [editor-text (get-editor-text)]
@@ -1234,9 +1234,9 @@
 
     ;; Press C-h b
     (press-ctrl-key "h")
-    (Thread/sleep 50)
+    (Thread/sleep 10)
     (press-key "b")
-    (Thread/sleep 500)
+    (Thread/sleep 100)
 
     ;; Help buffer with bindings should appear
     (let [editor-text (get-editor-text)]
@@ -1254,11 +1254,11 @@
 
     ;; Press M-x line-number-mode
     (press-meta-key "x")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
     (type-text "line-number-mode")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
     (press-key "Enter")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Check mode line for changes
     (let [status-bar-1 (try
@@ -1266,11 +1266,11 @@
                         (catch Exception _ ""))]
       ;; Toggle again
       (press-meta-key "x")
-      (Thread/sleep 300)
+      (Thread/sleep 50)
       (type-text "line-number-mode")
-      (Thread/sleep 100)
+      (Thread/sleep 20)
       (press-key "Enter")
-      (Thread/sleep 300)
+      (Thread/sleep 50)
 
       (let [status-bar-2 (try
                           (e/get-element-text *driver* {:css ".status-bar"})
@@ -1288,11 +1288,11 @@
 
     ;; Press M-x package-list
     (press-meta-key "x")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
     (type-text "package-list")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
     (press-key "Enter")
-    (Thread/sleep 500)
+    (Thread/sleep 100)
 
     ;; Package list buffer should appear
     (let [editor-text (get-editor-text)]
@@ -1309,17 +1309,17 @@
 
     ;; Press M-x load-theme
     (press-meta-key "x")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
     (type-text "load-theme")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
     (press-key "Enter")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Type theme name
     (type-text "lexicon-base-dark")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
     (press-key "Enter")
-    (Thread/sleep 500)
+    (Thread/sleep 100)
 
     ;; Check that some styling changed (hard to verify visually in E2E)
     ;; We'll just verify the command executed without error
@@ -1339,17 +1339,17 @@
 
     ;; Press M-x set-font-size
     (press-meta-key "x")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
     (type-text "set-font-size")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
     (press-key "Enter")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Type font size
     (type-text "20")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
     (press-key "Enter")
-    (Thread/sleep 300)
+    (Thread/sleep 50)
 
     ;; Verify command executed (hard to verify size in E2E)
     (let [echo-text (try
@@ -1374,7 +1374,7 @@
 
     ;; Type to modify buffer
     (type-text "modify")
-    (Thread/sleep 200)
+    (Thread/sleep 30)
 
     ;; Check for modified indicator
     (let [status-bar (e/get-element-text *driver* {:css ".status-bar"})]
@@ -1389,7 +1389,7 @@
 
     ;; Type URL
     (type-text "https://example.com")
-    (Thread/sleep 100)
+    (Thread/sleep 20)
 
     ;; NOTE: This test requires a custom command to be implemented
     (is true "Test skipped - requires custom thing-at-point command")))

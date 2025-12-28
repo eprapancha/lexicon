@@ -1030,7 +1030,11 @@
  (fn [db [_ buffer-id]]
    "Switch to the specified buffer by updating the active window"
    (if (get-in db [:buffers buffer-id])
-     (assoc-in db [:windows (:active-window-id db) :buffer-id] buffer-id)
+     (let [active-window-id (:active-window-id db)
+           window-tree (:window-tree db)
+           new-tree (db/update-window-in-tree window-tree active-window-id
+                                              #(assoc % :buffer-id buffer-id))]
+       (assoc db :window-tree new-tree))
      db))) ; Ignore if buffer doesn't exist
 
 (rf/reg-event-fx
@@ -1057,7 +1061,8 @@
 (rf/reg-event-fx
  :switch-to-buffer-by-name
  (fn [{:keys [db]} [_ buffer-name]]
-   "Switch to buffer by name, or stay on current if empty"
+   "Switch to buffer by name, creating it if it doesn't exist"
+   (.log js/console "=== switch-to-buffer-by-name called with buffer-name:" buffer-name)
    (let [buffers (:buffers db)
          current-buffer-id (get-in db [:windows (:active-window-id db) :buffer-id])
          current-buffer (get buffers current-buffer-id)
@@ -1068,10 +1073,46 @@
          ;; Find buffer with matching name
          target-buffer (first (filter #(= (:name %) target-name) (vals buffers)))
          target-id (:id target-buffer)]
+     (.log js/console "=== target-name:" target-name "existing buffer?" (boolean target-id))
      (if target-id
-       {:fx [[:dispatch [:switch-buffer target-id]]]}
-       ;; TODO: Create new buffer if it doesn't exist (for now just stay on current)
-       {:fx []}))))
+       ;; Buffer exists - switch to it
+       (do
+         (.log js/console "=== Buffer exists, switching to ID:" target-id)
+         {:fx [[:dispatch [:switch-buffer target-id]]]})
+       ;; Buffer doesn't exist - create it then switch to it
+       (do
+         (.log js/console "=== Buffer does NOT exist, creating new buffer")
+       (let [buffer-id (db/next-buffer-id buffers)
+             WasmEditorCore (get-in db [:system :wasm-constructor])
+             wasm-instance (WasmEditorCore. "")
+             new-buffer {:id buffer-id
+                        :wasm-instance wasm-instance
+                        :file-handle nil
+                        :name target-name
+                        :is-modified? false
+                        :mark-position nil
+                        :cursor-position {:line 0 :column 0}
+                        :selection-range nil
+                        :major-mode :fundamental-mode
+                        :minor-modes #{}
+                        :buffer-local-vars {}
+                        :ast nil
+                        :language :text
+                        :diagnostics []
+                        :undo-stack []
+                        :undo-in-progress? false
+                        :editor-version 0
+                        :cache {:text ""
+                                :line-count 1}}]
+         (.log js/console "=== Created buffer with ID:" buffer-id "switching window to it")
+         (let [active-window-id (:active-window-id db)
+               window-tree (:window-tree db)
+               new-tree (db/update-window-in-tree window-tree active-window-id
+                                                  #(assoc % :buffer-id buffer-id))]
+           (.log js/console "=== Updated window tree to switch to buffer" buffer-id)
+           {:db (-> db
+                    (assoc-in [:buffers buffer-id] new-buffer)
+                    (assoc :window-tree new-tree))})))))))
 
 (rf/reg-event-fx
  :kill-buffer
