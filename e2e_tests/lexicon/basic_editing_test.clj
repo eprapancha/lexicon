@@ -1,9 +1,11 @@
 (ns lexicon.basic-editing-test
-  "Phase 0 Basic Editing Tests - E2E with Etaoin
+  "Phase 0 & Phase 1 Basic Editing Tests - E2E with Etaoin
 
-  Tests from ManualTestingPlan.md - P0-01 through P0-06
-  Migrated from Playwright (JavaScript) to Etaoin (ClojureScript)"
+  Tests from ManualTestingPlan.md:
+  - Phase 0: P0-01 through P0-06
+  - Phase 1: P1-01 through P1-05"
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [clojure.string :as str]
             [etaoin.api :as e]))
 
 ;; Test configuration
@@ -66,6 +68,67 @@
   ")]
     (e/js-execute *driver* script))
   (Thread/sleep 50))
+
+(defn press-ctrl-key
+  "Press Ctrl+key combination (e.g., 'f' for C-f)"
+  [key]
+  (let [key-code (str "Key" (str/upper-case key))
+        script (str "
+    const input = document.querySelector('.hidden-input');
+    input.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: '" key "',
+      code: '" key-code "',
+      ctrlKey: true,
+      bubbles: true
+    });
+    input.dispatchEvent(event);
+  ")]
+    (e/js-execute *driver* script))
+  (Thread/sleep 50))
+
+(defn press-meta-key
+  "Press Meta/Alt+key combination (e.g., 'f' for M-f)"
+  [key]
+  (let [key-code (str "Key" (str/upper-case key))
+        script (str "
+    const input = document.querySelector('.hidden-input');
+    input.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: '" key "',
+      code: '" key-code "',
+      altKey: true,
+      bubbles: true
+    });
+    input.dispatchEvent(event);
+  ")]
+    (e/js-execute *driver* script))
+  (Thread/sleep 50))
+
+(defn get-cursor-position
+  "Get current cursor position as {:row N :col N}"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state) return null;
+    const point = state.point;
+    const buffer = state.buffer;
+    let row = 0;
+    let col = 0;
+    let pos = 0;
+    const lines = buffer.split('\\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (pos + lines[i].length >= point) {
+        row = i;
+        col = point - pos;
+        break;
+      }
+      pos += lines[i].length + 1; // +1 for newline
+    }
+    return {row: row, col: col};
+  "
+        result (e/js-execute *driver* script)]
+    result))
 
 ;; Tests
 (deftest test-p0-01-basic-text-input
@@ -246,6 +309,226 @@
 
     (let [editor-text (get-editor-text)]
       (is (.contains editor-text "X")))))
+
+;; ========================================
+;; Phase 1: Core Emacs - Basic Editing
+;; ========================================
+
+(deftest test-p1-01-character-navigation
+  (testing "P1-01: Character-wise navigation (C-f, C-b)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type "hello world"
+    (type-text "hello world")
+    (Thread/sleep 50)
+
+    ;; Move cursor to beginning
+    (press-ctrl-key "a")
+    (Thread/sleep 50)
+
+    ;; Press C-f five times to move to space after "hello"
+    (dotimes [_ 5]
+      (press-ctrl-key "f")
+      (Thread/sleep 30))
+
+    ;; Verify position by typing a character
+    (type-text "X")
+    (Thread/sleep 100)
+
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "helloX")
+          "C-f should move cursor forward"))
+
+    ;; Move to beginning again and test C-b
+    (press-ctrl-key "a")
+    (Thread/sleep 50)
+
+    ;; Move to end
+    (press-ctrl-key "e")
+    (Thread/sleep 50)
+
+    ;; Press C-b three times
+    (dotimes [_ 3]
+      (press-ctrl-key "b")
+      (Thread/sleep 30))
+
+    ;; Type character - should be before "rld"
+    (type-text "Y")
+    (Thread/sleep 100)
+
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "woYrld")
+          (str "C-b should move cursor backward. Got: " editor-text)))))
+
+(deftest test-p1-02-line-navigation
+  (testing "P1-02: Line-wise navigation (C-p, C-n)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type three lines
+    (type-text "line 1")
+    (press-key "Enter")
+    (Thread/sleep 50)
+    (type-text "line 2")
+    (press-key "Enter")
+    (Thread/sleep 50)
+    (type-text "line 3")
+    (Thread/sleep 50)
+
+    ;; Cursor should be at end of line 3
+    ;; Press C-p to move to line 2
+    (press-ctrl-key "p")
+    (Thread/sleep 50)
+
+    ;; Type character to verify on line 2
+    (type-text "X")
+    (Thread/sleep 100)
+
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "line 2X")
+          "C-p should move cursor up"))
+
+    ;; Press C-n once to move back to line 3
+    (press-ctrl-key "n")
+    (Thread/sleep 50)
+
+    ;; Type character to verify on line 3
+    (type-text "Y")
+    (Thread/sleep 100)
+
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "line 3")
+          (str "C-n should move cursor down. Got: " editor-text)))))
+
+(deftest test-p1-03-beginning-end-of-line
+  (testing "P1-03: Beginning/end of line (C-a, C-e)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type text
+    (type-text "this is a test")
+    (Thread/sleep 50)
+
+    ;; Move cursor to middle (using C-b)
+    (dotimes [_ 5]
+      (press-ctrl-key "b")
+      (Thread/sleep 20))
+
+    ;; Press C-a to go to beginning of line
+    (press-ctrl-key "a")
+    (Thread/sleep 50)
+
+    ;; Type character to verify at beginning
+    (type-text "X")
+    (Thread/sleep 100)
+
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "Xthis is a test")
+          "C-a should move to beginning of line"))
+
+    ;; Press C-e to go to end of line
+    (press-ctrl-key "e")
+    (Thread/sleep 50)
+
+    ;; Type character to verify at end
+    (type-text "Y")
+    (Thread/sleep 100)
+
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "Xthis is a testY")
+          "C-e should move to end of line"))))
+
+(deftest test-p1-04-word-navigation
+  (testing "P1-04: Word-wise navigation (M-f, M-b)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type text
+    (type-text "the quick brown fox")
+    (Thread/sleep 50)
+
+    ;; Move to beginning
+    (press-ctrl-key "a")
+    (Thread/sleep 50)
+
+    ;; Press M-f once to move forward one word
+    (press-meta-key "f")
+    (Thread/sleep 50)
+
+    ;; Type character to verify we moved forward
+    (type-text "X")
+    (Thread/sleep 100)
+
+    (let [editor-text (get-editor-text)]
+      (is (or (.contains editor-text "theX")
+              (.contains editor-text "the X"))
+          (str "M-f should move forward by word. Got: " editor-text)))
+
+    ;; Press M-b once to move back one word
+    (press-meta-key "b")
+    (Thread/sleep 50)
+
+    ;; Type character to verify we moved backward
+    (type-text "Y")
+    (Thread/sleep 100)
+
+    (let [editor-text (get-editor-text)]
+      (is (or (.contains editor-text "Ythe")
+              (.contains editor-text "Y the"))
+          (str "M-b should move backward by word. Got: " editor-text)))))
+
+(deftest test-p1-05-beginning-end-of-buffer
+  (testing "P1-05: Beginning/end of buffer (M-<, M->)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type multiple lines
+    (type-text "first line")
+    (press-key "Enter")
+    (Thread/sleep 50)
+    (type-text "second line")
+    (press-key "Enter")
+    (Thread/sleep 50)
+    (type-text "third line")
+    (press-key "Enter")
+    (Thread/sleep 50)
+    (type-text "fourth line")
+    (Thread/sleep 50)
+
+    ;; Move to middle
+    (press-ctrl-key "p")
+    (press-ctrl-key "p")
+    (Thread/sleep 50)
+
+    ;; Press M-> to go to end of buffer
+    (press-meta-key ">")
+    (Thread/sleep 50)
+
+    ;; Type character to verify at end
+    (type-text "X")
+    (Thread/sleep 100)
+
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "fourth lineX")
+          "M-> should move to end of buffer"))
+
+    ;; Press M-< to go to beginning of buffer
+    (press-meta-key "<")
+    (Thread/sleep 50)
+
+    ;; Type character to verify at beginning
+    (type-text "Y")
+    (Thread/sleep 100)
+
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "Yfirst line")
+          "M-< should move to beginning of buffer"))))
 
 ;; Run tests
 (defn -main []
