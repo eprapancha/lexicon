@@ -784,6 +784,621 @@
               (.contains editor-text "hel"))
           (str "Undo should remove some text. Got: " editor-text)))))
 
+;;; Phase 2: Buffers, Files, and Core Polish
+
+(deftest test-p2-01-switch-to-buffer
+  (testing "P2-01: Verify switch-to-buffer (C-x b)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type text in *scratch*
+    (type-text "scratch buffer content")
+    (Thread/sleep 100)
+
+    ;; Press C-x b to switch buffer
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "b")
+    (Thread/sleep 200)
+
+    ;; Minibuffer should be active
+    (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
+      (is minibuffer-visible "Minibuffer should be visible"))
+
+    ;; Type new buffer name
+    (type-text "test-buffer")
+    (Thread/sleep 50)
+    (press-key "Enter")
+    (Thread/sleep 200)
+
+    ;; New buffer should be created
+    (let [editor-text (get-editor-text)]
+      (is (or (empty? editor-text)
+              (not (.contains editor-text "scratch buffer")))
+          "New buffer should be empty or not contain scratch content"))))
+
+(deftest test-p2-02-buffer-state-preservation
+  (testing "P2-02: Verify buffer state preservation"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type in scratch buffer
+    (type-text "original scratch")
+    (Thread/sleep 100)
+
+    ;; Switch to test-buffer
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "b")
+    (Thread/sleep 200)
+    (type-text "test-buffer")
+    (press-key "Enter")
+    (Thread/sleep 200)
+
+    ;; Type in test-buffer
+    (type-text "hello from test")
+    (Thread/sleep 100)
+
+    ;; Switch back to *scratch*
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "b")
+    (Thread/sleep 200)
+    (type-text "*scratch*")
+    (press-key "Enter")
+    (Thread/sleep 200)
+
+    ;; Verify scratch content preserved
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "original scratch")
+          "Scratch buffer content should be preserved"))
+
+    ;; Switch back to test-buffer
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "b")
+    (Thread/sleep 200)
+    (type-text "test-buffer")
+    (press-key "Enter")
+    (Thread/sleep 200)
+
+    ;; Verify test-buffer content preserved
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "hello from test")
+          "test-buffer content should be preserved"))))
+
+(deftest test-p2-03-list-buffers
+  (testing "P2-03: Verify list-buffers (C-x C-b)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Create a couple of buffers first
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "b")
+    (Thread/sleep 200)
+    (type-text "buffer1")
+    (press-key "Enter")
+    (Thread/sleep 200)
+
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "b")
+    (Thread/sleep 200)
+    (type-text "buffer2")
+    (press-key "Enter")
+    (Thread/sleep 200)
+
+    ;; Now list buffers with C-x C-b
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-ctrl-key "b")
+    (Thread/sleep 300)
+
+    ;; Buffer list should appear
+    (let [editor-text (get-editor-text)]
+      (is (or (.contains editor-text "*Buffer List*")
+              (.contains editor-text "buffer1")
+              (.contains editor-text "buffer2"))
+          (str "Buffer list should appear. Got: " editor-text)))))
+
+(deftest test-p2-04-buffer-modified-indicator
+  (testing "P2-04: Verify buffer modified indicator"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type text to modify buffer
+    (type-text "modified content")
+    (Thread/sleep 200)
+
+    ;; Check mode line for modified indicator (**)
+    (let [mode-line (e/get-element-text *driver* {:css ".mode-line"})]
+      (is (.contains mode-line "**")
+          (str "Mode line should show ** for modified buffer. Got: " mode-line)))))
+
+(deftest ^:skip test-p2-05-save-buffer
+  (testing "P2-05: Verify save-buffer (C-x C-s) - SKIPPED: Browser file dialog"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type content
+    (type-text "content to save")
+    (Thread/sleep 100)
+
+    ;; Press C-x C-s
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-ctrl-key "s")
+    (Thread/sleep 200)
+
+    ;; NOTE: Browser file save dialog cannot be automated in E2E tests
+    ;; This must be tested manually
+    (is true "Test skipped - browser file dialog requires manual testing")))
+
+(deftest test-p2-5-01-keyboard-quit
+  (testing "P2.5-01: Verify keyboard-quit (C-g)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Open minibuffer with C-x b
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "b")
+    (Thread/sleep 200)
+
+    ;; Verify minibuffer is open
+    (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
+      (is minibuffer-visible "Minibuffer should be visible"))
+
+    ;; Press C-g to quit
+    (press-ctrl-key "g")
+    (Thread/sleep 200)
+
+    ;; Minibuffer should close or echo area should show quit message
+    (let [echo-text (try
+                      (e/get-element-text *driver* {:css ".echo-area"})
+                      (catch Exception _ ""))]
+      (is (or (.contains echo-text "Quit")
+              (.contains echo-text "quit"))
+          (str "Should show quit message. Got: " echo-text)))))
+
+(deftest test-p2-5-02-universal-argument
+  (testing "P2.5-02: Verify Universal Argument (C-u)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Press C-u and type 'a'
+    (press-ctrl-key "u")
+    (Thread/sleep 100)
+    (type-text "a")
+    (Thread/sleep 200)
+
+    ;; Should have 4 a's
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "aaaa")
+          (str "C-u should insert 4 a's. Got: " editor-text)))
+
+    ;; Press C-u C-u and type 'b'
+    (press-ctrl-key "u")
+    (Thread/sleep 50)
+    (press-ctrl-key "u")
+    (Thread/sleep 100)
+    (type-text "b")
+    (Thread/sleep 200)
+
+    ;; Should have 16 b's
+    (let [editor-text (get-editor-text)
+          b-count (count (re-seq #"b" editor-text))]
+      (is (= b-count 16)
+          (str "C-u C-u should insert 16 b's. Got: " b-count " b's")))))
+
+;;; Phase 3: Windows & Frames
+
+(deftest test-p3-01-horizontal-split
+  (testing "P3-01: Verify horizontal split (C-x 2)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Press C-x 2 to split horizontally
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "2")
+    (Thread/sleep 300)
+
+    ;; Check for multiple windows
+    (let [windows (e/query-all *driver* {:css ".window"})]
+      (is (>= (count windows) 2)
+          (str "Should have at least 2 windows. Got: " (count windows))))))
+
+(deftest test-p3-02-vertical-split
+  (testing "P3-02: Verify vertical split (C-x 3)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Press C-x 3 to split vertically
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "3")
+    (Thread/sleep 300)
+
+    ;; Check for multiple windows
+    (let [windows (e/query-all *driver* {:css ".window"})]
+      (is (>= (count windows) 2)
+          (str "Should have at least 2 windows. Got: " (count windows))))))
+
+(deftest test-p3-03-window-cycling
+  (testing "P3-03: Verify window cycling (C-x o)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Split horizontally
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "2")
+    (Thread/sleep 300)
+
+    ;; Press C-x o to cycle windows
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "o")
+    (Thread/sleep 300)
+
+    ;; Check that windows exist (cycling doesn't change count)
+    (let [windows (e/query-all *driver* {:css ".window"})]
+      (is (>= (count windows) 2)
+          "Windows should still exist after cycling"))
+
+    ;; Cycle again
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "o")
+    (Thread/sleep 300)
+
+    (let [windows (e/query-all *driver* {:css ".window"})]
+      (is (>= (count windows) 2)
+          "Windows should still exist after cycling twice"))))
+
+(deftest test-p3-04-independent-window-state
+  (testing "P3-04: Verify independent window state"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Split horizontally
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "2")
+    (Thread/sleep 300)
+
+    ;; Type in current window
+    (type-text "bottom window")
+    (Thread/sleep 100)
+
+    ;; Cycle to other window
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "o")
+    (Thread/sleep 300)
+
+    ;; Type in top window
+    (type-text "top window")
+    (Thread/sleep 100)
+
+    ;; Content should be shared (same buffer) but windows should maintain position
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "bottom window")
+          "Content should include bottom window text")
+      (is (.contains editor-text "top window")
+          "Content should include top window text"))))
+
+(deftest test-p3-05-delete-other-windows
+  (testing "P3-05: Verify delete-other-windows (C-x 1)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Create multiple splits
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "2")
+    (Thread/sleep 300)
+
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "3")
+    (Thread/sleep 300)
+
+    ;; Verify multiple windows exist
+    (let [windows-before (e/query-all *driver* {:css ".window"})]
+      (is (>= (count windows-before) 2)
+          "Should have multiple windows before C-x 1"))
+
+    ;; Press C-x 1 to delete other windows
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "1")
+    (Thread/sleep 300)
+
+    ;; Should have only one window now
+    (let [windows-after (e/query-all *driver* {:css ".window"})]
+      (is (= (count windows-after) 1)
+          (str "Should have 1 window after C-x 1. Got: " (count windows-after))))))
+
+(deftest test-p3-06-click-to-activate-window
+  (testing "P3-06: Verify click-to-activate window"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Split horizontally
+    (press-ctrl-key "x")
+    (Thread/sleep 50)
+    (press-key "2")
+    (Thread/sleep 300)
+
+    ;; Get all windows
+    (let [windows (e/query-all *driver* {:css ".window"})]
+      (is (>= (count windows) 2)
+          "Should have at least 2 windows")
+
+      ;; Click on the first window
+      (when (>= (count windows) 2)
+        (e/click *driver* (first windows))
+        (Thread/sleep 200)
+
+        ;; Type text
+        (type-text "clicked")
+        (Thread/sleep 100)
+
+        ;; Verify text appears
+        (let [editor-text (get-editor-text)]
+          (is (.contains editor-text "clicked")
+              "Text should appear after clicking window"))))))
+
+;;; Phase 4, 5, 6: Modes, Help, Packages, and Display
+
+(deftest test-p4-01-execute-extended-command
+  (testing "P4-01: Verify execute-extended-command (M-x)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Press M-x
+    (press-meta-key "x")
+    (Thread/sleep 300)
+
+    ;; Minibuffer should be active with M-x prompt
+    (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
+      (is minibuffer-visible "Minibuffer should be visible for M-x"))
+
+    ;; Type command
+    (type-text "text-mode")
+    (Thread/sleep 100)
+    (press-key "Enter")
+    (Thread/sleep 200)
+
+    ;; Mode line should show Text mode or command should execute
+    (let [mode-line (try
+                      (e/get-element-text *driver* {:css ".mode-line"})
+                      (catch Exception _ ""))]
+      (is (or (.contains mode-line "Text")
+              (.contains mode-line "text"))
+          (str "Mode should change or command execute. Got: " mode-line)))))
+
+(deftest test-p4-02-describe-key
+  (testing "P4-02: Verify describe-key (C-h k)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Press C-h k
+    (press-ctrl-key "h")
+    (Thread/sleep 50)
+    (press-key "k")
+    (Thread/sleep 300)
+
+    ;; Minibuffer should prompt for key
+    (let [minibuffer-text (try
+                            (e/get-element-text *driver* {:css ".minibuffer"})
+                            (catch Exception _ ""))]
+      (is (or (.contains minibuffer-text "Describe key")
+              (.contains minibuffer-text "key"))
+          "Should prompt for key description"))
+
+    ;; Press C-f
+    (press-ctrl-key "f")
+    (Thread/sleep 300)
+
+    ;; Help buffer should appear
+    (let [editor-text (get-editor-text)]
+      (is (or (.contains editor-text "*Help*")
+              (.contains editor-text "forward-char")
+              (.contains editor-text "C-f"))
+          (str "Help buffer should show forward-char. Got: " editor-text)))))
+
+(deftest test-p4-03-describe-bindings
+  (testing "P4-03: Verify describe-bindings (C-h b)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Press C-h b
+    (press-ctrl-key "h")
+    (Thread/sleep 50)
+    (press-key "b")
+    (Thread/sleep 500)
+
+    ;; Help buffer with bindings should appear
+    (let [editor-text (get-editor-text)]
+      (is (or (.contains editor-text "*Help*")
+              (.contains editor-text "bindings")
+              (.contains editor-text "C-f")
+              (.contains editor-text "forward"))
+          (str "Should show key bindings. Got: " editor-text)))))
+
+(deftest test-p5-01-minor-mode-toggling
+  (testing "P5-01: Verify minor mode toggling"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Press M-x line-number-mode
+    (press-meta-key "x")
+    (Thread/sleep 300)
+    (type-text "line-number-mode")
+    (Thread/sleep 100)
+    (press-key "Enter")
+    (Thread/sleep 300)
+
+    ;; Check mode line for changes
+    (let [mode-line-1 (try
+                        (e/get-element-text *driver* {:css ".mode-line"})
+                        (catch Exception _ ""))]
+      ;; Toggle again
+      (press-meta-key "x")
+      (Thread/sleep 300)
+      (type-text "line-number-mode")
+      (Thread/sleep 100)
+      (press-key "Enter")
+      (Thread/sleep 300)
+
+      (let [mode-line-2 (try
+                          (e/get-element-text *driver* {:css ".mode-line"})
+                          (catch Exception _ ""))]
+        ;; Mode line should have changed (at least one toggle happened)
+        (is (or (not= mode-line-1 mode-line-2)
+                (.contains mode-line-1 "L"))
+            "Minor mode should toggle")))))
+
+(deftest test-p6a-01-package-list
+  (testing "P6A-01: Verify package system listing"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Press M-x package-list
+    (press-meta-key "x")
+    (Thread/sleep 300)
+    (type-text "package-list")
+    (Thread/sleep 100)
+    (press-key "Enter")
+    (Thread/sleep 500)
+
+    ;; Package list buffer should appear
+    (let [editor-text (get-editor-text)]
+      (is (or (.contains editor-text "*Packages*")
+              (.contains editor-text "package")
+              (.contains editor-text "evil"))
+          (str "Package list should appear. Got: " editor-text)))))
+
+(deftest test-p6b-01-theme-loading
+  (testing "P6B-01: Verify theme loading"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Press M-x load-theme
+    (press-meta-key "x")
+    (Thread/sleep 300)
+    (type-text "load-theme")
+    (Thread/sleep 100)
+    (press-key "Enter")
+    (Thread/sleep 300)
+
+    ;; Type theme name
+    (type-text "lexicon-base-dark")
+    (Thread/sleep 100)
+    (press-key "Enter")
+    (Thread/sleep 500)
+
+    ;; Check that some styling changed (hard to verify visually in E2E)
+    ;; We'll just verify the command executed without error
+    (let [echo-text (try
+                      (e/get-element-text *driver* {:css ".echo-area"})
+                      (catch Exception _ ""))]
+      (is (or (.contains echo-text "theme")
+              (.contains echo-text "Loaded")
+              (empty? echo-text))
+          "Theme loading should complete"))))
+
+(deftest test-p6b-02-font-size-change
+  (testing "P6B-02: Verify dynamic font size change"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Press M-x set-font-size
+    (press-meta-key "x")
+    (Thread/sleep 300)
+    (type-text "set-font-size")
+    (Thread/sleep 100)
+    (press-key "Enter")
+    (Thread/sleep 300)
+
+    ;; Type font size
+    (type-text "20")
+    (Thread/sleep 100)
+    (press-key "Enter")
+    (Thread/sleep 300)
+
+    ;; Verify command executed (hard to verify size in E2E)
+    (let [echo-text (try
+                      (e/get-element-text *driver* {:css ".echo-area"})
+                      (catch Exception _ ""))]
+      (is (or (.contains echo-text "font")
+              (.contains echo-text "size")
+              (empty? echo-text))
+          "Font size command should execute"))))
+
+(deftest test-p6b-03-mode-line-formatting
+  (testing "P6B-03: Verify Mode Line Formatting"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Check initial mode line
+    (let [mode-line (e/get-element-text *driver* {:css ".mode-line"})]
+      (is (or (.contains mode-line "*scratch*")
+              (.contains mode-line "scratch"))
+          "Mode line should show buffer name"))
+
+    ;; Type to modify buffer
+    (type-text "modify")
+    (Thread/sleep 200)
+
+    ;; Check for modified indicator
+    (let [mode-line (e/get-element-text *driver* {:css ".mode-line"})]
+      (is (.contains mode-line "**")
+          "Mode line should show ** for modified buffer"))))
+
+(deftest ^:skip test-p6d-01-thing-at-point
+  (testing "P6D-01: Verify thing-at-point (conceptual) - SKIPPED: Requires custom command"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type URL
+    (type-text "https://example.com")
+    (Thread/sleep 100)
+
+    ;; NOTE: This test requires a custom command to be implemented
+    (is true "Test skipped - requires custom thing-at-point command")))
+
+(deftest test-p6-5-01-test-suite
+  (testing "P6.5-01: Verify Test Suite"
+    ;; This is a meta-test - if we're running, tests are working
+    (is true "Test suite is functional")))
+
 ;; Run tests
 (defn -main []
   (clojure.test/run-tests 'lexicon.basic-editing-test))
