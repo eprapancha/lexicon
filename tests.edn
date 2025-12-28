@@ -12,4 +12,5 @@
    :kaocha.testable/id :e2e
    :kaocha/source-paths []
    :kaocha/test-paths ["e2e_tests"]
-   :kaocha/ns-patterns [".*-test$"]}]}
+   :kaocha/ns-patterns [".*-test$"]
+   :kaocha.filter/skip-meta [:skip]}]}
