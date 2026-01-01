@@ -2461,10 +2461,9 @@ C-h ?   This help menu
                        :editor-version 0
                        :cache {:text content
                                :line-count line-count}}]
-       {:db (-> db
-                (assoc-in [:buffers buffer-id] new-buffer)
-                (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))
-        :fx [[:dispatch [:parser/request-parse buffer-id]]
+       {:db (assoc-in db [:buffers buffer-id] new-buffer)
+        :fx [[:dispatch [:switch-buffer buffer-id]]
+             [:dispatch [:parser/request-parse buffer-id]]
              [:dispatch [:lsp/on-buffer-opened buffer-id]]]})))
 
 ;; Debug helper to check parser worker state

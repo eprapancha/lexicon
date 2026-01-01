@@ -874,7 +874,7 @@
                 :border-top "1px solid #3e3e42"}}
        
        [:span.buffer-info
-        (str (:name active-buffer) (when buffer-modified? " •"))]
+        (str (:name active-buffer) " " (if buffer-modified? "**" "--"))]
        
        [:div.spacer {:style {:flex "1"}}]
        
