@@ -69,6 +69,24 @@
     (e/js-execute *driver* script))
   (Thread/sleep 10))
 
+(defn press-minibuffer-enter
+  "Press Enter in the minibuffer"
+  []
+  (let [script "
+    const input = document.querySelector('.minibuffer-input');
+    if (input) {
+      input.focus();
+      const event = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        bubbles: true
+      });
+      input.dispatchEvent(event);
+    }
+  "]
+    (e/js-execute *driver* script))
+  (Thread/sleep 10))
+
 (defn press-ctrl-key
   "Press Ctrl+key combination (e.g., 'f' for C-f)"
   [key]
@@ -806,11 +824,11 @@
     (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
       (is minibuffer-visible "Minibuffer should be visible"))
 
-    ;; Type new buffer name
-    (type-text "test-buffer")
-    (Thread/sleep 10)
-    (press-key "Enter")
-    (Thread/sleep 30)
+    ;; Type new buffer name and press Enter in minibuffer
+    (e/fill *driver* {:css ".minibuffer-input"} "test-buffer")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 200)  ; Wait for buffer switch and DOM update
 
     ;; New buffer should be created
     (let [editor-text (get-editor-text)]
@@ -1153,7 +1171,7 @@
 
       ;; Click on the first window
       (when (>= (count windows) 2)
-        (e/click *driver* (first windows))
+        (e/click *driver* {:css ".window-pane"})  ; Click first matching window
         (Thread/sleep 30)
 
         ;; Type text
@@ -1181,11 +1199,11 @@
     (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
       (is minibuffer-visible "Minibuffer should be visible for M-x"))
 
-    ;; Type command
-    (type-text "text-mode")
+    ;; Type command in minibuffer and press Enter
+    (e/fill *driver* {:css ".minibuffer-input"} "text-mode")
     (Thread/sleep 20)
-    (press-key "Enter")
-    (Thread/sleep 30)
+    (press-minibuffer-enter)
+    (Thread/sleep 100)
 
     ;; Mode line should show Text mode or command should execute
     (let [status-bar (try

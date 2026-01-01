@@ -38,12 +38,12 @@
         cursor-pos (if (> (.-rangeCount selection) 0)
                      (.-startOffset (.getRangeAt selection 0))
                      0)]
-    
+
     ;; Only handle insertText for characters not bound to commands
     (when (= input-type "insertText")
       ;; Prevent default browser behavior - we control all DOM mutations
       (.preventDefault event)
-      
+
       ;; Dispatch to handle text input if it's a simple insertion
       (rf/dispatch [:handle-text-input {:input-type input-type
                                         :data data
@@ -83,17 +83,17 @@
                         ;; DOM mutation detected - this is normal during text input
                         ;; Dispatch reconciliation event - the handler will check if reconciliation is active
                         (rf/dispatch [:reconcile-dom-if-needed (.-textContent target-element)])))))]
-    
+
     ;; Configure observer to watch for all changes
-    (.observe observer target-element 
+    (.observe observer target-element
               #js {:childList true
                    :subtree true
                    :characterData true
                    :characterDataOldValue true})
-    
+
     ;; Store observer reference
     (rf/dispatch [:set-mutation-observer observer])
-    
+
     observer))
 
 ;; -- View Components --
@@ -163,39 +163,39 @@
     ;     (println "🎨 LINE 15: First diagnostic decoration:" (first line-diagnostics))))
     (if (empty? line-decorations)
       ;; No decorations, return plain text
-      [:span.line-content 
+      [:span.line-content
        {:style {:color "#d4d4d4"}}
        line-text]
       ;; Apply decorations
       (let [segments (atom [])
             current-pos (atom 0)]
-        
+
         ;; Sort decorations by column position
         (doseq [decoration (sort-by #(get-in % [:from :column]) line-decorations)]
           (let [start-col (get-in decoration [:from :column])
                 end-col (get-in decoration [:to :column])
                 text-before (subs line-text @current-pos start-col)
                 decorated-text (subs line-text start-col end-col)]
-            
+
             ;; Add text before decoration
             (when (seq text-before)
               (swap! segments conj [:span text-before]))
-            
+
             ;; Add decorated text with attributes for diagnostic decorations
             (let [span-attrs (cond-> {:class (:class decoration)}
                                (:message decoration) (assoc :data-message (:message decoration)))]
               ; (when (= (:type decoration) :diagnostic)
               ;   (println "🎨 DECORATION: Creating diagnostic span with attrs:" span-attrs "text:" (pr-str decorated-text)))
               (swap! segments conj [:span span-attrs decorated-text]))
-            
+
             ;; Update position
             (reset! current-pos end-col)))
-        
+
         ;; Add remaining text
         (let [remaining-text (subs line-text @current-pos)]
           (when (seq remaining-text)
             (swap! segments conj [:span remaining-text])))
-        
+
         ;; Return combined segments
         (into [:span.line-content {:style {:color "#d4d4d4"}}] @segments)))))
 
@@ -264,7 +264,7 @@
               :color "#858585"
               :user-select "none"
               :padding-top "20px"}}
-     
+
      ;; Render line numbers and markers
      (when visible-lines
        (let [lines (clojure.string/split visible-lines #"\n" -1)  ; -1 keeps trailing empty strings
@@ -283,7 +283,7 @@
                          :align-items "center"
                          :padding-right "8px"
                          :position "relative"}}
-                
+
                 ;; Diagnostic marker
                 (when (or has-error? has-warning? has-hint?)
                   [:div.diagnostic-marker
@@ -297,7 +297,7 @@
                                                has-warning? "#ff8c00"
                                                has-hint? "#d7ba7d"
                                                :else "#666")}}])
-                
+
                 ;; Line number
                 [:div.line-number
                  {:style {:margin-left "auto"
@@ -696,7 +696,7 @@
       [:div.virtual-space
        {:style {:height (str (* total-lines line-height) "px")
                 :position "relative"}}
-       
+
        ;; New editor wrapper with custom architecture
        [editor-wrapper]]]]))
 
@@ -713,11 +713,11 @@
             :border-radius "4px 4px 0 0"
             :font-size "12px"
             :font-family "monospace"}}
-   
+
    [:span.buffer-name
     {:style {:margin-right "6px"}}
     (str (:name buffer) (when (:is-modified? buffer) " •"))]
-   
+
    [:button.buffer-close
     {:style {:background "none"
              :border "none"
@@ -742,7 +742,7 @@
   []
   (let [buffers @(rf/subscribe [:buffers])
         active-buffer @(rf/subscribe [:active-buffer])]
-    
+
     [:div.buffer-tabs
      {:style {:position "fixed"
               :top "0"
@@ -755,7 +755,7 @@
               :align-items "flex-end"
               :padding "0 10px"
               :overflow-x "auto"}}
-     
+
      (for [buffer (vals buffers)]
        ^{:key (:id buffer)}
        [buffer-tab buffer (= (:id buffer) (:id active-buffer))])]))
@@ -765,7 +765,7 @@
   []
   (let [minibuffer @(rf/subscribe [:minibuffer])
         input-ref (atom nil)]
-    
+
     (when (:active? minibuffer)
       [:div.minibuffer
        {:style {:position "fixed"
@@ -782,12 +782,12 @@
                 :padding "0 10px"
                 :border-top "1px solid #3e3e42"
                 :z-index "1000"}}
-       
+
        [:span.minibuffer-prompt
         {:style {:margin-right "4px"
                  :color "#569cd6"}}
         (:prompt minibuffer)]
-       
+
        [:input.minibuffer-input
         {:ref (fn [element]
                 (when element
@@ -872,12 +872,12 @@
                 :align-items "center"
                 :padding "0 10px"
                 :border-top "1px solid #3e3e42"}}
-       
+
        [:span.buffer-info
         (str (:name active-buffer) " " (if buffer-modified? "**" "--"))]
-       
+
        [:div.spacer {:style {:flex "1"}}]
-       
+
        [:span.cursor-info
         (when cursor-pos
           (str (when show-line-numbers?
@@ -886,7 +886,12 @@
                (when show-column-number?
                  (str "Col " (:column cursor-pos)))
                (when (or show-line-numbers? show-column-number?) " | ")
-               buffer-length " chars"))]])))
+               buffer-length " chars"))]
+
+       [:span.mode-info
+        {:style {:margin-left "10px"}}
+        (when-let [mode (:major-mode active-buffer)]
+          (str "(" (clojure.string/capitalize (name mode)) ")"))]])))
 
 (defn main-app
   "Main application component"
@@ -894,7 +899,7 @@
   (let [initialized?  @(rf/subscribe [:initialized?])
         editor-ready? @(rf/subscribe [:editor-ready?])
         wasm-error    @(rf/subscribe [:wasm-error])]
-    
+
     [:<>
      ;; Add CSS for cursor animation and syntax highlighting
      [:style
@@ -907,13 +912,13 @@
        .syntax-comment { color: #6a9955; font-style: italic; }
        .syntax-number { color: #b5cea8; }
        .syntax-default { color: #d4d4d4; }"]
-     
+
      [:div.lexicon-app
       {:style {:width          "100%"
                :height         "100vh"
                :display        "flex"
                :flex-direction "column"}}
-      
+
       (cond
         wasm-error
         [:div.error
@@ -932,16 +937,16 @@
                         :overflow-x       "auto"}}
           (str wasm-error)]
          [:p "Please check the browser console for more details."]]
-        
+
         (not initialized?)
         [loading-view]
-        
+
         editor-ready?
         [:<>
          [editor-view]
          [status-bar]
          [echo-area]
          [minibuffer-view]]
-        
+
         :else
         [:div.error "Failed to initialize editor"])]]))
