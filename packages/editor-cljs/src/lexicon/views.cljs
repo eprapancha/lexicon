@@ -64,7 +64,7 @@
   "Handle IME composition end"
   [event]
   (let [data (.-data event)
-        cursor-pos @(rf/subscribe [:cursor-position])]
+        cursor-pos @(rf/subscribe [:lexicon.subs/cursor-position])]
     ;; Commit the final composed text
     (rf/dispatch [:ime-commit-composition data cursor-pos])
     (rf/dispatch [:ime-composition-end data])))

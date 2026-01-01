@@ -217,6 +217,7 @@
    :name name
    :is-modified? false
    :is-read-only? false                   ; Phase 6B: Read-only buffer flag
+   :cursor-position {:line 0 :column 0}   ; Per-buffer cursor position
    :major-mode :fundamental-mode
    :minor-modes #{}
    :buffer-local-vars {}

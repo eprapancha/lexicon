@@ -778,12 +778,16 @@
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])]
      (if wasm-instance
        (let [text (.getText wasm-instance)
-             line-col (linear-pos-to-line-col text new-linear-pos)
+             content-length (count text)
+             ;; Clamp cursor position to valid range [0, content-length]
+             clamped-pos (max 0 (min new-linear-pos content-length))
+             line-col (linear-pos-to-line-col text clamped-pos)
              new-tree (db/update-window-in-tree window-tree active-window-id
                                                 #(assoc % :cursor-position line-col))]
          {:db (-> db
                   (assoc :window-tree new-tree)
-                  (assoc-in [:ui :cursor-position] new-linear-pos))})  ; Keep old for compatibility
+                  (assoc-in [:buffers active-buffer-id :cursor-position] line-col)  ; Save to buffer too
+                  (assoc-in [:ui :cursor-position] clamped-pos))})  ; Keep old for compatibility
        {:db db}))))
 
 
@@ -1025,17 +1029,38 @@
          new-buffer (db/create-buffer buffer-id name wasm-instance)]
      (assoc-in db [:buffers buffer-id] new-buffer))))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :switch-buffer
- (fn [db [_ buffer-id]]
+ (fn [{:keys [db]} [_ buffer-id]]
    "Switch to the specified buffer by updating the active window"
    (if (get-in db [:buffers buffer-id])
      (let [active-window-id (:active-window-id db)
            window-tree (:window-tree db)
+           active-window (db/find-window-in-tree window-tree active-window-id)
+           current-buffer-id (:buffer-id active-window)
+           current-cursor (:cursor-position active-window)
+           ;; Get target buffer's saved cursor position (or default to 0:0)
+           target-cursor (get-in db [:buffers buffer-id :cursor-position] {:line 0 :column 0})
+           ;; Save current cursor to current buffer
+           db-with-saved-cursor (if current-buffer-id
+                                  (assoc-in db [:buffers current-buffer-id :cursor-position] current-cursor)
+                                  db)
+           ;; Update window with new buffer and load its cursor
            new-tree (db/update-window-in-tree window-tree active-window-id
-                                              #(assoc % :buffer-id buffer-id))]
-       (assoc db :window-tree new-tree))
-     db))) ; Ignore if buffer doesn't exist
+                                              #(assoc %
+                                                      :buffer-id buffer-id
+                                                      :cursor-position target-cursor))
+           ;; Convert line/col to linear position for global state
+           ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+           text (when wasm-instance (.getText wasm-instance))
+           linear-pos (if text
+                       (line-col-to-linear-pos text (:line target-cursor) (:column target-cursor))
+                       0)]
+       {:db (-> db-with-saved-cursor
+                (assoc :window-tree new-tree)
+                (assoc-in [:ui :cursor-position] linear-pos))
+        :fx [[:focus-editor]]})
+     {:db db}))) ; Ignore if buffer doesn't exist
 
 (rf/reg-event-fx
  :switch-to-buffer
@@ -1062,7 +1087,6 @@
  :switch-to-buffer-by-name
  (fn [{:keys [db]} [_ buffer-name]]
    "Switch to buffer by name, creating it if it doesn't exist"
-   (.log js/console "=== switch-to-buffer-by-name called with buffer-name:" buffer-name)
    (let [buffers (:buffers db)
          current-buffer-id (get-in db [:windows (:active-window-id db) :buffer-id])
          current-buffer (get buffers current-buffer-id)
@@ -1073,46 +1097,36 @@
          ;; Find buffer with matching name
          target-buffer (first (filter #(= (:name %) target-name) (vals buffers)))
          target-id (:id target-buffer)]
-     (.log js/console "=== target-name:" target-name "existing buffer?" (boolean target-id))
      (if target-id
        ;; Buffer exists - switch to it
        (do
-         (.log js/console "=== Buffer exists, switching to ID:" target-id)
          {:fx [[:dispatch [:switch-buffer target-id]]]})
        ;; Buffer doesn't exist - create it then switch to it
        (do
-         (.log js/console "=== Buffer does NOT exist, creating new buffer")
-       (let [buffer-id (db/next-buffer-id buffers)
-             WasmEditorCore (get-in db [:system :wasm-constructor])
-             wasm-instance (WasmEditorCore. "")
-             new-buffer {:id buffer-id
-                        :wasm-instance wasm-instance
-                        :file-handle nil
-                        :name target-name
-                        :is-modified? false
-                        :mark-position nil
-                        :cursor-position {:line 0 :column 0}
-                        :selection-range nil
-                        :major-mode :fundamental-mode
-                        :minor-modes #{}
-                        :buffer-local-vars {}
-                        :ast nil
-                        :language :text
-                        :diagnostics []
-                        :undo-stack []
-                        :undo-in-progress? false
-                        :editor-version 0
-                        :cache {:text ""
-                                :line-count 1}}]
-         (.log js/console "=== Created buffer with ID:" buffer-id "switching window to it")
-         (let [active-window-id (:active-window-id db)
-               window-tree (:window-tree db)
-               new-tree (db/update-window-in-tree window-tree active-window-id
-                                                  #(assoc % :buffer-id buffer-id))]
-           (.log js/console "=== Updated window tree to switch to buffer" buffer-id)
-           {:db (-> db
-                    (assoc-in [:buffers buffer-id] new-buffer)
-                    (assoc :window-tree new-tree))})))))))
+         (let [buffer-id (db/next-buffer-id buffers)
+               WasmEditorCore (get-in db [:system :wasm-constructor])
+               wasm-instance (WasmEditorCore. "")
+               new-buffer {:id buffer-id
+                          :wasm-instance wasm-instance
+                          :file-handle nil
+                          :name target-name
+                          :is-modified? false
+                          :mark-position nil
+                          :cursor-position {:line 0 :column 0}
+                          :selection-range nil
+                          :major-mode :fundamental-mode
+                          :minor-modes #{}
+                          :buffer-local-vars {}
+                          :ast nil
+                          :language :text
+                          :diagnostics []
+                          :undo-stack []
+                          :undo-in-progress? false
+                          :editor-version 0
+                          :cache {:text ""
+                                  :line-count 1}}]
+           {:db (assoc-in db [:buffers buffer-id] new-buffer)
+            :fx [[:dispatch [:switch-buffer buffer-id]]]}))))))
 
 (rf/reg-event-fx
  :kill-buffer

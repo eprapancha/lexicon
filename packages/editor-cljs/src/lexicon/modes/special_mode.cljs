@@ -16,7 +16,8 @@
   - <, >: Beginning/end of buffer
   - TAB: Forward button
   - S-TAB: Backward button"
-  (:require [re-frame.core :as rf]))
+  (:require [re-frame.core :as rf]
+            [lexicon.db :as db]))
 
 ;; -- Special Mode Keymap --
 
@@ -40,7 +41,7 @@
   :special-mode/quit-buffer
   (fn [{:keys [db]} _]
     (let [active-window-id (:active-window-id db)
-          active-window (lexicon.db/find-window-in-tree (:window-tree db) active-window-id)
+          active-window (db/find-window-in-tree (:window-tree db) active-window-id)
           buffer-id (:buffer-id active-window)
           buffer (get-in db [:buffers buffer-id])
           buffer-name (:name buffer)]
@@ -54,7 +55,7 @@
   :special-mode/revert-buffer
   (fn [{:keys [db]} _]
     (let [active-window-id (:active-window-id db)
-          active-window (lexicon.db/find-window-in-tree (:window-tree db) active-window-id)
+          active-window (db/find-window-in-tree (:window-tree db) active-window-id)
           buffer-id (:buffer-id active-window)
           buffer (get-in db [:buffers buffer-id])
           buffer-name (:name buffer)
