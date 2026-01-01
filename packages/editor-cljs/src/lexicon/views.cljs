@@ -592,22 +592,6 @@
     :hsplit
     [:div.hsplit
      {:style {:display "flex"
-              :flex-direction "row"
-              :width "100%"
-              :height "100%"}}
-     [:div.split-first
-      {:style {:flex "1"
-               :height "100%"
-               :border-right "1px solid #3e3e3e"}}
-      (render-window-tree (:first tree) active-window-id hidden-input-ref)]
-     [:div.split-second
-      {:style {:flex "1"
-               :height "100%"}}
-      (render-window-tree (:second tree) active-window-id hidden-input-ref)]]
-
-    :vsplit
-    [:div.vsplit
-     {:style {:display "flex"
               :flex-direction "column"
               :width "100%"
               :height "100%"}}
@@ -619,6 +603,22 @@
      [:div.split-second
       {:style {:flex "1"
                :width "100%"}}
+      (render-window-tree (:second tree) active-window-id hidden-input-ref)]]
+
+    :vsplit
+    [:div.vsplit
+     {:style {:display "flex"
+              :flex-direction "row"
+              :width "100%"
+              :height "100%"}}
+     [:div.split-first
+      {:style {:flex "1"
+               :height "100%"
+               :border-right "1px solid #3e3e3e"}}
+      (render-window-tree (:first tree) active-window-id hidden-input-ref)]
+     [:div.split-second
+      {:style {:flex "1"
+               :height "100%"}}
       (render-window-tree (:second tree) active-window-id hidden-input-ref)]]
 
     ;; Default case

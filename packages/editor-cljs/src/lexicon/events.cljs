@@ -176,15 +176,24 @@
    (println "Error:" message)
    (assoc-in db [:system :last-error] message)))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :keyboard-quit
- (fn [db [_]]
+ (fn [{:keys [db]} [_]]
    "Cancel the current operation (equivalent to C-g in Emacs)"
-   (println "Keyboard quit")
-   ;; Clear any pending operations, selection, etc.
-   (-> db
-       (assoc-in [:ui :selection] {:start 0 :end 0})
-       (assoc-in [:fsm :operator-pending] nil))))
+   (let [minibuffer-active? (get-in db [:minibuffer :active?])
+         on-cancel (get-in db [:minibuffer :on-cancel] [:minibuffer/deactivate])]
+     (if minibuffer-active?
+       ;; If minibuffer is active, cancel it and dispatch on-cancel
+       {:db (-> db
+                (assoc-in [:ui :selection] {:start 0 :end 0})
+                (assoc-in [:fsm :operator-pending] nil))
+        :fx [[:dispatch on-cancel]
+             [:dispatch [:echo/message "Quit"]]]}
+       ;; Otherwise just clear pending operations and show quit message
+       {:db (-> db
+                (assoc-in [:ui :selection] {:start 0 :end 0})
+                (assoc-in [:fsm :operator-pending] nil))
+        :fx [[:dispatch [:echo/message "Quit"]]]}))))
 
 ;; -- Key Sequence Parsing and Processing --
 
@@ -362,10 +371,15 @@
             (not prefix-state)
             (not (re-matches #"[CM]-." key-str))  ; Not a modifier combo
             (>= (.charCodeAt key-str 0) 32))     ; Printable ASCII
-       (do
-         (println "✍️ Inserting character:" key-str)
-         {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text key-str}]]
-               [:dispatch [:clear-prefix-key-state]]]})
+       (let [prefix-arg (get-in db [:ui :prefix-argument])
+             prefix-active? (get-in db [:ui :prefix-argument-active?])
+             repeat-count (if (and prefix-active? prefix-arg) prefix-arg 1)
+             text-to-insert (apply str (repeat repeat-count key-str))]
+         (println "✍️ Inserting character:" key-str "×" repeat-count "=" text-to-insert)
+         {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
+               [:dispatch [:clear-prefix-key-state]]
+               (when prefix-active?
+                 [:dispatch [:clear-prefix-argument]])]})
 
            ;; Unknown key sequence - clear state and ignore
            :else
@@ -1775,33 +1789,43 @@ C-h ?   This help menu
  :handle-text-input
  (fn [{:keys [db]} [_ {:keys [input-type data dom-cursor-pos]}]]
    "Handle text input events by queueing operations"
-   (let [operation (case input-type
-                     "insertText"
-                     (when data
-                       {:op :insert :text data})
-                     
-                     "insertCompositionText"
-                     (when data
-                       ;; Handle IME composition
-                       (rf/dispatch [:ime-composition-update data])
-                       nil)
-                     
-                     "deleteContentBackward"
-                     {:op :delete-backward}
-                     
-                     "deleteContentForward"
-                     {:op :delete-forward}
-                     
-                     "insertFromPaste"
-                     (when data
-                       {:op :insert :text data})
-                     
-                     ;; Log unhandled input types
-                     (do (println "Unhandled input type:" input-type) nil))]
-     
-     (if operation
-       {:fx [[:dispatch [:editor/queue-transaction operation]]]}
-       {:db db}))))
+   (let [prefix-arg (get-in db [:ui :prefix-argument])
+         prefix-active? (get-in db [:ui :prefix-argument-active?])
+         repeat-count (if (and prefix-active? prefix-arg) prefix-arg 1)]
+     (println "🔢 handle-text-input - prefix-arg:" prefix-arg "active?:" prefix-active? "repeat:" repeat-count "data:" data)
+     (let [operation (case input-type
+                       "insertText"
+                       (when data
+                         ;; Repeat the text based on prefix-argument
+                         (let [text (apply str (repeat repeat-count data))]
+                           (println "📝 Inserting text:" text "(repeat" repeat-count "times)")
+                           {:op :insert :text text}))
+
+                       "insertCompositionText"
+                       (when data
+                         ;; Handle IME composition
+                         (rf/dispatch [:ime-composition-update data])
+                         nil)
+
+                       "deleteContentBackward"
+                       {:op :delete-backward}
+
+                       "deleteContentForward"
+                       {:op :delete-forward}
+
+                       "insertFromPaste"
+                       (when data
+                         {:op :insert :text data})
+
+                       ;; Log unhandled input types
+                       (do (println "Unhandled input type:" input-type) nil))]
+
+       (if operation
+         {:fx [[:dispatch [:editor/queue-transaction operation]]
+               ;; Clear prefix argument after using it for text insertion
+               (when (and prefix-active? (= input-type "insertText"))
+                 [:dispatch [:clear-prefix-argument]])]}
+         {:db db})))))
 
 ;; Helper function to record undo information
 (defn record-undo!
