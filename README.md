@@ -21,11 +21,11 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 
 ## Current Status
 
-**Phase 6.5 of 11** - Testing & Quality Assurance ✅ COMPLETE | **Ready for Manual Review**
+**Phase 7.2 of 11** - Events Refactoring ✅ COMPLETE | **Ready for Phase 7.3**
 
 **What Works:**
-- ✅ **Phases 0-6D Complete** - Full Emacs infrastructure ready for packages!
-- ✅ **Phase 6D Complete** - Buffer-local variables, hooks, advice, thing-at-point, advanced undo!
+- ✅ **Phases 0-7.2 Complete** - Core architecture + modular event system!
+- ✅ **Phase 7.2 Complete** - Events.cljs refactored into 7 focused modules (86% reduction)!
   - Text editing (insert, delete, undo, kill ring)
   - Navigation (C-f/b/n/p, C-a/e, M-f/b, M-</>, arrows)
   - Multi-buffer support (C-x b, C-x C-f, C-x C-s)
@@ -41,12 +41,13 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
   - Advice system for function wrapping
   - Thing-at-point subsystem
   - Advanced undo with boundaries and groups
+  - Modular event architecture (7 focused modules)
 
 **Current Work:**
-- ✅ **Phases 0-6.5 Complete** - All core Emacs infrastructure + testing!
-- ✅ **Phase 6.5 Complete** - 37 automated tests + comprehensive manual testing checklist
-- 🔍 **Ready for Manual Review** - Time to test everything before Evil-mode!
-- 📋 **Next: Phase 7** - Evil-mode Integration (after comprehensive manual testing)
+- ✅ **Phases 0-7.2 Complete** - Core + modular architecture ready!
+- ✅ **Phase 7.1 Complete** - Core API contracts and design specifications
+- ✅ **Phase 7.2 Complete** - Events.cljs refactored from 2,958 to 409 lines (7 modules)
+- 📋 **Next: Phase 7.3** - Hook Infrastructure Implementation
 
 **See [docs/ROADMAP.md](./docs/ROADMAP.md) for detailed progress and next steps**
 
@@ -142,7 +143,7 @@ The web deserves this same power.
 
 ## Contributing
 
-**Current Status:** Phase 6B complete - display & theming foundation complete. Phase 6C (Completion Framework) next.
+**Current Status:** Phase 7.2 complete - events.cljs refactored into modular architecture. Phase 7.3 (Hook Infrastructure) next.
 
 We're **not yet ready for external contributions**, but you can:
 
@@ -151,9 +152,9 @@ We're **not yet ready for external contributions**, but you can:
 - 💬 **Open issues** for questions or suggestions
 - 📖 **Read [CORE_PRINCIPLES.md](./docs/CORE_PRINCIPLES.md)** to understand our approach
 
-**After Phase 6.5** (Testing & Quality Assurance), we'll welcome contributions! This phase is CRITICAL before accepting PRs - we need automated tests to ensure changes don't break existing functionality.
+**After Phase 7** (Modular Architecture & API Contracts), we'll welcome contributions! With automated tests and clean module boundaries in place, it will be safe to accept PRs.
 
-See [ROADMAP.md](./docs/ROADMAP.md) Phase 6.5 for testing plan.
+See [ROADMAP.md](./docs/ROADMAP.md) for detailed progress and next steps.
 
 ---
 
@@ -224,8 +225,8 @@ MIT License - See [LICENSE](./LICENSE) for details.
 
 ---
 
-**Current Phase:** Phase 6.5 Complete | Ready for Manual Review & Testing
-**Last Updated:** 2025-12-25
-**Status:** 🟢 Active Development - Phases 0-6.5 Complete! Ready for comprehensive testing.
+**Current Phase:** Phase 7.2 Complete | Events Refactoring Done
+**Last Updated:** 2026-01-02
+**Status:** 🟢 Active Development - Phases 0-7.2 Complete! Modular architecture ready for Phase 7.3.
 
 *Building Emacs for the web, one gap buffer at a time.*
