@@ -2,7 +2,8 @@
   "Command system and help system event handlers"
   (:require [re-frame.core :as rf]
             [lexicon.db :as db]
-            [lexicon.completion.metadata :as completion-metadata]))
+            [lexicon.completion.metadata :as completion-metadata]
+            [lexicon.advanced-undo :as undo]))
 
 ;; =============================================================================
 ;; Command Registry and Execution
@@ -17,7 +18,7 @@
 (rf/reg-event-fx
  :execute-command
  (fn [{:keys [db]} [_ command-name & args]]
-   "Execute a command by name from the central registry with before/after hooks"
+   "Execute a command by name from the central registry with before/after hooks and undo boundaries"
    (let [command-def (get-in db [:commands command-name])
          active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
@@ -29,17 +30,47 @@
                   :buffer-id active-buffer-id
                   :window-id (:active-window-id db)
                   :prefix-arg prefix-arg
-                  :timestamp (js/Date.now)}]
+                  :timestamp (js/Date.now)}
+
+         ;; Determine if this is an editing command (should create undo boundary)
+         editing-command? (not (#{:undo :redo :universal-argument :execute-extended-command
+                                  :describe-bindings :forward-char :backward-char :next-line :previous-line
+                                  :beginning-of-line :end-of-line :beginning-of-buffer :end-of-buffer} command-name))]
 
      (if command-def
        (let [handler (:handler command-def)
              should-clear-prefix? (not= command-name :universal-argument)]
-         ;; Execute hooks before/after command
-         {:fx (cond-> [[:dispatch [:hook/run :before-command-hook context]]
-                       [:dispatch (into handler args)]
-                       [:dispatch [:hook/run :after-command-hook (assoc context :result nil)]]]
+         ;; Execute command with undo boundaries for editing commands
+         {:fx (cond-> [[:dispatch [:hook/run :before-command-hook context]]]
+                ;; Insert undo boundary before editing commands
+                editing-command? (conj [:dispatch [:command/begin-undo-boundary active-buffer-id]])
+                ;; Execute the command
+                true (conj [:dispatch (into handler args)])
+                ;; Insert undo boundary after editing commands
+                editing-command? (conj [:dispatch [:command/end-undo-boundary active-buffer-id]])
+                ;; Run after-command hook
+                true (conj [:dispatch [:hook/run :after-command-hook (assoc context :result nil)]])
+                ;; Clear prefix argument if needed
                 should-clear-prefix? (conj [:dispatch [:clear-prefix-argument]]))})
        {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]}))))
+
+;; -- Command Lifecycle Undo Integration --
+
+(rf/reg-event-db
+  :command/begin-undo-boundary
+  (fn [db [_ buffer-id]]
+    "Insert undo boundary at beginning of command"
+    (when buffer-id
+      (undo/undo-boundary! buffer-id))
+    db))
+
+(rf/reg-event-db
+  :command/end-undo-boundary
+  (fn [db [_ buffer-id]]
+    "Insert undo boundary at end of command"
+    (when buffer-id
+      (undo/undo-boundary! buffer-id))
+    db))
 
 (rf/reg-event-fx
  :execute-extended-command

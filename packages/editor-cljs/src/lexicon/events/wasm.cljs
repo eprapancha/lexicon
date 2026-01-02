@@ -12,7 +12,8 @@
             [re-frame.db]
             [lexicon.db :as db]
             [lexicon.cache :as cache]
-            [lexicon.constants :as const]))
+            [lexicon.constants :as const]
+            [lexicon.advanced-undo :as undo]))
 
 ;; -- Helper Functions --
 
@@ -37,11 +38,13 @@
                      (rest remaining-lengths)))))))))
 
 (defn record-undo!
-  "Record undo entry for an operation. Returns undo entry or nil if recording disabled."
+  "Record undo entry for an operation using advanced undo system.
+  Returns undo entry or nil if recording disabled."
   [wasm-instance active-buffer-id current-cursor operation]
   (let [db @re-frame.db/app-db
-        undo-in-progress? (get-in db [:buffers active-buffer-id :undo-in-progress?])]
-    (when-not undo-in-progress?
+        undo-in-progress? (get-in db [:buffers active-buffer-id :undo-in-progress?])
+        recording-enabled? (get-in db [:undo :recording-enabled?] true)]
+    (when (and recording-enabled? (not undo-in-progress?))
       (let [undo-entry (case (:op operation)
                          :insert
                          (let [text (:text operation)]
@@ -85,8 +88,25 @@
                          ;; Unknown operation - don't record
                          nil)]
         (when undo-entry
-          (swap! re-frame.db/app-db update-in [:buffers active-buffer-id :undo-stack] conj undo-entry)
-          (println "📝 Undo recorded:" undo-entry))
+          ;; Push to advanced undo stack
+          (undo/push-undo-entry! active-buffer-id {:type :edit :op (:op undo-entry) :position (:position undo-entry) :start (:start undo-entry) :length (:length undo-entry) :text (:text undo-entry)})
+
+          ;; Record marker position change
+          (let [old-pos current-cursor
+                new-pos (case (:op operation)
+                          :insert (+ current-cursor (count (:text operation)))
+                          :delete-backward (dec current-cursor)
+                          :delete-forward current-cursor
+                          :delete-range (:start operation)
+                          :replace (+ (:start operation) (count (:text operation)))
+                          current-cursor)]
+            (when (not= old-pos new-pos)
+              (undo/push-undo-entry! active-buffer-id {:type :marker :marker-id :point :old-pos old-pos :new-pos new-pos})))
+
+          ;; Clear redo stack on new edit
+          (undo/clear-redo-stack! active-buffer-id)
+
+          (println "📝 Advanced undo recorded:" undo-entry))
         undo-entry))))
 
 ;; -- WASM Module Loading --

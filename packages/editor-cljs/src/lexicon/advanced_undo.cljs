@@ -27,10 +27,11 @@
   "Push ENTRY onto undo stack for BUFFER-ID.
 
   Entry types:
-  - {:type :edit :action :insert/:delete :pos N :text 'foo'}
+  - {:type :edit :op :insert/:delete-range/:replace ...}
   - {:type :boundary}
   - {:type :group-start :id UUID}
-  - {:type :group-end :id UUID}"
+  - {:type :group-end :id UUID}
+  - {:type :marker :marker-id ID :old-pos N :new-pos M}"
   [buffer-id entry]
   (rf/dispatch [:undo/push buffer-id entry]))
 
@@ -156,14 +157,15 @@
   [buffer-state entry]
   (case (:type entry)
     :edit (let [^js wasm (:wasm-instance buffer-state)
-                action (:action entry)
-                pos (:pos entry)
-                text (:text entry)]
+                op (:op entry)]
             (when wasm
               (try
-                (case action
-                  :insert (.insert wasm pos text)
-                  :delete (.delete wasm pos (count text)))
+                (case op
+                  :insert (.insert wasm (:position entry) (:text entry))
+                  :delete-range (.delete wasm (:start entry) (:length entry))
+                  :replace (do
+                             (.delete wasm (:start entry) (:length entry))
+                             (.insert wasm (:start entry) (:text entry))))
                 (catch js/Error e
                   (js/console.warn "Undo apply error:" e))))
             buffer-state)
@@ -175,30 +177,88 @@
   [buffer-id]
   (rf/dispatch [:undo/undo-to-boundary buffer-id]))
 
-(rf/reg-event-db
+(rf/reg-event-fx
   :undo/undo-to-boundary
-  (fn [db [_ buffer-id]]
+  (fn [{:keys [db]} [_ buffer-id]]
     (let [stack (get-in db [:buffers buffer-id :undo-stack] [])
           buffer-state (get-in db [:buffers buffer-id])]
       (if (seq stack)
         (let [{:keys [entries boundary-index]} (extract-undo-group stack (count stack))
-              ;; Filter out non-edit entries (boundaries, group markers)
-              edits (filter #(= (:type %) :edit) entries)
+              ;; Filter edit and marker entries
+              undoable-entries (filter #(#{:edit :marker} (:type %)) entries)
               ;; Reverse order for undo
-              reversed-edits (reverse edits)]
+              reversed-entries (reverse undoable-entries)
+              ;; Get point position for restoration
+              marker-entry (first (filter #(= (:type %) :marker) reversed-entries))]
 
           ;; Apply undo entries
-          (doseq [entry reversed-edits]
-            (apply-undo-entry buffer-state (invert-undo-entry entry)))
+          (doseq [entry reversed-entries]
+            (case (:type entry)
+              :edit (apply-undo-entry buffer-state (invert-undo-entry entry))
+              :marker (when (= (:marker-id entry) :point)
+                        ;; Restore point position
+                        nil) ;; Will be handled via cursor update
+              nil))
 
-          ;; Update undo stack: remove undone entries, add to redo
-          (-> db
-              (assoc-in [:buffers buffer-id :undo-stack]
-                       (subvec stack 0 boundary-index))
-              (update-in [:buffers buffer-id :redo-stack]
-                         (fn [redo]
-                           (concat (or redo []) entries)))))
-        db))))
+          ;; Update undo stack and redo stack, restore cursor
+          {:db (-> db
+                   (assoc-in [:buffers buffer-id :undo-stack]
+                            (subvec stack 0 boundary-index))
+                   (update-in [:buffers buffer-id :redo-stack]
+                              (fn [redo]
+                                (conj (or redo []) {:entries entries :boundary-index boundary-index}))))
+           :fx (when marker-entry
+                 [[:dispatch [:update-cursor-position (:old-pos marker-entry)]]])})
+        {:db db}))))
+
+;; -- Redo Support --
+
+(defn redo!
+  "Redo the last undone command in BUFFER-ID."
+  [buffer-id]
+  (rf/dispatch [:undo/redo buffer-id]))
+
+(rf/reg-event-fx
+  :undo/redo
+  (fn [{:keys [db]} [_ buffer-id]]
+    (let [redo-stack (get-in db [:buffers buffer-id :redo-stack] [])
+          buffer-state (get-in db [:buffers buffer-id])]
+      (if (seq redo-stack)
+        (let [redo-group (peek redo-stack)
+              entries (:entries redo-group)
+              ;; Filter edit and marker entries
+              redoable-entries (filter #(#{:edit :marker} (:type %)) entries)
+              ;; Apply in forward order (not reversed)
+              marker-entry (last (filter #(= (:type %) :marker) redoable-entries))]
+
+          ;; Apply redo entries
+          (doseq [entry redoable-entries]
+            (case (:type entry)
+              :edit (apply-undo-entry buffer-state entry)
+              :marker nil ;; Will be handled via cursor update
+              nil))
+
+          ;; Update stacks and restore cursor
+          {:db (-> db
+                   (update-in [:buffers buffer-id :redo-stack] pop)
+                   (update-in [:buffers buffer-id :undo-stack]
+                              (fn [stack]
+                                (into (or stack []) entries))))
+           :fx (when marker-entry
+                 [[:dispatch [:update-cursor-position (:new-pos marker-entry)]]])})
+        {:db db}))))
+
+;; -- Clear Redo on New Edit --
+
+(defn clear-redo-stack!
+  "Clear redo stack for BUFFER-ID when a new edit is made."
+  [buffer-id]
+  (rf/dispatch [:undo/clear-redo buffer-id]))
+
+(rf/reg-event-db
+  :undo/clear-redo
+  (fn [db [_ buffer-id]]
+    (assoc-in db [:buffers buffer-id :redo-stack] [])))
 
 ;; -- Undo Recording Control --
 

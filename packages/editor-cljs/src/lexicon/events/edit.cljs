@@ -8,11 +8,12 @@
   - Editing operations (kill-line, open-line)
   - Mark and region (set-mark-command, set-mark, copy-region-as-kill, kill-region)
   - Kill ring operations (yank, yank-pop)
-  - Undo operations (undo, undo-complete)"
+  - Undo operations (undo, redo)"
   (:require [re-frame.core :as rf]
             [lexicon.db :as db]
             [lexicon.constants :as const]
-            [lexicon.events.buffer :as buffer-events]))
+            [lexicon.events.buffer :as buffer-events]
+            [lexicon.advanced-undo :as undo]))
 
 ;; -- Helper Functions --
 
@@ -450,30 +451,49 @@
 (rf/reg-event-fx
  :undo
  (fn [{:keys [db]} [_]]
-   "Undo the last operation (C-/ or C-_)"
+   "Undo the last command using advanced undo system (C-/ or C-_)"
    (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
-         active-buffer    (get (:buffers db) active-buffer-id)
-         wasm-instance    (:wasm-instance active-buffer)
-         undo-stack       (:undo-stack active-buffer)]
+         undo-stack       (get-in db [:buffers active-buffer-id :undo-stack] [])]
 
-     (if (and wasm-instance (seq undo-stack))
-       (let [undo-entry (peek undo-stack)
-             updated-stack (pop undo-stack)]
-         (println "⏪ Undo: applying" undo-entry)
-         {:db (-> db
-                  (assoc-in [:buffers active-buffer-id :undo-stack] updated-stack)
-                  (assoc-in [:buffers active-buffer-id :undo-in-progress?] true))
-          :fx [[:dispatch [:editor/queue-transaction undo-entry]]
-               [:dispatch-later [{:ms 10 :dispatch [:undo-complete active-buffer-id]}]]]})
+     (if (seq undo-stack)
+       (do
+         (println "⏪ Advanced Undo: undoing to boundary")
+         ;; Disable undo recording during undo operation
+         (undo/with-undo-recording-disabled*
+           (fn []
+             (undo/undo-to-boundary! active-buffer-id)))
+         {:db (assoc-in db [:buffers active-buffer-id :undo-in-progress?] true)
+          :fx [[:dispatch-later [{:ms 50 :dispatch [:undo-complete active-buffer-id]}]]]})
        (do
          (println "⚠ Nothing to undo")
+         {:db db})))))
+
+(rf/reg-event-fx
+ :redo
+ (fn [{:keys [db]} [_]]
+   "Redo the last undone command using advanced undo system (C-g C-_)"
+   (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         redo-stack       (get-in db [:buffers active-buffer-id :redo-stack] [])]
+
+     (if (seq redo-stack)
+       (do
+         (println "⏩ Advanced Redo: redoing last undone command")
+         ;; Disable undo recording during redo operation
+         (undo/with-undo-recording-disabled*
+           (fn []
+             (undo/redo! active-buffer-id)))
+         {:db (assoc-in db [:buffers active-buffer-id :undo-in-progress?] true)
+          :fx [[:dispatch-later [{:ms 50 :dispatch [:undo-complete active-buffer-id]}]]]})
+       (do
+         (println "⚠ Nothing to redo")
          {:db db})))))
 
 (rf/reg-event-db
  :undo-complete
  (fn [db [_ buffer-id]]
-   "Reset undo-in-progress flag after undo operation completes"
+   "Reset undo-in-progress flag after undo/redo operation completes"
    (assoc-in db [:buffers buffer-id :undo-in-progress?] false)))
 
 ;; -- Cursor Position Management --
