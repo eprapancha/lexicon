@@ -40,10 +40,20 @@
    :kill-ring []                                       ; Clipboard history
    :initialized? false                                 ; Whether WASM module is loaded
    :commands {}                                        ; Central command registry
-   :hooks {:before-save-hook []                      ; Commands to run before saving
-           :after-save-hook []                       ; Commands to run after saving
-           :buffer-list-update-hook []               ; Commands to run when buffer list changes
-           :kill-buffer-hook []}                     ; Commands to run before killing a buffer
+   ;; Phase 7.3: Hook System - Priority-based hook registry
+   ;; Each hook is a vector of hook entries sorted by priority (lowest first)
+   ;; Hook entry: {:id keyword :priority int :fn ifn :enabled? bool :package-id keyword :doc string}
+   :hooks {:before-command-hook []                   ; Run before command execution
+           :after-command-hook []                    ; Run after command execution
+           :before-change-hook []                    ; Run before buffer text changes
+           :after-change-hook []                     ; Run after buffer text changes
+           :buffer-switch-hook []                    ; Run when switching buffers
+           :mode-hook []                             ; Run when modes are enabled/disabled
+           ;; Legacy hooks (to be migrated to new system)
+           :before-save-hook []                      ; Run before saving
+           :after-save-hook []                       ; Run after saving
+           :buffer-list-update-hook []               ; Run when buffer list changes
+           :kill-buffer-hook []}                     ; Run before killing a buffer
    :ui {:cursor-position 0                            ; Current cursor position
         :selection {:start 0 :end 0}                  ; Current selection range
         :ime-composing? false                          ; IME composition state

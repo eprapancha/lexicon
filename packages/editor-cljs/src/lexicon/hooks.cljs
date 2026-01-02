@@ -1,252 +1,263 @@
 (ns lexicon.hooks
-  "Enhanced hook system for Lexicon.
+  "Hook system implementation for Lexicon.
 
-  Hooks are lists of functions that are called at specific points:
-  - pre-command-hook: Before every command
-  - post-command-hook: After every command
-  - window-configuration-change-hook: When windows change
-  - kill-buffer-hook: Before killing a buffer
-  - change-major-mode-hook: Before changing major mode
+  Provides extension points throughout the editor lifecycle, enabling packages
+  to observe and react to events without modifying core code.
 
-  Hooks can be buffer-local (each buffer has own list) or global.
+  Based on the Hook System Specification (docs/core/hooks.md)."
+  (:require [re-frame.core :as rf]))
 
-  Usage:
-    (add-hook! :post-command-hook my-fn)           ; Add globally
-    (add-hook! :post-command-hook my-fn buffer-id) ; Add buffer-locally
-    (remove-hook! :post-command-hook my-fn)        ; Remove globally
-    (run-hooks! :post-command-hook)                ; Run all functions"
-  (:require [re-frame.core :as rf]
-            [lexicon.buffer-local :as buffer-local]))
+;; -- Helper Functions --
 
-;; -- Hook Management --
+(defn create-hook-entry
+  "Create a hook entry from function and options."
+  [fn-or-entry & {:keys [id priority enabled? package-id doc]
+                  :or {priority 50
+                       enabled? true}}]
+  (if (map? fn-or-entry)
+    ;; Full entry map provided
+    (merge {:priority 50 :enabled? true}
+           fn-or-entry)
+    ;; Function provided, create entry
+    {:id (or id (keyword (str "hook-" (random-uuid))))
+     :priority priority
+     :fn fn-or-entry
+     :enabled? enabled?
+     :package-id package-id
+     :doc doc
+     :added-at (js/Date.)}))
 
-(defn add-hook!
-  "Add FUNCTION to HOOK.
+(defn sort-by-priority
+  "Sort hook entries by priority (lowest first), then by insertion order."
+  [entries]
+  (->> entries
+       (sort-by (juxt :priority :added-at))))
 
-  Args:
-  - hook: Hook keyword (:pre-command-hook, etc.)
-  - function: Function to add
-  - buffer-id: Optional buffer ID for buffer-local hook
+(defn add-hook-entry
+  "Add a hook entry to a hook vector, maintaining priority order."
+  [hook-vec entry]
+  (sort-by-priority (conj hook-vec entry)))
 
-  If buffer-id is provided, adds function to buffer-local hook.
-  Otherwise adds to global hook."
-  [hook function & [buffer-id]]
-  (rf/dispatch [:hooks/add hook function buffer-id]))
+(defn remove-hook-entry
+  "Remove a hook entry from a hook vector by ID or function."
+  [hook-vec hook-fn-or-id]
+  (if (keyword? hook-fn-or-id)
+    ;; Remove by ID
+    (vec (remove #(= (:id %) hook-fn-or-id) hook-vec))
+    ;; Remove by function reference
+    (vec (remove #(identical? (:fn %) hook-fn-or-id) hook-vec))))
 
-(rf/reg-event-db
-  :hooks/add
-  (fn [db [_ hook function buffer-id]]
-    (if buffer-id
-      ;; Add to buffer-local hook
-      (update-in db [:buffers buffer-id :hooks hook]
-                 (fn [hooks]
-                   (let [hooks (or hooks [])]
-                     (if (some #{function} hooks)
-                       hooks  ; Already in list
-                       (conj hooks function)))))
-      ;; Add to global hook
-      (update-in db [:hooks hook]
-                 (fn [hooks]
-                   (let [hooks (or hooks [])]
-                     (if (some #{function} hooks)
-                       hooks
-                       (conj hooks function))))))))
+(defn find-hook-entry
+  "Find a hook entry by ID or function."
+  [hook-vec hook-fn-or-id]
+  (if (keyword? hook-fn-or-id)
+    ;; Find by ID
+    (first (filter #(= (:id %) hook-fn-or-id) hook-vec))
+    ;; Find by function reference
+    (first (filter #(identical? (:fn %) hook-fn-or-id) hook-vec))))
 
-(defn remove-hook!
-  "Remove FUNCTION from HOOK.
+(defn run-hook-entry
+  "Execute a single hook entry with error isolation.
+  Returns nil on success, error on failure."
+  [entry context]
+  (try
+    (when (:enabled? entry true)
+      ((:fn entry) context))
+    nil
+    (catch :default e
+      (js/console.error
+       (str "❌ Hook failed: " (:id entry))
+       (str "in context: " context)
+       e)
+      e)))
 
-  Args:
-  - hook: Hook keyword
-  - function: Function to remove
-  - buffer-id: Optional buffer ID for buffer-local hook"
-  [hook function & [buffer-id]]
-  (rf/dispatch [:hooks/remove hook function buffer-id]))
-
-(rf/reg-event-db
-  :hooks/remove
-  (fn [db [_ hook function buffer-id]]
-    (if buffer-id
-      ;; Remove from buffer-local hook
-      (update-in db [:buffers buffer-id :hooks hook]
-                 (fn [hooks]
-                   (vec (remove #{function} (or hooks [])))))
-      ;; Remove from global hook
-      (update-in db [:hooks hook]
-                 (fn [hooks]
-                   (vec (remove #{function} (or hooks []))))))))
-
-(defn get-hook-functions
-  "Get list of functions for HOOK in BUFFER-ID.
-
-  Returns combined list of buffer-local + global functions."
-  [db hook buffer-id]
-  (let [global-hooks (get-in db [:hooks hook] [])
-        buffer-local-hooks (when buffer-id
-                            (get-in db [:buffers buffer-id :hooks hook] []))]
-    ;; Buffer-local hooks run before global hooks
-    (concat buffer-local-hooks global-hooks)))
-
-(defn run-hook-functions
-  "Run all functions in FUNCTIONS list.
-
-  Args:
-  - functions: Vector of functions
-  - db: Current database (passed to each function)
-
-  Each function receives the database and returns updated database.
-  Functions are chained (output of one becomes input to next)."
-  [functions db]
-  (reduce (fn [acc-db f]
-           (try
-             (or (f acc-db) acc-db)
-             (catch js/Error e
-               (js/console.warn "Hook function error:" e)
-               acc-db)))
-         db
-         functions))
-
-;; -- Hook Running --
-
-(defn run-hooks!
-  "Run all functions in HOOK for current buffer.
-
-  Args:
-  - hook: Hook keyword"
-  [hook]
-  (rf/dispatch [:hooks/run hook]))
+;; -- Event Handlers --
 
 (rf/reg-event-db
-  :hooks/run
-  (fn [db [_ hook]]
-    (let [buffer-id (get-in db [:editor :current-buffer-id])
-          functions (get-hook-functions db hook buffer-id)]
-      (run-hook-functions functions db))))
-
-;; -- Command Hooks Integration --
-
-;; Interceptor to run pre/post-command hooks
-(def command-hooks-interceptor
-  (rf/->interceptor
-   :id :command-hooks
-   :before (fn [context]
-            ;; Run pre-command-hook
-            (let [db (get-in context [:coeffects :db])
-                  buffer-id (get-in db [:editor :current-buffer-id])
-                  functions (get-hook-functions db :pre-command-hook buffer-id)
-                  updated-db (run-hook-functions functions db)]
-              (assoc-in context [:coeffects :db] updated-db)))
-   :after (fn [context]
-           ;; Run post-command-hook
-           (let [db (get-in context [:effects :db])
-                 buffer-id (get-in db [:editor :current-buffer-id])
-                 functions (get-hook-functions db :post-command-hook buffer-id)
-                 updated-db (run-hook-functions functions db)]
-             (assoc-in context [:effects :db] updated-db)))))
-
-;; -- Specific Hooks --
-
-;; window-configuration-change-hook
-(defn run-window-configuration-change-hook! []
-  (rf/dispatch [:hooks/run :window-configuration-change-hook]))
+ :hook/add
+ (fn [db [_ hook-id fn-or-entry & options]]
+   "Add a hook to the registry."
+   (let [entry (apply create-hook-entry fn-or-entry options)
+         hook-path [:hooks hook-id]
+         current-hooks (get-in db hook-path [])]
+     (assoc-in db hook-path (add-hook-entry current-hooks entry)))))
 
 (rf/reg-event-db
-  :hooks/run-window-change
-  (fn [db [_]]
-    (let [buffer-id (get-in db [:editor :current-buffer-id])
-          functions (get-hook-functions db :window-configuration-change-hook buffer-id)]
-      (run-hook-functions functions db))))
-
-;; kill-buffer-hook
-(defn run-kill-buffer-hook!
-  "Run kill-buffer-hook for BUFFER-ID before killing buffer."
-  [buffer-id]
-  (rf/dispatch [:hooks/run-kill-buffer buffer-id]))
+ :hook/remove
+ (fn [db [_ hook-id hook-fn-or-id]]
+   "Remove a hook from the registry."
+   (let [hook-path [:hooks hook-id]
+         current-hooks (get-in db hook-path [])]
+     (assoc-in db hook-path (remove-hook-entry current-hooks hook-fn-or-id)))))
 
 (rf/reg-event-db
-  :hooks/run-kill-buffer
-  (fn [db [_ buffer-id]]
-    (let [functions (get-hook-functions db :kill-buffer-hook buffer-id)]
-      (run-hook-functions functions db))))
-
-;; change-major-mode-hook
-(defn run-change-major-mode-hook!
-  "Run change-major-mode-hook for BUFFER-ID before changing mode."
-  [buffer-id]
-  (rf/dispatch [:hooks/run-change-major-mode buffer-id]))
+ :hook/enable
+ (fn [db [_ hook-id entry-id]]
+   "Enable a hook entry."
+   (let [hook-path [:hooks hook-id]
+         current-hooks (get-in db hook-path [])
+         updated-hooks (mapv (fn [entry]
+                               (if (= (:id entry) entry-id)
+                                 (assoc entry :enabled? true)
+                                 entry))
+                             current-hooks)]
+     (assoc-in db hook-path updated-hooks))))
 
 (rf/reg-event-db
-  :hooks/run-change-major-mode
-  (fn [db [_ buffer-id]]
-    (let [functions (get-hook-functions db :change-major-mode-hook buffer-id)]
-      (run-hook-functions functions db))))
+ :hook/disable
+ (fn [db [_ hook-id entry-id]]
+   "Disable a hook entry."
+   (let [hook-path [:hooks hook-id]
+         current-hooks (get-in db hook-path [])
+         updated-hooks (mapv (fn [entry]
+                               (if (= (:id entry) entry-id)
+                                 (assoc entry :enabled? false)
+                                 entry))
+                             current-hooks)]
+     (assoc-in db hook-path updated-hooks))))
+
+(rf/reg-event-fx
+ :hook/run
+ (fn [{:keys [db]} [_ hook-id context]]
+   "Run all hooks for a given hook ID with the provided context.
+   Returns effects to dispatch any errors."
+   (let [hook-entries (get-in db [:hooks hook-id] [])
+         errors (atom [])]
+     ;; Execute each hook entry
+     (doseq [entry hook-entries]
+       (when-let [err (run-hook-entry entry context)]
+         (swap! errors conj {:hook-id hook-id
+                             :entry-id (:id entry)
+                             :error err
+                             :context context})))
+     ;; Return effects for errors if any
+     (if (seq @errors)
+       {:fx (mapv (fn [err]
+                    [:dispatch [:echo/message
+                                (str "Hook error: " (:entry-id err))]])
+                  @errors)}
+       {:db db}))))
+
+(rf/reg-event-db
+ :hook/clear
+ (fn [db [_ hook-id]]
+   "Clear all entries for a hook (or all hooks if hook-id is nil)."
+   (if hook-id
+     (assoc-in db [:hooks hook-id] [])
+     (assoc db :hooks {}))))
 
 ;; -- Subscriptions --
 
 (rf/reg-sub
-  :hooks/get
-  (fn [db [_ hook buffer-id]]
-    (get-hook-functions db hook buffer-id)))
+ :hook/list
+ (fn [db [_ hook-id]]
+   "List all hook entries for a hook, or all hooks if hook-id is nil."
+   (if hook-id
+     (get-in db [:hooks hook-id] [])
+     (get db :hooks {}))))
 
 (rf/reg-sub
-  :hooks/global
-  (fn [db [_ hook]]
-    (get-in db [:hooks hook] [])))
+ :hook/entry
+ (fn [db [_ hook-id entry-id]]
+   "Get a specific hook entry."
+   (let [hook-entries (get-in db [:hooks hook-id] [])]
+     (find-hook-entry hook-entries entry-id))))
 
-(rf/reg-sub
-  :hooks/buffer-local
-  (fn [db [_ hook buffer-id]]
-    (get-in db [:buffers buffer-id :hooks hook] [])))
+;; -- Public API Functions --
 
-;; -- Initialization --
+(defn add-hook
+  "Add a hook to the registry.
 
-(defn initialize-hooks!
-  "Initialize hook system."
-  []
-  (rf/dispatch-sync [:hooks/initialize]))
+  Parameters:
+  - hook-id: Keyword identifying the hook (:after-command-hook, etc.)
+  - fn-or-entry: Function or full entry map
+  - options: Keyword args for entry metadata
 
-(rf/reg-event-db
-  :hooks/initialize
-  (fn [db [_]]
-    (assoc db :hooks {:pre-command-hook []
-                     :post-command-hook []
-                     :window-configuration-change-hook []
-                     :kill-buffer-hook []
-                     :change-major-mode-hook []})))
+  Options:
+  - :id - Unique identifier (default: auto-generated)
+  - :priority - Execution priority 0-100 (default: 50)
+  - :enabled? - Enabled state (default: true)
+  - :package-id - Owner package
+  - :doc - Description
 
-;; Auto-initialize on namespace load
-(initialize-hooks!)
+  Returns: Hook entry ID"
+  [hook-id fn-or-entry & options]
+  (let [entry (apply create-hook-entry fn-or-entry options)]
+    (rf/dispatch [:hook/add hook-id fn-or-entry options])
+    (:id entry)))
 
-;; -- Hook Utilities --
+(defn remove-hook
+  "Remove a hook from the registry.
 
-(defn with-hooks
-  "Wrap RE-FRAME-EVENT-ID to run pre/post-command hooks.
+  Parameters:
+  - hook-id: Keyword identifying the hook
+  - hook-fn-or-id: Function reference or entry ID
 
-  This should be applied to all interactive commands."
-  [re-frame-event-id]
-  ;; In ClojureScript, we can't easily wrap event handlers
-  ;; Instead, commands should manually call run-hooks! or use interceptor
-  ;; For now, return event-id unchanged - interceptors will handle it
-  re-frame-event-id)
+  Returns: true if removed, false if not found"
+  [hook-id hook-fn-or-id]
+  (rf/dispatch [:hook/remove hook-id hook-fn-or-id])
+  true)
 
-;; -- Common Hook Functions (Examples) --
+(defn enable-hook
+  "Enable a previously disabled hook entry.
 
-;; Example: Track last command
-(defn track-last-command [db]
-  (let [current-command (get-in db [:editor :current-command])]
-    (assoc-in db [:editor :last-command] current-command)))
+  Parameters:
+  - hook-id: Keyword identifying the hook
+  - entry-id: Entry ID to enable
 
-;; Example: Update mode line
-(defn update-mode-line-on-command [db]
-  ;; Trigger mode-line recalculation
-  (assoc-in db [:ui :mode-line-dirty?] true))
+  Returns: true if enabled, false if not found"
+  [hook-id entry-id]
+  (rf/dispatch [:hook/enable hook-id entry-id])
+  true)
 
-;; Register some default hooks
-(defn register-default-hooks! []
-  ;; Track last command
-  (add-hook! :post-command-hook track-last-command)
+(defn disable-hook
+  "Disable a hook entry without removing it.
 
-  ;; Update mode line after commands
-  (add-hook! :post-command-hook update-mode-line-on-command))
+  Parameters:
+  - hook-id: Keyword identifying the hook
+  - entry-id: Entry ID to disable
 
-;; Initialize default hooks
-(register-default-hooks!)
+  Returns: true if disabled, false if not found"
+  [hook-id entry-id]
+  (rf/dispatch [:hook/disable hook-id entry-id])
+  true)
+
+(defn run-hooks
+  "Run all hooks for a given hook ID with the provided context.
+
+  Parameters:
+  - hook-id: Keyword identifying the hook
+  - context: Context map to pass to hooks
+
+  Returns: nil (side effects only)"
+  [hook-id context]
+  (rf/dispatch [:hook/run hook-id context])
+  nil)
+
+(defn list-hooks
+  "List all hook entries or entries for a specific hook.
+
+  Parameters:
+  - hook-id: (optional) Keyword identifying the hook
+
+  Returns:
+  - If hook-id provided: vector of hook entries
+  - If no hook-id: map of all hooks"
+  ([]
+   @(rf/subscribe [:hook/list nil]))
+  ([hook-id]
+   @(rf/subscribe [:hook/list hook-id])))
+
+(defn clear-hooks
+  "Clear all hook entries (or all entries for a specific hook).
+
+  Parameters:
+  - hook-id: (optional) Keyword identifying the hook
+
+  Returns: nil"
+  ([]
+   (rf/dispatch [:hook/clear nil])
+   nil)
+  ([hook-id]
+   (rf/dispatch [:hook/clear hook-id])
+   nil))
