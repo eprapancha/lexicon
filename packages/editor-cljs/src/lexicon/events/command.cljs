@@ -17,12 +17,27 @@
 (rf/reg-event-fx
  :execute-command
  (fn [{:keys [db]} [_ command-name & args]]
-   "Execute a command by name from the central registry"
-   (let [command-def (get-in db [:commands command-name])]
+   "Execute a command by name from the central registry with before/after hooks"
+   (let [command-def (get-in db [:commands command-name])
+         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         prefix-arg (get-in db [:ui :prefix-argument])
+
+         ;; Context for hooks
+         context {:command-id command-name
+                  :args args
+                  :buffer-id active-buffer-id
+                  :window-id (:active-window-id db)
+                  :prefix-arg prefix-arg
+                  :timestamp (js/Date.now)}]
+
      (if command-def
        (let [handler (:handler command-def)
              should-clear-prefix? (not= command-name :universal-argument)]
-         {:fx (cond-> [[:dispatch (into handler args)]]
+         ;; Execute hooks before/after command
+         {:fx (cond-> [[:dispatch [:hook/run :before-command-hook context]]
+                       [:dispatch (into handler args)]
+                       [:dispatch [:hook/run :after-command-hook (assoc context :result nil)]]]
                 should-clear-prefix? (conj [:dispatch [:clear-prefix-argument]]))})
        {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]}))))
 

@@ -394,7 +394,7 @@
 (rf/reg-event-fx
  :dispatch-transaction
  (fn [{:keys [db]} [_ transaction]]
-   "Apply a transaction to the WASM kernel - side effect only"
+   "Apply a transaction to the WASM kernel with before/after-change hooks"
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          active-buffer (get (:buffers db) active-buffer-id)
@@ -403,6 +403,19 @@
      (if (and wasm-instance active-buffer-id)
        (let [transaction-id (inc (get-in db [:system :last-transaction-id]))
              {:keys [type pos text length]} transaction
+
+             ;; Get old text for before-change hook context
+             old-text (when (and (#{:delete :replace} type) wasm-instance)
+                        (.substring ^js wasm-instance pos (+ pos (or length 0))))
+
+             ;; Context for before-change hook
+             before-context {:buffer-id active-buffer-id
+                            :start pos
+                            :end (+ pos (or length 0))
+                            :old-text (or old-text "")
+                            :new-text (or text "")
+                            :type type
+                            :timestamp (js/Date.now)}
 
              ;; Convert to WASM transaction format using constants
              wasm-transaction (case type
@@ -414,10 +427,21 @@
              ;; Convert to JSON string for WASM
              transaction-json (js/JSON.stringify (clj->js wasm-transaction))]
 
+         ;; Dispatch before-change hook
+         (rf/dispatch [:hook/run :before-change-hook before-context])
+
          ;; Apply transaction and handle result synchronously
          (try
            (let [patch-json (.applyTransaction ^js wasm-instance transaction-json)]
              (println "🔧 Transaction applied. Patch JSON:" patch-json)
+
+             ;; Context for after-change hook
+             (let [after-context (assoc before-context
+                                   :end (+ pos (count (or text "")))
+                                   :old-length (or length 0)
+                                   :new-length (count (or text "")))]
+               (rf/dispatch [:hook/run :after-change-hook after-context]))
+
              ;; Transaction successful - dispatch result event
              (rf/dispatch [:apply-transaction-result
                           {:patch-json patch-json

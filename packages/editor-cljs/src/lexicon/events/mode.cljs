@@ -17,12 +17,23 @@
    "Set the major mode for the active buffer and run mode hook"
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
+         old-mode (get-in db [:buffers active-buffer-id :major-mode])
+
+         ;; Context for mode hook
+         mode-context {:buffer-id active-buffer-id
+                      :mode-id mode-keyword
+                      :mode-type :major
+                      :action :enable
+                      :old-mode old-mode
+                      :timestamp (js/Date.now)}
+
          ;; Get mode-specific hook
          mode-hook-name (keyword (str (name mode-keyword) "-hook"))
          mode-hook-commands (get-in db [:hooks mode-hook-name] [])]
      {:db (assoc-in db [:buffers active-buffer-id :major-mode] mode-keyword)
-      ;; Run mode hook commands
-      :fx (mapv (fn [cmd] [:dispatch cmd]) mode-hook-commands)})))
+      ;; Run general mode hook + mode-specific hooks
+      :fx (into [[:dispatch [:hook/run :mode-hook mode-context]]]
+                (mapv (fn [cmd] [:dispatch cmd]) mode-hook-commands))})))
 
 (rf/reg-event-db
  :toggle-minor-mode
@@ -39,25 +50,43 @@
        (assoc-in db [:buffers active-buffer-id :minor-modes]
                  (conj current-modes mode-keyword))))))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :enable-minor-mode
- (fn [db [_ mode-keyword]]
-   "Enable a minor mode for the active buffer"
+ (fn [{:keys [db]} [_ mode-keyword]]
+   "Enable a minor mode for the active buffer and run mode hook"
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
-         current-modes (get-in db [:buffers active-buffer-id :minor-modes] #{})]
-     (assoc-in db [:buffers active-buffer-id :minor-modes]
-               (conj current-modes mode-keyword)))))
+         current-modes (get-in db [:buffers active-buffer-id :minor-modes] #{})
 
-(rf/reg-event-db
+         ;; Context for mode hook
+         mode-context {:buffer-id active-buffer-id
+                      :mode-id mode-keyword
+                      :mode-type :minor
+                      :action :enable
+                      :timestamp (js/Date.now)}]
+
+     {:db (assoc-in db [:buffers active-buffer-id :minor-modes]
+                    (conj current-modes mode-keyword))
+      :fx [[:dispatch [:hook/run :mode-hook mode-context]]]})))
+
+(rf/reg-event-fx
  :disable-minor-mode
- (fn [db [_ mode-keyword]]
-   "Disable a minor mode for the active buffer"
+ (fn [{:keys [db]} [_ mode-keyword]]
+   "Disable a minor mode for the active buffer and run mode hook"
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
-         current-modes (get-in db [:buffers active-buffer-id :minor-modes] #{})]
-     (assoc-in db [:buffers active-buffer-id :minor-modes]
-               (disj current-modes mode-keyword)))))
+         current-modes (get-in db [:buffers active-buffer-id :minor-modes] #{})
+
+         ;; Context for mode hook
+         mode-context {:buffer-id active-buffer-id
+                      :mode-id mode-keyword
+                      :mode-type :minor
+                      :action :disable
+                      :timestamp (js/Date.now)}]
+
+     {:db (assoc-in db [:buffers active-buffer-id :minor-modes]
+                    (disj current-modes mode-keyword))
+      :fx [[:dispatch [:hook/run :mode-hook mode-context]]]})))
 
 ;; -- Minor Mode Implementations (Phase 5) --
 
