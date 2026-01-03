@@ -15,7 +15,8 @@
             [lexicon.events.buffer :as buffer-events]
             [lexicon.events.edit]
             [lexicon.events.ui]
-            [lexicon.events.command]))
+            [lexicon.events.command]
+            [lexicon.events.isearch]))
 
 ;; -- Helper Functions --
 

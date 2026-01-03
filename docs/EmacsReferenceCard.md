@@ -148,9 +148,9 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Query replace | `M-%` | ❌ | P0 | Missing `query-replace` - **CRITICAL GAP** |
-| Replace string | `M-x replace-string` | ❌ | P0 | Missing `replace-string` |
-| Replace regexp | `M-x replace-regexp` | ❌ | P0 | Missing `replace-regexp` |
+| Query replace | `M-%` | ✅ | P0 | Implemented `query-replace` with y/n/!/q/^/. keys |
+| Replace string | `M-x replace-string` | ✅ | P0 | Implemented `replace-string` |
+| Replace regexp | `M-x replace-regexp` | ✅ | P0 | Implemented `replace-regexp` |
 
 ---
 

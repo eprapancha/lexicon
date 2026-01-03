@@ -119,6 +119,9 @@
                      "C-k" :kill-line                  ; Kill line
                      "M-d" :kill-word                  ; Kill word forward
                      "M-DEL" :backward-kill-word       ; Kill word backward
+                     "M-%" :query-replace              ; Query replace
+                     "C-s" :isearch-forward            ; Incremental search forward
+                     "C-r" :isearch-backward           ; Incremental search backward
                      "C-o" :open-line                  ; Open line
                      "C-SPC" :set-mark-command         ; Set mark
                      "C-x C-x" :exchange-point-and-mark ; Exchange point and mark

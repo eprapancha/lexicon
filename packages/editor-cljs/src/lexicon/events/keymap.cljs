@@ -73,13 +73,25 @@
  (fn [{:keys [db]} [_ key-str]]
    "Handle a key sequence and dispatch the appropriate command"
    (let [awaiting-key? (get-in db [:help :awaiting-key?])
-         help-callback (get-in db [:help :callback])]
+         help-callback (get-in db [:help :callback])
+         query-replace-active? (get-in db [:ui :query-replace :active?])
+         isearch-active? (get-in db [:ui :isearch :active?])]
 
-     ;; If we're waiting for a key press for C-h k, handle it specially
-     (if awaiting-key?
+     (cond
+       ;; If we're in isearch mode, intercept keys
+       isearch-active?
+       {:fx [[:dispatch [:isearch/handle-key key-str]]]}
+
+       ;; If we're in query-replace mode, intercept keys
+       query-replace-active?
+       {:fx [[:dispatch [:query-replace/handle-key key-str]]]}
+
+       ;; If we're waiting for a key press for C-h k, handle it specially
+       awaiting-key?
        {:fx [[:dispatch (conj help-callback key-str)]]}
 
        ;; Normal key handling
+       :else
        (let [prefix-state (get-in db [:ui :prefix-key-state])
              full-sequence (if prefix-state
                             (str prefix-state " " key-str)

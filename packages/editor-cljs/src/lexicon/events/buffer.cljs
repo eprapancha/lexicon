@@ -869,6 +869,322 @@
          {:db (update db :ui dissoc :replace-regexp-string)
           :fx [[:dispatch [:echo/message (str "Regexp error: " (.-message e))]]]})))))
 
+;; =============================================================================
+;; Query Replace (M-%, query-replace)
+;; =============================================================================
+
+(rf/reg-event-fx
+ :query-replace
+ (fn [{:keys [db]} [_]]
+   "Start interactive query-replace (M-%)"
+   {:fx [[:dispatch [:minibuffer/activate
+                     {:prompt "Query replace: "
+                      :on-confirm [:query-replace/read-replacement]}]]]}))
+
+(rf/reg-event-fx
+ :query-replace/read-replacement
+ (fn [{:keys [db]} [_ search-string]]
+   "Read replacement string after search string"
+   (if (clojure.string/blank? search-string)
+     {:fx [[:dispatch [:echo/message "Empty search string"]]]}
+     {:fx [[:dispatch [:minibuffer/activate
+                       {:prompt (str "Query replace " search-string " with: ")
+                        :on-confirm [:query-replace/start search-string]}]]]})))
+
+(defn find-next-match
+  "Find the next match for search-string in text starting from pos.
+   Returns {:start pos :end pos} or nil if no match found."
+  [text search-string pos is-regexp?]
+  (try
+    (if is-regexp?
+      ;; Regexp search
+      (let [text-from-pos (subs text pos)
+            pattern (js/RegExp. search-string)
+            match (.match text-from-pos pattern)]
+        (when match
+          (let [match-index (.-index match)
+                match-text (aget match 0)
+                abs-start (+ pos match-index)
+                abs-end (+ abs-start (count match-text))]
+            {:start abs-start :end abs-end})))
+      ;; Literal search
+      (let [text-from-pos (subs text pos)
+            match-index (.indexOf text-from-pos search-string)]
+        (when (>= match-index 0)
+          (let [abs-start (+ pos match-index)
+                abs-end (+ abs-start (count search-string))]
+            {:start abs-start :end abs-end}))))
+    (catch js/Error e
+      (js/console.error "Error in find-next-match:" e)
+      nil)))
+
+(rf/reg-event-fx
+ :query-replace/start
+ (fn [{:keys [db]} [_ search-string replacement-string]]
+   "Initialize query-replace state and find first match"
+   (let [active-window     (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id         (:buffer-id active-window)
+         buffer            (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         current-pos       (get-in db [:ui :cursor-position] 0)
+         full-text         (.getText wasm-instance)
+         is-regexp?        false  ; query-replace uses literal search
+         match             (find-next-match full-text search-string current-pos is-regexp?)]
+
+     (if match
+       ;; Found first match - activate query-replace mode
+       {:db (-> db
+                (assoc-in [:ui :query-replace :active?] true)
+                (assoc-in [:ui :query-replace :search-string] search-string)
+                (assoc-in [:ui :query-replace :replacement-string] replacement-string)
+                (assoc-in [:ui :query-replace :is-regexp?] is-regexp?)
+                (assoc-in [:ui :query-replace :current-match] match)
+                (assoc-in [:ui :query-replace :original-cursor-pos] current-pos)
+                (assoc-in [:ui :query-replace :replaced-count] 0)
+                (assoc-in [:ui :query-replace :match-history] [])
+                (assoc-in [:ui :query-replace :replace-all?] false)
+                (assoc-in [:ui :cursor-position] (:start match)))
+        :fx [[:dispatch [:echo/message (str "Query replacing " search-string " with " replacement-string
+                                           " (y/n/!/q/^/. for help)")]]]}
+       ;; No match found
+       {:fx [[:dispatch [:echo/message (str "No match for \"" search-string "\"")]]]}))))
+
+(rf/reg-event-fx
+ :query-replace/handle-key
+ (fn [{:keys [db]} [_ key-str]]
+   "Handle key press during query-replace mode"
+   (let [qr-state (get-in db [:ui :query-replace])]
+     (case key-str
+       ;; y or SPC - replace this match and continue
+       ("y" "SPC")
+       {:fx [[:dispatch [:query-replace/replace-current-and-continue]]]}
+
+       ;; n or DEL - skip this match and continue
+       ("n" "DEL")
+       {:fx [[:dispatch [:query-replace/skip-and-continue]]]}
+
+       ;; ! - replace all remaining without asking
+       "!"
+       {:fx [[:dispatch [:query-replace/replace-all]]]}
+
+       ;; q, RET, or ESC - quit
+       ("q" "RET" "ESC")
+       {:fx [[:dispatch [:query-replace/quit]]]}
+
+       ;; ^ - go back to previous match
+       "^"
+       {:fx [[:dispatch [:query-replace/go-back]]]}
+
+       ;; . - replace this match and quit
+       "."
+       {:fx [[:dispatch [:query-replace/replace-and-quit]]]}
+
+       ;; Unknown key - show help
+       {:fx [[:dispatch [:echo/message "y=yes, n=no, !=all, q=quit, ^=back, .=replace&quit"]]]}))))
+
+(rf/reg-event-fx
+ :query-replace/replace-current-and-continue
+ (fn [{:keys [db]} [_]]
+   "Replace current match and find next"
+   (let [qr-state          (get-in db [:ui :query-replace])
+         search-string     (:search-string qr-state)
+         replacement       (:replacement-string qr-state)
+         is-regexp?        (:is-regexp? qr-state)
+         current-match     (:current-match qr-state)
+         match-start       (:start current-match)
+         match-end         (:end current-match)
+         active-window     (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id         (:buffer-id active-window)
+         buffer            (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         full-text         (.getText wasm-instance)
+
+         ;; Perform replacement
+         new-text          (str (subs full-text 0 match-start)
+                                replacement
+                                (subs full-text match-end))
+
+         ;; Find next match after replacement
+         next-search-pos   (+ match-start (count replacement))
+         next-match        (find-next-match new-text search-string next-search-pos is-regexp?)]
+
+     ;; Update buffer text
+     (.setText wasm-instance new-text)
+
+     (if next-match
+       ;; Found next match - continue
+       (let [lines (clojure.string/split new-text #"\n" -1)
+             line-count (count lines)]
+         {:db (-> db
+                  (assoc-in [:buffers buffer-id :cache :text] new-text)
+                  (assoc-in [:buffers buffer-id :cache :line-count] line-count)
+                  (assoc-in [:buffers buffer-id :is-modified?] true)
+                  (update-in [:buffers buffer-id :editor-version] inc)
+                  (update-in [:ui :query-replace :replaced-count] inc)
+                  (update-in [:ui :query-replace :match-history] conj current-match)
+                  (assoc-in [:ui :query-replace :current-match] next-match)
+                  (assoc-in [:ui :cursor-position] (:start next-match)))})
+       ;; No more matches - finish
+       (let [lines (clojure.string/split new-text #"\n" -1)
+             line-count (count lines)
+             count (inc (:replaced-count qr-state))]
+         {:db (-> db
+                  (assoc-in [:buffers buffer-id :cache :text] new-text)
+                  (assoc-in [:buffers buffer-id :cache :line-count] line-count)
+                  (assoc-in [:buffers buffer-id :is-modified?] true)
+                  (update-in [:buffers buffer-id :editor-version] inc)
+                  (update :ui dissoc :query-replace))
+          :fx [[:dispatch [:echo/message (str "Replaced " count " occurrence"
+                                              (if (= count 1) "" "s"))]]]})))))
+
+(rf/reg-event-fx
+ :query-replace/skip-and-continue
+ (fn [{:keys [db]} [_]]
+   "Skip current match and find next"
+   (let [qr-state          (get-in db [:ui :query-replace])
+         search-string     (:search-string qr-state)
+         is-regexp?        (:is-regexp? qr-state)
+         current-match     (:current-match qr-state)
+         match-end         (:end current-match)
+         active-window     (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id         (:buffer-id active-window)
+         buffer            (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         full-text         (.getText wasm-instance)
+
+         ;; Find next match after current
+         next-match        (find-next-match full-text search-string match-end is-regexp?)]
+
+     (if next-match
+       ;; Found next match - continue
+       {:db (-> db
+                (update-in [:ui :query-replace :match-history] conj current-match)
+                (assoc-in [:ui :query-replace :current-match] next-match)
+                (assoc-in [:ui :cursor-position] (:start next-match)))}
+       ;; No more matches - finish
+       (let [count (:replaced-count qr-state)]
+         {:db (update db :ui dissoc :query-replace)
+          :fx [[:dispatch [:echo/message (str "Replaced " count " occurrence"
+                                              (if (= count 1) "" "s"))]]]})))))
+
+(rf/reg-event-fx
+ :query-replace/replace-all
+ (fn [{:keys [db]} [_]]
+   "Replace all remaining matches without prompting"
+   (let [qr-state          (get-in db [:ui :query-replace])
+         search-string     (:search-string qr-state)
+         replacement       (:replacement-string qr-state)
+         is-regexp?        (:is-regexp? qr-state)
+         current-match     (:current-match qr-state)
+         match-start       (:start current-match)
+         active-window     (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id         (:buffer-id active-window)
+         buffer            (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         full-text         (.getText wasm-instance)
+
+         ;; Replace all from current position forward
+         text-before       (subs full-text 0 match-start)
+         text-from-match   (subs full-text match-start)]
+
+     (try
+       (let [;; Escape special regex chars for literal search
+             escape-regex-chars (fn [s]
+                                  (clojure.string/replace s #"[.\*\+\?\^\$\{\}\(\)\|\[\]\\]" "\\\\$&"))
+             ;; Count matches in remaining text
+             search-pattern  (if is-regexp?
+                               (js/RegExp. search-string "g")
+                               (js/RegExp. (escape-regex-chars search-string) "g"))
+             matches         (array-seq (.match text-from-match search-pattern))
+             match-count     (if matches (count matches) 0)
+
+             ;; Replace all in remaining text
+             new-text-from   (.replace text-from-match search-pattern replacement)
+             new-full-text   (str text-before new-text-from)
+
+             ;; Update buffer
+             lines           (clojure.string/split new-full-text #"\n" -1)
+             line-count      (count lines)
+             total-replaced  (+ (:replaced-count qr-state) match-count)]
+
+         (.setText wasm-instance new-full-text)
+
+         {:db (-> db
+                  (assoc-in [:buffers buffer-id :cache :text] new-full-text)
+                  (assoc-in [:buffers buffer-id :cache :line-count] line-count)
+                  (assoc-in [:buffers buffer-id :is-modified?] true)
+                  (update-in [:buffers buffer-id :editor-version] inc)
+                  (update :ui dissoc :query-replace))
+          :fx [[:dispatch [:echo/message (str "Replaced " total-replaced " occurrence"
+                                              (if (= total-replaced 1) "" "s"))]]]})
+       (catch js/Error e
+         {:fx [[:dispatch [:query-replace/quit]]
+               [:dispatch [:echo/message (str "Error: " (.-message e))]]]})))))
+
+(rf/reg-event-fx
+ :query-replace/quit
+ (fn [{:keys [db]} [_]]
+   "Quit query-replace mode"
+   (let [count (get-in db [:ui :query-replace :replaced-count] 0)]
+     {:db (update db :ui dissoc :query-replace)
+      :fx [[:dispatch [:echo/message (str "Replaced " count " occurrence"
+                                          (if (= count 1) "" "s") " (quit)")]]]})))
+
+(rf/reg-event-fx
+ :query-replace/go-back
+ (fn [{:keys [db]} [_]]
+   "Go back to previous match"
+   (let [qr-state      (get-in db [:ui :query-replace])
+         match-history (:match-history qr-state)
+         current-match (:current-match qr-state)]
+
+     (if (empty? match-history)
+       ;; No previous match
+       {:fx [[:dispatch [:echo/message "No previous match"]]]}
+       ;; Go back to previous match
+       (let [prev-match (last match-history)
+             new-history (vec (butlast match-history))]
+         {:db (-> db
+                  (assoc-in [:ui :query-replace :match-history] new-history)
+                  (assoc-in [:ui :query-replace :current-match] prev-match)
+                  (assoc-in [:ui :cursor-position] (:start prev-match)))})))))
+
+(rf/reg-event-fx
+ :query-replace/replace-and-quit
+ (fn [{:keys [db]} [_]]
+   "Replace current match and quit"
+   (let [qr-state          (get-in db [:ui :query-replace])
+         search-string     (:search-string qr-state)
+         replacement       (:replacement-string qr-state)
+         current-match     (:current-match qr-state)
+         match-start       (:start current-match)
+         match-end         (:end current-match)
+         active-window     (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id         (:buffer-id active-window)
+         buffer            (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         full-text         (.getText wasm-instance)
+
+         ;; Perform replacement
+         new-text          (str (subs full-text 0 match-start)
+                                replacement
+                                (subs full-text match-end))
+         lines             (clojure.string/split new-text #"\n" -1)
+         line-count        (count lines)
+         count             (inc (:replaced-count qr-state))]
+
+     ;; Update buffer text
+     (.setText wasm-instance new-text)
+
+     {:db (-> db
+              (assoc-in [:buffers buffer-id :cache :text] new-text)
+              (assoc-in [:buffers buffer-id :cache :line-count] line-count)
+              (assoc-in [:buffers buffer-id :is-modified?] true)
+              (update-in [:buffers buffer-id :editor-version] inc)
+              (update :ui dissoc :query-replace))
+      :fx [[:dispatch [:echo/message (str "Replaced " count " occurrence"
+                                          (if (= count 1) "" "s") " (done)")]]]})))
+
 (rf/reg-event-fx
 :close-buffer
 (fn [{:keys [db]} [_ buffer-id]]

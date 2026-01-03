@@ -137,14 +137,15 @@
 
 ---
 
-### Batch 4: Query Replace (Days 8-10) - Interactive Replace
+### Batch 4: Query Replace (Days 8-10) - Interactive Replace ✅ COMPLETE
 
 **Goal:** Interactive find-replace working
 
-13. ✅ `query-replace` (M-%) - 20 hours
+13. ✅ `query-replace` (M-%) - 20 hours ✅ IMPLEMENTED
 
 **Total: 20 hours (2.5 days)**
 **New Coverage: 66% → 69%**
+**Status:** COMPLETE - query-replace implemented with full state machine and key handlers (y/n/!/q/^/.)
 
 **Implementation Plan:**
 - Study Emacs `replace.el` carefully

@@ -1412,6 +1412,232 @@
     ;; NOTE: This test requires a custom command to be implemented
     (is true "Test skipped - requires custom thing-at-point command")))
 
+;;; Phase 7.8: Query Replace Tests
+
+(deftest test-p7-8-01-query-replace-basic-yes
+  (testing "P7.8-01: Query-replace with 'y' (replace and continue)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type text with multiple occurrences
+    (type-text "foo bar foo baz foo")
+    (Thread/sleep 20)
+
+    ;; Go to beginning
+    (press-meta-key "<")
+    (Thread/sleep 20)
+
+    ;; Start query-replace with M-%
+    (press-meta-key "%")
+    (Thread/sleep 50)
+
+    ;; Type search string
+    (e/fill *driver* {:css ".minibuffer-input"} "foo")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 50)
+
+    ;; Type replacement string
+    (e/fill *driver* {:css ".minibuffer-input"} "FOO")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 100)
+
+    ;; Press 'y' to replace first occurrence
+    (press-key "y")
+    (Thread/sleep 100)
+
+    ;; Press 'y' to replace second occurrence
+    (press-key "y")
+    (Thread/sleep 100)
+
+    ;; Press 'q' to quit
+    (press-key "q")
+    (Thread/sleep 100)
+
+    ;; Verify replacements
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "FOO bar FOO baz foo")
+          (str "Should have replaced first two 'foo' with 'FOO', got: " editor-text)))))
+
+(deftest test-p7-8-02-query-replace-skip
+  (testing "P7.8-02: Query-replace with 'n' (skip and continue)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type text
+    (type-text "apple orange apple banana apple")
+    (Thread/sleep 20)
+
+    ;; Go to beginning
+    (press-meta-key "<")
+    (Thread/sleep 20)
+
+    ;; Start query-replace
+    (press-meta-key "%")
+    (Thread/sleep 50)
+    (e/fill *driver* {:css ".minibuffer-input"} "apple")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 50)
+    (e/fill *driver* {:css ".minibuffer-input"} "APPLE")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 100)
+
+    ;; Skip first (n), replace second (y), quit (q)
+    (press-key "n")
+    (Thread/sleep 100)
+    (press-key "y")
+    (Thread/sleep 100)
+    (press-key "q")
+    (Thread/sleep 100)
+
+    ;; Verify: first skipped, second replaced, third untouched
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "apple orange APPLE banana apple")
+          (str "Should have skipped first, replaced second, got: " editor-text)))))
+
+(deftest test-p7-8-03-query-replace-all
+  (testing "P7.8-03: Query-replace with '!' (replace all remaining)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type text with many occurrences
+    (type-text "test test test test test")
+    (Thread/sleep 20)
+
+    ;; Go to beginning
+    (press-meta-key "<")
+    (Thread/sleep 20)
+
+    ;; Start query-replace
+    (press-meta-key "%")
+    (Thread/sleep 50)
+    (e/fill *driver* {:css ".minibuffer-input"} "test")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 50)
+    (e/fill *driver* {:css ".minibuffer-input"} "TEST")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 100)
+
+    ;; Skip first, then replace all remaining with '!'
+    (press-key "n")
+    (Thread/sleep 100)
+    (press-key "!")
+    (Thread/sleep 200)
+
+    ;; Verify: first skipped, rest replaced
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "test TEST TEST TEST TEST")
+          (str "Should have skipped first then replaced all remaining, got: " editor-text)))))
+
+(deftest test-p7-8-04-query-replace-quit
+  (testing "P7.8-04: Query-replace with 'q' (quit)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type text
+    (type-text "one two one two one")
+    (Thread/sleep 20)
+
+    ;; Go to beginning
+    (press-meta-key "<")
+    (Thread/sleep 20)
+
+    ;; Start query-replace
+    (press-meta-key "%")
+    (Thread/sleep 50)
+    (e/fill *driver* {:css ".minibuffer-input"} "one")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 50)
+    (e/fill *driver* {:css ".minibuffer-input"} "ONE")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 100)
+
+    ;; Replace first, then quit
+    (press-key "y")
+    (Thread/sleep 100)
+    (press-key "q")
+    (Thread/sleep 100)
+
+    ;; Verify: only first replaced
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "ONE two one two one")
+          (str "Should have replaced only first occurrence, got: " editor-text)))))
+
+(deftest test-p7-8-05-query-replace-dot
+  (testing "P7.8-05: Query-replace with '.' (replace and quit)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type text
+    (type-text "cat dog cat dog cat")
+    (Thread/sleep 20)
+
+    ;; Go to beginning
+    (press-meta-key "<")
+    (Thread/sleep 20)
+
+    ;; Start query-replace
+    (press-meta-key "%")
+    (Thread/sleep 50)
+    (e/fill *driver* {:css ".minibuffer-input"} "cat")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 50)
+    (e/fill *driver* {:css ".minibuffer-input"} "CAT")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 100)
+
+    ;; Skip first, replace second and quit with '.'
+    (press-key "n")
+    (Thread/sleep 100)
+    (press-key ".")
+    (Thread/sleep 100)
+
+    ;; Verify: first skipped, second replaced, quit
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "cat dog CAT dog cat")
+          (str "Should have skipped first, replaced second and quit, got: " editor-text)))))
+
+(deftest test-p7-8-06-query-replace-no-matches
+  (testing "P7.8-06: Query-replace with no matches"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type text
+    (type-text "hello world")
+    (Thread/sleep 20)
+
+    ;; Start query-replace for nonexistent string
+    (press-meta-key "%")
+    (Thread/sleep 50)
+    (e/fill *driver* {:css ".minibuffer-input"} "xyz")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 50)
+    (e/fill *driver* {:css ".minibuffer-input"} "ABC")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 100)
+
+    ;; Text should be unchanged
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "hello world")
+          (str "Text should be unchanged when no matches, got: " editor-text)))))
+
 (deftest test-p6-5-01-test-suite
   (testing "P6.5-01: Verify Test Suite"
     ;; This is a meta-test - if we're running, tests are working

@@ -643,6 +643,15 @@ C-h ?   This help menu
          [:dispatch [:register-command :replace-regexp
                     {:docstring "Replace regexp non-interactively from point forward"
                      :handler [:replace-regexp]}]]
+         [:dispatch [:register-command :query-replace
+                    {:docstring "Query and replace interactively (M-%)"
+                     :handler [:query-replace]}]]
+         [:dispatch [:register-command :isearch-forward
+                    {:docstring "Incremental search forward (C-s)"
+                     :handler [:isearch-forward]}]]
+         [:dispatch [:register-command :isearch-backward
+                    {:docstring "Incremental search backward (C-r)"
+                     :handler [:isearch-backward]}]]
          [:dispatch [:register-command :switch-to-buffer
                     {:docstring "Switch to another buffer"
                      :handler [:switch-to-buffer]}]]
