@@ -119,15 +119,16 @@
 
 ---
 
-### Batch 3: Basic Replace (Days 6-7) - Foundation for Search
+### Batch 3: Basic Replace (Days 6-7) - Foundation for Search ✅ COMPLETE
 
 **Goal:** Non-interactive replace working
 
-11. ✅ `replace-string` (M-x replace-string) - 6 hours
-12. ✅ `replace-regexp` (M-x replace-regexp) - 6 hours
+11. ✅ `replace-string` (M-x replace-string) - 6 hours ✅ IMPLEMENTED
+12. ✅ `replace-regexp` (M-x replace-regexp) - 6 hours ✅ IMPLEMENTED
 
 **Total: 12 hours (1.5 days)**
 **New Coverage: 62% → 66%**
+**Status:** COMPLETE - Both commands implemented and registered
 
 **Rationale:**
 - Simpler than query-replace

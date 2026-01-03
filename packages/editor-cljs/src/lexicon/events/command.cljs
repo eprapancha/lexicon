@@ -637,6 +637,12 @@ C-h ?   This help menu
          [:dispatch [:register-command :find-alternate-file
                     {:docstring "Kill current buffer and visit different file"
                      :handler [:find-alternate-file]}]]
+         [:dispatch [:register-command :replace-string
+                    {:docstring "Replace string non-interactively from point forward"
+                     :handler [:replace-string]}]]
+         [:dispatch [:register-command :replace-regexp
+                    {:docstring "Replace regexp non-interactively from point forward"
+                     :handler [:replace-regexp]}]]
          [:dispatch [:register-command :switch-to-buffer
                     {:docstring "Switch to another buffer"
                      :handler [:switch-to-buffer]}]]

@@ -734,50 +734,184 @@
       :fx [[:dispatch [:parser/request-parse old-buffer-id]]
            [:dispatch [:lsp/on-buffer-opened old-buffer-id]]
            [:focus-editor]]})))
+;; =============================================================================
+;; Replace Commands (M-x replace-string, M-x replace-regexp)
+;; =============================================================================
 
 (rf/reg-event-fx
- :close-buffer
- (fn [{:keys [db]} [_ buffer-id]]
-   "Close a buffer and free its WASM memory, with defensive logic"
-   (let [buffers (:buffers db)
-         buffer-to-close (get buffers buffer-id)
-         active-window-id (:active-window-id db)
-         active-window (get (:windows db) active-window-id)
-         currently-active-buffer-id (:buffer-id active-window)]
-     
-     (if buffer-to-close
-       (let [wasm-instance (:wasm-instance buffer-to-close)
-             remaining-buffers (dissoc buffers buffer-id)
-             remaining-buffer-ids (keys remaining-buffers)]
-         
-         ;; Free the WASM instance memory
-         (when wasm-instance
-           (.free ^js wasm-instance))
-         
-         (if (empty? remaining-buffer-ids)
-           ;; No buffers left - create a new default *scratch* buffer
-           (let [new-buffer-id (inc (apply max 0 (keys buffers)))
-                 WasmEditorCore (get-in db [:system :wasm-constructor])
-                 new-wasm-instance (WasmEditorCore. "")]
-             {:db (-> db
-                      (assoc :buffers {new-buffer-id {:id new-buffer-id
-                                                      :wasm-instance new-wasm-instance
-                                                      :file-handle nil
-                                                      :name "*scratch*"
-                                                      :is-modified? false
-                                                      :mark-position nil}})
-                      (assoc-in [:windows active-window-id :buffer-id] new-buffer-id))})
-           
-           ;; Other buffers exist - switch to another buffer if necessary
-           (let [new-active-buffer-id (if (= buffer-id currently-active-buffer-id)
-                                        ;; Need to switch to a different buffer
-                                        (first remaining-buffer-ids)
-                                        ;; Keep current active buffer
-                                        currently-active-buffer-id)]
-             {:db (-> db
-                      (assoc :buffers remaining-buffers)
-                      (assoc-in [:windows active-window-id :buffer-id] new-active-buffer-id))})))
-       
-       ;; Buffer not found - no action needed
-       {:db db}))))
+ :replace-string
+ (fn [{:keys [db]} [_]]
+   "Replace string non-interactively from point to end of buffer (M-x replace-string)"
+   {:fx [[:dispatch [:minibuffer/activate
+                    {:prompt "Replace string: "
+                     :on-confirm [:replace-string/read-replacement]}]]]}))
+
+(rf/reg-event-fx
+ :replace-string/read-replacement
+ (fn [{:keys [db]} [_ search-string]]
+   "Read replacement string after search string"
+   (if (clojure.string/blank? search-string)
+     {:fx [[:dispatch [:echo/message "Empty search string"]]]}
+     {:db (assoc-in db [:ui :replace-search-string] search-string)
+      :fx [[:dispatch [:minibuffer/activate
+                      {:prompt (str "Replace string " search-string " with: ")
+                       :on-confirm [:replace-string/do-replace]}]]]})))
+
+(rf/reg-event-fx
+ :replace-string/do-replace
+ (fn [{:keys [db]} [_ replacement-string]]
+   "Perform non-interactive string replacement from point to end"
+   (let [search-string     (get-in db [:ui :replace-search-string])
+         active-window     (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id         (:buffer-id active-window)
+         buffer            (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         current-pos       (get-in db [:ui :cursor-position] 0)
+         full-text         (.getText wasm-instance)
+         text-from-point   (subs full-text current-pos)
+
+         ;; Count occurrences
+         search-pattern (js/RegExp. (js* "~{}(~{})"
+                                         (.replace search-string #"[.*+?^${}()|\\[\\]\\\\]" "\\$&"))
+                                    "g")
+         matches        (array-seq (.match text-from-point search-pattern))
+         count          (if matches (count matches) 0)]
+
+     (if (zero? count)
+       {:db (update db :ui dissoc :replace-search-string)
+        :fx [[:dispatch [:echo/message (str "No occurrences of \"" search-string "\"")]]]}
+
+       (let [;; Replace all occurrences from point forward
+             new-text-from-point (.replace text-from-point search-pattern replacement-string)
+             new-full-text       (str (subs full-text 0 current-pos) new-text-from-point)]
+
+         ;; Update buffer
+         (.setText wasm-instance new-full-text)
+
+         (let [lines      (clojure.string/split new-full-text #"\n" -1)
+               line-count (count lines)]
+           {:db (-> db
+                    (assoc-in [:buffers buffer-id :cache :text] new-full-text)
+                    (assoc-in [:buffers buffer-id :cache :line-count] line-count)
+                    (assoc-in [:buffers buffer-id :is-modified?] true)
+                    (update-in [:buffers buffer-id :editor-version] inc)
+                    (update :ui dissoc :replace-search-string))
+            :fx [[:dispatch [:echo/message (str "Replaced " count " occurrence"
+                                                (if (= count 1) "" "s"))]]]}))))))
+
+ (rf/reg-event-fx
+  :replace-regexp
+  (fn [{:keys [db]} [_]]
+    "Replace regexp non-interactively from point to end of buffer (M-x replace-regexp)"
+    {:fx [[:dispatch [:minibuffer/activate
+                      {:prompt     "Replace regexp: "
+                       :on-confirm [:replace-regexp/read-replacement]}]]]}))
+
+ (rf/reg-event-fx
+  :replace-regexp/read-replacement
+  (fn [{:keys [db]} [_ regexp-string]]
+    "Read replacement string after regexp"
+    (if (clojure.string/blank? regexp-string)
+      {:fx [[:dispatch [:echo/message "Empty regexp"]]]}
+      ;; Validate regexp
+      (try
+        (js/RegExp. regexp-string)
+        {:db (assoc-in db [:ui :replace-regexp-string] regexp-string)
+         :fx [[:dispatch [:minibuffer/activate
+                          {:prompt     (str "Replace regexp " regexp-string " with: ")
+                           :on-confirm [:replace-regexp/do-replace]}]]]}
+        (catch js/Error e
+          {:fx [[:dispatch [:echo/message (str "Invalid regexp: " (.-message e))]]]})))))
+
+(rf/reg-event-fx
+ :replace-regexp/do-replace
+ (fn [{:keys [db]} [_ replacement-string]]
+   "Perform non-interactive regexp replacement from point to end"
+   (let [regexp-string     (get-in db [:ui :replace-regexp-string])
+         active-window     (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id         (:buffer-id active-window)
+         buffer            (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         current-pos       (get-in db [:ui :cursor-position] 0)
+         full-text         (.getText wasm-instance)
+         text-from-point   (subs full-text current-pos)]
+
+     (try
+       (let [;; Create regexp with global flag
+             search-pattern (js/RegExp. regexp-string "g")
+
+             ;; Count matches
+             matches (array-seq (.match text-from-point search-pattern))
+             count   (if matches (count matches) 0)]
+
+         (if (zero? count)
+           {:db (update db :ui dissoc :replace-regexp-string)
+            :fx [[:dispatch [:echo/message (str "No match for regexp \"" regexp-string "\"")]]]}
+
+           (let [;; Replace all matches from point forward
+                 new-text-from-point (.replace text-from-point search-pattern replacement-string)
+                 new-full-text       (str (subs full-text 0 current-pos) new-text-from-point)]
+
+             ;; Update buffer
+             (.setText wasm-instance new-full-text)
+
+             (let [lines      (clojure.string/split new-full-text #"\n" -1)
+                   line-count (count lines)]
+               {:db (-> db
+                        (assoc-in [:buffers buffer-id :cache :text] new-full-text)
+                        (assoc-in [:buffers buffer-id :cache :line-count] line-count)
+                        (assoc-in [:buffers buffer-id :is-modified?] true)
+                        (update-in [:buffers buffer-id :editor-version] inc)
+                        (update :ui dissoc :replace-regexp-string))
+                :fx [[:dispatch [:echo/message (str "Replaced " count " match"
+                                                    (if (= count 1) "" "es"))]]]}))))
+       (catch js/Error e
+         {:db (update db :ui dissoc :replace-regexp-string)
+          :fx [[:dispatch [:echo/message (str "Regexp error: " (.-message e))]]]})))))
+
+(rf/reg-event-fx
+:close-buffer
+(fn [{:keys [db]} [_ buffer-id]]
+  "Close a buffer and free its WASM memory, with defensive logic"
+  (let [buffers                    (:buffers db)
+        buffer-to-close            (get buffers buffer-id)
+        active-window-id           (:active-window-id db)
+        active-window              (get (:windows db) active-window-id)
+        currently-active-buffer-id (:buffer-id active-window)]
+    
+    (if buffer-to-close
+      (let [wasm-instance        (:wasm-instance buffer-to-close)
+            remaining-buffers    (dissoc buffers buffer-id)
+            remaining-buffer-ids (keys remaining-buffers)]
+        
+        ;; Free the WASM instance memory
+        (when wasm-instance
+          (.free ^js wasm-instance))
+        
+        (if (empty? remaining-buffer-ids)
+          ;; No buffers left - create a new default *scratch* buffer
+          (let [new-buffer-id     (inc (apply max 0 (keys buffers)))
+                WasmEditorCore    (get-in db [:system :wasm-constructor])
+                new-wasm-instance (WasmEditorCore. "")]
+            {:db (-> db
+                     (assoc :buffers {new-buffer-id {:id            new-buffer-id
+                                                     :wasm-instance new-wasm-instance
+                                                     :file-handle   nil
+                                                     :name          "*scratch*"
+                                                     :is-modified?  false
+                                                     :mark-position nil}})
+                     (assoc-in [:windows active-window-id :buffer-id] new-buffer-id))})
+          
+          ;; Other buffers exist - switch to another buffer if necessary
+          (let [new-active-buffer-id (if (= buffer-id currently-active-buffer-id)
+                                       ;; Need to switch to a different buffer
+                                       (first remaining-buffer-ids)
+                                       ;; Keep current active buffer
+                                       currently-active-buffer-id)]
+            {:db (-> db
+                     (assoc :buffers remaining-buffers)
+                     (assoc-in [:windows active-window-id :buffer-id] new-active-buffer-id))})))
+      
+      ;; Buffer not found - no action needed
+      {:db db}))))
 
