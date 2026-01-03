@@ -72,12 +72,18 @@
  :handle-key-sequence
  (fn [{:keys [db]} [_ key-str]]
    "Handle a key sequence and dispatch the appropriate command"
-   (let [awaiting-key? (get-in db [:help :awaiting-key?])
+   (let [minibuffer-active? (get-in db [:minibuffer :active?])
+         awaiting-key? (get-in db [:help :awaiting-key?])
          help-callback (get-in db [:help :callback])
          query-replace-active? (get-in db [:ui :query-replace :active?])
          isearch-active? (get-in db [:ui :isearch :active?])]
 
      (cond
+       ;; If minibuffer is active, don't intercept - let it handle keys normally
+       ;; (This happens through the DOM input element, not through this handler)
+       minibuffer-active?
+       {:db db}  ; Do nothing, minibuffer handles its own keys via DOM
+
        ;; If we're in isearch mode, intercept keys
        isearch-active?
        {:fx [[:dispatch [:isearch/handle-key key-str]]]}
