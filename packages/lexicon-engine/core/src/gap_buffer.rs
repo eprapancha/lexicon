@@ -12,7 +12,19 @@
 // - Delete: Expand gap to include deleted text
 // - Move gap: Use memmove to reposition gap to new editing location
 
+use std::collections::HashMap;
+
 const INITIAL_GAP_SIZE: usize = 256; // Start with 256 bytes of gap
+
+/// A marker is a position in the buffer that automatically moves with text edits
+#[derive(Clone, Debug)]
+pub struct Marker {
+    /// Unique identifier for this marker
+    pub id: u64,
+
+    /// Current position in the buffer (logical position, not accounting for gap)
+    pub pos: usize,
+}
 
 #[derive(Clone, Debug)]
 pub struct GapBuffer {
@@ -25,6 +37,12 @@ pub struct GapBuffer {
 
     /// Position where gap ends (exclusive)
     gap_end: usize,
+
+    /// Table of markers that track positions and auto-update on edits
+    marker_table: HashMap<u64, Marker>,
+
+    /// Next marker ID to allocate
+    next_marker_id: u64,
 }
 
 impl GapBuffer {
@@ -47,6 +65,8 @@ impl GapBuffer {
             buffer,
             gap_start: initial_len,
             gap_end: total_capacity,
+            marker_table: HashMap::new(),
+            next_marker_id: 0,
         }
     }
 
@@ -149,6 +169,9 @@ impl GapBuffer {
 
         // Advance gap start
         self.gap_start += len;
+
+        // Update markers
+        self.update_markers_on_insert(position, len);
     }
 
     /// Delete len bytes starting at position
@@ -167,6 +190,9 @@ impl GapBuffer {
 
         // Expand gap to include deleted text
         self.gap_end += len;
+
+        // Update markers
+        self.update_markers_on_delete(position, len);
     }
 
     /// Replace len bytes starting at position with new text
@@ -194,6 +220,10 @@ impl GapBuffer {
 
         // Advance gap start
         self.gap_start += new_len;
+
+        // Update markers (delete then insert)
+        self.update_markers_on_delete(position, len);
+        self.update_markers_on_insert(position, new_len);
     }
 
     /// Get the entire text as a String
@@ -240,6 +270,79 @@ impl GapBuffer {
     pub fn char_at(&self, position: usize) -> char {
         let text = self.get_range(position, position + 1);
         text.chars().next().expect("Position out of bounds")
+    }
+
+    // ========== Marker Management ==========
+
+    /// Create a new marker at the specified position
+    /// Returns the marker ID
+    pub fn create_marker(&mut self, position: usize) -> u64 {
+        if position > self.len() {
+            panic!("Marker position {} out of bounds (len: {})", position, self.len());
+        }
+
+        let marker_id = self.next_marker_id;
+        self.next_marker_id += 1;
+
+        let marker = Marker {
+            id: marker_id,
+            pos: position,
+        };
+
+        self.marker_table.insert(marker_id, marker);
+        marker_id
+    }
+
+    /// Move marker to a new position
+    pub fn move_marker(&mut self, marker_id: u64, new_position: usize) -> Result<(), String> {
+        if new_position > self.len() {
+            return Err(format!("Position {} out of bounds (len: {})", new_position, self.len()));
+        }
+
+        if let Some(marker) = self.marker_table.get_mut(&marker_id) {
+            marker.pos = new_position;
+            Ok(())
+        } else {
+            Err(format!("Marker {} not found", marker_id))
+        }
+    }
+
+    /// Get marker position
+    pub fn get_marker_position(&self, marker_id: u64) -> Option<usize> {
+        self.marker_table.get(&marker_id).map(|m| m.pos)
+    }
+
+    /// Delete a marker
+    pub fn delete_marker(&mut self, marker_id: u64) -> bool {
+        self.marker_table.remove(&marker_id).is_some()
+    }
+
+    /// Update markers after an insert operation
+    /// All markers at or after the insertion point shift right
+    fn update_markers_on_insert(&mut self, position: usize, len: usize) {
+        for marker in self.marker_table.values_mut() {
+            if marker.pos >= position {
+                marker.pos += len;
+            }
+        }
+    }
+
+    /// Update markers after a delete operation
+    /// Markers in deleted range collapse to deletion point
+    /// Markers after deletion shift left
+    fn update_markers_on_delete(&mut self, position: usize, len: usize) {
+        let delete_end = position + len;
+
+        for marker in self.marker_table.values_mut() {
+            if marker.pos >= delete_end {
+                // Marker is after deleted region - shift left
+                marker.pos -= len;
+            } else if marker.pos > position {
+                // Marker is inside deleted region - collapse to deletion point
+                marker.pos = position;
+            }
+            // Markers before deletion point remain unchanged
+        }
     }
 }
 
@@ -421,5 +524,108 @@ mod tests {
         let mut buf = GapBuffer::new("Hello, World!");
         buf.replace(7, 6, "Earth!");
         assert_eq!(buf.get_text(), "Hello, Earth!");
+    }
+
+    // ========== Marker Tests ==========
+
+    #[test]
+    fn test_create_marker() {
+        let mut buf = GapBuffer::new("Hello");
+        let marker_id = buf.create_marker(2);
+        assert_eq!(buf.get_marker_position(marker_id), Some(2));
+    }
+
+    #[test]
+    fn test_move_marker() {
+        let mut buf = GapBuffer::new("Hello");
+        let marker_id = buf.create_marker(2);
+        buf.move_marker(marker_id, 4).unwrap();
+        assert_eq!(buf.get_marker_position(marker_id), Some(4));
+    }
+
+    #[test]
+    fn test_delete_marker() {
+        let mut buf = GapBuffer::new("Hello");
+        let marker_id = buf.create_marker(2);
+        assert!(buf.delete_marker(marker_id));
+        assert_eq!(buf.get_marker_position(marker_id), None);
+    }
+
+    #[test]
+    fn test_marker_shifts_on_insert_before() {
+        let mut buf = GapBuffer::new("Hello");
+        let marker_id = buf.create_marker(3);  // Position 3 ('l')
+        buf.insert(0, "XXX");  // Insert before marker
+        assert_eq!(buf.get_text(), "XXXHello");
+        assert_eq!(buf.get_marker_position(marker_id), Some(6));  // Shifted right by 3
+    }
+
+    #[test]
+    fn test_marker_shifts_on_insert_at_marker() {
+        let mut buf = GapBuffer::new("Hello");
+        let marker_id = buf.create_marker(3);
+        buf.insert(3, "XXX");  // Insert at marker position
+        assert_eq!(buf.get_text(), "HelXXXlo");
+        assert_eq!(buf.get_marker_position(marker_id), Some(6));  // Marker moves with insertion
+    }
+
+    #[test]
+    fn test_marker_unchanged_on_insert_after() {
+        let mut buf = GapBuffer::new("Hello");
+        let marker_id = buf.create_marker(2);
+        buf.insert(4, "XXX");  // Insert after marker
+        assert_eq!(buf.get_text(), "HellXXXo");
+        assert_eq!(buf.get_marker_position(marker_id), Some(2));  // Unchanged
+    }
+
+    #[test]
+    fn test_marker_shifts_on_delete_after() {
+        let mut buf = GapBuffer::new("Hello, World!");
+        let marker_id = buf.create_marker(10);  // 'l' in "World"
+        buf.delete(0, 7);  // Delete "Hello, "
+        assert_eq!(buf.get_text(), "World!");
+        assert_eq!(buf.get_marker_position(marker_id), Some(3));  // Shifted left by 7
+    }
+
+    #[test]
+    fn test_marker_collapses_on_delete_in_range() {
+        let mut buf = GapBuffer::new("Hello, World!");
+        let marker_id = buf.create_marker(9);  // 'r' in "World"
+        buf.delete(7, 5);  // Delete "World"
+        assert_eq!(buf.get_text(), "Hello, !");
+        assert_eq!(buf.get_marker_position(marker_id), Some(7));  // Collapsed to deletion point
+    }
+
+    #[test]
+    fn test_marker_unchanged_on_delete_before() {
+        let mut buf = GapBuffer::new("Hello, World!");
+        let marker_id = buf.create_marker(10);
+        buf.delete(0, 2);  // Delete "He"
+        assert_eq!(buf.get_text(), "llo, World!");
+        assert_eq!(buf.get_marker_position(marker_id), Some(8));  // Shifted left by 2
+    }
+
+    #[test]
+    fn test_multiple_markers() {
+        let mut buf = GapBuffer::new("Hello, World!");
+        let m1 = buf.create_marker(0);
+        let m2 = buf.create_marker(7);
+        let m3 = buf.create_marker(13);
+
+        buf.insert(7, "Beautiful ");
+        assert_eq!(buf.get_text(), "Hello, Beautiful World!");
+        assert_eq!(buf.get_marker_position(m1), Some(0));   // Unchanged
+        assert_eq!(buf.get_marker_position(m2), Some(17));  // Shifted right by 10
+        assert_eq!(buf.get_marker_position(m3), Some(23));  // Shifted right by 10
+    }
+
+    #[test]
+    fn test_marker_updates_on_replace() {
+        let mut buf = GapBuffer::new("Hello, World!");
+        let marker_id = buf.create_marker(10);  // 'l' in "World"
+        buf.replace(7, 5, "Rust");  // Replace "World" with "Rust"
+        assert_eq!(buf.get_text(), "Hello, Rust!");
+        // Marker was in deleted range, should collapse to 7, then shift by 4 (length of "Rust")
+        assert_eq!(buf.get_marker_position(marker_id), Some(11));
     }
 }
