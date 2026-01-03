@@ -1,7 +1,8 @@
 {:source-paths ["src" "test" "../evil-mode/src"]
  :dependencies [[re-frame/re-frame "1.4.2"]
                 [reagent/reagent "1.2.0"]
-                [binaryage/devtools "1.0.7"]]
+                [binaryage/devtools "1.0.7"]
+                [org.babashka/sci "0.8.42"]]
  :builds
  {:app {:target :browser
         :output-dir "resources/public/js"

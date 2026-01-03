@@ -60,7 +60,7 @@ Lexicon's package system enables **runtime loading** of external packages writte
 
 ### Package Metadata
 
-Every package has a **metadata file** (`.edn`):
+Every package has a **metadata file** (`package.edn`):
 
 ```clojure
 {:name "my-package"
@@ -70,10 +70,10 @@ Every package has a **metadata file** (`.edn`):
  :url "https://github.com/jane/my-package"
  :license "MIT"
 
- :dependencies {"lexicon-core" "^1.0.0"
-                "another-package" "^2.1.0"}
+ :lexicon-version ">=1.0.0"
+ :dependencies ["other-package"]
 
- :main "my-package.core"
+ :entry my-package.core
 
  :autoload [{:command :my-package/do-thing
              :keys "C-c m t"
@@ -88,16 +88,30 @@ Every package has a **metadata file** (`.edn`):
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `:name` | Yes | Package name (kebab-case) |
+| `:name` | Yes | Package name (kebab-case, conventionally prefixed with `lexicon-`) |
 | `:version` | Yes | Semantic version (e.g., "1.0.0") |
 | `:description` | Yes | Short description |
+| `:entry` | Yes | Entry namespace symbol (e.g., `my-package.core`) |
+| `:lexicon-version` | Yes | Compatible Lexicon version (semver range, e.g., ">=1.0.0") |
+| `:dependencies` | No | Vector of package names (dependency resolution in future phases) |
 | `:author` | No | Author name and email |
 | `:url` | No | Homepage URL |
 | `:license` | No | License (e.g., "MIT", "GPL-3.0") |
-| `:dependencies` | No | Map of package → version spec |
-| `:main` | Yes | Main namespace to load |
-| `:autoload` | No | Commands to autoload |
-| `:hooks` | No | Hooks to register on load |
+| `:autoload` | No | Commands to autoload (future) |
+| `:hooks` | No | Hooks to register on load (future) |
+
+### Naming Conventions
+
+**Package names** should follow these conventions:
+- Use kebab-case (e.g., `lexicon-vim`, `vertico-mode`)
+- Prefix with `lexicon-` for packages specific to Lexicon
+- Match Emacs package names when porting (e.g., `vertico`, `orderless`, `consult`)
+- No `package` suffix (it's redundant)
+
+**Entry namespace** must:
+- Be a valid ClojureScript namespace symbol
+- Define `initialize!` function (called on load)
+- Define `cleanup!` function (called on unload)
 
 ### Package Directory Structure
 
@@ -106,7 +120,7 @@ my-package/
 ├── package.edn              # Metadata
 ├── src/
 │   └── my_package/
-│       ├── core.cljs        # Main namespace (:main)
+│       ├── core.cljs        # Entry namespace (:entry)
 │       ├── commands.cljs    # Command definitions
 │       └── utils.cljs       # Utilities
 ├── test/
@@ -115,16 +129,17 @@ my-package/
 └── README.md
 ```
 
-### Main Namespace
+### Entry Namespace
 
-The `:main` namespace defines package initialization:
+The `:entry` namespace defines package initialization and cleanup:
 
 ```clojure
 (ns my-package.core
   (:require [lexicon.core.api :as api]))
 
 (defn initialize! []
-  "Called when package is loaded"
+  "Called when package is loaded.
+  Register commands, keybindings, hooks, etc."
   (api/define-command :my-package/hello
     {:interactive true
      :doc "Say hello"}
@@ -132,10 +147,15 @@ The `:main` namespace defines package initialization:
 
   (api/define-key :global-map "C-c m h" :my-package/hello))
 
-(defn shutdown! []
-  "Called when package is unloaded"
+(defn cleanup! []
+  "Called when package is unloaded.
+  Unregister commands, keybindings, hooks, etc."
   (api/unregister-command :my-package/hello))
 ```
+
+**Required functions:**
+- `initialize!` - Called after package code is evaluated, before package is marked as loaded
+- `cleanup!` - Called before package is unloaded from memory
 
 ---
 
@@ -187,10 +207,10 @@ Packages run in an **SCI context** with access to Core API:
 (defn load-package [package-name]
   (let [package-dir (str "packages/" package-name "/")
         metadata (load-edn (str package-dir "package.edn"))
-        main-file (str package-dir "src/"
-                       (clojure.string/replace (:main metadata) "." "/")
-                       ".cljs")
-        source (slurp main-file)]
+        entry-file (str package-dir "src/"
+                        (clojure.string/replace (name (:entry metadata)) "." "/")
+                        ".cljs")
+        source (slurp entry-file)]
 
     ;; Evaluate package source in SCI context
     (sci/eval-string source {:env package-context})
@@ -223,7 +243,7 @@ Packages run in an **SCI context** with access to Core API:
    ↓
 7. Active (package running)
    ↓
-8. Unloading (call shutdown!)
+8. Unloading (call cleanup!)
    ↓
 9. Cleanup
 ```
@@ -310,11 +330,11 @@ Package is loaded and running:
 
 #### 8. Unloading
 
-Call package's `shutdown!` function:
+Call package's `cleanup!` function:
 
 ```clojure
 (unload-package package-name)
-;; Calls (ns-name/shutdown!)
+;; Calls (ns-name/cleanup!)
 ;; Package unregisters commands, hooks, keymaps
 ```
 
@@ -520,46 +540,120 @@ Updates a package to latest version (future).
 
 ## Security Model
 
-### Sandbox Restrictions
+### Trust Levels
 
-Packages run in **restricted SCI context**:
+Lexicon implements a **three-tier trust model** to balance flexibility and security:
+
+| Trust Level | Source | Evaluation | Access Rights |
+|-------------|--------|------------|---------------|
+| **:core** | Built-in packages (shipped with Lexicon) | Native `eval` | Full access to editor internals |
+| **:local** | User-installed from local filesystem | Native `eval` | Full access (user explicitly trusts) |
+| **:external** | Third-party from internet/registry | SCI sandbox | Core API only, restricted |
+
+#### Trust Level Details
+
+**:core** (Built-in Packages)
+- Shipped with Lexicon distribution
+- Maintained by core team
+- Full access to all editor internals
+- Can use any JavaScript/ClojureScript feature
+- Examples: fundamental-mode, minibuffer, file handling
+
+**:local** (Local Packages)
+- Installed from user's filesystem
+- User explicitly chose to install
+- Trusted because user has local control
+- Full access (same as :core)
+- Use case: User's personal packages, development, local modifications
+
+**:external** (External Packages)
+- Downloaded from internet (GitHub, package registry)
+- Untrusted by default
+- Run in **SCI sandbox** (restricted interpreter)
+- Can ONLY access Core API functions
+- Cannot access editor internals or arbitrary JavaScript
+- Examples: Community packages, third-party themes
+
+### Sandbox Restrictions (External Packages)
+
+External packages run in **restricted SCI context**:
 
 **Allowed**:
-- All Core API functions
+- All Core API functions (`lexicon.core.api/*`)
 - Pure ClojureScript functions (map, filter, reduce, etc.)
 - ClojureScript standard library
+- Package-scoped state
 
 **Disallowed**:
-- Direct DOM manipulation (use Core API instead)
-- `js/eval`, `js/Function`
+- Direct access to editor internals (db, re-frame, WASM)
+- Arbitrary `js/*` access (no `js/eval`, `js/Function`, `js/XMLHttpRequest`)
+- Direct DOM manipulation (must use Core API)
 - Network requests (future: controlled API)
 - File system access (future: controlled API)
 - Global state mutation (outside package scope)
 
-### Example Sandbox Config
+### Example: Trust Level Usage
+
+```clojure
+;; Core package (full access)
+(load-package "fundamental-mode" :trust-level :core)
+;; → Evaluated with native eval, can access anything
+
+;; Local package (full access)
+(load-package "~/my-packages/custom-mode" :trust-level :local)
+;; → Evaluated with native eval, user trusts it
+
+;; External package (restricted)
+(load-package "vertico" :trust-level :external)
+;; → Evaluated in SCI sandbox, Core API only
+```
+
+### SCI Sandbox Configuration
 
 ```clojure
 (def package-sandbox
   (sci/init
     {:namespaces
-     {'lexicon.core.api {...}}  ;; Allowed
+     ;; Only expose Core API
+     {'lexicon.core.api
+      {'define-command api/define-command
+       'define-key api/define-key
+       'insert! api/insert!
+       'point api/point
+       ;; ... all Core API functions
+       }}
 
+     ;; Deny dangerous JavaScript access
      :deny
      ['js/eval
       'js/Function
       'js/XMLHttpRequest
-      'js/fetch]
+      'js/fetch
+      're-frame.core/dispatch  ;; No direct re-frame access
+      'lexicon.db/*]           ;; No direct db access
 
      :allow-unrestricted-eval false}))
 ```
 
-### Security Levels (Future)
+### Trust Model Rationale
 
-| Level | Description | Restrictions |
-|-------|-------------|--------------|
-| **Trusted** | Core-blessed packages | Full Core API access |
-| **Verified** | Community-reviewed | Core API + controlled network |
-| **Untrusted** | User-installed | Core API only, no network |
+**Why three levels?**
+
+1. **:core** - Essential for built-in functionality that needs deep integration
+2. **:local** - Respects user agency (they chose to install it locally)
+3. **:external** - Protects users from potentially malicious internet code
+
+**Why allow :local packages full access?**
+
+If a user has code on their local filesystem and explicitly loads it, they've already made a trust decision. Sandboxing local packages would frustrate development and personal customization without security benefit.
+
+**Why sandbox :external packages?**
+
+Downloading code from the internet requires strong isolation:
+- User may not review the code thoroughly
+- Package updates could introduce malicious changes
+- Compromised package author accounts
+- Supply chain attacks
 
 ---
 
@@ -588,14 +682,14 @@ Packages run in **restricted SCI context**:
 ```clojure
 (defn load-package! [package-name]
   (let [metadata (load-package-metadata package-name)
-        source (load-package-source package-name (:main metadata))]
+        source (load-package-source package-name (:entry metadata))]
 
     ;; Evaluate in SCI
     (sci/eval-string source {:env package-sci-ctx})
 
     ;; Initialize
     (sci/eval-string
-      (str "(" (:main metadata) "/initialize!)")
+      (str "(" (name (:entry metadata)) "/initialize!)")
       {:env package-sci-ctx})
 
     ;; Register
@@ -635,8 +729,9 @@ Packages run in **restricted SCI context**:
 {:name "my-package"
  :version "1.0.0"
  :description "My awesome package"
- :dependencies {"lexicon-core" "^1.0.0"}
- :main "my-package.core"}
+ :lexicon-version ">=1.0.0"
+ :dependencies []
+ :entry my-package.core}
 
 ;; src/my_package/core.cljs
 (ns my-package.core
@@ -647,7 +742,7 @@ Packages run in **restricted SCI context**:
     {:interactive true :doc "Say hello"}
     (fn [] (api/message "Hello!"))))
 
-(defn shutdown! []
+(defn cleanup! []
   (api/unregister-command :my-package/hello))
 ```
 
@@ -779,9 +874,10 @@ Support WASM-based packages:
  :url "https://github.com/minad/vertico"
  :license "GPL-3.0"
 
- :dependencies {"lexicon-core" "^1.0.0"}
+ :lexicon-version ">=1.0.0"
+ :dependencies []
 
- :main "vertico.core"
+ :entry vertico.core
 
  :autoload [{:command :vertico-mode
              :description "Toggle Vertico completion"}]}
@@ -812,7 +908,7 @@ Support WASM-based packages:
 
   (api/message "Vertico mode enabled"))
 
-(defn shutdown! []
+(defn cleanup! []
   (api/set-completion-function! nil)
   (api/message "Vertico mode disabled"))
 ```

@@ -1,0 +1,6 @@
+{:name "lexicon-test-package"
+ :version "0.1.0"
+ :description "Minimal test package for SCI validation"
+ :entry lexicon.test-package.core
+ :lexicon-version ">=0.1.0"
+ :dependencies []}
