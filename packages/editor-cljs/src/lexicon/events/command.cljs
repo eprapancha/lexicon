@@ -453,7 +453,7 @@
                                 :line-count line-count}}]
          {:db (-> db
                   (assoc-in [:buffers buffer-id] new-buffer)
-                  (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))))
+                  (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))))))
 
 (rf/reg-event-fx
  :apropos-command
