@@ -32,9 +32,9 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Suspend Emacs | `C-z` |  |  |  |
-| Exit Emacs | `C-x C-c` |  |  |  |
-| Abort partially typed command | `C-g` |  |  |  |
+| Suspend Emacs | `C-z` | 🚫 | P3 | Not applicable for web-based editor |
+| Exit Emacs | `C-x C-c` | 🚫 | P3 | Not applicable for web-based editor |
+| Abort partially typed command | `C-g` | ✅ | P0 | Implemented as `keyboard-quit` |
 
 ---
 
@@ -42,12 +42,12 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Read a file into Emacs | `C-x C-f` |  |  |  |
-| Save file | `C-x C-s` |  |  |  |
-| Save all files | `C-x s` |  |  |  |
-| Insert file into buffer | `C-x i` |  |  |  |
-| Replace buffer with file | `C-x C-v` |  |  |  |
-| Write buffer to file | `C-x C-w` |  |  |  |
+| Read a file into Emacs | `C-x C-f` | ✅ | P0 | Implemented as `find-file` |
+| Save file | `C-x C-s` | ✅ | P0 | Implemented as `save-buffer` |
+| Save all files | `C-x s` | ❌ | P0 | Missing `save-some-buffers` |
+| Insert file into buffer | `C-x i` | ❌ | P0 | Missing `insert-file` |
+| Replace buffer with file | `C-x C-v` | ❌ | P0 | Missing `find-alternate-file` |
+| Write buffer to file | `C-x C-w` | ✅ | P0 | Implemented as `write-file` |
 
 ---
 
@@ -55,10 +55,10 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Select another buffer | `C-x b` |  |  |  |
-| List all buffers | `C-x C-b` |  |  |  |
-| Kill a buffer | `C-x k` |  |  |  |
-| Revert buffer from file | `M-x revert-buffer` |  |  |  |
+| Select another buffer | `C-x b` | ✅ | P0 | Implemented as `switch-to-buffer` |
+| List all buffers | `C-x C-b` | ✅ | P0 | Implemented as `list-buffers` |
+| Kill a buffer | `C-x k` | ✅ | P0 | Implemented as `kill-buffer` |
+| Revert buffer from file | `M-x revert-buffer` | ❌ | P0 | Missing `revert-buffer` |
 
 ---
 
@@ -66,11 +66,11 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Split window vertically | `C-x 2` |  |  |  |
-| Split window horizontally | `C-x 3` |  |  |  |
-| Delete this window | `C-x 0` |  |  |  |
-| Delete other windows | `C-x 1` |  |  |  |
-| Switch to other window | `C-x o` |  |  |  |
+| Split window vertically | `C-x 2` | ✅ | P0 | Implemented as `split-window-below` |
+| Split window horizontally | `C-x 3` | ✅ | P0 | Implemented as `split-window-right` |
+| Delete this window | `C-x 0` | ✅ | P0 | Implemented as `delete-window` |
+| Delete other windows | `C-x 1` | ✅ | P0 | Implemented as `delete-other-windows` |
+| Switch to other window | `C-x o` | ✅ | P0 | Implemented as `other-window` |
 
 ---
 
@@ -78,16 +78,16 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Forward character | `C-f` |  |  |  |
-| Backward character | `C-b` |  |  |  |
-| Next line | `C-n` |  |  |  |
-| Previous line | `C-p` |  |  |  |
-| Beginning of line | `C-a` |  |  |  |
-| End of line | `C-e` |  |  |  |
-| Forward word | `M-f` |  |  |  |
-| Backward word | `M-b` |  |  |  |
-| Beginning of buffer | `M-<` |  |  |  |
-| End of buffer | `M->` |  |  |  |
+| Forward character | `C-f` | ✅ | P0 | Implemented as `forward-char` |
+| Backward character | `C-b` | ✅ | P0 | Implemented as `backward-char` |
+| Next line | `C-n` | ✅ | P0 | Implemented as `next-line` |
+| Previous line | `C-p` | ✅ | P0 | Implemented as `previous-line` |
+| Beginning of line | `C-a` | ✅ | P0 | Implemented as `beginning-of-line` |
+| End of line | `C-e` | ✅ | P0 | Implemented as `end-of-line` |
+| Forward word | `M-f` | ✅ | P0 | Implemented as `forward-word` |
+| Backward word | `M-b` | ✅ | P0 | Implemented as `backward-word` |
+| Beginning of buffer | `M-<` | ✅ | P0 | Implemented as `beginning-of-buffer` |
+| End of buffer | `M->` | ✅ | P0 | Implemented as `end-of-buffer` |
 
 ---
 
@@ -95,10 +95,10 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Scroll forward one screen | `C-v` |  |  |  |
-| Scroll backward one screen | `M-v` |  |  |  |
-| Scroll one line up | `C-y` |  |  |  |
-| Scroll one line down | `C-e` |  |  |  |
+| Scroll forward one screen | `C-v` | ❌ | P0 | Missing `scroll-up-command` |
+| Scroll backward one screen | `M-v` | ❌ | P0 | Missing `scroll-down-command` |
+| Scroll one line up | `C-y` | 🚫 | P3 | **INCORRECT** - C-y is `yank` (paste), not scroll |
+| Scroll one line down | `C-e` | 🚫 | P3 | **INCORRECT** - C-e is `end-of-line`, not scroll |
 
 ---
 
@@ -106,10 +106,10 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Delete next character | `C-d` |  |  |  |
-| Delete previous character | `DEL` |  |  |  |
-| Kill word | `M-d` |  |  |  |
-| Kill line | `C-k` |  |  |  |
+| Delete next character | `C-d` | ✅ | P0 | Implemented as `delete-forward-char` |
+| Delete previous character | `DEL` | ✅ | P0 | Implemented as `delete-backward-char` |
+| Kill word | `M-d` | ❌ | P0 | Missing `kill-word` |
+| Kill line | `C-k` | ✅ | P0 | Implemented as `kill-line` |
 
 ---
 
@@ -117,10 +117,10 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Kill region | `C-w` |  |  |  |
-| Copy region | `M-w` |  |  |  |
-| Yank | `C-y` |  |  |  |
-| Yank previous kill | `M-y` |  |  |  |
+| Kill region | `C-w` | ✅ | P0 | Implemented as `kill-region` |
+| Copy region | `M-w` | ✅ | P0 | Implemented as `copy-region-as-kill` |
+| Yank | `C-y` | ✅ | P0 | Implemented as `yank` |
+| Yank previous kill | `M-y` | ✅ | P0 | Implemented as `yank-pop` |
 
 ---
 
@@ -128,8 +128,8 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Set mark | `C-SPC` |  |  |  |
-| Exchange point and mark | `C-x C-x` |  |  |  |
+| Set mark | `C-SPC` | ✅ | P0 | Implemented as `set-mark-command` |
+| Exchange point and mark | `C-x C-x` | ❌ | P0 | Missing `exchange-point-and-mark` |
 
 ---
 
@@ -137,10 +137,10 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Incremental search forward | `C-s` |  |  |  |
-| Incremental search backward | `C-r` |  |  |  |
-| Repeat search | `C-s` / `C-r` |  |  |  |
-| Exit search | `RET` |  |  |  |
+| Incremental search forward | `C-s` | ❌ | P0 | Missing `isearch-forward` - **CRITICAL GAP** |
+| Incremental search backward | `C-r` | ❌ | P0 | Missing `isearch-backward` - **CRITICAL GAP** |
+| Repeat search | `C-s` / `C-r` | ❌ | P0 | Depends on isearch implementation |
+| Exit search | `RET` | ❌ | P0 | Depends on isearch implementation |
 
 ---
 
@@ -148,9 +148,9 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Query replace | `M-%` |  |  |  |
-| Replace string | `M-x replace-string` |  |  |  |
-| Replace regexp | `M-x replace-regexp` |  |  |  |
+| Query replace | `M-%` | ❌ | P0 | Missing `query-replace` - **CRITICAL GAP** |
+| Replace string | `M-x replace-string` | ❌ | P0 | Missing `replace-string` |
+| Replace regexp | `M-x replace-regexp` | ❌ | P0 | Missing `replace-regexp` |
 
 ---
 
@@ -158,7 +158,7 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Undo | `C-/` or `C-x u` |  |  |  |
+| Undo | `C-/` or `C-x u` | ✅ | P0 | Implemented as `undo` with both bindings |
 
 ---
 
@@ -166,10 +166,10 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Execute command | `M-x` |  |  |  |
-| Complete minibuffer | `TAB` |  |  |  |
-| Abort minibuffer | `C-g` |  |  |  |
-| Exit minibuffer | `RET` |  |  |  |
+| Execute command | `M-x` | ✅ | P0 | Implemented as `execute-extended-command` |
+| Complete minibuffer | `TAB` | 🟡 | P0 | Needs verification - may be partial |
+| Abort minibuffer | `C-g` | ✅ | P0 | Implemented as `keyboard-quit` |
+| Exit minibuffer | `RET` | 🟡 | P0 | Needs verification - should work |
 
 ---
 
@@ -177,11 +177,11 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Help prefix | `C-h` |  |  |  |
-| Describe key | `C-h k` |  |  |  |
-| Describe function | `C-h f` |  |  |  |
-| Describe variable | `C-h v` |  |  |  |
-| List key bindings | `C-h b` |  |  |  |
+| Help prefix | `C-h` | ✅ | P0 | Implemented - help prefix works |
+| Describe key | `C-h k` | ✅ | P0 | Implemented as `describe-key` |
+| Describe function | `C-h f` | ✅ | P0 | Implemented as `describe-function` |
+| Describe variable | `C-h v` | ❌ | P0 | Missing `describe-variable` |
+| List key bindings | `C-h b` | ✅ | P0 | Implemented as `describe-bindings` |
 
 ---
 
@@ -189,10 +189,10 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Evaluate last sexp | `C-x C-e` |  |  |  |
-| Evaluate defun | `C-M-x` |  |  |  |
-| Evaluate region | `M-x eval-region` |  |  |  |
-| Load file | `M-x load-file` |  |  |  |
+| Evaluate last sexp | `C-x C-e` | ❌ | P1 | Missing `eval-last-sexp` - for CLJS REPL |
+| Evaluate defun | `C-M-x` | ❌ | P1 | Missing `eval-defun` - for CLJS REPL |
+| Evaluate region | `M-x eval-region` | ❌ | P1 | Missing `eval-region` - for CLJS REPL |
+| Load file | `M-x load-file` | ❌ | P1 | Missing `load-file` - for package loading |
 
 ---
 
@@ -200,9 +200,9 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Start macro | `C-x (` |  |  |  |
-| End macro | `C-x )` |  |  |  |
-| Execute macro | `C-x e` |  |  |  |
+| Start macro | `C-x (` | ❌ | P1 | Missing `kmacro-start-macro` |
+| End macro | `C-x )` | ❌ | P1 | Missing `kmacro-end-macro` |
+| Execute macro | `C-x e` | ❌ | P1 | Missing `kmacro-end-and-call-macro` |
 
 ---
 
@@ -210,8 +210,8 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Universal argument | `C-u` |  |  |  |
-| Repeat command | `C-x z` |  |  |  |
+| Universal argument | `C-u` | ✅ | P0 | Implemented as `universal-argument` |
+| Repeat command | `C-x z` | ❌ | P2 | Missing `repeat` command |
 
 ---
 

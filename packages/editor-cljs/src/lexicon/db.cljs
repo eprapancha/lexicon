@@ -115,6 +115,7 @@
                      "C-k" :kill-line                  ; Kill line
                      "C-o" :open-line                  ; Open line
                      "C-SPC" :set-mark-command         ; Set mark
+                     "C-x C-x" :exchange-point-and-mark ; Exchange point and mark
                      "DEL" :delete-backward-char       ; Backspace
                      "DELETE" :delete-forward-char     ; Delete
                      ;; Cursor movement

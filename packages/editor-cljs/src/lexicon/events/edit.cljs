@@ -324,6 +324,25 @@
      (assoc db :window-tree new-tree))))
 
 (rf/reg-event-fx
+ :exchange-point-and-mark
+ (fn [{:keys [db]} [_]]
+   "Exchange the position of point and mark (C-x C-x)"
+   (let [active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         active-window (db/find-window-in-tree window-tree active-window-id)
+         mark-position (:mark-position active-window)
+         cursor-pos (get-in db [:ui :cursor-position] 0)]
+     (if mark-position
+       (let [new-tree (db/update-window-in-tree window-tree active-window-id
+                                                #(assoc % :mark-position cursor-pos))]
+         (println "✓ Exchanged point and mark:" cursor-pos "<->" mark-position)
+         {:db (assoc db :window-tree new-tree)
+          :fx [[:dispatch [:update-cursor-position mark-position]]]})
+       (do
+         (println "⚠ No mark set (use C-SPC to set mark first)")
+         {:db db})))))
+
+(rf/reg-event-fx
  :copy-region-as-kill
  (fn [{:keys [db]} [_]]
    "Copy region to kill ring without deleting (M-w)"
