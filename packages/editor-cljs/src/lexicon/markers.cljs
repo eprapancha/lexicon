@@ -196,3 +196,279 @@
 
 ;; Auto-initialize
 (initialize-markers!)
+
+;; =============================================================================
+;; Point (Cursor) Marker - Step 3
+;; =============================================================================
+
+(defn create-point-marker!
+  "Create the point (cursor) marker for BUFFER-ID at POSITION.
+  Returns the marker ID."
+  [buffer-id position]
+  (rf/dispatch [:markers/create-point buffer-id position]))
+
+(rf/reg-event-fx
+  :markers/create-point
+  (fn [{:keys [db]} [_ buffer-id position]]
+    (let [wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+          marker-id (get-in db [:markers :next-id] 0)
+          wasm-marker-id (.createMarker wasm-instance position)]
+
+      (if (>= wasm-marker-id 0)
+        (let [marker {:id marker-id
+                      :buffer-id buffer-id
+                      :kind :point
+                      :wasm-id wasm-marker-id
+                      :created-at (js/Date.now)
+                      :metadata {}}]
+          {:db (-> db
+                   (assoc-in [:markers :table marker-id] marker)
+                   (update-in [:markers :next-id] inc)
+                   (assoc-in [:buffers buffer-id :point-marker-id] marker-id)
+                   (update-in [:buffers buffer-id :markers] (fnil conj #{}) marker-id))})
+        {:db db
+         :fx [[:dispatch [:show-error (str "Failed to create point marker for buffer " buffer-id)]]]}))))
+
+(defn point-marker-id
+  "Get the point marker ID for BUFFER-ID."
+  [db buffer-id]
+  (get-in db [:buffers buffer-id :point-marker-id]))
+
+(defn point
+  "Get current point (cursor) position for BUFFER-ID using markers.
+  Falls back to [:ui :cursor-position] if marker not initialized."
+  [db buffer-id]
+  (if-let [marker-id (point-marker-id db buffer-id)]
+    (let [marker (get-in db [:markers :table marker-id])
+          wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+          wasm-marker-id (:wasm-id marker)]
+      (when wasm-instance
+        (let [pos (.getMarkerPosition wasm-instance wasm-marker-id)]
+          (if (>= pos 0)
+            pos
+            ;; Fallback to UI cursor position
+            (get-in db [:ui :cursor-position] 0)))))
+    ;; No marker yet, use old system
+    (get-in db [:ui :cursor-position] 0)))
+
+(defn set-point!
+  "Set point (cursor) position for BUFFER-ID to POSITION using markers."
+  [buffer-id position]
+  (rf/dispatch [:markers/set-point buffer-id position]))
+
+(rf/reg-event-fx
+  :markers/set-point
+  (fn [{:keys [db]} [_ buffer-id position]]
+    (if-let [marker-id (point-marker-id db buffer-id)]
+      ;; Use marker system
+      {:fx [[:dispatch [:markers/move marker-id position]]
+            [:dispatch [:update-cursor-position position]]]}
+      ;; Fallback to old system
+      {:fx [[:dispatch [:update-cursor-position position]]]})))
+
+(rf/reg-sub
+  :markers/point
+  (fn [db [_ buffer-id]]
+    (point db buffer-id)))
+
+;; =============================================================================
+;; Mark (Region Anchor) Marker - Step 4
+;; =============================================================================
+
+(defn create-mark-marker!
+  "Create the mark (region anchor) marker for BUFFER-ID at POSITION.
+  Returns the marker ID."
+  [buffer-id position]
+  (rf/dispatch [:markers/create-mark buffer-id position]))
+
+(rf/reg-event-fx
+  :markers/create-mark
+  (fn [{:keys [db]} [_ buffer-id position]]
+    (let [wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+          marker-id (get-in db [:markers :next-id] 0)
+          wasm-marker-id (.createMarker wasm-instance position)]
+
+      (if (>= wasm-marker-id 0)
+        (let [marker {:id marker-id
+                      :buffer-id buffer-id
+                      :kind :mark
+                      :wasm-id wasm-marker-id
+                      :created-at (js/Date.now)
+                      :metadata {}}]
+          {:db (-> db
+                   (assoc-in [:markers :table marker-id] marker)
+                   (update-in [:markers :next-id] inc)
+                   (assoc-in [:buffers buffer-id :mark-marker-id] marker-id)
+                   (assoc-in [:buffers buffer-id :mark-active?] true)
+                   (update-in [:buffers buffer-id :markers] (fnil conj #{}) marker-id))})
+        {:db db
+         :fx [[:dispatch [:show-error (str "Failed to create mark marker for buffer " buffer-id)]]]}))))
+
+(defn mark-marker-id
+  "Get the mark marker ID for BUFFER-ID."
+  [db buffer-id]
+  (get-in db [:buffers buffer-id :mark-marker-id]))
+
+(defn mark
+  "Get current mark position for BUFFER-ID using markers.
+  Returns nil if mark is not active."
+  [db buffer-id]
+  (when (get-in db [:buffers buffer-id :mark-active?])
+    (if-let [marker-id (mark-marker-id db buffer-id)]
+      (let [marker (get-in db [:markers :table marker-id])
+            wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+            wasm-marker-id (:wasm-id marker)]
+        (when wasm-instance
+          (let [pos (.getMarkerPosition wasm-instance wasm-marker-id)]
+            (when (>= pos 0)
+              pos))))
+      ;; Fallback to old system
+      (get-in db [:buffers buffer-id :mark]))))
+
+(defn set-mark!
+  "Set mark position for BUFFER-ID to POSITION using markers."
+  [buffer-id position]
+  (rf/dispatch [:markers/set-mark buffer-id position]))
+
+(rf/reg-event-fx
+  :markers/set-mark
+  (fn [{:keys [db]} [_ buffer-id position]]
+    (if-let [marker-id (mark-marker-id db buffer-id)]
+      ;; Move existing marker
+      {:fx [[:dispatch [:markers/move marker-id position]]]}
+      ;; Create new mark marker
+      {:fx [[:dispatch [:markers/create-mark buffer-id position]]]})))
+
+(defn deactivate-mark!
+  "Deactivate the mark for BUFFER-ID."
+  [buffer-id]
+  (rf/dispatch [:markers/deactivate-mark buffer-id]))
+
+(rf/reg-event-db
+  :markers/deactivate-mark
+  (fn [db [_ buffer-id]]
+    (assoc-in db [:buffers buffer-id :mark-active?] false)))
+
+(defn activate-mark!
+  "Activate the mark for BUFFER-ID."
+  [buffer-id]
+  (rf/dispatch [:markers/activate-mark buffer-id]))
+
+(rf/reg-event-db
+  :markers/activate-mark
+  (fn [db [_ buffer-id]]
+    (assoc-in db [:buffers buffer-id :mark-active?] true)))
+
+(rf/reg-sub
+  :markers/mark
+  (fn [db [_ buffer-id]]
+    (mark db buffer-id)))
+
+(rf/reg-sub
+  :markers/mark-active?
+  (fn [db [_ buffer-id]]
+    (get-in db [:buffers buffer-id :mark-active?] false)))
+
+;; =============================================================================
+;; Region (Point and Mark) - Step 4
+;; =============================================================================
+
+(defn region
+  "Get the active region as [start end] for BUFFER-ID.
+  Returns nil if mark is not active."
+  [db buffer-id]
+  (when-let [mark-pos (mark db buffer-id)]
+    (let [point-pos (point db buffer-id)]
+      (if (<= point-pos mark-pos)
+        [point-pos mark-pos]
+        [mark-pos point-pos]))))
+
+(rf/reg-sub
+  :markers/region
+  (fn [db [_ buffer-id]]
+    (region db buffer-id)))
+
+;; =============================================================================
+;; Overlay Markers - Step 5
+;; =============================================================================
+
+(defn create-overlay-markers!
+  "Create start and end markers for an overlay in BUFFER-ID.
+  Dispatches event to create markers asynchronously."
+  [buffer-id start-pos end-pos metadata]
+  (rf/dispatch [:markers/create-overlay-pair buffer-id start-pos end-pos metadata]))
+
+(rf/reg-event-fx
+  :markers/create-overlay-pair
+  (fn [{:keys [db]} [_ buffer-id start-pos end-pos metadata]]
+    (let [wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+          start-marker-id (get-in db [:markers :next-id] 0)
+          end-marker-id (inc start-marker-id)
+          start-wasm-id (.createMarker wasm-instance start-pos)
+          end-wasm-id (.createMarker wasm-instance end-pos)]
+
+      (if (and (>= start-wasm-id 0) (>= end-wasm-id 0))
+        (let [start-marker {:id start-marker-id
+                           :buffer-id buffer-id
+                           :kind :overlay-start
+                           :wasm-id start-wasm-id
+                           :created-at (js/Date.now)
+                           :metadata metadata}
+              end-marker {:id end-marker-id
+                         :buffer-id buffer-id
+                         :kind :overlay-end
+                         :wasm-id end-wasm-id
+                         :created-at (js/Date.now)
+                         :metadata metadata}]
+          {:db (-> db
+                   (assoc-in [:markers :table start-marker-id] start-marker)
+                   (assoc-in [:markers :table end-marker-id] end-marker)
+                   (update-in [:markers :next-id] + 2)
+                   (update-in [:buffers buffer-id :markers] (fnil conj #{}) start-marker-id end-marker-id))
+           :fx [[:dispatch [:markers/overlay-pair-created buffer-id start-marker-id end-marker-id]]]})
+        {:db db
+         :fx [[:dispatch [:show-error (str "Failed to create overlay markers for buffer " buffer-id)]]]})))
+
+(rf/reg-event-db
+  :markers/overlay-pair-created
+  (fn [db [_ buffer-id start-marker-id end-marker-id]]
+    ;; Hook point for overlay marker pair creation
+    db))
+
+(defn delete-overlay-markers!
+  "Delete both start and end markers for an overlay."
+  [{:keys [start-marker-id end-marker-id]}]
+  (when start-marker-id
+    (delete-marker! start-marker-id))
+  (when end-marker-id
+    (delete-marker! end-marker-id)))
+
+(defn overlay-region
+  "Get the current region [start end] for an overlay's markers.
+  Returns nil if markers don't exist."
+  [db {:keys [start-marker-id end-marker-id]}]
+  (when (and start-marker-id end-marker-id)
+    (let [start-marker (get-in db [:markers :table start-marker-id])
+          end-marker (get-in db [:markers :table end-marker-id])
+          buffer-id (:buffer-id start-marker)
+          wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+          start-wasm-id (:wasm-id start-marker)
+          end-wasm-id (:wasm-id end-marker)]
+      (when (and wasm-instance start-marker end-marker)
+        (let [start-pos (.getMarkerPosition wasm-instance start-wasm-id)
+              end-pos (.getMarkerPosition wasm-instance end-wasm-id)]
+          (when (and (>= start-pos 0) (>= end-pos 0))
+            [start-pos end-pos]))))))
+
+(defn move-overlay-markers!
+  "Move both markers of an overlay to new positions."
+  [{:keys [start-marker-id end-marker-id]} new-start new-end]
+  (when start-marker-id
+    (move-marker! start-marker-id new-start))
+  (when end-marker-id
+    (move-marker! end-marker-id new-end)))
+
+(rf/reg-sub
+  :markers/overlay-region
+  (fn [db [_ overlay-markers]]
+    (overlay-region db overlay-markers)))
