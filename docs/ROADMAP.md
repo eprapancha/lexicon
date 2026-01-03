@@ -1421,29 +1421,80 @@ src/lexicon/
 
 ---
 
-### Week 7: SCI Integration for Runtime Package Loading
+### Week 7: Package System Foundation & SCI Integration
 
-**Goal:** Enable dynamic package evaluation before Phase 8 (Vertico/Orderless/Consult)
+**Goal:** Establish package ecosystem foundations before Phase 8 (Vertico/Orderless/Consult)
 
-#### Phase 7.7: SCI Integration 🔬
+**Reference:** See `docs/package_ecosystem.md` for full plan (Phases 0-7)
 
-**Rationale:** Phase 8 packages (Vertico, Orderless, Consult) are **external packages** that should be loaded dynamically, not compiled into the bundle. This requires SCI (Small Clojure Interpreter) for runtime CLJS evaluation.
+#### Phase 7.7: Package System Foundation & SCI Integration 🔬📦
+
+**Rationale:** Phase 8 packages (Vertico, Orderless, Consult) are **external packages** that should be loaded dynamically, not compiled into the bundle. Before implementing these packages, we need:
+1. **Package definition** - what IS a package?
+2. **Runtime evaluation** - SCI for safe arbitrary CLJS execution
+3. **Trust model** - security boundaries for third-party code
+
+This phase combines:
+- **Package Ecosystem Phases 0-2** (definition, local loading, safety)
+- **Original SCI Integration** (evaluation sandbox, Core API exposure)
 
 **Why now?**
 - Cannot truly test package loading without runtime evaluation
 - Vertico/Orderless/Consult need to be loadable on demand
+- Package schema must exist before packages can exist
 - SCI is foundational for package ecosystem
 - Fits external review recommendation for "arbitrary CLJS execution"
 
+**Guiding Principles** (from package_ecosystem.md):
+- Packages are **code, not plugins**
+- Distribution is **git-first**, not registry-first
+- Trust is explicit, not implicit
+- Evaluation model mirrors Emacs (single-threaded, inspectable)
+
 **Test-First Implementation:**
 
-1. **Add SCI Dependency**
+**Step 0: Package Definition (Package Ecosystem Phase 0-1)**
+
+1. **Define Package Schema**
+   - [ ] Create `docs/core/packages.md` specification
+   - [ ] Define `package.edn` schema (name, version, description, entry, lexicon-version, dependencies)
+   - [ ] Define what counts as a package vs core extension
+   - [ ] Define naming conventions (`lexicon-*`)
+   - [ ] Document package entry semantics (initialize!/cleanup!)
+   - [ ] Commit: "docs: define package schema and semantics"
+
+2. **Package Metadata Schema Example**
+   ```edn
+   {:name "lexicon-vim"
+    :version "0.1.0"
+    :description "Vim-style modal editing"
+    :entry lexicon.vim.core
+    :lexicon-version ">=0.1.0"
+    :dependencies []}
+   ```
+
+**Step 1: Trust Model & Safety (Package Ecosystem Phase 2)**
+
+3. **Define Trust Levels**
+   - [ ] Document trust levels in `docs/core/packages.md`:
+     - **core** - Built-in, full access
+     - **local** - User-installed from filesystem, full access
+     - **external** - Third-party from internet, SCI sandbox only
+   - [ ] Define what each level can access:
+     - Core: Everything (native eval)
+     - Local: Everything (native eval, user trusts it)
+     - External: Core API only (SCI sandbox)
+   - [ ] Commit: "docs: define package trust levels and security model"
+
+**Step 2: SCI Integration & Evaluation**
+
+4. **Add SCI Dependency**
    - [ ] Add SCI to `deps.edn` / `shadow-cljs.edn`
    - [ ] Verify SCI compiles in browser environment
    - [ ] Run tests ✅
    - [ ] Commit: "deps: add SCI (Small Clojure Interpreter)"
 
-2. **Create Package Evaluation Sandbox**
+5. **Create Package Evaluation Sandbox**
    - [ ] Create `lexicon.packages.sci` namespace
    - [ ] Initialize SCI context with Core API bindings
    - [ ] Expose Core API functions to SCI sandbox:
@@ -1452,22 +1503,35 @@ src/lexicon/
      - Keymap API (define-key, lookup-key)
      - Mode API (define-major-mode, define-minor-mode)
      - Hook API (add-hook, remove-hook)
+     - Context API (current-command, current-buffer, prefix-arg)
    - [ ] Add tests for SCI context creation
    - [ ] Run tests ✅
    - [ ] Commit: "feat(packages): create SCI evaluation sandbox with Core API"
 
-3. **Package Evaluation API**
-   - [ ] Implement `(eval-package-source source-string)` - evaluate CLJS in SCI
-   - [ ] Implement `(load-package-file path)` - load and evaluate package file
+6. **Package Evaluation API**
+   - [ ] Implement `(eval-package-source source-string trust-level)` - evaluate CLJS in SCI or native
+   - [ ] Trust level determines evaluation strategy:
+     - `:core` / `:local` → native eval (full access)
+     - `:external` → SCI sandbox (Core API only)
+   - [ ] Implement `(load-package-file path trust-level)` - load and evaluate package file
    - [ ] Handle evaluation errors gracefully (don't crash editor)
-   - [ ] Return evaluation result or error
-   - [ ] Add tests for package evaluation
+   - [ ] Return evaluation result or error with context
+   - [ ] Add tests for both evaluation strategies
    - [ ] Run tests ✅
-   - [ ] Commit: "feat(packages): add package source evaluation API"
+   - [ ] Commit: "feat(packages): add package source evaluation API with trust levels"
 
-4. **Minimal Test Package**
-   - [ ] Create `packages/test-package/` with minimal package:
+**Step 3: Local Package Loading (Package Ecosystem Phase 1)**
+
+7. **Minimal Test Package**
+   - [ ] Create `packages/test-package/` with package.edn and minimal package:
      ```clojure
+     ;; packages/test-package/package.edn
+     {:name "lexicon-test-package"
+      :version "0.1.0"
+      :description "Minimal test package"
+      :entry lexicon.test-package.core
+      :lexicon-version ">=0.1.0"}
+
      ;; packages/test-package/src/lexicon/test_package/core.cljs
      (ns lexicon.test-package.core
        (:require [lexicon.core.api :as api]))
@@ -1488,41 +1552,74 @@ src/lexicon/
    - [ ] Run tests ✅
    - [ ] Commit: "test(packages): add minimal test package for SCI validation"
 
-5. **Update Package Loading Infrastructure**
-   - [ ] Modify `load-package!` to use SCI evaluation (not compile-time requires)
-   - [ ] Package source loaded from file/URL → evaluated in SCI
-   - [ ] Package `initialize!` called after evaluation
-   - [ ] Package `cleanup!` called on unload
-   - [ ] Add tests for dynamic package lifecycle
+8. **Local Package Loading Infrastructure**
+   - [ ] Implement `(load-package-from-dir path)` - load package from local directory
+   - [ ] Read `package.edn` metadata
+   - [ ] Validate schema (name, version, entry exist)
+   - [ ] Load entry namespace source
+   - [ ] Evaluate with appropriate trust level (`:local` by default)
+   - [ ] Call `initialize!` after evaluation
+   - [ ] Track loaded packages in app-db
+   - [ ] Add tests for local package loading
    - [ ] Run tests ✅
-   - [ ] Commit: "feat(packages): use SCI for dynamic package loading"
+   - [ ] Commit: "feat(packages): implement local directory package loading"
 
-6. **Sandboxing and Security**
-   - [ ] Restrict SCI sandbox (no arbitrary `js/` access)
-   - [ ] Packages can only use Core API
+9. **Package Lifecycle Commands**
+   - [ ] Implement `M-x load-package` command (prompts for directory)
+   - [ ] Implement `M-x unload-package` command (calls cleanup!, removes from app-db)
+   - [ ] Implement `M-x reload-package` command (unload + load for development)
+   - [ ] Package `cleanup!` called on unload
+   - [ ] Add tests for package lifecycle commands
+   - [ ] Run tests ✅
+   - [ ] Commit: "feat(packages): add load/unload/reload commands"
+
+10. **Sandboxing and Security**
+   - [ ] Restrict SCI sandbox (no arbitrary `js/` access for `:external` trust)
+   - [ ] External packages can only use Core API
    - [ ] Namespace isolation (packages can't access editor internals)
    - [ ] Add tests for sandbox restrictions
+   - [ ] Add manual test: try loading untrusted package, verify isolation
    - [ ] Run tests ✅
-   - [ ] Commit: "feat(packages): add sandbox restrictions for security"
+   - [ ] Commit: "feat(packages): add sandbox restrictions for external packages"
 
-7. **Update Documentation**
-   - [ ] Update `docs/core/package-loading.md` with SCI integration
-   - [ ] Document SCI sandbox and Core API exposure
+11. **Error Containment**
+   - [ ] Package load failures must not crash editor
+   - [ ] Display errors in *Messages* buffer
+   - [ ] Log package errors to console with context
+   - [ ] Add tests for error handling (malformed package.edn, syntax errors, runtime errors)
+   - [ ] Run tests ✅
+   - [ ] Commit: "feat(packages): add error containment and debugging"
+
+12. **Update Documentation**
+   - [ ] Complete `docs/core/packages.md` with:
+     - Package schema specification
+     - Trust levels and security model
+     - Package entry semantics (initialize!/cleanup!)
+     - Local package loading workflow
+     - SCI sandbox restrictions
    - [ ] Document package evaluation lifecycle
-   - [ ] Document security model
-   - [ ] Commit: "docs: document SCI integration and package evaluation"
+   - [ ] Add examples of minimal packages
+   - [ ] Commit: "docs: complete package system documentation"
 
 **Success Criteria:**
+- [ ] Package schema documented in `docs/core/packages.md`
+- [ ] Trust levels defined (core, local, external)
 - [ ] SCI dependency added and compiles
 - [ ] SCI context exposes Core API to packages
-- [ ] Can evaluate CLJS source in SCI sandbox
-- [ ] Minimal test package loads and works
-- [ ] Package loading uses SCI (not compile-time requires)
-- [ ] Sandbox restricts access to Core API only
-- [ ] Tests validate package evaluation and isolation
+- [ ] Can evaluate CLJS source in SCI sandbox (external trust)
+- [ ] Can evaluate CLJS source natively (core/local trust)
+- [ ] Minimal test package loads from local directory
+- [ ] Test package command `:test-package/hello` works
+- [ ] Package lifecycle commands (load/unload/reload) work
+- [ ] Sandbox restricts external packages to Core API only
+- [ ] Error containment prevents package failures from crashing editor
+- [ ] Tests validate package evaluation, trust levels, and isolation
 - [ ] Documentation complete
 
-**Note:** This enables Phase 8 (Vertico/Orderless/Consult) to be **truly external packages** loaded at runtime, not compiled into bundle.
+**Note:**
+- This combines **Package Ecosystem Phases 0-2** (definition, local loading, safety model)
+- Enables Phase 8 (Vertico/Orderless/Consult) to be **truly external packages** loaded at runtime
+- Phase 8.1 will add **package persistence and startup loading** (Package Ecosystem Phase 3)
 
 ---
 
@@ -1564,8 +1661,8 @@ src/lexicon/
 
 **Status:** 🔲 Planned
 **Goal:** Validate completion framework and Core API with "Emacs-way" packages
-**Timeline:** 3-4 weeks
-**Prerequisites:** ✅ Phase 7 complete (Core API, hooks, markers formalized)
+**Timeline:** 4-5 weeks (added Phase 8.1 for package persistence)
+**Prerequisites:** ✅ Phase 7 complete (Core API, hooks, markers, SCI, local package loading)
 **Priority:** HIGH - These packages test if we built the right foundations
 
 ### Rationale
@@ -1584,7 +1681,88 @@ Vertico, Orderless, and Consult are **canonical Emacs completion packages** that
 
 ---
 
-### Week 1: Vertico Package (Vertical Completion UI)
+### Week 1: Package Lifecycle & Persistence
+
+**Goal:** Make packages persist across restarts (Package Ecosystem Phase 3)
+
+#### Phase 8.1: Package Lifecycle & Startup Loading 🔄
+
+**Rationale:** Before implementing Vertico/Orderless/Consult, users need packages to:
+1. **Persist** - survive editor restarts
+2. **Auto-load** - enabled packages load on startup
+3. **Enable/Disable** - toggle without deletion
+
+**Test-First Implementation:**
+
+1. **Package Registry (Local EDN Storage)**
+   - [ ] Create `lexicon.packages.registry` namespace
+   - [ ] Define registry file: `~/.lexicon/packages.edn`
+   - [ ] Track installed packages: `{:packages [{:name, :path, :version, :commit-hash, :enabled?}]}`
+   - [ ] Add tests for registry read/write
+   - [ ] Run tests ✅
+   - [ ] Commit: "feat(packages): add local package registry with EDN storage"
+
+2. **Package Installation**
+   - [ ] Implement `M-x install-package` command
+   - [ ] Copy package directory to `~/.lexicon/packages/<package-name>/`
+   - [ ] Add to registry with `:enabled? true`
+   - [ ] Load package immediately
+   - [ ] Add tests for installation
+   - [ ] Run tests ✅
+   - [ ] Commit: "feat(packages): implement package installation to local directory"
+
+3. **Startup Package Loading**
+   - [ ] Load enabled packages at editor startup
+   - [ ] Define loading order (alphabetical for now, dependency order later)
+   - [ ] Ensure deterministic behavior
+   - [ ] Handle load failures gracefully (log error, continue)
+   - [ ] Add tests for startup flow
+   - [ ] Run tests ✅
+   - [ ] Commit: "feat(packages): implement startup package loading"
+
+4. **Enable/Disable Semantics**
+   - [ ] Implement `M-x enable-package` command
+   - [ ] Implement `M-x disable-package` command
+   - [ ] Enable: set `:enabled? true` in registry, load package
+   - [ ] Disable: set `:enabled? false` in registry, unload package
+   - [ ] Don't delete package files
+   - [ ] Add tests for enable/disable
+   - [ ] Run tests ✅
+   - [ ] Commit: "feat(packages): implement enable/disable commands"
+
+5. **Package Listing UI**
+   - [ ] Implement `M-x list-packages` command
+   - [ ] Show installed packages in *Packages* buffer
+   - [ ] Display: name, version, status (enabled/disabled), description
+   - [ ] Add keybindings: e (enable), d (disable), r (reload), u (uninstall)
+   - [ ] Add tests for package list UI
+   - [ ] Run tests ✅
+   - [ ] Commit: "feat(packages): add package listing UI"
+
+6. **Package Uninstallation**
+   - [ ] Implement `M-x uninstall-package` command
+   - [ ] Unload package if loaded
+   - [ ] Remove from registry
+   - [ ] Delete package directory
+   - [ ] Require confirmation
+   - [ ] Add tests for uninstallation
+   - [ ] Run tests ✅
+   - [ ] Commit: "feat(packages): implement package uninstallation"
+
+**Success Criteria:**
+- [ ] Packages persist in `~/.lexicon/packages.edn`
+- [ ] Enabled packages load automatically on startup
+- [ ] `M-x install-package` copies and enables package
+- [ ] `M-x enable-package` / `M-x disable-package` work without deletion
+- [ ] `M-x list-packages` shows all installed packages
+- [ ] `M-x uninstall-package` removes package completely
+- [ ] Startup loading is deterministic and handles errors gracefully
+
+**Note:** This implements **Package Ecosystem Phase 3** and prepares for Vertico/Orderless/Consult to be persistently installed.
+
+---
+
+### Week 2: Vertico Package (Vertical Completion UI)
 
 **Goal:** Replace echo-area completion with clean vertical list
 
@@ -2330,7 +2508,211 @@ If Evil-mode works cleanly using Core API, **our architecture is proven sound**.
 
 ---
 
-## Phase 10: Syntax Highlighting & Tree-sitter
+## Phase 10: Public Package Index (Package Ecosystem Phase 4)
+
+**Status:** 🔲 Planned
+**Goal:** Create git-based public package index (MELPA equivalent)
+**Timeline:** 2-3 weeks
+**Prerequisites:** ✅ Phase 7.7 (package loading), ✅ Phase 8.1 (package persistence)
+**Priority:** MEDIUM - Enables community package ecosystem
+
+### Rationale
+
+Create a **public, git-based package index** similar to MELPA, allowing users to discover and install third-party packages from the internet.
+
+**Test-First Implementation:**
+
+1. **Create Index Repository**
+   - [ ] Create `lexicon-packages-index` GitHub repository
+   - [ ] Define `packages.edn` format:
+     ```edn
+     {:packages
+      [{:name "lexicon-vim"
+        :repo "https://github.com/lexicon-packages/lexicon-vim"
+        :branch "main"
+        :status :experimental}]}
+     ```
+   - [ ] Add initial packages (test-package, vertico, orderless, consult if available)
+   - [ ] Commit: "feat: create public package index repository"
+
+2. **Fetch Package Index**
+   - [ ] Implement `(fetch-package-index)` - download packages.edn from GitHub
+   - [ ] Cache index locally (`~/.lexicon/package-index.edn`)
+   - [ ] Refresh on demand or periodically
+   - [ ] Add tests for index fetching
+   - [ ] Run tests ✅
+   - [ ] Commit: "feat(packages): implement package index fetching"
+
+3. **Install from Index**
+   - [ ] Modify `M-x install-package` to support index lookup
+   - [ ] Show available packages from index with completion
+   - [ ] Clone/download package repo from URL
+   - [ ] Record commit hash on install
+   - [ ] Add tests for index-based installation
+   - [ ] Run tests ✅
+   - [ ] Commit: "feat(packages): install packages from public index"
+
+4. **Version Pinning (Minimal)**
+   - [ ] Record commit hash in registry on install
+   - [ ] Update to specific commit hash
+   - [ ] Skip dependency resolution initially (manual for now)
+   - [ ] Add tests for version pinning
+   - [ ] Run tests ✅
+   - [ ] Commit: "feat(packages): add commit hash version pinning"
+
+**Success Criteria:**
+- [ ] Public package index exists at `lexicon-packages-index`
+- [ ] `M-x install-package` shows packages from index
+- [ ] Can install packages from GitHub URLs
+- [ ] Commit hashes recorded for reproducibility
+- [ ] Index cached locally for performance
+
+---
+
+## Phase 11: Package Developer Experience (Package Ecosystem Phase 5)
+
+**Status:** 🔲 Planned
+**Goal:** Make package development pleasant and idiomatic
+**Timeline:** 2 weeks
+**Prerequisites:** ✅ Package system working (Phases 7.7, 8.1, 10)
+**Priority:** MEDIUM - Enables external contributors
+
+### Rationale
+
+Provide documentation, tooling, and examples to make package development **easy and delightful** for external contributors.
+
+**Test-First Implementation:**
+
+1. **Package Author Guide**
+   - [ ] Create `docs/PACKAGE_AUTHORS.md`
+   - [ ] Document package structure
+   - [ ] Document how to define commands
+   - [ ] Document how to hook into editor lifecycle
+   - [ ] Document Core API usage
+   - [ ] Provide complete example packages
+   - [ ] Commit: "docs: create comprehensive package author guide"
+
+2. **Package Validation Tooling**
+   - [ ] Create `bb validate-package` task
+   - [ ] Validate `package.edn` schema
+   - [ ] Check for required functions (initialize!/cleanup!)
+   - [ ] Lint for common mistakes
+   - [ ] Provide clear error messages
+   - [ ] Add tests for validation
+   - [ ] Run tests ✅
+   - [ ] Commit: "feat(packages): add package validation tooling"
+
+3. **Development Workflow**
+   - [ ] Document local package development workflow
+   - [ ] Hot reload during development (`M-x reload-package`)
+   - [ ] Testing expectations and examples
+   - [ ] Debugging tips
+   - [ ] Commit: "docs: document package development workflow"
+
+4. **Reference Package Examples**
+   - [ ] Create `packages/examples/` directory
+   - [ ] Example: simple command package
+   - [ ] Example: mode definition package
+   - [ ] Example: hook-based package
+   - [ ] All examples well-documented
+   - [ ] Commit: "docs: add reference package examples"
+
+**Success Criteria:**
+- [ ] `docs/PACKAGE_AUTHORS.md` complete
+- [ ] `bb validate-package` catches common errors
+- [ ] Multiple reference examples exist
+- [ ] External contributors can build packages without hand-holding
+
+---
+
+## Phase 12: Package Observability & Hygiene (Package Ecosystem Phase 6)
+
+**Status:** 🔲 Planned
+**Goal:** Prevent ecosystem entropy through observability
+**Timeline:** 1-2 weeks
+**Prerequisites:** ✅ Package system mature (Phases 7.7, 8.1, 10, 11)
+**Priority:** MEDIUM - Maintains ecosystem health
+
+### Rationale
+
+Prevent package ecosystem from becoming mysterious and hard to debug.
+
+**Implementation:**
+
+1. **Structured Package Logging**
+   - [ ] Log package load events
+   - [ ] Log package evaluation events
+   - [ ] Log package failures with context
+   - [ ] Display in *Messages* buffer
+   - [ ] Commit: "feat(packages): add structured logging"
+
+2. **Performance Monitoring**
+   - [ ] Track package initialization time
+   - [ ] Warn if package takes >100ms to load
+   - [ ] Display in `M-x list-packages`
+   - [ ] Commit: "feat(packages): add performance monitoring"
+
+3. **Deprecation Warnings**
+   - [ ] Warn when packages use deprecated APIs
+   - [ ] Show upgrade path
+   - [ ] Log to console
+   - [ ] Commit: "feat(packages): add API deprecation warnings"
+
+4. **Debugging Workflow**
+   - [ ] Create `docs/PACKAGE_DEBUGGING.md`
+   - [ ] Document how to debug package issues
+   - [ ] Document common problems and solutions
+   - [ ] Commit: "docs: add package debugging playbook"
+
+**Success Criteria:**
+- [ ] Package lifecycle is observable
+- [ ] Package issues are diagnosable
+- [ ] Performance impact is visible
+- [ ] Debugging playbook exists
+
+---
+
+## Phase 13: Package Ecosystem Governance (Package Ecosystem Phase 7)
+
+**Status:** 🔲 Planned
+**Goal:** Scale people, not infrastructure
+**Timeline:** Ongoing
+**Prerequisites:** ✅ Public package index (Phase 10)
+**Priority:** LOW - Future community work
+
+### Rationale
+
+Establish norms and processes for sustainable community growth.
+
+**Implementation:**
+
+1. **Contribution Guidelines**
+   - [ ] Create `CONTRIBUTING.md` for package index
+   - [ ] Define package submission process
+   - [ ] Define quality expectations (not strict)
+   - [ ] Commit: "docs: add package contribution guidelines"
+
+2. **Status Signals**
+   - [ ] Add `:status` to package metadata
+   - [ ] Values: `:stable`, `:experimental`, `:unmaintained`
+   - [ ] Display in `M-x list-packages`
+   - [ ] Commit: "feat(packages): add package status signals"
+
+3. **Minimal CI**
+   - [ ] Add GitHub Actions to validate `packages.edn`
+   - [ ] Check for valid URLs and schema
+   - [ ] No hard gatekeeping (PRs can merge with warnings)
+   - [ ] Commit: "ci: add package index validation"
+
+**Success Criteria:**
+- [ ] Contribution process documented
+- [ ] Package status visible
+- [ ] Index validation automated
+- [ ] Community can grow without core friction
+
+---
+
+## Phase 14: Syntax Highlighting & Tree-sitter
 
 **Status:** 🔲 Planned
 **Goal:** Modern syntax highlighting using Tree-sitter
@@ -2345,7 +2727,7 @@ If Evil-mode works cleanly using Core API, **our architecture is proven sound**.
 
 ---
 
-## Phase 11: LSP Integration
+## Phase 15: LSP Integration
 
 **Status:** 🔲 Planned
 **Goal:** Language server protocol support
