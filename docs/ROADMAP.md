@@ -1633,31 +1633,31 @@ Packages (whether native CLJS or Elisp) assume core Emacs commands exist. We can
    - [ ] Commit: "docs: prioritize missing core commands"
 
 3. **Implement P0 Commands - Files**
-   - [ ] `C-x C-f` (find-file) - already exists, verify behavior
-   - [ ] `C-x C-s` (save-buffer) - verify implementation
-   - [x] `C-x s` (save-some-buffers) - ✅ implemented
-   - [x] `C-x i` (insert-file) - ✅ implemented
-   - [x] `C-x C-v` (find-alternate-file) - ✅ implemented
-   - [ ] `C-x C-w` (write-file) - already exists, verify
+   - [x] `C-x C-f` (find-file) - ✅ verified (command + keybinding)
+   - [x] `C-x C-s` (save-buffer) - ✅ verified (command + keybinding)
+   - [x] `C-x s` (save-some-buffers) - ✅ implemented + keybinding added
+   - [x] `C-x i` (insert-file) - ✅ implemented + keybinding added
+   - [x] `C-x C-v` (find-alternate-file) - ✅ implemented + keybinding added
+   - [x] `C-x C-w` (write-file) - ✅ verified (command + keybinding)
    - [ ] Add E2E tests for each command
-   - [ ] Commit: "feat(files): implement P0 file commands"
+   - [x] Commit: "feat(files): implement P0 file commands" (done: 93b5d76)
 
 4. **Implement P0 Commands - Buffers**
-   - [ ] `C-x b` (switch-to-buffer) - verify
-   - [ ] `C-x C-b` (list-buffers) - verify (exists from Phase 7.7)
-   - [ ] `C-x k` (kill-buffer) - verify
-   - [x] `M-x revert-buffer` - ✅ implemented
+   - [x] `C-x b` (switch-to-buffer) - ✅ verified (command + keybinding)
+   - [x] `C-x C-b` (list-buffers) - ✅ verified (command + keybinding)
+   - [x] `C-x k` (kill-buffer) - ✅ verified (command + keybinding)
+   - [x] `M-x revert-buffer` - ✅ implemented (M-x only, no default keybinding)
    - [ ] Add E2E tests
-   - [ ] Commit: "feat(buffers): implement P0 buffer commands"
+   - [x] Commit: "feat(buffers): implement P0 buffer commands" (done: 93b5d76)
 
 5. **Implement P0 Commands - Windows**
-   - [ ] `C-x 2` (split-window-vertically) - verify
-   - [ ] `C-x 3` (split-window-horizontally) - verify
-   - [ ] `C-x 0` (delete-window) - verify
-   - [ ] `C-x 1` (delete-other-windows) - verify
-   - [ ] `C-x o` (other-window) - verify
+   - [x] `C-x 2` (split-window-below) - ✅ verified (command + keybinding)
+   - [x] `C-x 3` (split-window-right) - ✅ verified (command + keybinding)
+   - [x] `C-x 0` (delete-window) - ✅ verified (command + keybinding)
+   - [x] `C-x 1` (delete-other-windows) - ✅ verified (command + keybinding)
+   - [x] `C-x o` (other-window) - ✅ verified (command + keybinding)
    - [ ] Add E2E tests
-   - [ ] Commit: "feat(windows): verify P0 window commands"
+   - [ ] Commit: "feat(windows): verify P0 window commands" (pending keybinding commit)
 
 6. **Implement P0 Commands - Editing**
    - [ ] All cursor motion commands (C-f, C-b, C-n, C-p, C-a, C-e, M-f, M-b, M-<, M->)
