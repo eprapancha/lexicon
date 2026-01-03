@@ -1597,8 +1597,329 @@ This phase combines:
 
 **Note:**
 - This combines **Package Ecosystem Phases 0-2** (definition, local loading, safety model)
-- Enables Phase 8 (Vertico/Orderless/Consult) to be **truly external packages** loaded at runtime
-- Phase 8.1 will add **package persistence and startup loading** (Package Ecosystem Phase 3)
+- Infrastructure complete, pending Core API wiring and file I/O implementation
+- **Next**: Core command audit (Phase 7.8) and Elisp compatibility (Phase 7.9)
+
+---
+
+#### Phase 7.8: Core Command Audit & Completion 📋✅
+
+**Status:** 🔲 Not Started
+**Goal:** Ensure all essential Emacs commands exist before building packages
+**Timeline:** 2-3 weeks
+**Prerequisites:** ✅ Phase 7.7 (package infrastructure complete)
+**Priority:** **CRITICAL** - Foundation for everything else
+
+**Rationale:**
+
+Packages (whether native CLJS or Elisp) assume core Emacs commands exist. We cannot claim to be "Emacs for the browser" without the reference card commands. This phase ensures we have a complete, battle-tested core before adding complexity.
+
+**Reference:** `docs/EmacsReferenceCard.md` - Official GNU Emacs reference card converted to tracking format
+
+**Implementation Strategy:**
+
+1. **Audit Current Coverage**
+   - [ ] Review `EmacsReferenceCard.md` section by section
+   - [ ] Mark each command with status: ✅ (exists), 🟡 (partial), ❌ (missing), 🚫 (not applicable)
+   - [ ] Assign priority: P0 (critical), P1 (important), P2 (nice-to-have), P3 (future)
+   - [ ] Document gaps in `docs/core-command-gaps.md`
+   - [ ] Commit: "docs: audit Emacs reference card command coverage"
+
+2. **Prioritize Missing Commands**
+   - [ ] Create issues for all P0 commands
+   - [ ] Group by domain (files, buffers, windows, editing, search, etc.)
+   - [ ] Estimate implementation effort for each
+   - [ ] Define acceptance criteria (behavior must match Emacs)
+   - [ ] Commit: "docs: prioritize missing core commands"
+
+3. **Implement P0 Commands - Files**
+   - [ ] `C-x C-f` (find-file) - already exists, verify behavior
+   - [ ] `C-x C-s` (save-buffer) - verify implementation
+   - [ ] `C-x s` (save-some-buffers) - implement if missing
+   - [ ] `C-x i` (insert-file) - implement
+   - [ ] `C-x C-v` (find-alternate-file) - implement
+   - [ ] `C-x C-w` (write-file) - implement
+   - [ ] Add E2E tests for each command
+   - [ ] Commit: "feat(files): implement P0 file commands"
+
+4. **Implement P0 Commands - Buffers**
+   - [ ] `C-x b` (switch-to-buffer) - verify
+   - [ ] `C-x C-b` (list-buffers) - implement
+   - [ ] `C-x k` (kill-buffer) - verify
+   - [ ] `M-x revert-buffer` - implement
+   - [ ] Add E2E tests
+   - [ ] Commit: "feat(buffers): implement P0 buffer commands"
+
+5. **Implement P0 Commands - Windows**
+   - [ ] `C-x 2` (split-window-vertically) - verify
+   - [ ] `C-x 3` (split-window-horizontally) - verify
+   - [ ] `C-x 0` (delete-window) - verify
+   - [ ] `C-x 1` (delete-other-windows) - verify
+   - [ ] `C-x o` (other-window) - verify
+   - [ ] Add E2E tests
+   - [ ] Commit: "feat(windows): verify P0 window commands"
+
+6. **Implement P0 Commands - Editing**
+   - [ ] All cursor motion commands (C-f, C-b, C-n, C-p, C-a, C-e, M-f, M-b, M-<, M->)
+   - [ ] Scrolling (C-v, M-v)
+   - [ ] Deleting (C-d, DEL, M-d, C-k)
+   - [ ] Kill/yank (C-w, M-w, C-y, M-y)
+   - [ ] Mark (C-SPC, C-x C-x)
+   - [ ] Add E2E tests for each
+   - [ ] Commit: "feat(editing): implement P0 editing commands"
+
+7. **Implement P0 Commands - Search/Replace**
+   - [ ] `C-s` (isearch-forward) - implement
+   - [ ] `C-r` (isearch-backward) - implement
+   - [ ] `M-%` (query-replace) - implement
+   - [ ] `M-x replace-string` - implement
+   - [ ] `M-x replace-regexp` - implement
+   - [ ] Add E2E tests
+   - [ ] Commit: "feat(search): implement P0 search/replace commands"
+
+8. **Implement P0 Commands - Undo**
+   - [ ] `C-/` or `C-x u` (undo) - already exists via Phase 7.2, verify
+   - [ ] `C-?` or `M-_` (redo) - verify Phase 7.2 implementation
+   - [ ] Add E2E tests
+   - [ ] Commit: "feat(undo): verify P0 undo/redo commands"
+
+9. **Implement P0 Commands - Minibuffer**
+   - [ ] `M-x` (execute-extended-command) - already exists, verify
+   - [ ] `TAB` (minibuffer-complete) - verify completion
+   - [ ] `C-g` (abort-recursive-edit) - verify
+   - [ ] `RET` (exit-minibuffer) - verify
+   - [ ] Add E2E tests
+   - [ ] Commit: "feat(minibuffer): verify P0 minibuffer commands"
+
+10. **Implement P0 Commands - Help**
+    - [ ] `C-h` (help-prefix) - implement help system
+    - [ ] `C-h k` (describe-key) - implement
+    - [ ] `C-h f` (describe-function) - implement
+    - [ ] `C-h v` (describe-variable) - implement
+    - [ ] `C-h b` (describe-bindings) - implement
+    - [ ] Add E2E tests
+    - [ ] Commit: "feat(help): implement P0 help commands"
+
+11. **Implement P1 Commands** (as needed)
+    - [ ] Keyboard macros (C-x (, C-x ), C-x e)
+    - [ ] Rectangles
+    - [ ] Case conversion
+    - [ ] Transpose commands
+    - [ ] Other reference card commands
+    - [ ] Commit: "feat(commands): implement P1 commands"
+
+12. **Documentation & Testing**
+    - [ ] Update `EmacsReferenceCard.md` with final status
+    - [ ] Create command coverage report
+    - [ ] Ensure all P0 commands have E2E tests
+    - [ ] Document any Emacs deviations
+    - [ ] Commit: "docs: complete command coverage audit"
+
+**Success Criteria:**
+- [ ] All P0 commands from reference card implemented
+- [ ] Each command has E2E test validating Emacs-equivalent behavior
+- [ ] `EmacsReferenceCard.md` fully populated with status
+- [ ] Command coverage report shows 90%+ of essential commands
+- [ ] No known gaps in core editing workflow
+
+**Deliverables:**
+- Complete command coverage audit
+- All P0 commands functional
+- E2E test suite for core commands
+- Documentation of command coverage
+
+---
+
+#### Phase 7.9: Elisp Compatibility Foundation 🔧📜
+
+**Status:** 🔲 Not Started
+**Goal:** Enable reuse of Elisp package logic without reimplementing from scratch
+**Timeline:** 3-4 weeks (exploratory/foundational)
+**Prerequisites:** ✅ Phase 7.7 (SCI integration), ✅ Phase 7.8 (core commands complete)
+**Priority:** **HIGH** - Unlocks ecosystem reuse
+
+**Rationale:**
+
+Reimplementing complex packages (Orderless, Consult, Embark) from scratch in CLJS is:
+- Time-prohibitive (months of work per package)
+- Error-prone (subtle behavioral differences)
+- Maintenance burden (tracking upstream changes)
+
+**Instead:** Build a restricted Elisp compatibility layer on top of SCI that:
+- Parses Elisp source to AST
+- Evaluates in SCI with Elisp semantics
+- Maps Elisp primitives to Lexicon Core API
+- Reuses package logic, replaces UI/integration
+
+**Reference:** `docs/ELISP_COMPATIBILITY.md` - Full feasibility study and phased plan
+
+**Non-Goals** (Explicit):
+- ❌ Full Emacs compatibility
+- ❌ Bytecode interpretation
+- ❌ Overlays, text properties, redisplay hooks
+- ❌ Drop-in package compatibility
+
+**Goals** (Realistic):
+- ✅ Reuse filtering/matching logic
+- ✅ Reuse data transformation functions
+- ✅ Run utility libraries (dash, s, orderless)
+- ✅ Partial reuse of complex packages (consult core logic)
+
+**Implementation Strategy:**
+
+**Step 1: Elisp Reader & Parser**
+
+1. **Elisp Tokenizer**
+   - [ ] Implement tokenizer for Elisp syntax
+   - [ ] Handle symbols, lists, strings, numbers, keywords
+   - [ ] Support quoting (', `, ,, ,@)
+   - [ ] Add tests for tokenization
+   - [ ] Commit: "feat(elisp): implement Elisp tokenizer"
+
+2. **Elisp Parser**
+   - [ ] Parse tokens into AST
+   - [ ] Represent forms as ClojureScript data structures
+   - [ ] Handle special forms (defun, let, lambda, if, cond, etc.)
+   - [ ] Add tests for parsing
+   - [ ] Commit: "feat(elisp): implement Elisp parser"
+
+3. **AST Validation**
+   - [ ] Validate well-formed expressions
+   - [ ] Detect unsupported forms early
+   - [ ] Provide clear error messages
+   - [ ] Add tests
+   - [ ] Commit: "feat(elisp): add AST validation"
+
+**Step 2: Minimal Elisp Evaluator**
+
+4. **Basic Evaluation**
+   - [ ] Evaluate atoms (symbols, literals)
+   - [ ] Evaluate function calls
+   - [ ] Implement `defun`, `lambda`
+   - [ ] Implement `let`, `let*`
+   - [ ] Add tests
+   - [ ] Commit: "feat(elisp): implement basic evaluator"
+
+5. **Control Flow**
+   - [ ] Implement `if`, `when`, `unless`
+   - [ ] Implement `cond`, `case`
+   - [ ] Implement `progn`
+   - [ ] Implement `and`, `or`
+   - [ ] Add tests
+   - [ ] Commit: "feat(elisp): implement control flow"
+
+6. **Dynamic Scoping**
+   - [ ] Implement Elisp dynamic variable semantics
+   - [ ] Handle special variables (buffer-local, etc.)
+   - [ ] Integrate with SCI dynamic vars
+   - [ ] Add tests
+   - [ ] Commit: "feat(elisp): implement dynamic scoping"
+
+**Step 3: Primitive Mapping**
+
+7. **Core Primitives**
+   - [ ] Map `message` → Lexicon logging
+   - [ ] Map `current-buffer` → Lexicon buffer context
+   - [ ] Map `point`, `point-min`, `point-max` → Lexicon buffer API
+   - [ ] Map `insert`, `delete-region` → Lexicon edit API
+   - [ ] Add tests
+   - [ ] Commit: "feat(elisp): map core buffer primitives"
+
+8. **List Operations**
+   - [ ] Map `car`, `cdr`, `cons`, `list`, `append`
+   - [ ] Map `nth`, `nthcdr`, `length`
+   - [ ] Map `mapcar`, `mapc`, `mapconcat`
+   - [ ] Map `assoc`, `rassoc`, `plist-get`, `plist-put`
+   - [ ] Add tests
+   - [ ] Commit: "feat(elisp): map list operation primitives"
+
+9. **String Operations**
+   - [ ] Map `substring`, `concat`, `format`
+   - [ ] Map `string-match`, `match-string`, `replace-regexp-in-string`
+   - [ ] Map `upcase`, `downcase`, `capitalize`
+   - [ ] Add tests
+   - [ ] Commit: "feat(elisp): map string operation primitives"
+
+10. **Hook System**
+    - [ ] Map `add-hook` → Lexicon hooks
+    - [ ] Map `remove-hook` → Lexicon hooks
+    - [ ] Map `run-hooks` → Lexicon hook execution
+    - [ ] Add tests
+    - [ ] Commit: "feat(elisp): map hook system primitives"
+
+**Step 4: First Package Test**
+
+11. **Load dash.el**
+    - [ ] Attempt to load dash.el (Elisp utility library)
+    - [ ] Test basic dash functions (--map, --filter, -take, -drop)
+    - [ ] Document what works and what doesn't
+    - [ ] Fix evaluation issues as needed
+    - [ ] Add tests
+    - [ ] Commit: "test(elisp): validate with dash.el"
+
+12. **Load s.el**
+    - [ ] Attempt to load s.el (string manipulation library)
+    - [ ] Test string functions (s-trim, s-split, s-join, s-replace)
+    - [ ] Document compatibility
+    - [ ] Add tests
+    - [ ] Commit: "test(elisp): validate with s.el"
+
+**Step 5: Orderless Integration** (Proof of Concept)
+
+13. **Load Orderless Core**
+    - [ ] Parse orderless.el source
+    - [ ] Identify core matching logic
+    - [ ] Load and evaluate in Elisp compat layer
+    - [ ] Test matching functions directly
+    - [ ] Add tests
+    - [ ] Commit: "feat(elisp): load orderless matching logic"
+
+14. **Wire to Lexicon Completion**
+    - [ ] Expose orderless matching to Lexicon completion system
+    - [ ] Test with Lexicon minibuffer
+    - [ ] Validate matching behavior matches Emacs
+    - [ ] Add E2E tests
+    - [ ] Commit: "feat(completion): integrate orderless via Elisp compat"
+
+**Step 6: Documentation & Stabilization**
+
+15. **Document Compatibility Layer**
+    - [ ] Update `docs/ELISP_COMPATIBILITY.md` with implementation status
+    - [ ] Document supported primitives
+    - [ ] Document unsupported features
+    - [ ] Provide migration guide for package adaptation
+    - [ ] Commit: "docs: complete Elisp compatibility documentation"
+
+16. **Performance & Error Handling**
+    - [ ] Profile Elisp evaluation performance
+    - [ ] Optimize hot paths
+    - [ ] Improve error messages
+    - [ ] Add error recovery
+    - [ ] Commit: "perf(elisp): optimize evaluation and error handling"
+
+**Success Criteria:**
+- [ ] Elisp reader parses valid Elisp to AST
+- [ ] Evaluator handles basic forms (defun, let, if, cond)
+- [ ] Core primitives mapped to Lexicon APIs
+- [ ] dash.el and s.el load and work
+- [ ] Orderless matching logic runs successfully
+- [ ] Orderless integrates with Lexicon completion
+- [ ] Clear documentation of supported/unsupported features
+
+**Deliverables:**
+- Elisp reader/parser
+- Elisp evaluator (SCI-based)
+- Primitive mapping layer
+- Working demo: orderless matching in Lexicon
+- Compatibility documentation
+
+**Impact on Phase 8:**
+
+With Elisp compatibility, Phase 8 becomes:
+- **Orderless**: Load via Elisp compat (3-5 days vs 2 weeks CLJS rewrite)
+- **Vertico**: Reuse logic, native UI (1 week vs 3 weeks)
+- **Consult**: Partial reuse of core logic (2-3 weeks vs 8+ weeks)
+- **Embark**: Reuse action dispatch (1-2 weeks vs 6+ weeks)
 
 ---
 
@@ -1636,27 +1957,40 @@ This phase combines:
 
 ---
 
-## Phase 8: Completion Ecosystem Litmus Test (Vertico, Orderless, Consult)
+## Phase 8: Completion Ecosystem via Elisp Compatibility (Orderless, Vertico, Consult)
 
-**Status:** 🔲 Planned
-**Goal:** Validate completion framework and Core API with "Emacs-way" packages
-**Timeline:** 4-5 weeks (added Phase 8.1 for package persistence)
-**Prerequisites:** ✅ Phase 7 complete (Core API, hooks, markers, SCI, local package loading)
-**Priority:** HIGH - These packages test if we built the right foundations
+**Status:** 🔲 Planned (strategy revised - Elisp compat instead of CLJS rewrite)
+**Goal:** Prove Elisp compatibility layer with high-value packages
+**Timeline:** 2-3 weeks (dramatically shorter with Elisp compat vs 8+ weeks CLJS rewrite)
+**Prerequisites:** ✅ Phase 7.8 (core commands), ✅ Phase 7.9 (Elisp compatibility), ✅ Phase 8.1 (package persistence)
+**Priority:** HIGH - Validates Elisp compat strategy, delivers user value
 
 ### Rationale
 
-**Why these packages as litmus test?**
+**Why Elisp compatibility instead of CLJS rewrite?**
 
-Vertico, Orderless, and Consult are **canonical Emacs completion packages** that:
-1. Work "the Emacs way" (unlike Ivy which does its own thing)
-2. Are **simpler than Evil-mode** - good stepping stone
-3. Stress-test **completion framework** (Phase 6C)
-4. Validate **Core API** (Phase 7)
-5. Prove **package loading/unloading** works
-6. Are **actually useful** - minibuffer is currently painful without them!
+**Original plan**: Rewrite Orderless (~1000 lines), Vertico (~800 lines), Consult (~4000 lines) from scratch in CLJS.
 
-**Success = Evil-mode readiness:** If these packages work cleanly using only Core API, Evil-mode should too.
+**Problems with rewrite**:
+- Months of work per package
+- Never achieves feature parity with upstream
+- Constant divergence from upstream updates
+- Reimplements decades of edge-case handling
+- Loses muscle memory (subtly different behavior)
+
+**New plan**: Use Elisp compatibility layer (Phase 7.9) to:
+- Load actual Elisp package source
+- Reuse core logic (matching, filtering, transformation)
+- Replace only UI integration points with native Lexicon
+- Track upstream automatically
+
+**Why these packages as first targets?**
+
+1. **Orderless** - Simple, logic-heavy, perfect first test
+2. **Vertico** - UI-light, tests minibuffer integration
+3. **Consult** - Complex, validates partial adaptation strategy
+
+**Success = Ecosystem unlocked**: If Elisp compat works for these, we can load hundreds of Emacs packages.
 
 ---
 
