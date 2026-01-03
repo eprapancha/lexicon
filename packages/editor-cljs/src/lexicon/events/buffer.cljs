@@ -368,6 +368,12 @@
    "Open a file from disk"
    {:fx [[:open-file-picker]]}))
 
+(rf/reg-event-fx
+ :insert-file
+ (fn [{:keys [db]} [_]]
+   "Insert contents of a file at point (C-x i)"
+   {:fx [[:open-file-picker-for-insert]]}))
+
 (rf/reg-fx
  :open-file-picker
  (fn [_]
@@ -439,6 +445,46 @@
    (println "File read failed:" message error)
    ;; Could add user notification here in the future
    db))
+
+;; -- Insert File Events --
+
+(rf/reg-fx
+ :open-file-picker-for-insert
+ (fn [_]
+   "Handle file picker interaction for insert-file command"
+   (-> (js/window.showOpenFilePicker)
+       (.then (fn [file-handles]
+                (let [file-handle (first file-handles)]
+                  (-> (.getFile file-handle)
+                      (.then (fn [file]
+                               (-> (.text file)
+                                   (.then (fn [content]
+                                            (rf/dispatch [:file-insert-success
+                                                         {:content content
+                                                          :name (.-name file)}])))
+                                   (.catch (fn [error]
+                                             (rf/dispatch [:file-read-failure
+                                                          {:error error
+                                                           :message "Failed to read file content"}]))))))
+                      (.catch (fn [error]
+                                (rf/dispatch [:file-read-failure
+                                             {:error error
+                                              :message "Failed to access file"}])))))))
+       (.catch (fn [error]
+                 ;; Don't dispatch error for user cancellation
+                 (when (not= (.-name error) "AbortError")
+                   (rf/dispatch [:file-read-failure
+                                {:error error
+                                 :message "File picker failed"}])))))))
+
+(rf/reg-event-fx
+ :file-insert-success
+ (fn [{:keys [db]} [_ {:keys [content name]}]]
+   "Handle successful file read for insert-file - insert at point"
+   (let [current-pos (get-in db [:ui :cursor-position] 0)]
+     (println "✓ Inserting file contents:" name "at position" current-pos)
+     {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text content}]]
+           [:dispatch [:echo/message (str "Inserted " name)]]]})))
 
 (rf/reg-event-fx
  :close-buffer

@@ -453,7 +453,7 @@
                                 :line-count line-count}}]
          {:db (-> db
                   (assoc-in [:buffers buffer-id] new-buffer)
-                  (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))))))
+                  (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))})))))
 
 (rf/reg-event-fx
  :apropos-command
@@ -625,6 +625,9 @@ C-h ?   This help menu
          [:dispatch [:register-command :write-file
                     {:docstring "Write buffer to file (save as)"
                      :handler [:write-file]}]]
+         [:dispatch [:register-command :insert-file
+                    {:docstring "Insert contents of file at point"
+                     :handler [:insert-file]}]]
          [:dispatch [:register-command :switch-to-buffer
                     {:docstring "Switch to another buffer"
                      :handler [:switch-to-buffer]}]]

@@ -89,6 +89,7 @@
    :keymaps {:global {"C-x C-f" :find-file             ; Find file
                      "C-x C-s" :save-buffer            ; Save buffer
                      "C-x C-w" :write-file             ; Write file (save as)
+                     "C-x i" :insert-file              ; Insert file at point
                      "C-x C-b" :list-buffers           ; List buffers
                      "C-x C-c" :save-buffers-kill-emacs ; Quit emacs
                      "C-g" :keyboard-quit              ; Keyboard quit
