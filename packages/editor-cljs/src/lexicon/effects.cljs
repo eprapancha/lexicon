@@ -1,6 +1,7 @@
 (ns lexicon.effects
   "Re-frame effect handlers for DOM manipulation and side effects."
-  (:require [re-frame.core :as rf]))
+  (:require [re-frame.core :as rf]
+            [lexicon.context :as ctx]))
 
 ;; -- DOM Effect Handlers --
 
@@ -74,3 +75,20 @@
   (fn [variables-map]
     (doseq [[name value] variables-map]
       (.. js/document -documentElement -style (setProperty name value)))))
+
+;; -- Command Execution Context Effect --
+
+;; Dispatch an event within a dynamic execution context.
+;; Params:
+;;   :event   - The event vector to dispatch
+;;   :context - Map with :command, :buffer, :prefix-arg
+;; Example:
+;;   {:dispatch-with-context {:event [:insert-char "a"]
+;;                            :context {:command :insert-char
+;;                                      :buffer "buffer-1"
+;;                                      :prefix-arg nil}}}
+(rf/reg-fx
+  :dispatch-with-context
+  (fn [{:keys [event context]}]
+    (ctx/with-command-context context
+      #(rf/dispatch event))))

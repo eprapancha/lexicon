@@ -3,7 +3,8 @@
   (:require [re-frame.core :as rf]
             [lexicon.db :as db]
             [lexicon.completion.metadata :as completion-metadata]
-            [lexicon.advanced-undo :as undo]))
+            [lexicon.advanced-undo :as undo]
+            [lexicon.context :as ctx]))
 
 ;; =============================================================================
 ;; Command Registry and Execution
@@ -32,6 +33,11 @@
                   :prefix-arg prefix-arg
                   :timestamp (js/Date.now)}
 
+         ;; Dynamic execution context
+         exec-context {:command command-name
+                       :buffer active-buffer-id
+                       :prefix-arg prefix-arg}
+
          ;; Determine if this is an editing command (should create undo boundary)
          editing-command? (not (#{:undo :redo :universal-argument :execute-extended-command
                                   :describe-bindings :forward-char :backward-char :next-line :previous-line
@@ -41,15 +47,18 @@
        (let [handler (:handler command-def)
              should-clear-prefix? (not= command-name :universal-argument)]
          ;; Execute command with undo boundaries for editing commands
-         {:fx (cond-> [[:dispatch [:hook/run :before-command-hook context]]]
+         {:fx (cond-> [[:dispatch-with-context {:event [:hook/run :before-command-hook context]
+                                                 :context exec-context}]]
                 ;; Insert undo boundary before editing commands
                 editing-command? (conj [:dispatch [:command/begin-undo-boundary active-buffer-id]])
-                ;; Execute the command
-                true (conj [:dispatch (into handler args)])
+                ;; Execute the command with dynamic context binding
+                true (conj [:dispatch-with-context {:event (into handler args)
+                                                    :context exec-context}])
                 ;; Insert undo boundary after editing commands
                 editing-command? (conj [:dispatch [:command/end-undo-boundary active-buffer-id]])
-                ;; Run after-command hook
-                true (conj [:dispatch [:hook/run :after-command-hook (assoc context :result nil)]])
+                ;; Run after-command hook within dynamic context
+                true (conj [:dispatch-with-context {:event [:hook/run :after-command-hook (assoc context :result nil)]
+                                                    :context exec-context}])
                 ;; Clear prefix argument if needed
                 should-clear-prefix? (conj [:dispatch [:clear-prefix-argument]]))})
        {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]}))))
