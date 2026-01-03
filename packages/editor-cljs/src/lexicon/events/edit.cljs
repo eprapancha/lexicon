@@ -254,6 +254,40 @@
          {:fx [[:dispatch [:update-cursor-position new-pos]]]})
        {:db db}))))
 
+(rf/reg-event-fx
+ :scroll-up-command
+ (fn [{:keys [db]} [_]]
+   "Scroll forward one screen (C-v) - approximately 20 lines"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)
+         screen-lines 20]  ; Approximate screen height
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             {:keys [line column]} (linear-pos-to-line-col text current-pos)
+             target-line (+ line screen-lines)
+             new-pos (buffer-events/line-col-to-linear-pos text target-line column)]
+         {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+       {:db db}))))
+
+(rf/reg-event-fx
+ :scroll-down-command
+ (fn [{:keys [db]} [_]]
+   "Scroll backward one screen (M-v) - approximately 20 lines"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)
+         screen-lines 20]  ; Approximate screen height
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             {:keys [line column]} (linear-pos-to-line-col text current-pos)
+             target-line (max 0 (- line screen-lines))
+             new-pos (buffer-events/line-col-to-linear-pos text target-line column)]
+         {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+       {:db db}))))
+
 ;; -- Editing Commands --
 
 (rf/reg-event-fx

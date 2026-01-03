@@ -375,6 +375,87 @@
 )))
 
 (rf/reg-event-fx
+ :describe-variable
+ (fn [{:keys [db]} [_]]
+   "Describe a variable (C-h v)"
+   ;; For now, just show buffer-local variables and some common ones
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer (get-in db [:buffers (:buffer-id active-window)])
+         buffer-local-vars (keys (:buffer-local-vars active-buffer))
+         common-vars ["kill-ring" "prefix-argument" "mark-position"]
+         all-vars (sort (concat (map name buffer-local-vars) common-vars))]
+     {:fx [[:dispatch [:minibuffer/activate
+                      {:prompt "Describe variable: "
+                       :on-confirm [:describe-variable/show]
+                       :completions all-vars}]]]})))
+
+(rf/reg-event-fx
+ :describe-variable/show
+ (fn [{:keys [db]} [_ var-name]]
+   "Show description of a variable"
+   (let [var-keyword (keyword var-name)
+         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer (get-in db [:buffers (:buffer-id active-window)])
+
+         ;; Try to find variable value
+         var-value (case var-name
+                    "kill-ring" (pr-str (take 3 (:kill-ring db)))
+                    "prefix-argument" (pr-str (get-in db [:ui :prefix-argument]))
+                    "mark-position" (pr-str (get-in active-window [:mark-position]))
+                    (or (get-in active-buffer [:buffer-local-vars var-keyword])
+                        "undefined"))
+
+         content (str var-name " is a variable\n\n"
+                     "Value: " var-value "\n\n"
+                     "Documentation:\n"
+                     (case var-name
+                       "kill-ring" "List of killed text strings"
+                       "prefix-argument" "Numeric argument for commands (set by C-u)"
+                       "mark-position" "Position of the mark in current buffer"
+                       "No documentation available"))
+
+         buffers (:buffers db)
+         help-buffer (first (filter #(= (:name %) "*Help*") (vals buffers)))]
+
+     (if help-buffer
+       ;; Update existing help buffer
+       (let [buffer-id (:id help-buffer)
+             ^js wasm-instance (:wasm-instance help-buffer)
+             lines (clojure.string/split content #"\n" -1)
+             line-count (count lines)]
+         (.setText wasm-instance content)
+         {:db (-> db
+                  (assoc-in [:buffers buffer-id :cache :text] content)
+                  (assoc-in [:buffers buffer-id :cache :line-count] line-count)
+                  (update-in [:buffers buffer-id :editor-version] inc))
+          :fx [[:dispatch [:switch-buffer buffer-id]]]})
+       ;; Create new help buffer
+       (let [buffer-id (db/next-buffer-id buffers)
+             WasmEditorCore (get-in db [:system :wasm-constructor])
+             lines (clojure.string/split content #"\n" -1)
+             line-count (count lines)
+             wasm-instance (WasmEditorCore. content)
+             new-buffer {:id buffer-id
+                        :wasm-instance wasm-instance
+                        :file-handle nil
+                        :name "*Help*"
+                        :is-modified? false
+                        :major-mode :help-mode
+                        :minor-modes #{}
+                        :buffer-local-vars {}
+                        :ast nil
+                        :language :text
+                        :diagnostics []
+                        :undo-stack []
+                        :undo-in-progress? false
+                        :editor-version 0
+                        :cache {:text content
+                                :line-count line-count}}]
+         {:db (-> db
+                  (assoc-in [:buffers buffer-id] new-buffer)
+                  (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))))
+
+(rf/reg-event-fx
  :apropos-command
  (fn [{:keys [db]} [_]]
    "Search for commands matching a pattern (C-h a)"

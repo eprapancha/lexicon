@@ -103,6 +103,7 @@
                      "C-h b" :describe-bindings        ; Describe bindings
                      "C-h k" :describe-key             ; Describe key
                      "C-h f" :describe-function        ; Describe function
+                     "C-h v" :describe-variable        ; Describe variable
                      "C-h a" :apropos-command          ; Search commands
                      "C-h ?" :help-for-help            ; Help menu
                      "C-u" :universal-argument         ; Universal argument
@@ -127,6 +128,8 @@
                      "C-p" :previous-line              ; Previous line
                      "C-a" :beginning-of-line          ; Beginning of line
                      "C-e" :end-of-line                ; End of line
+                     "C-v" :scroll-up-command          ; Scroll forward one screen
+                     "M-v" :scroll-down-command        ; Scroll backward one screen
                      "M-<" :beginning-of-buffer        ; Beginning of buffer
                      "M->" :end-of-buffer              ; End of buffer
                      "M-f" :forward-word               ; Forward word
