@@ -113,6 +113,8 @@
                      "C-y" :yank                       ; Yank
                      "M-y" :yank-pop                   ; Yank pop (cycle kill ring)
                      "C-k" :kill-line                  ; Kill line
+                     "M-d" :kill-word                  ; Kill word forward
+                     "M-DEL" :backward-kill-word       ; Kill word backward
                      "C-o" :open-line                  ; Open line
                      "C-SPC" :set-mark-command         ; Set mark
                      "C-x C-x" :exchange-point-and-mark ; Exchange point and mark

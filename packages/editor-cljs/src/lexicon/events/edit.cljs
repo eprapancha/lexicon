@@ -257,6 +257,50 @@
 ;; -- Editing Commands --
 
 (rf/reg-event-fx
+ :kill-word
+ (fn [{:keys [db]} [_]]
+   "Kill from cursor to end of word (M-d)"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             end-pos (find-forward-word-boundary text current-pos)
+             length (- end-pos current-pos)]
+         (if (> length 0)
+           (let [killed-text (.getRange wasm-instance current-pos end-pos)
+                 kill-ring (:kill-ring db)
+                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))]
+             {:db (assoc db :kill-ring updated-kill-ring)
+              :fx [[:dispatch [:editor/queue-transaction
+                              {:op :delete-range :start current-pos :length length}]]]})
+           {:db db}))
+       {:db db}))))
+
+(rf/reg-event-fx
+ :backward-kill-word
+ (fn [{:keys [db]} [_]]
+   "Kill from cursor backward to beginning of word (M-DEL)"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             start-pos (find-backward-word-boundary text current-pos)
+             length (- current-pos start-pos)]
+         (if (> length 0)
+           (let [killed-text (.getRange wasm-instance start-pos current-pos)
+                 kill-ring (:kill-ring db)
+                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))]
+             {:db (assoc db :kill-ring updated-kill-ring)
+              :fx [[:dispatch [:editor/queue-transaction
+                              {:op :delete-range :start start-pos :length length}]]]})
+           {:db db}))
+       {:db db}))))
+
+(rf/reg-event-fx
  :kill-line
  (fn [{:keys [db]} [_]]
    "Kill from cursor to end of line (C-k)"
