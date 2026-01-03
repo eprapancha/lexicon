@@ -1635,18 +1635,18 @@ Packages (whether native CLJS or Elisp) assume core Emacs commands exist. We can
 3. **Implement P0 Commands - Files**
    - [ ] `C-x C-f` (find-file) - already exists, verify behavior
    - [ ] `C-x C-s` (save-buffer) - verify implementation
-   - [ ] `C-x s` (save-some-buffers) - implement if missing
-   - [ ] `C-x i` (insert-file) - implement
-   - [ ] `C-x C-v` (find-alternate-file) - implement
-   - [ ] `C-x C-w` (write-file) - implement
+   - [x] `C-x s` (save-some-buffers) - ✅ implemented
+   - [x] `C-x i` (insert-file) - ✅ implemented
+   - [x] `C-x C-v` (find-alternate-file) - ✅ implemented
+   - [ ] `C-x C-w` (write-file) - already exists, verify
    - [ ] Add E2E tests for each command
    - [ ] Commit: "feat(files): implement P0 file commands"
 
 4. **Implement P0 Commands - Buffers**
    - [ ] `C-x b` (switch-to-buffer) - verify
-   - [ ] `C-x C-b` (list-buffers) - implement
+   - [ ] `C-x C-b` (list-buffers) - verify (exists from Phase 7.7)
    - [ ] `C-x k` (kill-buffer) - verify
-   - [ ] `M-x revert-buffer` - implement
+   - [x] `M-x revert-buffer` - ✅ implemented
    - [ ] Add E2E tests
    - [ ] Commit: "feat(buffers): implement P0 buffer commands"
 

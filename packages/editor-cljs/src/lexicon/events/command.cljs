@@ -628,6 +628,15 @@ C-h ?   This help menu
          [:dispatch [:register-command :insert-file
                     {:docstring "Insert contents of file at point"
                      :handler [:insert-file]}]]
+         [:dispatch [:register-command :revert-buffer
+                    {:docstring "Revert buffer to saved file on disk"
+                     :handler [:revert-buffer]}]]
+         [:dispatch [:register-command :save-some-buffers
+                    {:docstring "Offer to save modified buffers"
+                     :handler [:save-some-buffers]}]]
+         [:dispatch [:register-command :find-alternate-file
+                    {:docstring "Kill current buffer and visit different file"
+                     :handler [:find-alternate-file]}]]
          [:dispatch [:register-command :switch-to-buffer
                     {:docstring "Switch to another buffer"
                      :handler [:switch-to-buffer]}]]

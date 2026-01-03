@@ -485,6 +485,255 @@
      (println "✓ Inserting file contents:" name "at position" current-pos)
      {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text content}]]
            [:dispatch [:echo/message (str "Inserted " name)]]]})))
+;; =============================================================================
+;; Revert Buffer (M-x revert-buffer)
+;; =============================================================================
+
+(rf/reg-event-fx
+ :revert-buffer
+ (fn [{:keys [db]} [_]]
+   "Revert buffer to its file on disk, discarding unsaved changes (M-x revert-buffer)"
+   (let [active-window (lexicon.db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id (:buffer-id active-window)
+         buffer (get-in db [:buffers buffer-id])
+         file-handle (:file-handle buffer)
+         buffer-name (:name buffer)
+         is-modified? (:is-modified? buffer)]
+     (cond
+       ;; Buffer has no associated file
+       (nil? file-handle)
+       {:fx [[:dispatch [:echo/message (str "Buffer " buffer-name " is not visiting a file")]]]}
+
+       ;; Buffer is modified, ask for confirmation
+       is-modified?
+       {:fx [[:dispatch [:minibuffer/activate
+                        {:prompt (str "Revert buffer from file " buffer-name "? (yes or no) ")
+                         :on-confirm [:revert-buffer/confirmed buffer-id file-handle]}]]]}
+
+       ;; Buffer is unmodified, revert without asking
+       :else
+       {:fx [[:dispatch [:revert-buffer/do-revert buffer-id file-handle]]]}))))
+
+(rf/reg-event-fx
+ :revert-buffer/confirmed
+ (fn [{:keys [db]} [_ buffer-id file-handle response]]
+   "Handle user confirmation for revert-buffer"
+   (if (or (= response "yes") (= response "y"))
+     {:fx [[:dispatch [:revert-buffer/do-revert buffer-id file-handle]]]}
+     {:fx [[:dispatch [:echo/message "Revert cancelled"]]]})))
+
+(rf/reg-event-fx
+ :revert-buffer/do-revert
+ (fn [{:keys [db]} [_ buffer-id file-handle]]
+   "Actually revert the buffer by re-reading the file"
+   {:fx [[:revert-buffer-from-file {:buffer-id buffer-id :file-handle file-handle}]]}))
+
+(rf/reg-fx
+ :revert-buffer-from-file
+ (fn [{:keys [buffer-id file-handle]}]
+   "Read file from disk and replace buffer contents"
+   (-> (.getFile file-handle)
+       (.then (fn [file]
+                (-> (.text file)
+                    (.then (fn [content]
+                             (rf/dispatch [:revert-buffer/success
+                                          {:buffer-id buffer-id
+                                           :content content
+                                           :name (.-name file)}])))
+                    (.catch (fn [error]
+                              (rf/dispatch [:file-read-failure
+                                           {:error error
+                                            :message "Failed to read file for revert"}]))))))
+       (.catch (fn [error]
+                 (rf/dispatch [:file-read-failure
+                              {:error error
+                               :message "Failed to access file for revert"}]))))))
+
+(rf/reg-event-fx
+ :revert-buffer/success
+ (fn [{:keys [db]} [_ {:keys [buffer-id content name]}]]
+   "Replace buffer contents with file contents after revert"
+   (let [buffer (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)]
+     (println "✓ Reverted buffer from file:" name)
+     ;; Replace the entire buffer text
+     (.setText wasm-instance content)
+     ;; Update cache and clear modified flag
+     (let [lines (clojure.string/split content #"\n" -1)
+           line-count (count lines)]
+       {:db (-> db
+                (assoc-in [:buffers buffer-id :cache :text] content)
+                (assoc-in [:buffers buffer-id :cache :line-count] line-count)
+                (assoc-in [:buffers buffer-id :is-modified?] false)
+                (update-in [:buffers buffer-id :editor-version] inc))
+        :fx [[:dispatch [:echo/message (str "Reverted buffer from file " name)]]]}))))
+;; =============================================================================
+;; Save Some Buffers (C-x s)
+;; =============================================================================
+
+(rf/reg-event-fx
+ :save-some-buffers
+ (fn [{:keys [db]} [_]]
+   "Offer to save modified buffers (C-x s)"
+   (let [buffers (:buffers db)
+         ;; Find all modified buffers with file handles
+         modified-buffers (filter (fn [[id buffer]]
+                                    (and (:is-modified? buffer)
+                                         (:file-handle buffer)))
+                                  buffers)
+         buffer-ids (map first modified-buffers)]
+     (if (empty? buffer-ids)
+       {:fx [[:dispatch [:echo/message "No buffers need saving"]]]}
+       {:fx [[:dispatch [:save-some-buffers/next-buffer buffer-ids]]]}))))
+
+(rf/reg-event-fx
+ :save-some-buffers/next-buffer
+ (fn [{:keys [db]} [_ buffer-ids]]
+   "Process next buffer in save-some-buffers sequence"
+   (if (empty? buffer-ids)
+     ;; All done
+     {:fx [[:dispatch [:echo/message "Done saving buffers"]]]}
+     ;; Ask about next buffer
+     (let [buffer-id (first buffer-ids)
+           buffer (get-in db [:buffers buffer-id])
+           buffer-name (:name buffer)]
+       {:fx [[:dispatch [:minibuffer/activate
+                        {:prompt (str "Save file " buffer-name "? (y or n) ")
+                         :on-confirm [:save-some-buffers/confirmed buffer-ids]}]]]}))))
+
+(rf/reg-event-fx
+ :save-some-buffers/confirmed
+ (fn [{:keys [db]} [_ buffer-ids response]]
+   "Handle user response for save-some-buffers"
+   (let [buffer-id (first buffer-ids)
+         remaining-ids (rest buffer-ids)]
+     (cond
+       ;; User said yes, save this buffer
+       (or (= response "y") (= response "yes"))
+       (let [buffer (get-in db [:buffers buffer-id])
+             wasm-instance (:wasm-instance buffer)
+             file-handle (:file-handle buffer)
+             content (.getText ^js wasm-instance)]
+         {:fx [[:save-to-file-handle {:file-handle file-handle
+                                      :content content
+                                      :buffer-id buffer-id}]
+               [:dispatch [:save-some-buffers/next-buffer remaining-ids]]]})
+
+       ;; User said no, skip to next
+       (or (= response "n") (= response "no"))
+       {:fx [[:dispatch [:save-some-buffers/next-buffer remaining-ids]]]}
+
+       ;; Invalid response, ask again
+       :else
+       {:fx [[:dispatch [:save-some-buffers/next-buffer buffer-ids]]]}))))
+;; =============================================================================
+;; Find Alternate File (C-x C-v)
+;; =============================================================================
+
+(rf/reg-event-fx
+ :find-alternate-file
+ (fn [{:keys [db]} [_]]
+   "Kill current buffer and visit a different file (C-x C-v)"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id (:buffer-id active-window)
+         buffer (get-in db [:buffers buffer-id])
+         is-modified? (:is-modified? buffer)
+         buffer-name (:name buffer)]
+     (if is-modified?
+       ;; Buffer is modified, ask for confirmation
+       {:fx [[:dispatch [:minibuffer/activate
+                        {:prompt (str "Buffer " buffer-name " modified; kill anyway? (yes or no) ")
+                         :on-confirm [:find-alternate-file/confirmed buffer-id]}]]]}
+       ;; Buffer is not modified, proceed directly
+       {:fx [[:dispatch [:find-alternate-file/proceed buffer-id]]]}))))
+
+(rf/reg-event-fx
+ :find-alternate-file/confirmed
+ (fn [{:keys [db]} [_ buffer-id response]]
+   "Handle user confirmation for find-alternate-file"
+   (if (or (= response "yes") (= response "y"))
+     {:fx [[:dispatch [:find-alternate-file/proceed buffer-id]]]}
+     {:fx [[:dispatch [:echo/message "Cancelled"]]]})))
+
+(rf/reg-event-fx
+ :find-alternate-file/proceed
+ (fn [{:keys [db]} [_ buffer-id]]
+   "Open file picker and kill current buffer after selection"
+   ;; Store buffer-id to kill after file selection
+   {:db (assoc-in db [:ui :find-alternate-file-buffer-id] buffer-id)
+    :fx [[:open-file-picker-for-alternate]]}))
+
+(rf/reg-fx
+ :open-file-picker-for-alternate
+ (fn [_]
+   "Handle file picker for find-alternate-file"
+   (-> (js/window.showOpenFilePicker)
+       (.then (fn [file-handles]
+                (let [file-handle (first file-handles)]
+                  (-> (.getFile file-handle)
+                      (.then (fn [file]
+                               (-> (.text file)
+                                   (.then (fn [content]
+                                            (rf/dispatch [:find-alternate-file/success
+                                                         {:file-handle file-handle
+                                                          :content content
+                                                          :name (.-name file)}])))
+                                   (.catch (fn [error]
+                                             (rf/dispatch [:file-read-failure
+                                                          {:error error
+                                                           :message "Failed to read file content"}]))))))
+                      (.catch (fn [error]
+                                (rf/dispatch [:file-read-failure
+                                             {:error error
+                                              :message "Failed to access file"}])))))))
+       (.catch (fn [error]
+                 ;; Don't dispatch error for user cancellation
+                 (when (not= (.-name error) "AbortError")
+                   (rf/dispatch [:file-read-failure
+                                {:error error
+                                 :message "File picker failed"}])))))))
+
+(rf/reg-event-fx
+ :find-alternate-file/success
+ (fn [{:keys [db]} [_ {:keys [file-handle content name]}]]
+   "Replace current buffer with newly opened file"
+   (let [old-buffer-id (get-in db [:ui :find-alternate-file-buffer-id])
+         old-buffer (get-in db [:buffers old-buffer-id])
+         old-wasm-instance (:wasm-instance old-buffer)
+         ;; Create new buffer in place of old one
+         WasmEditorCore (get-in db [:system :wasm-constructor])
+         wasm-instance (WasmEditorCore. content)
+         detected-language (detect-language-from-filename name)
+         lines (clojure.string/split content #"\n" -1)
+         line-count (count lines)
+         new-buffer {:id old-buffer-id
+                    :wasm-instance wasm-instance
+                    :file-handle file-handle
+                    :name name
+                    :is-modified? false
+                    :mark-position nil
+                    :cursor-position {:line 0 :column 0}
+                    :selection-range nil
+                    :major-mode :fundamental-mode
+                    :minor-modes #{}
+                    :buffer-local-vars {}
+                    :ast nil
+                    :language detected-language
+                    :diagnostics []
+                    :undo-stack []
+                    :undo-in-progress? false
+                    :editor-version 0
+                    :cache {:text content
+                            :line-count line-count}}]
+     ;; Free old WASM instance
+     (when old-wasm-instance
+       (.free ^js old-wasm-instance))
+     {:db (-> db
+              (assoc-in [:buffers old-buffer-id] new-buffer)
+              (update :ui dissoc :find-alternate-file-buffer-id))
+      :fx [[:dispatch [:parser/request-parse old-buffer-id]]
+           [:dispatch [:lsp/on-buffer-opened old-buffer-id]]
+           [:focus-editor]]})))
 
 (rf/reg-event-fx
  :close-buffer
