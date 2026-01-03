@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 use lexicon_core::{EditorState, Transaction, Change};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 // Gap Buffer WASM bindings (new, simplified API)
 pub mod gap_buffer_wasm;
@@ -141,7 +141,7 @@ impl WasmEditorCore {
             Ok(internal_json) => {
                 match self.apply_internal_transaction(&internal_json) {
                     Ok(new_state) => {
-                        let old_state = self.current_state.clone();
+                        let _old_state = self.current_state.clone();
                         self.current_state = new_state;
                         
                         // Parse the original transaction for patch generation
