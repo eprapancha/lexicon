@@ -1638,6 +1638,356 @@
       (is (.contains editor-text "hello world")
           (str "Text should be unchanged when no matches, got: " editor-text)))))
 
+;; =============================================================================
+;; Phase 7.8 Batch 5: Incremental Search (C-s, C-r)
+;; =============================================================================
+
+(deftest test-p7-8-07-isearch-forward-basic
+  (testing "P7.8-07: Basic incremental search forward (C-s)"
+    (with-browser
+      (fn [driver]
+        (go driver test-url)
+        (setup-empty-buffer driver)
+        (wait-for-editor-ready driver)
+
+        ;; Insert test text
+        (insert-text driver "The quick brown fox\njumps over the lazy dog\nThe fox is quick")
+        (execute-command driver "beginning-of-buffer")
+        (Thread/sleep 200)
+
+        ;; Start isearch forward with C-s
+        (send-keys driver "C-s")
+        (Thread/sleep 200)
+
+        ;; Check echo area shows "I-search: "
+        (let [echo-text (get-echo-area-text driver)]
+          (is (.contains echo-text "I-search:")
+              (str "Echo area should show I-search prompt, got: " echo-text)))
+
+        ;; Type "fox" - should find first occurrence
+        (send-keys driver "f")
+        (Thread/sleep 100)
+        (send-keys driver "o")
+        (Thread/sleep 100)
+        (send-keys driver "x")
+        (Thread/sleep 200)
+
+        ;; Check cursor is at first "fox" (position 16)
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 16 cursor-pos)
+              (str "Cursor should be at first 'fox' (pos 16), got: " cursor-pos)))
+
+        ;; Press RET to exit isearch
+        (send-keys driver "RET")
+        (Thread/sleep 200)
+
+        ;; Verify cursor stays at match
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 16 cursor-pos)
+              (str "Cursor should stay at 'fox' after RET, got: " cursor-pos)))))))
+
+(deftest test-p7-8-08-isearch-repeat-forward
+  (testing "P7.8-08: Repeat search forward (C-s during isearch)"
+    (with-browser
+      (fn [driver]
+        (go driver test-url)
+        (setup-empty-buffer driver)
+        (wait-for-editor-ready driver)
+
+        ;; Insert test text with multiple occurrences of "the"
+        (insert-text driver "The quick brown fox\njumps over the lazy dog\nThe fox is quick")
+        (execute-command driver "beginning-of-buffer")
+        (Thread/sleep 200)
+
+        ;; Start isearch and search for "the"
+        (send-keys driver "C-s")
+        (Thread/sleep 200)
+        (send-keys driver "t")
+        (Thread/sleep 100)
+        (send-keys driver "h")
+        (Thread/sleep 100)
+        (send-keys driver "e")
+        (Thread/sleep 200)
+
+        ;; Should find first "the" (case-insensitive, matches "The" at position 0)
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 0 cursor-pos)
+              (str "First match should be at position 0, got: " cursor-pos)))
+
+        ;; Press C-s again to find next occurrence
+        (send-keys driver "C-s")
+        (Thread/sleep 200)
+
+        ;; Should find "the" in "the lazy dog" (position 31)
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 31 cursor-pos)
+              (str "Second match should be at position 31, got: " cursor-pos)))
+
+        ;; Press C-s again to find next occurrence
+        (send-keys driver "C-s")
+        (Thread/sleep 200)
+
+        ;; Should find "The" at beginning of third line (position 44)
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 44 cursor-pos)
+              (str "Third match should be at position 44, got: " cursor-pos)))
+
+        ;; Exit with RET
+        (send-keys driver "RET")
+        (Thread/sleep 200)))))
+
+(deftest test-p7-8-09-isearch-backward
+  (testing "P7.8-09: Incremental search backward (C-r)"
+    (with-browser
+      (fn [driver]
+        (go driver test-url)
+        (setup-empty-buffer driver)
+        (wait-for-editor-ready driver)
+
+        ;; Insert test text
+        (insert-text driver "The quick brown fox\njumps over the lazy dog\nThe fox is quick")
+        (execute-command driver "end-of-buffer")
+        (Thread/sleep 200)
+
+        ;; Start backward search with C-r
+        (send-keys driver "C-r")
+        (Thread/sleep 200)
+
+        ;; Type "fox"
+        (send-keys driver "f")
+        (Thread/sleep 100)
+        (send-keys driver "o")
+        (Thread/sleep 100)
+        (send-keys driver "x")
+        (Thread/sleep 200)
+
+        ;; Should find "fox" on third line (position 48)
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 48 cursor-pos)
+              (str "Should find 'fox' on third line (pos 48), got: " cursor-pos)))
+
+        ;; Press C-r again to find previous occurrence
+        (send-keys driver "C-r")
+        (Thread/sleep 200)
+
+        ;; Should find "fox" on first line (position 16)
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 16 cursor-pos)
+              (str "Should find previous 'fox' (pos 16), got: " cursor-pos)))
+
+        ;; Exit with RET
+        (send-keys driver "RET")
+        (Thread/sleep 200)))))
+
+(deftest test-p7-8-10-isearch-delete-char
+  (testing "P7.8-10: Backtrack with DEL during isearch"
+    (with-browser
+      (fn [driver]
+        (go driver test-url)
+        (setup-empty-buffer driver)
+        (wait-for-editor-ready driver)
+
+        ;; Insert test text
+        (insert-text driver "cat dog catalog")
+        (execute-command driver "beginning-of-buffer")
+        (Thread/sleep 200)
+
+        ;; Start isearch
+        (send-keys driver "C-s")
+        (Thread/sleep 200)
+
+        ;; Type "cat" - should find "cat" at position 0
+        (send-keys driver "c")
+        (Thread/sleep 100)
+        (send-keys driver "a")
+        (Thread/sleep 100)
+        (send-keys driver "t")
+        (Thread/sleep 200)
+
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 0 cursor-pos)
+              (str "Should find 'cat' at position 0, got: " cursor-pos)))
+
+        ;; Type "a" - should find "cata" in "catalog" at position 8
+        (send-keys driver "a")
+        (Thread/sleep 200)
+
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 8 cursor-pos)
+              (str "Should find 'cata' at position 8, got: " cursor-pos)))
+
+        ;; Press DEL to remove "a" - should go back to "cat" at position 0
+        (send-keys driver "DEL")
+        (Thread/sleep 200)
+
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 0 cursor-pos)
+              (str "After DEL, should be back at 'cat' (pos 0), got: " cursor-pos)))
+
+        ;; Exit with RET
+        (send-keys driver "RET")
+        (Thread/sleep 200)))))
+
+(deftest test-p7-8-11-isearch-abort
+  (testing "P7.8-11: Abort isearch with C-g (return to original position)"
+    (with-browser
+      (fn [driver]
+        (go driver test-url)
+        (setup-empty-buffer driver)
+        (wait-for-editor-ready driver)
+
+        ;; Insert test text
+        (insert-text driver "The quick brown fox jumps over the lazy dog")
+        (execute-command driver "beginning-of-buffer")
+        (Thread/sleep 200)
+
+        ;; Move to middle of buffer (position 20)
+        (dotimes [_ 20]
+          (send-keys driver "C-f"))
+        (Thread/sleep 200)
+
+        (let [original-pos (get-cursor-position driver)]
+          (is (= 20 original-pos)
+              (str "Original position should be 20, got: " original-pos))
+
+          ;; Start isearch and find "dog"
+          (send-keys driver "C-s")
+          (Thread/sleep 200)
+          (send-keys driver "d")
+          (Thread/sleep 100)
+          (send-keys driver "o")
+          (Thread/sleep 100)
+          (send-keys driver "g")
+          (Thread/sleep 200)
+
+          ;; Verify we moved to "dog" (position 40)
+          (let [search-pos (get-cursor-position driver)]
+            (is (= 40 search-pos)
+                (str "Should have moved to 'dog' at position 40, got: " search-pos)))
+
+          ;; Abort with C-g
+          (send-keys driver "C-g")
+          (Thread/sleep 200)
+
+          ;; Should return to original position
+          (let [final-pos (get-cursor-position driver)]
+            (is (= 20 final-pos)
+                (str "After C-g, should return to original position 20, got: " final-pos)))))))
+
+(deftest test-p7-8-12-isearch-case-sensitivity
+  (testing "P7.8-12: Case-insensitive search with lowercase, case-sensitive with uppercase"
+    (with-browser
+      (fn [driver]
+        (go driver test-url)
+        (setup-empty-buffer driver)
+        (wait-for-editor-ready driver)
+
+        ;; Insert test text with mixed case
+        (insert-text driver "The Quick BROWN Fox")
+        (execute-command driver "beginning-of-buffer")
+        (Thread/sleep 200)
+
+        ;; Search for lowercase "quick" - should match "Quick" (case-insensitive)
+        (send-keys driver "C-s")
+        (Thread/sleep 200)
+        (send-keys driver "q")
+        (Thread/sleep 100)
+        (send-keys driver "u")
+        (Thread/sleep 100)
+        (send-keys driver "i")
+        (Thread/sleep 100)
+        (send-keys driver "c")
+        (Thread/sleep 100)
+        (send-keys driver "k")
+        (Thread/sleep 200)
+
+        ;; Should find "Quick" at position 4
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 4 cursor-pos)
+              (str "Lowercase search should match 'Quick' at position 4, got: " cursor-pos)))
+
+        ;; Exit isearch
+        (send-keys driver "RET")
+        (Thread/sleep 200)
+
+        ;; Go back to beginning
+        (execute-command driver "beginning-of-buffer")
+        (Thread/sleep 200)
+
+        ;; Search for "BROWN" with uppercase - should find exact match
+        (send-keys driver "C-s")
+        (Thread/sleep 200)
+        (send-keys driver "B")
+        (Thread/sleep 100)
+        (send-keys driver "R")
+        (Thread/sleep 100)
+        (send-keys driver "O")
+        (Thread/sleep 100)
+        (send-keys driver "W")
+        (Thread/sleep 100)
+        (send-keys driver "N")
+        (Thread/sleep 200)
+
+        ;; Should find "BROWN" at position 10
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 10 cursor-pos)
+              (str "Should find 'BROWN' at position 10, got: " cursor-pos)))
+
+        ;; Exit isearch
+        (send-keys driver "RET")
+        (Thread/sleep 200)))))
+
+(deftest test-p7-8-13-isearch-wrap-around
+  (testing "P7.8-13: Search wraps around at end of buffer"
+    (with-browser
+      (fn [driver]
+        (go driver test-url)
+        (setup-empty-buffer driver)
+        (wait-for-editor-ready driver)
+
+        ;; Insert test text
+        (insert-text driver "first line has word\nsecond line\nthird line has word")
+
+        ;; Position cursor in middle (after "second")
+        (execute-command driver "beginning-of-buffer")
+        (Thread/sleep 200)
+        (dotimes [_ 26]
+          (send-keys driver "C-f"))
+        (Thread/sleep 200)
+
+        ;; Start forward search for "word"
+        (send-keys driver "C-s")
+        (Thread/sleep 200)
+        (send-keys driver "w")
+        (Thread/sleep 100)
+        (send-keys driver "o")
+        (Thread/sleep 100)
+        (send-keys driver "r")
+        (Thread/sleep 100)
+        (send-keys driver "d")
+        (Thread/sleep 200)
+
+        ;; Should find "word" on third line first (position 48)
+        (let [cursor-pos (get-cursor-position driver)]
+          (is (= 48 cursor-pos)
+              (str "First match should be on third line (pos 48), got: " cursor-pos)))
+
+        ;; Press C-s again - should wrap to beginning and find first "word"
+        (send-keys driver "C-s")
+        (Thread/sleep 200)
+
+        ;; Should wrap to find "word" on first line (position 15)
+        (let [cursor-pos (get-cursor-position driver)
+              echo-text (get-echo-area-text driver)]
+          (is (= 15 cursor-pos)
+              (str "After wrap, should find first 'word' (pos 15), got: " cursor-pos))
+          (is (.contains echo-text "Overwrapped")
+              (str "Echo area should show 'Overwrapped', got: " echo-text)))
+
+        ;; Exit isearch
+        (send-keys driver "RET")
+        (Thread/sleep 200)))))
+
 (deftest test-p6-5-01-test-suite
   (testing "P6.5-01: Verify Test Suite"
     ;; This is a meta-test - if we're running, tests are working

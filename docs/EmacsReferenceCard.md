@@ -137,10 +137,10 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Incremental search forward | `C-s` | ❌ | P0 | Missing `isearch-forward` - **CRITICAL GAP** |
-| Incremental search backward | `C-r` | ❌ | P0 | Missing `isearch-backward` - **CRITICAL GAP** |
-| Repeat search | `C-s` / `C-r` | ❌ | P0 | Depends on isearch implementation |
-| Exit search | `RET` | ❌ | P0 | Depends on isearch implementation |
+| Incremental search forward | `C-s` | ✅ | P0 | Implemented `isearch-forward` with case-folding and wrap-around |
+| Incremental search backward | `C-r` | ✅ | P0 | Implemented `isearch-backward` with case-folding and wrap-around |
+| Repeat search | `C-s` / `C-r` | ✅ | P0 | Implemented - C-s/C-r during isearch to repeat |
+| Exit search | `RET` | ✅ | P0 | Implemented - RET exits, C-g aborts |
 
 ---
 

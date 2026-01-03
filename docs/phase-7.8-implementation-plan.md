@@ -167,15 +167,16 @@
 
 ---
 
-### Batch 5: Incremental Search (Days 11-16) - The Big One
+### Batch 5: Incremental Search (Days 11-16) - The Big One ✅ COMPLETE
 
 **Goal:** C-s and C-r working with basic features
 
-14. ✅ `isearch-forward` (C-s) - 24 hours
-15. ✅ `isearch-backward` (C-r) - 16 hours
+14. ✅ `isearch-forward` (C-s) - 24 hours ✅ IMPLEMENTED
+15. ✅ `isearch-backward` (C-r) - 16 hours ✅ IMPLEMENTED
 
 **Total: 40 hours (5 days)**
 **New Coverage: 69% → 76%**
+**Status:** COMPLETE - Incremental search fully implemented with all 3 phases: basic search with RET/C-g, repeat search with C-s/C-r and DEL backtracking, case-folding and wrap-around with status messages. 7 E2E tests covering all major scenarios.
 
 **Implementation Plan (Phased):**
 
