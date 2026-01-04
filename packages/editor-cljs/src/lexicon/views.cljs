@@ -19,7 +19,6 @@
       (.stopPropagation event))
 
     (let [key-str (events/key-event-to-string event)]
-      (println "⌨️ keydown event:" key-str)
       (when key-str
         ;; Prevent default browser behavior for bound keys
         (.preventDefault event)
@@ -30,7 +29,6 @@
 (defn handle-beforeinput
   "Handle beforeinput events - fallback for unbound printable characters"
   [event]
-  (println "📝 beforeinput event:" (.-inputType event) "data:" (.-data event))
   (let [input-type (.-inputType event)
         data (.-data event)
         target (.-target event)
@@ -123,12 +121,10 @@
   [:textarea.hidden-input
    {:ref (fn [element]
            (when element
-             (println "📱 Hidden textarea element created")
              (reset! input-ref-atom element)
              ;; Add keydown listener in capture phase to intercept browser shortcuts
              (.addEventListener element "keydown" handle-keydown #js {:capture true})
-             (.focus element)
-             (println "📱 Hidden textarea focused")))
+             (.focus element)))
     :on-input handle-beforeinput
     :on-before-input handle-beforeinput
     :on-paste (fn [e]
@@ -322,6 +318,7 @@
         mark-position @(rf/subscribe [:mark-position])
         region-active? @(rf/subscribe [:region-active?])
         buffer-content @(rf/subscribe [:buffer-content])
+        ;; DEBUG: Log what we're getting
         ;; Auto-scroll: Ensure cursor stays visible in viewport
         _ (when (and cursor-pos viewport)
             (let [{:keys [line]} cursor-pos
@@ -352,7 +349,6 @@
                      (concat base-decorations region-decorations)
                      base-decorations)
         handle-click (fn [e]
-                       (println "📍 Text container clicked!")
                        (.stopPropagation e)  ; Stop event from bubbling to parent handlers
                        ;; Focus hidden input to receive keyboard events
                        (when-let [hidden-input @hidden-input-ref]
@@ -368,8 +364,6 @@
                              clicked-column (max 0 (int (/ (- click-x left-padding) char-width)))
                              ;; Add viewport offset to get absolute line number
                              absolute-line (+ clicked-line (:start-line viewport 0))]
-                         (println "🖱️ Click at pixel" click-x "," click-y
-                                  "→ line" absolute-line "col" clicked-column)
                          (rf/dispatch [:click-to-position absolute-line clicked-column])))]
 
     [:div.text-container
@@ -499,21 +493,53 @@
 (defn window-pane-text
   "Text rendering pane for a specific window"
   [window-id is-active? hidden-input-ref]
-  (let [visible-lines @(rf/subscribe [:lexicon.subs/window-visible-lines window-id])
-        line-height @(rf/subscribe [:line-height])
-        viewport @(rf/subscribe [:lexicon.subs/window-viewport window-id])
-        base-decorations @(rf/subscribe [:lexicon.subs/window-decorations window-id])
-        cursor-pos @(rf/subscribe [:lexicon.subs/window-cursor-position window-id])
-        mark-position @(rf/subscribe [:lexicon.subs/window-mark-position window-id])
-        buffer-content @(rf/subscribe [:lexicon.subs/window-buffer-content window-id])
-        region-active? (not (nil? mark-position))
-        region-decorations (when region-active?
-                            (create-region-decorations mark-position cursor-pos buffer-content))
-        decorations (if region-decorations
-                     (concat base-decorations region-decorations)
-                     base-decorations)
+  (r/with-let [container-ref (atom nil)
+               visible-lines-atom (atom nil)]
+    (let [visible-lines @(rf/subscribe [:lexicon.subs/window-visible-lines window-id])
+          line-height @(rf/subscribe [:line-height])
+          viewport @(rf/subscribe [:lexicon.subs/window-viewport window-id])
+          base-decorations @(rf/subscribe [:lexicon.subs/window-decorations window-id])
+          cursor-pos @(rf/subscribe [:lexicon.subs/window-cursor-position window-id])
+          mark-position @(rf/subscribe [:lexicon.subs/window-mark-position window-id])
+          buffer-content @(rf/subscribe [:lexicon.subs/window-buffer-content window-id])
+          region-active? (not (nil? mark-position))
+          region-decorations (when region-active?
+                              (create-region-decorations mark-position cursor-pos buffer-content))
+          decorations (if region-decorations
+                       (concat base-decorations region-decorations)
+                       base-decorations)
+          ;; Calculate actual visible lines based on container height
+          _ (when @container-ref
+              (let [container @container-ref
+                    height (.-clientHeight container)
+                    padding-top 20
+                    padding-bottom 20
+                    usable-height (- height padding-top padding-bottom)
+                    new-visible-lines (max 1 (int (/ usable-height line-height)))]
+                (when (not= @visible-lines-atom new-visible-lines)
+                  (reset! visible-lines-atom new-visible-lines))))
+          actual-visible-lines @visible-lines-atom
+          ;; Auto-scroll: Ensure cursor stays visible in viewport
+          _ (when (and cursor-pos viewport is-active? actual-visible-lines)
+              (let [{:keys [line]} cursor-pos
+                    start-line (:start-line viewport)
+                    end-line (:end-line viewport)
+                    current-visible-height (- end-line start-line)]
+                ;; Update viewport size if it doesn't match actual visible lines
+                (when (not= current-visible-height actual-visible-lines)
+                  (rf/dispatch [:update-viewport start-line (+ start-line actual-visible-lines)]))
+                ;; Scroll if cursor is above or below visible area
+                (cond
+                  ;; Cursor above viewport - scroll up to make it visible
+                  (< line start-line)
+                  (rf/dispatch [:update-viewport line (+ line actual-visible-lines)])
+
+                  ;; Cursor below viewport - scroll down to make it visible
+                  (>= line end-line)
+                  (let [new-end (+ line 1)
+                        new-start (max 0 (- new-end actual-visible-lines))]
+                    (rf/dispatch [:update-viewport new-start new-end])))))
         handle-click (fn [e]
-                       (println "📍 Window" window-id "clicked!")
                        (.stopPropagation e)
                        ;; Set this window as active
                        (rf/dispatch [:set-active-window window-id])
@@ -529,12 +555,11 @@
                              clicked-line (int (/ (- click-y top-padding) line-height))
                              clicked-column (max 0 (int (/ (- click-x left-padding) char-width)))
                              absolute-line (+ clicked-line (:start-line viewport 0))]
-                         (println "🖱️ Click at pixel" click-x "," click-y
-                                  "→ line" absolute-line "col" clicked-column)
                          (rf/dispatch [:click-to-position absolute-line clicked-column])))]
 
     [:div.text-container
-     {:style {:flex "1"
+     {:ref (fn [el] (reset! container-ref el))
+      :style {:flex "1"
               :position "relative"
               :overflow "hidden"
               :min-height "100%"}
@@ -576,10 +601,12 @@
       ;; Cursor - only show if this is the active window
       (when (and is-active? cursor-pos)
         (let [{:keys [line column]} cursor-pos
+              ;; Calculate relative line position within viewport
+              relative-line (- line (:start-line viewport 0))
               char-width 8.4
               left-padding 8
               top-padding 20
-              top-px (+ top-padding (* line line-height))
+              top-px (+ top-padding (* relative-line line-height))
               left-px (+ left-padding (* column char-width))]
           [:div.custom-cursor
            {:style {:position "absolute"
@@ -590,7 +617,7 @@
                     :background-color "#ffffff"
                     :pointer-events "none"
                     :animation "cursor-blink 1s infinite"
-                    :z-index "1000"}}]))]]))
+                    :z-index "1000"}}]))]])))
 
 (defn window-pane
   "Render a single window pane (leaf node)"
