@@ -27,8 +27,33 @@
         active-buffer (get (:buffers db) active-buffer-id)]
     (:major-mode active-buffer :fundamental-mode)))
 
+(defn lookup-key-in-keymap
+  "Look up a key in a single keymap, walking parent chain if needed.
+   Returns command or nil if not found."
+  [keymaps keymap-path key-sequence-str]
+  (when keymap-path
+    (let [keymap-data (get-in keymaps keymap-path)]
+      (or
+       ;; Check direct binding in this keymap
+       (get-in keymap-data [:bindings key-sequence-str])
+       ;; If not found, check parent keymap
+       (when-let [parent-path (:parent keymap-data)]
+         (lookup-key-in-keymap keymaps parent-path key-sequence-str))))))
+
+(defn collect-all-bindings-from-keymap
+  "Collect all key bindings from a keymap and its parent chain.
+   Returns a flat sequence of [key-str command] pairs."
+  [keymaps keymap-path]
+  (when keymap-path
+    (let [keymap-data (get-in keymaps keymap-path)
+          bindings (:bindings keymap-data)
+          parent-bindings (when-let [parent (:parent keymap-data)]
+                           (collect-all-bindings-from-keymap keymaps parent))]
+      (concat (seq bindings) parent-bindings))))
+
 (defn resolve-keybinding
-  "Resolve a key sequence to a command using Emacs precedence order"
+  "Resolve a key sequence to a command using Emacs precedence order.
+   Walks keymap parent chains automatically."
   [db key-sequence-str]
   (let [keymaps (:keymaps db)
         minor-modes (get-active-minor-modes db)
@@ -38,23 +63,42 @@
     ;; 1. Active minor mode keymaps (in reverse order of activation)
     ;; 2. Active major mode keymap
     ;; 3. Global keymap
+    ;; Each keymap can have a parent chain
 
     (or
-     ;; 1. Check minor mode keymaps
+     ;; 1. Check minor mode keymaps (with parent chains)
      (some (fn [minor-mode]
-             (get-in keymaps [:minor minor-mode key-sequence-str]))
+             (lookup-key-in-keymap keymaps [:minor minor-mode] key-sequence-str))
            (reverse (seq minor-modes)))
 
-     ;; 2. Check major mode keymap
-     (get-in keymaps [:major major-mode key-sequence-str])
+     ;; 2. Check major mode keymap (with parent chain)
+     (lookup-key-in-keymap keymaps [:major major-mode] key-sequence-str)
 
-     ;; 3. Check global keymap
-     (get-in keymaps [:global key-sequence-str])
+     ;; 3. Check global keymap (with parent chain)
+     (lookup-key-in-keymap keymaps [:global] key-sequence-str)
 
      ;; Return nil if no binding found
      nil)))
 
 ;; -- Event Handlers --
+
+(rf/reg-event-db
+ :set-keymap-parent
+ (fn [db [_ keymap-path parent-path]]
+   "Set the parent keymap for a given keymap.
+    keymap-path: [:major :text-mode] or [:minor :linum-mode] or [:global]
+    parent-path: [:global] or [:major :fundamental-mode] or nil"
+   ;; Detect cycles
+   (letfn [(has-cycle? [keymaps current-path target-path visited]
+             (when (and current-path (not (visited current-path)))
+               (if (= current-path target-path)
+                 true
+                 (when-let [parent (:parent (get-in keymaps current-path))]
+                   (recur keymaps parent target-path (conj visited current-path))))))]
+     (when (and parent-path (has-cycle? (:keymaps db) parent-path keymap-path #{}))
+       (throw (ex-info "Cyclic keymap inheritance detected"
+                       {:keymap keymap-path :parent parent-path}))))
+   (assoc-in db (concat [:keymaps] keymap-path [:parent]) parent-path)))
 
 (rf/reg-event-db
  :set-prefix-key-state
@@ -106,15 +150,16 @@
 
        ;; Check if this might be a prefix for a multi-key sequence
        ;; by seeing if any keybinding starts with this sequence
-       (some (fn [keymap-entry]
-               (and (string? (first keymap-entry))
-                    (.startsWith (first keymap-entry) full-sequence)))
-             (concat
-              (mapcat (fn [minor-mode]
-                        (get-in db [:keymaps :minor minor-mode]))
-                      (get-active-minor-modes db))
-              (get-in db [:keymaps :major (get-active-major-mode db)])
-              (get-in db [:keymaps :global])))
+       (let [keymaps (:keymaps db)
+             all-bindings (concat
+                           (mapcat #(collect-all-bindings-from-keymap keymaps [:minor %])
+                                   (get-active-minor-modes db))
+                           (collect-all-bindings-from-keymap keymaps [:major (get-active-major-mode db)])
+                           (collect-all-bindings-from-keymap keymaps [:global]))]
+         (some (fn [[key-str _cmd]]
+                 (and (string? key-str)
+                      (.startsWith key-str full-sequence)))
+               all-bindings))
        {:fx [[:dispatch [:set-prefix-key-state full-sequence]]]}
 
        ;; Handle special keys that should insert

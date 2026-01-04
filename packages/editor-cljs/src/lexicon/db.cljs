@@ -86,70 +86,76 @@
    ;;       :macro-registry {}
    ;;       :command-history []
    ;;       :transition-hooks {:enter {} :exit {}}}
-   :keymaps {:global {"C-x C-f" :find-file             ; Find file
-                     "C-x C-s" :save-buffer            ; Save buffer
-                     "C-x C-w" :write-file             ; Write file (save as)
-                     "C-x C-v" :find-alternate-file    ; Visit alternate file
-                     "C-x i" :insert-file              ; Insert file at point
-                     "C-x s" :save-some-buffers        ; Save some buffers
-                     "C-x C-b" :list-buffers           ; List buffers
-                     "C-x C-c" :save-buffers-kill-emacs ; Quit emacs
-                     "C-g" :keyboard-quit              ; Keyboard quit
-                     "M-x" :execute-extended-command   ; M-x command prompt
-                     "C-x b" :switch-to-buffer         ; Switch buffer
-                     "C-x k" :kill-buffer              ; Kill buffer
-                     "C-x 2" :split-window-below       ; Split horizontally
-                     "C-x 3" :split-window-right       ; Split vertically
-                     "C-x 0" :delete-window            ; Delete current window
-                     "C-x 1" :delete-other-windows     ; Delete all other windows
-                     "C-x o" :other-window             ; Switch to next window
-                     "C-h b" :describe-bindings        ; Describe bindings
-                     "C-h k" :describe-key             ; Describe key
-                     "C-h f" :describe-function        ; Describe function
-                     "C-h v" :describe-variable        ; Describe variable
-                     "C-h a" :apropos-command          ; Search commands
-                     "C-h ?" :help-for-help            ; Help menu
-                     "C-u" :universal-argument         ; Universal argument
-                     "C-/" :undo                       ; Undo
-                     "C-_" :undo                       ; Alternative undo
-                     "C-w" :kill-region                ; Kill region
-                     "M-w" :copy-region-as-kill        ; Copy region
-                     "C-Insert" :copy-region-as-kill   ; Alternative (M-w blocked by some browsers)
-                     "C-y" :yank                       ; Yank
-                     "S-Insert" :yank                  ; Alternative yank
-                     "M-y" :yank-pop                   ; Yank pop (cycle kill ring)
-                     "C-k" :kill-line                  ; Kill line
-                     "M-d" :kill-word                  ; Kill word forward
-                     "M-DEL" :backward-kill-word       ; Kill word backward
-                     "M-%" :query-replace              ; Query replace
-                     "C-s" :isearch-forward            ; Incremental search forward
-                     "C-r" :isearch-backward           ; Incremental search backward
-                     "C-o" :open-line                  ; Open line
-                     "C-SPC" :set-mark-command         ; Set mark
-                     "C-x C-x" :exchange-point-and-mark ; Exchange point and mark
-                     "DEL" :delete-backward-char       ; Backspace
-                     "DELETE" :delete-forward-char     ; Delete
-                     ;; Cursor movement
-                     "C-f" :forward-char               ; Forward char
-                     "C-b" :backward-char              ; Backward char
-                     "C-n" :next-line                  ; Next line
-                     "C-p" :previous-line              ; Previous line
-                     "C-a" :beginning-of-line          ; Beginning of line
-                     "C-e" :end-of-line                ; End of line
-                     "C-v" :scroll-up-command          ; Scroll forward one screen
-                     "M-v" :scroll-down-command        ; Scroll backward one screen
-                     "PageDown" :scroll-up-command     ; Alternative (M-v blocked by some browsers)
-                     "PageUp" :scroll-down-command     ; Alternative (M-v blocked by some browsers)
-                     "M-<" :beginning-of-buffer        ; Beginning of buffer
-                     "M->" :end-of-buffer              ; End of buffer
-                     "M-f" :forward-word               ; Forward word
-                     "M-b" :backward-word              ; Backward word
-                     "ArrowRight" :forward-char        ; Right arrow
-                     "ArrowLeft" :backward-char        ; Left arrow
-                     "ArrowDown" :next-line            ; Down arrow
-                     "ArrowUp" :previous-line}         ; Up arrow
-            :major {:buffer-menu-mode {"RET" :buffer-menu/select-buffer}}  ; Major mode keymaps
-            :minor {}}                                 ; Minor mode keymaps
+   ;; Keymaps with parent chain support
+   ;; Structure: {:global {:parent nil :bindings {...}}
+   ;;             :major {:text-mode {:parent [:global] :bindings {...}}}
+   ;;             :minor {:linum-mode {:parent nil :bindings {...}}}}
+   :keymaps {:global {:parent nil
+                      :bindings {"C-x C-f" :find-file             ; Find file
+                                 "C-x C-s" :save-buffer            ; Save buffer
+                                 "C-x C-w" :write-file             ; Write file (save as)
+                                 "C-x C-v" :find-alternate-file    ; Visit alternate file
+                                 "C-x i" :insert-file              ; Insert file at point
+                                 "C-x s" :save-some-buffers        ; Save some buffers
+                                 "C-x C-b" :list-buffers           ; List buffers
+                                 "C-x C-c" :save-buffers-kill-emacs ; Quit emacs
+                                 "C-g" :keyboard-quit              ; Keyboard quit
+                                 "M-x" :execute-extended-command   ; M-x command prompt
+                                 "C-x b" :switch-to-buffer         ; Switch buffer
+                                 "C-x k" :kill-buffer              ; Kill buffer
+                                 "C-x 2" :split-window-below       ; Split horizontally
+                                 "C-x 3" :split-window-right       ; Split vertically
+                                 "C-x 0" :delete-window            ; Delete current window
+                                 "C-x 1" :delete-other-windows     ; Delete all other windows
+                                 "C-x o" :other-window             ; Switch to next window
+                                 "C-h b" :describe-bindings        ; Describe bindings
+                                 "C-h k" :describe-key             ; Describe key
+                                 "C-h f" :describe-function        ; Describe function
+                                 "C-h v" :describe-variable        ; Describe variable
+                                 "C-h a" :apropos-command          ; Search commands
+                                 "C-h ?" :help-for-help            ; Help menu
+                                 "C-u" :universal-argument         ; Universal argument
+                                 "C-/" :undo                       ; Undo
+                                 "C-_" :undo                       ; Alternative undo
+                                 "C-w" :kill-region                ; Kill region
+                                 "M-w" :copy-region-as-kill        ; Copy region
+                                 "C-Insert" :copy-region-as-kill   ; Alternative (M-w blocked by some browsers)
+                                 "C-y" :yank                       ; Yank
+                                 "S-Insert" :yank                  ; Alternative yank
+                                 "M-y" :yank-pop                   ; Yank pop (cycle kill ring)
+                                 "C-k" :kill-line                  ; Kill line
+                                 "M-d" :kill-word                  ; Kill word forward
+                                 "M-DEL" :backward-kill-word       ; Kill word backward
+                                 "M-%" :query-replace              ; Query replace
+                                 "C-s" :isearch-forward            ; Incremental search forward
+                                 "C-r" :isearch-backward           ; Incremental search backward
+                                 "C-o" :open-line                  ; Open line
+                                 "C-SPC" :set-mark-command         ; Set mark
+                                 "C-x C-x" :exchange-point-and-mark ; Exchange point and mark
+                                 "DEL" :delete-backward-char       ; Backspace
+                                 "DELETE" :delete-forward-char     ; Delete
+                                 ;; Cursor movement
+                                 "C-f" :forward-char               ; Forward char
+                                 "C-b" :backward-char              ; Backward char
+                                 "C-n" :next-line                  ; Next line
+                                 "C-p" :previous-line              ; Previous line
+                                 "C-a" :beginning-of-line          ; Beginning of line
+                                 "C-e" :end-of-line                ; End of line
+                                 "C-v" :scroll-up-command          ; Scroll forward one screen
+                                 "M-v" :scroll-down-command        ; Scroll backward one screen
+                                 "PageDown" :scroll-up-command     ; Alternative (M-v blocked by some browsers)
+                                 "PageUp" :scroll-down-command     ; Alternative (M-v blocked by some browsers)
+                                 "M-<" :beginning-of-buffer        ; Beginning of buffer
+                                 "M->" :end-of-buffer              ; End of buffer
+                                 "M-f" :forward-word               ; Forward word
+                                 "M-b" :backward-word              ; Backward word
+                                 "ArrowRight" :forward-char        ; Right arrow
+                                 "ArrowLeft" :backward-char        ; Left arrow
+                                 "ArrowDown" :next-line            ; Down arrow
+                                 "ArrowUp" :previous-line}}        ; Up arrow
+             :major {:buffer-menu-mode {:parent [:global]
+                                        :bindings {"RET" :buffer-menu/select-buffer}}}  ; Major mode keymaps
+             :minor {}}                                 ; Minor mode keymaps
 
             ;; COMMENTED OUT: Evil mode keymaps - not ready yet, focus on basic Emacs first
             ;; :normal-keymap {"d" :delete-operator "w" :forward-word ...}
