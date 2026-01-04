@@ -323,26 +323,28 @@
         region-active? @(rf/subscribe [:region-active?])
         buffer-content @(rf/subscribe [:buffer-content])
         ;; Auto-scroll: Ensure cursor stays visible in viewport
-        _ (when cursor-pos
+        _ (when (and cursor-pos viewport)
             (let [{:keys [line]} cursor-pos
-                  start-line (:start-line viewport 0)
-                  end-line (:end-line viewport 20)
-                  visible-height (- end-line start-line)]
-              (println "🔍 Auto-scroll check - cursor line:" line "viewport:" start-line "-" end-line)
-              ;; Scroll if cursor is above or below visible area
-              (cond
-                ;; Cursor above viewport - scroll up to make it visible
-                (< line start-line)
-                (do
-                  (println "📜 Scrolling UP - cursor above viewport")
-                  (rf/dispatch [:update-viewport line (+ line visible-height)]))
+                  start-line (:start-line viewport)
+                  end-line (:end-line viewport)
+                  visible-height (when (and start-line end-line)
+                                   (- end-line start-line))]
+              (when visible-height
+                (println "🔍 Auto-scroll check - cursor line:" line "viewport:" start-line "-" end-line "height:" visible-height)
+                ;; Scroll if cursor is above or below visible area
+                (cond
+                  ;; Cursor above viewport - scroll up to make it visible
+                  (< line start-line)
+                  (do
+                    (println "📜 Scrolling UP - cursor above viewport")
+                    (rf/dispatch [:update-viewport line (+ line visible-height)]))
 
-                ;; Cursor below viewport - scroll down to make it visible
-                (>= line end-line)
-                (let [new-end (+ line 1)  ; +1 to show line below cursor
-                      new-start (max 0 (- new-end visible-height))]
-                  (println "📜 Scrolling DOWN - cursor below viewport. New viewport:" new-start "-" new-end)
-                  (rf/dispatch [:update-viewport new-start new-end])))))
+                  ;; Cursor below viewport - scroll down to make it visible
+                  (>= line end-line)
+                  (let [new-end (+ line 1)  ; +1 to show line below cursor
+                        new-start (max 0 (- new-end visible-height))]
+                    (println "📜 Scrolling DOWN - cursor below viewport. New viewport:" new-start "-" new-end)
+                    (rf/dispatch [:update-viewport new-start new-end]))))))
         ;; Add region decorations if region is active
         region-decorations (when region-active?
                             (create-region-decorations mark-position cursor-pos buffer-content))
