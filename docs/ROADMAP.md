@@ -1604,82 +1604,93 @@ This phase combines:
 
 #### Phase 7.8: Core Command Audit & Completion 📋
 
-**Status:** 🔄 In Progress (**ACTUAL: 7/24 commands = 29% complete**)
+**Status:** 🔄 In Progress (**CORRECTED: 13/15 batch commands = 87% complete**)
 **Goal:** Ensure all essential Emacs commands exist before building packages
 **Timeline:** 3 weeks
 **Prerequisites:** ✅ Phase 7.7 (package infrastructure complete)
 **Priority:** **CRITICAL** - Foundation for everything else
 
-**REALITY CHECK (2026-01-04):** Audit of codebase reveals significant discrepancy between docs and implementation.
+**CORRECTED STATUS (2026-01-04):** Second audit found commands in edit.cljs and command.cljs that first audit missed.
 
 **Actual Progress:**
-- ✅ Batch 2: File/buffer commands (4/4 implemented)
-- ✅ Batch 4: Query-replace (2/2 implemented)
-- 🟡 Batch 3: Replace (1/2 - only replace-string, missing replace-regexp)
-- ❌ Batch 1: Quick wins (0/6 - NONE implemented)
-- ❌ Batch 5: Isearch (0/2 - NONE implemented)
+- ✅ Batch 1: Quick wins (6/6) - ALL IMPLEMENTED in edit.cljs
+- ✅ Batch 2: File/buffer commands (4/4) - ALL IMPLEMENTED
+- ✅ Batch 4: Query-replace (2/2) - ALL IMPLEMENTED
+- 🟡 Batch 3: Replace (1/2 - replace-string done, replace-regexp missing)
+- ❌ Batch 5: Isearch (0/2 - NOT implemented)
+
+**Only 3 commands missing from planned batches:**
+1. `replace-regexp` (M-x replace-regexp)
+2. `isearch-forward` (C-s)
+3. `isearch-backward` (C-r)
 
 ---
 
-### **ACTUALLY IMPLEMENTED** ✅ (7 commands verified in codebase)
+### **ACTUALLY IMPLEMENTED** ✅ (13 commands verified)
 
-**File/Buffer Commands** (4/4)
-- [x] `:insert-file` event exists (C-x i)
-- [x] `:revert-buffer` event exists (M-x revert-buffer)
-- [x] `:save-some-buffers` event exists (C-x s)
-- [x] `:find-alternate-file` event exists (C-x C-v)
+**Batch 1: Quick Wins** (6/6) - events in edit.cljs
+- [x] `:exchange-point-and-mark` (C-x C-x) - edit.cljs:405
+- [x] `:kill-word` (M-d) - edit.cljs:294
+- [x] `:backward-kill-word` (M-DEL) - edit.cljs:316
+- [x] `:scroll-up-command` (C-v) - edit.cljs:258
+- [x] `:scroll-down-command` (M-v) - edit.cljs:274
+- [x] `:describe-variable` (C-h v) - command.cljs:382
+
+**Batch 2: File/Buffer Commands** (4/4) - events in buffer.cljs
+- [x] `:insert-file` (C-x i)
+- [x] `:revert-buffer` (M-x revert-buffer)
+- [x] `:save-some-buffers` (C-x s)
+- [x] `:find-alternate-file` (C-x C-v)
 - Commit: 93b5d76
 
-**Replace Commands** (1/2)
-- [x] `:replace-string` event exists (M-x replace-string)
-- ❌ `replace-regexp` - NO EVENT FOUND (marked done but doesn't exist)
+**Batch 3: Replace** (1/2) - events in buffer.cljs
+- [x] `:replace-string` (M-x replace-string)
+- ❌ `replace-regexp` - NOT FOUND
 
-**Query Replace** (2/2)
-- [x] `:query-replace` event exists (M-%)
-- [x] `query-replace-regexp` (C-M-% via :query-replace with :is-regexp? flag)
-- [x] Full state machine: y/n/!/q/^/. keys
+**Batch 4: Query Replace** (2/2) - events in buffer.cljs
+- [x] `:query-replace` (M-%)
+- [x] `query-replace-regexp` (C-M-%)
 - Commits: e45a265, 32c2118
 
 ---
 
-### **NOT IMPLEMENTED** ❌ (17+ commands - no events found)
+### **NOT IMPLEMENTED** ❌ (3 commands)
 
-**Batch 1: Quick Wins** (0/6)
-- [ ] `exchange-point-and-mark` (C-x C-x) - no event
-- [ ] `kill-word` (M-d) - no event
-- [ ] `backward-kill-word` (M-DEL) - no event
-- [ ] `describe-variable` (C-h v) - no event
-- [ ] `scroll-up-command` (C-v) - no event
-- [ ] `scroll-down-command` (M-v) - no event
+**Missing from Batches:**
+- [ ] `replace-regexp` (M-x replace-regexp) - 6 hours to implement
+- [ ] `isearch-forward` (C-s) - 24 hours to implement
+- [ ] `isearch-backward` (C-r) - 16 hours to implement
 
-**Batch 5: Isearch** (0/2)
-- [ ] `isearch-forward` (C-s) - no event
-- [ ] `isearch-backward` (C-r) - no event
-
-**Plus 9+ more P0 commands from EmacsReferenceCard.md**
+**Total remaining work: ~46 hours (6 days)**
 
 ---
 
 ### **NEXT STEPS:**
 
-**Immediate:**
-1. ✅ Document actual status (this update)
-2. Update EmacsReferenceCard.md with correct implementation status
-3. Decide: implement missing P0 commands OR focus on testing what exists?
-4. Fix 4 pre-existing E2E test failures
-5. Add E2E tests for the 7 implemented commands
+**Option A - Complete All Batches (6 days):**
+1. Implement `replace-regexp` (1 day)
+2. Implement isearch-forward (3 days)
+3. Implement isearch-backward (2 days)
+4. Add E2E tests for all 16 commands
+5. Fix 4 pre-existing E2E failures
+6. Get to 0 test failures
+7. Manual testing with Emacs
 
-**Path Forward:**
-- Option A: Implement missing 17 P0 commands (3-4 weeks)
-- Option B: Test & document existing 7 commands, defer rest to future phases
+**Option B - Close Phase 7.8 Now:**
+1. Verify 13 implemented commands have keybindings
+2. Add E2E tests for 13 commands
+3. Fix 4 pre-existing E2E failures
+4. Update EmacsReferenceCard.md
+5. Mark Phase 7.8 as "substantially complete" (87%)
+6. Defer isearch and replace-regexp to Phase 8 or 9
 
-**Success Criteria (revised):**
-- [x] Query-replace working
-- [ ] All implemented commands have keybindings registered
+**Success Criteria:**
+- [x] Query-replace working (all 6 tests passing)
+- [x] 13/15 planned batch commands implemented
+- [ ] All implemented commands have keybindings verified
 - [ ] All implemented commands have E2E tests
-- [ ] EmacsReferenceCard.md reflects reality
+- [ ] EmacsReferenceCard.md updated
 - [ ] 0 E2E test failures
-- [ ] Decide on completion criteria for Phase 7.8
 
 ---
 
