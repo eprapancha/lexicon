@@ -29,7 +29,8 @@ Test all 16 commands side-by-side with Emacs to ensure **zero deviation**.
 
 **Deviations:** 
  - Error: Command not found: :scroll-up-command
- - also, when i add a lot text, the text eventually goes out of the viewport.  the current line doesnt remain in the view.. instead of auto scrolling to keep the cursor in the current viewport, the cursor disappears into an invisible area of the editor.  same with C->  while the cursor moves to the end of the buffer, it is not actually visible.  also, i see a vertical scrollbar on the view.  emacs never has horizontal and vertical scrollbars..  we need to handle this.  if the view is in wrapped mode. the content on long lines should wrap else simply be invisible.  
+ - also, when i add a lot text, the text eventually goes out of the viewport.  the current line doesnt remain in the view.. instead of auto scrolling to keep the cursor in the current viewport, the cursor disappears into an invisible area of the editor.  same with C->  while the cursor moves to the end of the buffer, it is not actually visible.  also, i see a vertical scrollbar on the view.  emacs never has horizontal and vertical scrollbars..  we need to handle this.  if the view is in wrapped mode. the content on long lines should wrap else simply be invisible.
+ - i tested the same thing in emacs and as i type beyond the last line, emacs keeps the cursor on the last line just above the modeline and ensure the cursor never goes out of view, as i hit return, it keeps scrollig one line at a time. 
 _______________
 
 ---
