@@ -1145,7 +1145,7 @@
              ;; Replace all in remaining text
              new-text-from   (.replace text-from-match search-pattern replacement)
              new-full-text   (str text-before new-text-from)
-             current-length  (.getLength wasm-instance)
+             current-length  (.-length wasm-instance)
 
              ;; Update buffer
              lines           (clojure.string/split new-full-text #"\n" -1)
