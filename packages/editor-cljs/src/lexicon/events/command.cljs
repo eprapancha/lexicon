@@ -143,7 +143,8 @@
    "Display all current keybindings in a *Help* buffer (C-h b)"
    (let [buffers (:buffers db)
          keymaps (:keymaps db)
-         active-buffer-id (get-in db [:windows (:active-window-id db) :buffer-id])
+         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+        active-buffer-id (:buffer-id active-window)
          active-buffer (get-in db [:buffers active-buffer-id])
          major-mode (:major-mode active-buffer :fundamental-mode)
 
@@ -204,7 +205,8 @@
                                   :line-count line-count}}]
            {:db (-> db
                     (assoc-in [:buffers buffer-id] new-buffer)
-                    (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))))))
+ )
+           :fx [[:dispatch [:switch-buffer buffer-id]]]}))))))
 
 (rf/reg-event-fx
  :describe-key
@@ -284,8 +286,9 @@
          {:db (-> db
                   (assoc-in [:help :awaiting-key?] false)
                   (assoc-in [:buffers buffer-id] new-buffer)
-                  (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))
-          :fx [[:dispatch [:echo/clear]]]})))))
+ )
+         :fx [[:dispatch [:switch-buffer buffer-id]]
+              [:dispatch [:echo/clear]]]})))))
 
 (rf/reg-event-fx
  :describe-function
@@ -373,8 +376,8 @@
                         :cache {:text content
                                 :line-count line-count}}]
          {:db (-> db
-                  (assoc-in [:buffers buffer-id] new-buffer)
-                  (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))
+                  (assoc-in [:buffers buffer-id] new-buffer))
+         :fx [[:dispatch [:switch-buffer buffer-id]]]}))
 
 )))
 
@@ -459,7 +462,8 @@
                                 :line-count line-count}}]
          {:db (-> db
                   (assoc-in [:buffers buffer-id] new-buffer)
-                  (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))})))))
+ )
+         :fx [[:dispatch [:switch-buffer buffer-id]]]})))))
 
 (rf/reg-event-fx
  :apropos-command
@@ -534,10 +538,8 @@
                         :cache {:text content
                                 :line-count line-count}}]
          {:db (-> db
-                  (assoc-in [:buffers buffer-id] new-buffer)
-                  (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))
-
-)))
+                  (assoc-in [:buffers buffer-id] new-buffer))
+         :fx [[:dispatch [:switch-buffer buffer-id]]]})))))
 
 (rf/reg-event-fx
  :help-for-help
@@ -592,10 +594,8 @@ C-h ?   This help menu
                         :cache {:text content
                                 :line-count line-count}}]
          {:db (-> db
-                  (assoc-in [:buffers buffer-id] new-buffer)
-                  (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))
-
-)))
+                  (assoc-in [:buffers buffer-id] new-buffer))
+         :fx [[:dispatch [:switch-buffer buffer-id]]]})))))
 
 ;; =============================================================================
 ;; Mode Initialization Commands

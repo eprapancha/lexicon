@@ -776,9 +776,9 @@
          escaped-search (.replace search-string #"[.*+?^${}()|\\[\\]\\\\]" "\\$&")
          search-pattern (js/RegExp. escaped-search "g")
          matches        (array-seq (.match text-from-point search-pattern))
-         count          (if matches (count matches) 0)]
+         match-count    (if matches (count matches) 0)]
 
-     (if (zero? count)
+     (if (zero? match-count)
        {:db (update db :ui dissoc :replace-search-string)
         :fx [[:dispatch [:echo/message (str "No occurrences of \"" search-string "\"")]]]}
 
@@ -799,8 +799,8 @@
                     (assoc-in [:buffers buffer-id :is-modified?] true)
                     (update-in [:buffers buffer-id :editor-version] inc)
                     (update :ui dissoc :replace-search-string))
-            :fx [[:dispatch [:echo/message (str "Replaced " count " occurrence"
-                                                (if (= count 1) "" "s"))]]]}))))))
+            :fx [[:dispatch [:echo/message (str "Replaced " match-count " occurrence"
+                                                (if (= match-count 1) "" "s"))]]]}))))))
 
  (rf/reg-event-fx
   :replace-regexp
@@ -845,9 +845,9 @@
 
              ;; Count matches
              matches (array-seq (.match text-from-point search-pattern))
-             count   (if matches (count matches) 0)]
+             match-count   (if matches (count matches) 0)]
 
-         (if (zero? count)
+         (if (zero? match-count)
            {:db (update db :ui dissoc :replace-regexp-string)
             :fx [[:dispatch [:echo/message (str "No match for regexp \"" regexp-string "\"")]]]}
 
@@ -868,8 +868,8 @@
                         (assoc-in [:buffers buffer-id :is-modified?] true)
                         (update-in [:buffers buffer-id :editor-version] inc)
                         (update :ui dissoc :replace-regexp-string))
-                :fx [[:dispatch [:echo/message (str "Replaced " count " match"
-                                                    (if (= count 1) "" "es"))]]]}))))
+                :fx [[:dispatch [:echo/message (str "Replaced " match-count " match"
+                                                    (if (= match-count 1) "" "es"))]]]}))))
        (catch js/Error e
          {:db (update db :ui dissoc :replace-regexp-string)
           :fx [[:dispatch [:echo/message (str "Regexp error: " (.-message e))]]]})))))
