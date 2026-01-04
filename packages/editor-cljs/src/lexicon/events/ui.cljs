@@ -512,6 +512,30 @@
          {:db db})))))
 
 ;; =============================================================================
+;; Viewport Management
+;; =============================================================================
+
+(rf/reg-event-db
+ :update-viewport
+ (fn [db [_ start-line end-line]]
+   "Update the viewport for the active window to show lines from start-line to end-line"
+   (let [active-window-id (:active-window-id db)
+         update-fn (fn update-viewport-in-tree [tree]
+                    (cond
+                      (= (:type tree) :leaf)
+                      (if (= (:id tree) active-window-id)
+                        (assoc tree :viewport {:start-line start-line :end-line end-line})
+                        tree)
+
+                      (or (= (:type tree) :hsplit) (= (:type tree) :vsplit))
+                      (assoc tree
+                             :first (update-viewport-in-tree (:first tree))
+                             :second (update-viewport-in-tree (:second tree)))
+
+                      :else tree))]
+     (assoc db :window-tree (update-fn (:window-tree db))))))
+
+;; =============================================================================
 ;; Effects
 ;; =============================================================================
 
