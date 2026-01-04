@@ -322,6 +322,23 @@
         mark-position @(rf/subscribe [:mark-position])
         region-active? @(rf/subscribe [:region-active?])
         buffer-content @(rf/subscribe [:buffer-content])
+        ;; Auto-scroll: Ensure cursor stays visible in viewport
+        _ (when cursor-pos
+            (let [{:keys [line]} cursor-pos
+                  start-line (:start-line viewport 0)
+                  end-line (:end-line viewport 20)
+                  visible-height (- end-line start-line)]
+              ;; Scroll if cursor is above or below visible area
+              (cond
+                ;; Cursor above viewport - scroll up to make it visible
+                (< line start-line)
+                (rf/dispatch [:update-viewport line (+ line visible-height)])
+
+                ;; Cursor below viewport - scroll down to make it visible
+                (>= line end-line)
+                (let [new-end (+ line 1)  ; +1 to show line below cursor
+                      new-start (max 0 (- new-end visible-height))]
+                  (rf/dispatch [:update-viewport new-start new-end])))))
         ;; Add region decorations if region is active
         region-decorations (when region-active?
                             (create-region-decorations mark-position cursor-pos buffer-content))
@@ -687,7 +704,7 @@
                 (reset! scroller-ref element)
                 (.addEventListener element "scroll" handle-scroll)))
        :style {:height "calc(100vh - 24px)"  ; Account for status bar only
-               :overflow-y "auto"
+               :overflow-y "hidden"  ; No scrollbar - Emacs-style (scroll via commands)
                :overflow-x "hidden"  ; Prevent horizontal scrollbar
                :position "relative"
                :background-color "#1e1e1e"}}
