@@ -27,7 +27,10 @@ Test all 16 commands side-by-side with Emacs to ensure **zero deviation**.
 
 **Expected:** Cursor advances ~20 lines, viewport scrolls forward one screen
 
-**Deviations:** _______________
+**Deviations:** 
+ - Error: Command not found: :scroll-up-command
+ - also, when i add a lot text, the text eventually goes out of the viewport.  the current line doesnt remain in the view.. instead of auto scrolling to keep the cursor in the current viewport, the cursor disappears into an invisible area of the editor.  same with C->  while the cursor moves to the end of the buffer, it is not actually visible.  also, i see a vertical scrollbar on the view.  emacs never has horizontal and vertical scrollbars..  we need to handle this.  if the view is in wrapped mode. the content on long lines should wrap else simply be invisible.  
+_______________
 
 ---
 
@@ -44,6 +47,7 @@ Test all 16 commands side-by-side with Emacs to ensure **zero deviation**.
 **Expected:** Cursor moves back ~20 lines, viewport scrolls backward one screen
 
 **Deviations:** _______________
+- M-v doesnt even register, when i press Alt, i see a "keydown event: nil" when i press v nothing happens on the screen or on the editor.
 
 ---
 
