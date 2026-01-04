@@ -328,16 +328,20 @@
                   start-line (:start-line viewport 0)
                   end-line (:end-line viewport 20)
                   visible-height (- end-line start-line)]
+              (println "🔍 Auto-scroll check - cursor line:" line "viewport:" start-line "-" end-line)
               ;; Scroll if cursor is above or below visible area
               (cond
                 ;; Cursor above viewport - scroll up to make it visible
                 (< line start-line)
-                (rf/dispatch [:update-viewport line (+ line visible-height)])
+                (do
+                  (println "📜 Scrolling UP - cursor above viewport")
+                  (rf/dispatch [:update-viewport line (+ line visible-height)]))
 
                 ;; Cursor below viewport - scroll down to make it visible
                 (>= line end-line)
                 (let [new-end (+ line 1)  ; +1 to show line below cursor
                       new-start (max 0 (- new-end visible-height))]
+                  (println "📜 Scrolling DOWN - cursor below viewport. New viewport:" new-start "-" new-end)
                   (rf/dispatch [:update-viewport new-start new-end])))))
         ;; Add region decorations if region is active
         region-decorations (when region-active?
