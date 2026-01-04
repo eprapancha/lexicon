@@ -141,7 +141,13 @@
 
       ;; Regular keys with modifiers (including special keys with modifiers)
       :else
-      (let [base-key (cond
+      (let [;; Check if this is a special key that needs explicit S- prefix
+            ;; (e.g., Insert, not shifted punctuation like < or >)
+            needs-s-prefix? (and shift?
+                                 (or (= key "Insert")
+                                     (= key "PageUp")
+                                     (= key "PageDown")))
+            base-key (cond
                        (= key " ") "SPC"
                        (= key "Enter") "RET"
                        (= key "Tab") "TAB"
@@ -151,13 +157,12 @@
                        (= key "Insert") "Insert"
                        (= key "PageUp") "PageUp"
                        (= key "PageDown") "PageDown"
-                       (and shift? (= (count key) 1)) (.toUpperCase key)
+                       (and shift? (= (count key) 1) (re-matches #"[a-z]" key)) (.toUpperCase key)
                        :else key)]
         (str
          (when ctrl? "C-")
          (when (or meta? alt?) "M-")  ; Map both Meta and Alt keys to M- (Emacs convention)
-         ;; Only add S- for non-letter keys (letters already uppercased)
-         (when (and shift? (not (and (= (count key) 1) (re-matches #"[a-zA-Z]" key)))) "S-")
+         (when needs-s-prefix? "S-")
          base-key)))))
 
 (defn parse-key-sequence
