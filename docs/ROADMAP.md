@@ -1604,108 +1604,82 @@ This phase combines:
 
 #### Phase 7.8: Core Command Audit & Completion 📋
 
-**Status:** 🔄 In Progress (76% complete - isearch and query-replace done, 11 P0 commands remaining)
+**Status:** 🔄 In Progress (**ACTUAL: 7/24 commands = 29% complete**)
 **Goal:** Ensure all essential Emacs commands exist before building packages
 **Timeline:** 3 weeks
 **Prerequisites:** ✅ Phase 7.7 (package infrastructure complete)
 **Priority:** **CRITICAL** - Foundation for everything else
 
-**Rationale:**
+**REALITY CHECK (2026-01-04):** Audit of codebase reveals significant discrepancy between docs and implementation.
 
-Packages (whether native CLJS or Elisp) assume core Emacs commands exist. We cannot claim to be "Emacs for the browser" without the reference card commands. This phase ensures we have a complete, battle-tested core before adding complexity.
-
-**Reference:** `docs/EmacsReferenceCard.md` - Official GNU Emacs reference card converted to tracking format
-
-**Progress Summary:**
-- ✅ Files/Buffers/Windows: All P0 commands done (Batch 2)
-- ✅ Search/Replace: `replace-string`, `replace-regexp`, `query-replace`, `isearch-forward`, `isearch-backward` (Batches 3-5)
-- 🔄 Missing P0 Commands: 11 remaining (see below)
-- 📊 Coverage: 76% of reference card commands implemented
+**Actual Progress:**
+- ✅ Batch 2: File/buffer commands (4/4 implemented)
+- ✅ Batch 4: Query-replace (2/2 implemented)
+- 🟡 Batch 3: Replace (1/2 - only replace-string, missing replace-regexp)
+- ❌ Batch 1: Quick wins (0/6 - NONE implemented)
+- ❌ Batch 5: Isearch (0/2 - NONE implemented)
 
 ---
 
-### **COMPLETED: Batches 1-5** ✅
+### **ACTUALLY IMPLEMENTED** ✅ (7 commands verified in codebase)
 
-**Batch 1: Quick Wins** ✅ (6 commands)
-- [x] `exchange-point-and-mark` (C-x C-x)
-- [x] `kill-word` (M-d)
-- [x] `backward-kill-word` (M-DEL)
-- [x] `describe-variable` (C-h v)
-- [x] `scroll-up-command` (C-v)
-- [x] `scroll-down-command` (M-v)
+**File/Buffer Commands** (4/4)
+- [x] `:insert-file` event exists (C-x i)
+- [x] `:revert-buffer` event exists (M-x revert-buffer)
+- [x] `:save-some-buffers` event exists (C-x s)
+- [x] `:find-alternate-file` event exists (C-x C-v)
+- Commit: 93b5d76
 
-**Batch 2: File/Buffer Commands** ✅ (4 commands)
-- [x] `insert-file` (C-x i)
-- [x] `revert-buffer` (M-x revert-buffer)
-- [x] `save-some-buffers` (C-x s)
-- [x] `find-alternate-file` (C-x C-v)
-- Commit: 93b5d76 "feat(files/buffers): implement Phase 7.8 P0 file/buffer commands"
+**Replace Commands** (1/2)
+- [x] `:replace-string` event exists (M-x replace-string)
+- ❌ `replace-regexp` - NO EVENT FOUND (marked done but doesn't exist)
 
-**Batch 3: Basic Replace** ✅ (2 commands)
-- [x] `replace-string` (M-x replace-string)
-- [x] `replace-regexp` (M-x replace-regexp)
-- Commit: e45a265 "feat(replace): implement Phase 7.8 Batch 3 - replace-string and replace-regexp"
-
-**Batch 4: Query Replace** ✅ (1 command)
-- [x] `query-replace` (M-%)
-- [x] `query-replace-regexp` (C-M-%)
-- [x] Interactive keys: y/SPC, n/DEL, !, q/RET/ESC, ^, .
-- [x] Cursor movement and region highlighting
-- Commits: e45a265, 32c2118 (WASM API fix)
-
-**Batch 5: Incremental Search** ✅ (2 commands)
-- [x] `isearch-forward` (C-s)
-- [x] `isearch-backward` (C-r)
-- [x] All 3 phases: basic search, repeat search with C-s/C-r, case-folding/wrap-around
-- [x] 7 E2E tests covering all scenarios
+**Query Replace** (2/2)
+- [x] `:query-replace` event exists (M-%)
+- [x] `query-replace-regexp` (C-M-% via :query-replace with :is-regexp? flag)
+- [x] Full state machine: y/n/!/q/^/. keys
+- Commits: e45a265, 32c2118
 
 ---
 
-### **REMAINING: Missing P0 Commands** (11 total)
+### **NOT IMPLEMENTED** ❌ (17+ commands - no events found)
 
-**Critical Gaps:**
-1. ❌ `save-some-buffers` (C-x s) - WAIT, this was marked done in Batch 2 but still showing as missing in EmacsReferenceCard.md
-2. ❌ `insert-file` (C-x i) - Same issue
-3. ❌ `find-alternate-file` (C-x C-v) - Same issue
-4. ❌ `revert-buffer` (M-x revert-buffer) - Same issue
-5. ❌ `scroll-up-command` (C-v) - Same issue (Batch 1)
-6. ❌ `scroll-down-command` (M-v) - Same issue (Batch 1)
-7. ❌ `kill-word` (M-d) - Same issue (Batch 1)
-8. ❌ `exchange-point-and-mark` (C-x C-x) - Same issue (Batch 1)
-9. ❌ `describe-variable` (C-h v) - Same issue (Batch 1)
-10. 🟡 TAB completion in minibuffer - needs verification
-11. 🟡 RET in minibuffer - needs verification
+**Batch 1: Quick Wins** (0/6)
+- [ ] `exchange-point-and-mark` (C-x C-x) - no event
+- [ ] `kill-word` (M-d) - no event
+- [ ] `backward-kill-word` (M-DEL) - no event
+- [ ] `describe-variable` (C-h v) - no event
+- [ ] `scroll-up-command` (C-v) - no event
+- [ ] `scroll-down-command` (M-v) - no event
 
-**NOTE:** Items 1-9 show as ❌ in EmacsReferenceCard.md but are marked ✅ in phase-7.8-implementation-plan.md. Need to reconcile by:
-1. Verifying each command actually exists and has keybinding
-2. Updating EmacsReferenceCard.md with ✅ status
-3. Adding E2E tests for each
+**Batch 5: Isearch** (0/2)
+- [ ] `isearch-forward` (C-s) - no event
+- [ ] `isearch-backward` (C-r) - no event
+
+**Plus 9+ more P0 commands from EmacsReferenceCard.md**
 
 ---
 
 ### **NEXT STEPS:**
 
-**Immediate (This Session):**
-1. Audit what's ACTUALLY implemented vs what's marked done
-2. Update EmacsReferenceCard.md with correct status
-3. Verify all Batch 1-5 commands have keybindings registered
-4. Add E2E tests for any missing tests
-5. Fix the 4 pre-existing test failures (describe-key, describe-bindings, minor-mode-toggling)
+**Immediate:**
+1. ✅ Document actual status (this update)
+2. Update EmacsReferenceCard.md with correct implementation status
+3. Decide: implement missing P0 commands OR focus on testing what exists?
+4. Fix 4 pre-existing E2E test failures
+5. Add E2E tests for the 7 implemented commands
 
-**After Reconciliation:**
-- Implement any truly missing P0 commands
-- Get to 0 E2E test failures
-- Manual testing side-by-side with Emacs
-- Update ManualTestingPlan.md
-- Complete Phase 7.8
+**Path Forward:**
+- Option A: Implement missing 17 P0 commands (3-4 weeks)
+- Option B: Test & document existing 7 commands, defer rest to future phases
 
-**Success Criteria:**
-- [x] Query-replace and isearch fully working
-- [ ] All P0 commands from reference card verified as implemented
-- [ ] Each command has E2E test validating Emacs-equivalent behavior
-- [ ] `EmacsReferenceCard.md` accurately reflects implementation status
+**Success Criteria (revised):**
+- [x] Query-replace working
+- [ ] All implemented commands have keybindings registered
+- [ ] All implemented commands have E2E tests
+- [ ] EmacsReferenceCard.md reflects reality
 - [ ] 0 E2E test failures
-- [ ] Manual testing confirms zero deviation from Emacs
+- [ ] Decide on completion criteria for Phase 7.8
 
 ---
 
