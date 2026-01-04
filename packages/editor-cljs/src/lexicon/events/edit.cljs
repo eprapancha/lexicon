@@ -257,12 +257,16 @@
 (rf/reg-event-fx
  :scroll-up-command
  (fn [{:keys [db]} [_]]
-   "Scroll forward one screen (C-v) - approximately 20 lines"
+   "Scroll forward one screen (C-v)"
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)
-         screen-lines 20]  ; Approximate screen height
+         viewport (:viewport active-window)
+         ;; Calculate actual visible lines from viewport
+         screen-lines (if viewport
+                       (- (:end-line viewport) (:start-line viewport))
+                       20)]  ; Fallback to 20 if viewport not set
      (if wasm-instance
        (let [text (.getText wasm-instance)
              {:keys [line column]} (linear-pos-to-line-col text current-pos)
@@ -274,12 +278,16 @@
 (rf/reg-event-fx
  :scroll-down-command
  (fn [{:keys [db]} [_]]
-   "Scroll backward one screen (M-v) - approximately 20 lines"
+   "Scroll backward one screen (M-v)"
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
          current-pos (get-in db [:ui :cursor-position] 0)
-         screen-lines 20]  ; Approximate screen height
+         viewport (:viewport active-window)
+         ;; Calculate actual visible lines from viewport
+         screen-lines (if viewport
+                       (- (:end-line viewport) (:start-line viewport))
+                       20)]  ; Fallback to 20 if viewport not set
      (if wasm-instance
        (let [text (.getText wasm-instance)
              {:keys [line column]} (linear-pos-to-line-col text current-pos)

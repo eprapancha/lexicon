@@ -148,11 +148,16 @@
                        (= key "Backspace") "DEL"
                        (= key "Delete") "DELETE"
                        (= key "Escape") "ESC"
+                       (= key "Insert") "Insert"
+                       (= key "PageUp") "PageUp"
+                       (= key "PageDown") "PageDown"
                        (and shift? (= (count key) 1)) (.toUpperCase key)
                        :else key)]
         (str
          (when ctrl? "C-")
          (when (or meta? alt?) "M-")  ; Map both Meta and Alt keys to M- (Emacs convention)
+         ;; Only add S- for non-letter keys (letters already uppercased)
+         (when (and shift? (not (and (= (count key) 1) (re-matches #"[a-zA-Z]" key)))) "S-")
          base-key)))))
 
 (defn parse-key-sequence

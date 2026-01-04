@@ -114,7 +114,9 @@
                      "C-_" :undo                       ; Alternative undo
                      "C-w" :kill-region                ; Kill region
                      "M-w" :copy-region-as-kill        ; Copy region
+                     "C-Insert" :copy-region-as-kill   ; Alternative (M-w blocked by some browsers)
                      "C-y" :yank                       ; Yank
+                     "S-Insert" :yank                  ; Alternative yank
                      "M-y" :yank-pop                   ; Yank pop (cycle kill ring)
                      "C-k" :kill-line                  ; Kill line
                      "M-d" :kill-word                  ; Kill word forward
@@ -136,6 +138,8 @@
                      "C-e" :end-of-line                ; End of line
                      "C-v" :scroll-up-command          ; Scroll forward one screen
                      "M-v" :scroll-down-command        ; Scroll backward one screen
+                     "PageDown" :scroll-up-command     ; Alternative (M-v blocked by some browsers)
+                     "PageUp" :scroll-down-command     ; Alternative (M-v blocked by some browsers)
                      "M-<" :beginning-of-buffer        ; Beginning of buffer
                      "M->" :end-of-buffer              ; End of buffer
                      "M-f" :forward-word               ; Forward word
