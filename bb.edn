@@ -239,9 +239,13 @@
      (when (fs/exists? "packages/editor-cljs/shadow-cljs.edn")
        (run-cmd "npx shadow-cljs compile test" :dir "packages/editor-cljs"))
 
-     (when (fs/exists? "packages/lexicon-engine/wasm/Cargo.toml")
+     (when (fs/exists? "packages/lexicon-engine/Cargo.toml")
        (print-step "🦀" "Testing Rust...")
-       (run-cmd "cargo test" :dir "packages/lexicon-engine/wasm"))
+       (if (check-command "cargo-nextest")
+         (do
+           (ensure-dir "test-results/rust")
+           (run-cmd "cargo nextest run --profile ci --config-file nextest.toml" :dir "packages/lexicon-engine"))
+         (run-cmd "cargo test" :dir "packages/lexicon-engine")))
 
      (println "")
      (print-step "🌐" "Running E2E tests...")
@@ -397,9 +401,13 @@
        (print-step "📝" "Testing ClojureScript...")
        (run-cmd "npx shadow-cljs compile test" :dir "packages/editor-cljs"))
 
-     (when (fs/exists? "packages/lexicon-engine/wasm/Cargo.toml")
+     (when (fs/exists? "packages/lexicon-engine/Cargo.toml")
        (print-step "🦀" "Testing Rust...")
-       (run-cmd "cargo test" :dir "packages/lexicon-engine/wasm"))
+       (if (check-command "cargo-nextest")
+         (do
+           (ensure-dir "test-results/rust")
+           (run-cmd "cargo nextest run --profile ci --config-file nextest.toml" :dir "packages/lexicon-engine"))
+         (run-cmd "cargo test" :dir "packages/lexicon-engine")))
      (println "")
 
      (print-step "✅" "All CI steps completed successfully!")

@@ -1,0 +1,10 @@
+[profile.ci]
+# Store JUnit XML reports in test-results directory
+junit.path = "../../test-results/rust/junit.xml"
+
+# Show test output for failed tests
+failure-output = "immediate-final"
+success-output = "never"
+
+# Continue running tests even if some fail
+fail-fast = false

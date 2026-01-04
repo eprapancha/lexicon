@@ -55,9 +55,10 @@ jobs:
       with:
         targets: wasm32-unknown-unknown
 
-    - name: Install wasm-pack
+    - name: Install wasm-pack and cargo-nextest
       run: |
         curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        cargo install cargo-nextest --locked
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
     - name: Cache Rust dependencies
