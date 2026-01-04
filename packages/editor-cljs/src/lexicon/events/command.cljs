@@ -4,7 +4,8 @@
             [lexicon.db :as db]
             [lexicon.completion.metadata :as completion-metadata]
             [lexicon.advanced-undo :as undo]
-            [lexicon.context :as ctx]))
+            [lexicon.context :as ctx]
+            [lexicon.interactive :as interactive]))
 
 ;; =============================================================================
 ;; Command Registry and Execution
@@ -13,8 +14,66 @@
 (rf/reg-event-db
  :register-command
  (fn [db [_ command-name command-definition]]
-   "Register a new command in the central command registry"
+   "Register a new command in the central command registry.
+    Command definition can include:
+    {:handler [:event-vector ...]
+     :interactive \"p\"           ; Interactive spec string (optional)
+     :doc \"Documentation\"}"
    (assoc-in db [:commands command-name] command-definition)))
+
+(rf/reg-event-fx
+ :execute-command-interactive
+ (fn [{:keys [db]} [_ command-name]]
+   "Execute a command with interactive argument collection.
+    If the command has an :interactive spec, collect args first.
+    If all args immediate (no I/O), dispatch directly.
+    If args need I/O, prompt user via minibuffer."
+   (let [command-def (get-in db [:commands command-name])
+         interactive-spec (:interactive command-def)]
+     (if interactive-spec
+       ;; Has interactive spec - collect args
+       (let [collected (interactive/collect-all-args db interactive-spec)
+             immediate-args (:immediate-args collected)
+             async-prompts (:async-prompts collected)]
+         (if (empty? async-prompts)
+           ;; All args ready - execute immediately
+           {:fx [[:dispatch (into [:execute-command command-name] immediate-args)]]}
+           ;; Need to prompt user - activate minibuffer for first async arg
+           (let [first-prompt (first async-prompts)]
+             {:db (assoc-in db [:command-execution :pending]
+                           {:command command-name
+                            :immediate-args immediate-args
+                            :remaining-prompts (vec (rest async-prompts))
+                            :collected-async-args []})
+              :fx [[:dispatch [:minibuffer/activate
+                              {:prompt (:prompt first-prompt)
+                               :on-confirm [:command/collect-next-arg]}]]]})))
+       ;; No interactive spec - execute with no args
+       {:fx [[:dispatch [:execute-command command-name]]]}))))
+
+(rf/reg-event-fx
+ :command/collect-next-arg
+ (fn [{:keys [db]} [_ user-input]]
+   "Collect next argument from user input and continue execution."
+   (let [pending (get-in db [:command-execution :pending])
+         {:keys [command immediate-args remaining-prompts collected-async-args]} pending
+         ;; Add user input to collected args
+         new-collected (conj collected-async-args user-input)]
+     (if (empty? remaining-prompts)
+       ;; All args collected - execute command
+       (let [all-args (concat immediate-args new-collected)]
+         {:db (update db :command-execution dissoc :pending)
+          :fx [[:dispatch (into [:execute-command command] all-args)]]})
+       ;; More prompts needed
+       (let [next-prompt (first remaining-prompts)]
+         {:db (assoc-in db [:command-execution :pending]
+                       {:command command
+                        :immediate-args immediate-args
+                        :remaining-prompts (vec (rest remaining-prompts))
+                        :collected-async-args new-collected})
+          :fx [[:dispatch [:minibuffer/activate
+                          {:prompt (:prompt next-prompt)
+                           :on-confirm [:command/collect-next-arg]}]]]})))))
 
 (rf/reg-event-fx
  :execute-command

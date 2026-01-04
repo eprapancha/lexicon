@@ -18,7 +18,7 @@
   "Convert {:line N :column M} to linear byte position.
    Uses buffer's WASM instance to calculate position."
   [buffer line col]
-  (when-let [wasm (:wasm-instance buffer)]
+  (when-let [^js wasm (:wasm-instance buffer)]
     (try
       ;; Sum of all line lengths before target line + column
       ;; WASM getLineText returns text for each line
@@ -37,7 +37,7 @@
   "Convert linear byte position to {:line N :column M}.
    Uses buffer's WASM instance to calculate position."
   [buffer point]
-  (when-let [wasm (:wasm-instance buffer)]
+  (when-let [^js wasm (:wasm-instance buffer)]
     (try
       (let [total-lines (.getLineCount wasm)]
         (loop [line 0
@@ -87,7 +87,7 @@
   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
         active-buffer-id (:buffer-id active-window)
         active-buffer (get (:buffers db) active-buffer-id)]
-    (when-let [wasm (:wasm-instance active-buffer)]
+    (when-let [^js wasm (:wasm-instance active-buffer)]
       (.getLength wasm))))
 
 (defn goto-char
@@ -114,7 +114,7 @@
   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
         active-buffer-id (:buffer-id active-window)
         active-buffer (get (:buffers db) active-buffer-id)]
-    (when-let [wasm (:wasm-instance active-buffer)]
+    (when-let [^js wasm (:wasm-instance active-buffer)]
       (.getText wasm))))
 
 (defn buffer-substring
@@ -126,7 +126,7 @@
   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
         active-buffer-id (:buffer-id active-window)
         active-buffer (get (:buffers db) active-buffer-id)]
-    (when-let [wasm (:wasm-instance active-buffer)]
+    (when-let [^js wasm (:wasm-instance active-buffer)]
       (let [start-pos (point-to-line-col active-buffer start)
             end-pos (point-to-line-col active-buffer end)
             start-line (:line start-pos)
@@ -176,7 +176,7 @@
         active-buffer (get (:buffers db) active-buffer-id)
         cursor-pos (:cursor-position active-window)
         line (:line cursor-pos)]
-    (when-let [wasm (:wasm-instance active-buffer)]
+    (when-let [^js wasm (:wasm-instance active-buffer)]
       (let [line-text (.getLineText wasm line)]
         (line-col-to-point active-buffer line (count line-text))))))
 
