@@ -66,6 +66,7 @@ _______________
 **Expected:** "The" is deleted, kill ring contains "The", yank restores "The"
 
 **Deviations:** _______________
+- Error: Command not found: :kill-word 
 
 ---
 
@@ -83,6 +84,7 @@ _______________
 **Expected:** "fox" is deleted backward, kill ring contains "fox", yank restores "fox"
 
 **Deviations:** _______________
+- ⌨️ keydown event: M-DELETE - nothing actually gets deleted.  M-DEL does not work
 
 ---
 
@@ -102,6 +104,7 @@ _______________
 **Expected:** Cursor jumps back to mark (beginning), region stays highlighted, mark is now at position 5
 
 **Deviations:** _______________
+- Error: Command not found: :exchange-point-and-mark
 
 ---
 
