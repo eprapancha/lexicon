@@ -127,7 +127,7 @@
                               "RET" "\n"
                               "TAB" "\t"
                               key-str)]
-         (println "✍️ Inserting special key:" key-str "as:" (pr-str text-to-insert))
+         ;; (println "✍️ Inserting special key:" key-str "as:" (pr-str text-to-insert))
          {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
                [:dispatch [:clear-prefix-key-state]]]})
 
