@@ -1,4 +1,4 @@
-(ns lexicon.buffer-api
+(ns lexicon.api.buffer
   "Emacs-compatible buffer API functions.
 
    Provides point-based API for Elisp compatibility:

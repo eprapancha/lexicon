@@ -1,4 +1,4 @@
-(ns lexicon.interactive
+(ns lexicon.api.interactive
   "Interactive specification parser for Emacs-compatible command definitions.
 
    Parses interactive spec strings like \"p\", \"r\", \"sPrompt: \" and returns
@@ -9,7 +9,7 @@
 
    Based on Emacs src/callint.c implementation."
   (:require [clojure.string :as str]
-            [lexicon.buffer-api :as buf]))
+            [lexicon.api.buffer :as buf]))
 
 ;; -- Interactive Spec Parser --
 

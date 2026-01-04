@@ -5,7 +5,7 @@
             [lexicon.completion.metadata :as completion-metadata]
             [lexicon.advanced-undo :as undo]
             [lexicon.context :as ctx]
-            [lexicon.interactive :as interactive]))
+            [lexicon.api.interactive :as interactive]))
 
 ;; =============================================================================
 ;; Command Registry and Execution
