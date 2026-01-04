@@ -104,11 +104,13 @@
     (println "🔄 Refreshing buffer list")
     (let [buffers (:buffers db)
           content (generate-buffer-list-content buffers)
-          wasm-instance (get-in db [:buffers buffer-id :wasm-instance])]
+          ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])]
 
       ;; Update buffer content
       (when wasm-instance
-        (.setText ^js wasm-instance content))
+        (let [current-length (.length wasm-instance)]
+          (.delete wasm-instance 0 current-length)
+          (.insert wasm-instance 0 content)))
 
       {:fx [[:dispatch [:echo/message "Buffer list refreshed"]]]})))
 

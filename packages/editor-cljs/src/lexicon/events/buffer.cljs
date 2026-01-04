@@ -124,8 +124,8 @@
        ;; Buffer doesn't exist - create it then switch to it
        (do
          (let [buffer-id (db/next-buffer-id buffers)
-               WasmEditorCore (get-in db [:system :wasm-constructor])
-               wasm-instance (WasmEditorCore. "")
+               WasmGapBuffer (get-in db [:system :wasm-constructor])
+               wasm-instance (WasmGapBuffer. "")
                new-buffer {:id buffer-id
                           :wasm-instance wasm-instance
                           :file-handle nil
@@ -208,7 +208,7 @@
        {:fx [[:dispatch [:switch-buffer (:id buffer-list-buffer)]]]}
        ;; Create new buffer list buffer
        (let [buffer-id (db/next-buffer-id buffers)
-             WasmEditorCore (get-in db [:system :wasm-constructor])
+             WasmGapBuffer (get-in db [:system :wasm-constructor])
              ;; Generate buffer list content
              buffer-lines (map (fn [buf]
                                 (str (if (:is-modified? buf) " *" "  ")
@@ -221,7 +221,7 @@
              content (str header (clojure.string/join "\n" buffer-lines))
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)
-             wasm-instance (WasmEditorCore. content)]
+             wasm-instance (WasmGapBuffer. content)]
 
          (let [new-buffer {:id buffer-id
                           :wasm-instance wasm-instance
@@ -409,8 +409,8 @@
  (fn [{:keys [db]} [_ {:keys [file-handle content name]}]]
    "Handle successful file read - create new buffer and switch to it"
    (let [buffer-id (db/next-buffer-id (:buffers db))
-         WasmEditorCore (get-in db [:system :wasm-constructor])
-         wasm-instance (WasmEditorCore. content)
+         WasmGapBuffer (get-in db [:system :wasm-constructor])
+         wasm-instance (WasmGapBuffer. content)
          detected-language (detect-language-from-filename name)
          lines (clojure.string/split content #"\n" -1)
          line-count (count lines)
@@ -554,10 +554,12 @@
  (fn [{:keys [db]} [_ {:keys [buffer-id content name]}]]
    "Replace buffer contents with file contents after revert"
    (let [buffer (get-in db [:buffers buffer-id])
-         ^js wasm-instance (:wasm-instance buffer)]
+         ^js wasm-instance (:wasm-instance buffer)
+         current-length (.getLength wasm-instance)]
      (println "✓ Reverted buffer from file:" name)
      ;; Replace the entire buffer text
-     (.setText wasm-instance content)
+     (.delete wasm-instance 0 current-length)
+     (.insert wasm-instance 0 content)
      ;; Update cache and clear modified flag
      (let [lines (clojure.string/split content #"\n" -1)
            line-count (count lines)]
@@ -701,8 +703,8 @@
          old-buffer (get-in db [:buffers old-buffer-id])
          old-wasm-instance (:wasm-instance old-buffer)
          ;; Create new buffer in place of old one
-         WasmEditorCore (get-in db [:system :wasm-constructor])
-         wasm-instance (WasmEditorCore. content)
+         WasmGapBuffer (get-in db [:system :wasm-constructor])
+         wasm-instance (WasmGapBuffer. content)
          detected-language (detect-language-from-filename name)
          lines (clojure.string/split content #"\n" -1)
          line-count (count lines)
@@ -771,9 +773,8 @@
          text-from-point   (subs full-text current-pos)
 
          ;; Count occurrences
-         search-pattern (js/RegExp. (js* "~{}(~{})"
-                                         (.replace search-string #"[.*+?^${}()|\\[\\]\\\\]" "\\$&"))
-                                    "g")
+         escaped-search (.replace search-string #"[.*+?^${}()|\\[\\]\\\\]" "\\$&")
+         search-pattern (js/RegExp. escaped-search "g")
          matches        (array-seq (.match text-from-point search-pattern))
          count          (if matches (count matches) 0)]
 
@@ -783,10 +784,12 @@
 
        (let [;; Replace all occurrences from point forward
              new-text-from-point (.replace text-from-point search-pattern replacement-string)
-             new-full-text       (str (subs full-text 0 current-pos) new-text-from-point)]
+             new-full-text       (str (subs full-text 0 current-pos) new-text-from-point)
+             text-length-to-end  (- (count full-text) current-pos)]
 
-         ;; Update buffer
-         (.setText wasm-instance new-full-text)
+         ;; Update buffer using delete + insert
+         (.delete wasm-instance current-pos text-length-to-end)
+         (.insert wasm-instance current-pos new-text-from-point)
 
          (let [lines      (clojure.string/split new-full-text #"\n" -1)
                line-count (count lines)]
@@ -850,10 +853,12 @@
 
            (let [;; Replace all matches from point forward
                  new-text-from-point (.replace text-from-point search-pattern replacement-string)
-                 new-full-text       (str (subs full-text 0 current-pos) new-text-from-point)]
+                 new-full-text       (str (subs full-text 0 current-pos) new-text-from-point)
+                 text-length-to-end  (- (count full-text) current-pos)]
 
-             ;; Update buffer
-             (.setText wasm-instance new-full-text)
+             ;; Update buffer using delete + insert
+             (.delete wasm-instance current-pos text-length-to-end)
+             (.insert wasm-instance current-pos new-text-from-point)
 
              (let [lines      (clojure.string/split new-full-text #"\n" -1)
                    line-count (count lines)]
@@ -890,6 +895,15 @@
      {:fx [[:dispatch [:minibuffer/activate
                        {:prompt (str "Query replace " search-string " with: ")
                         :on-confirm [:query-replace/start search-string]}]]]})))
+
+(defn linear-to-line-col
+  "Convert linear position to line/column. Simple implementation for query-replace."
+  [text pos]
+  (let [before-pos (subs text 0 pos)
+        lines (clojure.string/split before-pos #"\n" -1)
+        line (dec (count lines))
+        column (count (last lines))]
+    {:line line :column column}))
 
 (defn find-next-match
   "Find the next match for search-string in text starting from pos.
@@ -932,20 +946,28 @@
          match             (find-next-match full-text search-string current-pos is-regexp?)]
 
      (if match
-       ;; Found first match - activate query-replace mode
-       {:db (-> db
-                (assoc-in [:ui :query-replace :active?] true)
-                (assoc-in [:ui :query-replace :search-string] search-string)
-                (assoc-in [:ui :query-replace :replacement-string] replacement-string)
-                (assoc-in [:ui :query-replace :is-regexp?] is-regexp?)
-                (assoc-in [:ui :query-replace :current-match] match)
-                (assoc-in [:ui :query-replace :original-cursor-pos] current-pos)
-                (assoc-in [:ui :query-replace :replaced-count] 0)
-                (assoc-in [:ui :query-replace :match-history] [])
-                (assoc-in [:ui :query-replace :replace-all?] false)
-                (assoc-in [:ui :cursor-position] (:start match)))
-        :fx [[:dispatch [:echo/message (str "Query replacing " search-string " with " replacement-string
-                                           " (y/n/!/q/^/. for help)")]]]}
+       ;; Found first match - activate query-replace mode and create region to highlight the match
+       (let [cursor-line-col (linear-to-line-col full-text (:end match))
+             mark-line-col (linear-to-line-col full-text (:start match))
+             active-window-id (:active-window-id db)]
+         {:db (-> db
+                  (assoc-in [:ui :query-replace :active?] true)
+                  (assoc-in [:ui :query-replace :search-string] search-string)
+                  (assoc-in [:ui :query-replace :replacement-string] replacement-string)
+                  (assoc-in [:ui :query-replace :is-regexp?] is-regexp?)
+                  (assoc-in [:ui :query-replace :current-match] match)
+                  (assoc-in [:ui :query-replace :original-cursor-pos] current-pos)
+                  (assoc-in [:ui :query-replace :replaced-count] 0)
+                  (assoc-in [:ui :query-replace :match-history] [])
+                  (assoc-in [:ui :query-replace :replace-all?] false)
+                  (assoc-in [:ui :cursor-position] (:end match))
+                  ;; Set mark and cursor on window to create highlighting region
+                  (update :window-tree db/update-window-in-tree active-window-id
+                          #(-> %
+                               (assoc :mark-position mark-line-col)
+                               (assoc :cursor-position cursor-line-col))))
+          :fx [[:dispatch [:echo/message (str "Query replacing " search-string " with " replacement-string
+                                              " (y/n/!/q/^/. for help)")]]]})
        ;; No match found
        {:fx [[:dispatch [:echo/message (str "No match for \"" search-string "\"")]]]}))))
 
@@ -953,6 +975,7 @@
  :query-replace/handle-key
  (fn [{:keys [db]} [_ key-str]]
    "Handle key press during query-replace mode"
+   (println "🔑 query-replace/handle-key received:" (pr-str key-str))
    (let [qr-state (get-in db [:ui :query-replace])]
      (case key-str
        ;; y or SPC - replace this match and continue
@@ -1008,13 +1031,17 @@
          next-search-pos   (+ match-start (count replacement))
          next-match        (find-next-match new-text search-string next-search-pos is-regexp?)]
 
-     ;; Update buffer text
-     (.setText wasm-instance new-text)
+     ;; Update buffer text using delete + insert
+     (.delete wasm-instance match-start (- match-end match-start))
+     (.insert wasm-instance match-start replacement)
 
      (if next-match
-       ;; Found next match - continue
+       ;; Found next match - continue and create region to highlight it
        (let [lines (clojure.string/split new-text #"\n" -1)
-             line-count (count lines)]
+             line-count (count lines)
+             cursor-line-col (linear-to-line-col new-text (:end next-match))
+             mark-line-col (linear-to-line-col new-text (:start next-match))
+             active-window-id (:active-window-id db)]
          {:db (-> db
                   (assoc-in [:buffers buffer-id :cache :text] new-text)
                   (assoc-in [:buffers buffer-id :cache :line-count] line-count)
@@ -1023,7 +1050,12 @@
                   (update-in [:ui :query-replace :replaced-count] inc)
                   (update-in [:ui :query-replace :match-history] conj current-match)
                   (assoc-in [:ui :query-replace :current-match] next-match)
-                  (assoc-in [:ui :cursor-position] (:start next-match)))})
+                  (assoc-in [:ui :cursor-position] (:end next-match))
+                  ;; Set mark and cursor on window to create highlighting region
+                  (update :window-tree db/update-window-in-tree active-window-id
+                          #(-> %
+                               (assoc :mark-position mark-line-col)
+                               (assoc :cursor-position cursor-line-col))))})
        ;; No more matches - finish
        (let [lines (clojure.string/split new-text #"\n" -1)
              line-count (count lines)
@@ -1055,12 +1087,24 @@
          ;; Find next match after current
          next-match        (find-next-match full-text search-string match-end is-regexp?)]
 
+     (println "🔍 SKIP: searching for" (pr-str search-string) "from pos" match-end)
+     (println "🔍 SKIP: text length:" (count full-text) "next-match:" next-match)
+     (println "🔍 SKIP: current-match:" current-match)
+
      (if next-match
-       ;; Found next match - continue
-       {:db (-> db
-                (update-in [:ui :query-replace :match-history] conj current-match)
-                (assoc-in [:ui :query-replace :current-match] next-match)
-                (assoc-in [:ui :cursor-position] (:start next-match)))}
+       ;; Found next match - continue and create region to highlight it
+       (let [cursor-line-col (linear-to-line-col full-text (:end next-match))
+             mark-line-col (linear-to-line-col full-text (:start next-match))
+             active-window-id (:active-window-id db)]
+         {:db (-> db
+                  (update-in [:ui :query-replace :match-history] conj current-match)
+                  (assoc-in [:ui :query-replace :current-match] next-match)
+                  (assoc-in [:ui :cursor-position] (:end next-match))
+                  ;; Set mark and cursor on window to create highlighting region
+                  (update :window-tree db/update-window-in-tree active-window-id
+                          #(-> %
+                               (assoc :mark-position mark-line-col)
+                               (assoc :cursor-position cursor-line-col))))})
        ;; No more matches - finish
        (let [count (:replaced-count qr-state)]
          {:db (update db :ui dissoc :query-replace)
@@ -1101,13 +1145,15 @@
              ;; Replace all in remaining text
              new-text-from   (.replace text-from-match search-pattern replacement)
              new-full-text   (str text-before new-text-from)
+             current-length  (.getLength wasm-instance)
 
              ;; Update buffer
              lines           (clojure.string/split new-full-text #"\n" -1)
              line-count      (count lines)
              total-replaced  (+ (:replaced-count qr-state) match-count)]
 
-         (.setText wasm-instance new-full-text)
+         (.delete wasm-instance 0 current-length)
+         (.insert wasm-instance 0 new-full-text)
 
          {:db (-> db
                   (assoc-in [:buffers buffer-id :cache :text] new-full-text)
@@ -1169,12 +1215,14 @@
          new-text          (str (subs full-text 0 match-start)
                                 replacement
                                 (subs full-text match-end))
+         current-length    (.-length wasm-instance)
          lines             (clojure.string/split new-text #"\n" -1)
          line-count        (count lines)
          count             (inc (:replaced-count qr-state))]
 
-     ;; Update buffer text
-     (.setText wasm-instance new-text)
+     ;; Update buffer text using delete + insert
+     (.delete wasm-instance 0 current-length)
+     (.insert wasm-instance 0 new-text)
 
      {:db (-> db
               (assoc-in [:buffers buffer-id :cache :text] new-text)
@@ -1207,8 +1255,8 @@
         (if (empty? remaining-buffer-ids)
           ;; No buffers left - create a new default *scratch* buffer
           (let [new-buffer-id     (inc (apply max 0 (keys buffers)))
-                WasmEditorCore    (get-in db [:system :wasm-constructor])
-                new-wasm-instance (WasmEditorCore. "")]
+                WasmGapBuffer    (get-in db [:system :wasm-constructor])
+                new-wasm-instance (WasmGapBuffer. "")]
             {:db (-> db
                      (assoc :buffers {new-buffer-id {:id            new-buffer-id
                                                      :wasm-instance new-wasm-instance

@@ -260,7 +260,7 @@
   "Create a new buffer with initial content"
   [buffer-id name content]
   (let [wasm-instance (when content
-                        ;; Will need to create WasmEditorCore instance
+                        ;; Will need to create WasmGapBuffer instance
                         ;; For now, return the structure and set instance later
                         nil)]
     (create-buffer buffer-id name wasm-instance)))

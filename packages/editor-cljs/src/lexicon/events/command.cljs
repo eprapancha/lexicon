@@ -154,7 +154,7 @@
        {:fx [[:dispatch [:switch-buffer (:id help-buffer)]]]}
        ;; Create new help buffer with bindings
        (let [buffer-id (db/next-buffer-id buffers)
-             WasmEditorCore (get-in db [:system :wasm-constructor])
+             WasmGapBuffer (get-in db [:system :wasm-constructor])
 
              ;; Format keybindings
              global-bindings (get-in keymaps [:global])
@@ -181,7 +181,7 @@
                          global-section)
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)
-             wasm-instance (WasmEditorCore. content)]
+             wasm-instance (WasmGapBuffer. content)]
 
          (let [new-buffer {:id buffer-id
                           :wasm-instance wasm-instance
@@ -247,9 +247,11 @@
        ;; Update existing help buffer
        (let [buffer-id (:id help-buffer)
              ^js wasm-instance (:wasm-instance help-buffer)
+             current-length (.length wasm-instance)
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)]
-         (.setText wasm-instance content)
+         (.delete wasm-instance 0 current-length)
+         (.insert wasm-instance 0 content)
          {:db (-> db
                   (assoc-in [:help :awaiting-key?] false)
                   (assoc-in [:buffers buffer-id :cache :text] content)
@@ -259,10 +261,10 @@
                [:dispatch [:echo/clear]]]})
        ;; Create new help buffer
        (let [buffer-id (db/next-buffer-id buffers)
-             WasmEditorCore (get-in db [:system :wasm-constructor])
+             WasmGapBuffer (get-in db [:system :wasm-constructor])
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)
-             wasm-instance (WasmEditorCore. content)
+             wasm-instance (WasmGapBuffer. content)
              new-buffer {:id buffer-id
                         :wasm-instance wasm-instance
                         :file-handle nil
@@ -338,9 +340,11 @@
        ;; Update existing help buffer
        (let [buffer-id (:id help-buffer)
              ^js wasm-instance (:wasm-instance help-buffer)
+             current-length (.length wasm-instance)
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)]
-         (.setText wasm-instance content)
+         (.delete wasm-instance 0 current-length)
+         (.insert wasm-instance 0 content)
          {:db (-> db
                   (assoc-in [:buffers buffer-id :cache :text] content)
                   (assoc-in [:buffers buffer-id :cache :line-count] line-count)
@@ -348,10 +352,10 @@
           :fx [[:dispatch [:switch-buffer buffer-id]]]})
        ;; Create new help buffer
        (let [buffer-id (db/next-buffer-id buffers)
-             WasmEditorCore (get-in db [:system :wasm-constructor])
+             WasmGapBuffer (get-in db [:system :wasm-constructor])
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)
-             wasm-instance (WasmEditorCore. content)
+             wasm-instance (WasmGapBuffer. content)
              new-buffer {:id buffer-id
                         :wasm-instance wasm-instance
                         :file-handle nil
@@ -421,9 +425,11 @@
        ;; Update existing help buffer
        (let [buffer-id (:id help-buffer)
              ^js wasm-instance (:wasm-instance help-buffer)
+             current-length (.length wasm-instance)
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)]
-         (.setText wasm-instance content)
+         (.delete wasm-instance 0 current-length)
+         (.insert wasm-instance 0 content)
          {:db (-> db
                   (assoc-in [:buffers buffer-id :cache :text] content)
                   (assoc-in [:buffers buffer-id :cache :line-count] line-count)
@@ -431,10 +437,10 @@
           :fx [[:dispatch [:switch-buffer buffer-id]]]})
        ;; Create new help buffer
        (let [buffer-id (db/next-buffer-id buffers)
-             WasmEditorCore (get-in db [:system :wasm-constructor])
+             WasmGapBuffer (get-in db [:system :wasm-constructor])
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)
-             wasm-instance (WasmEditorCore. content)
+             wasm-instance (WasmGapBuffer. content)
              new-buffer {:id buffer-id
                         :wasm-instance wasm-instance
                         :file-handle nil
@@ -495,9 +501,11 @@
        ;; Update existing help buffer
        (let [buffer-id (:id help-buffer)
              ^js wasm-instance (:wasm-instance help-buffer)
+             current-length (.length wasm-instance)
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)]
-         (.setText wasm-instance content)
+         (.delete wasm-instance 0 current-length)
+         (.insert wasm-instance 0 content)
          {:db (-> db
                   (assoc-in [:buffers buffer-id :cache :text] content)
                   (assoc-in [:buffers buffer-id :cache :line-count] line-count)
@@ -505,10 +513,10 @@
           :fx [[:dispatch [:switch-buffer buffer-id]]]})
        ;; Create new help buffer
        (let [buffer-id (db/next-buffer-id buffers)
-             WasmEditorCore (get-in db [:system :wasm-constructor])
+             WasmGapBuffer (get-in db [:system :wasm-constructor])
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)
-             wasm-instance (WasmEditorCore. content)
+             wasm-instance (WasmGapBuffer. content)
              new-buffer {:id buffer-id
                         :wasm-instance wasm-instance
                         :file-handle nil
@@ -551,9 +559,11 @@ C-h ?   This help menu
        ;; Update existing help buffer
        (let [buffer-id (:id help-buffer)
              ^js wasm-instance (:wasm-instance help-buffer)
+             current-length (.length wasm-instance)
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)]
-         (.setText wasm-instance content)
+         (.delete wasm-instance 0 current-length)
+         (.insert wasm-instance 0 content)
          {:db (-> db
                   (assoc-in [:buffers buffer-id :cache :text] content)
                   (assoc-in [:buffers buffer-id :cache :line-count] line-count)
@@ -561,10 +571,10 @@ C-h ?   This help menu
           :fx [[:dispatch [:switch-buffer buffer-id]]]})
        ;; Create new help buffer
        (let [buffer-id (db/next-buffer-id buffers)
-             WasmEditorCore (get-in db [:system :wasm-constructor])
+             WasmGapBuffer (get-in db [:system :wasm-constructor])
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)
-             wasm-instance (WasmEditorCore. content)
+             wasm-instance (WasmGapBuffer. content)
              new-buffer {:id buffer-id
                         :wasm-instance wasm-instance
                         :file-handle nil
