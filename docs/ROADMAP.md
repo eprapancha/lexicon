@@ -1695,12 +1695,283 @@ This phase combines:
 
 ---
 
+#### Phase 7.8.1: Minibuffer & UX Architecture Redesign 🎨
+
+**Status:** 🟡 In Progress (2026-01-04)
+**Goal:** Fix critical UX gaps in minibuffer and message handling before building more features
+**Timeline:** 1-2 weeks
+**Prerequisites:** ✅ Phase 7.8 (E2E tests reveal UX issues), ✅ Help system working
+**Priority:** **CRITICAL** - Foundation for all interactive commands
+
+**Rationale:**
+
+During Phase 7.8 E2E testing, several architectural issues were discovered that block further development:
+- File operations (C-x C-f, C-x C-s) use browser dialogs (mouse-required, not keyboard-driven)
+- Minibuffer only visible when active (should be always-visible like Emacs)
+- Messages go to console.log instead of *Messages* buffer
+- No TAB completion in minibuffer
+- Minibuffer has fixed height (should expand for completions like Vertico/Consult)
+- Echo-area and minibuffer are separate (should be unified in Emacs architecture)
+
+**User feedback (2026-01-04):**
+> "the reason i want mini buffer fixed is because there is a lot of functionality that slightly modifies how it appears and behaves and i want to get that right. best to follow emacs faithfully as that has stood the test of time. the two main things tackle are, simple user input for things like find and replace. i think we differ from emacs as per my testing.. emacs accepts user input on the line after the modeline. emacs always has one empty line after the modeline. i think every message written to Messages buffer flashes there momentarily. that is where user input is also accepted. the second thing is functionality that expands the mini buffer vertically to accomodate for additional functionality.. like say, we support completion. then completion results needsto be shown somewhere, we need at least 4 lines additional height for that. even vertico is a good example.. it needs extended height and even something like a consult-ripgrep.. so some thinking needs to go into mini buffer design before it is too late."
+
+---
+
+### **1. Minibuffer Architecture Redesign** 🎨
+
+**Current Problems:**
+```clojure
+;; views.cljs - CURRENT BROKEN IMPLEMENTATION
+(defn minibuffer-view []
+  (when (:active? minibuffer)  ; ❌ Only shows when active
+    [:div.minibuffer
+     {:style {:height "32px"}}])) ; ❌ Fixed height
+
+(defn echo-area []
+  (when (not (blank? message))  ; ❌ Separate from minibuffer
+    [:div.echo-area
+     {:style {:bottom "32px"}}]))  ; ❌ Above minibuffer
+```
+
+**Emacs Architecture (Correct):**
+- **Always visible**: 1 empty line below mode line, always present
+- **Dual purpose**: Shows transient messages AND accepts user input
+- **Dynamic height**: Expands vertically (1-N lines) for completions
+- **Command-specific**: Each command can customize display (vertico, consult-ripgrep, etc.)
+
+**New Data Model:**
+```clojure
+{:minibuffer {;; Core state
+              :always-visible true                    ; Always render, even when inactive
+              :active? false                          ; Whether accepting input
+
+              ;; Display mode
+              :mode :idle                             ; :idle | :input | :message | :completion
+              :height-lines 1                         ; Dynamic: 1-20+ lines
+
+              ;; Content
+              :prompt ""                              ; Prompt string (e.g., "M-x ")
+              :input ""                               ; User input
+              :message ""                             ; Transient message (flashes briefly)
+
+              ;; Completion
+              :completion {:enabled? false
+                          :candidates []              ; List of completion candidates
+                          :selected-index 0           ; Currently selected (arrow keys)
+                          :display-lines 4}           ; How many candidates to show
+
+              ;; Customization
+              :custom-renderer nil                    ; fn: state -> hiccup (for special commands)
+              :on-confirm nil                         ; Event vector to dispatch on RET
+              :on-cancel [:minibuffer/deactivate]}}   ; Event vector on C-g
+```
+
+**Implementation Steps:**
+
+1. **Redesign minibuffer state model** (4 hours)
+   - [ ] Update app-db schema with new structure
+   - [ ] Add `:mode` field (`:idle | :input | :message | :completion`)
+   - [ ] Add `:height-lines` for dynamic sizing
+   - [ ] Add `:message` field for transient messages
+   - [ ] Remove separate echo-area state
+   - [ ] Commit: "refactor(minibuffer): redesign state model for Emacs architecture"
+
+2. **Implement always-visible rendering** (4 hours)
+   - [ ] Update `minibuffer-view` to always render (remove `when` conditional)
+   - [ ] Show empty line in `:idle` mode
+   - [ ] Show messages in `:message` mode (auto-clear after 2s)
+   - [ ] Show input + prompt in `:input` mode
+   - [ ] Show completions in `:completion` mode
+   - [ ] Commit: "feat(minibuffer): implement always-visible rendering"
+
+3. **Implement dynamic height expansion** (6 hours)
+   - [ ] Add CSS for dynamic height based on `:height-lines`
+   - [ ] Implement auto-sizing for completion candidates
+   - [ ] Add transitions for smooth expansion/collapse
+   - [ ] Test with 1 line (idle), 4 lines (basic completion), 10+ lines (consult)
+   - [ ] Commit: "feat(minibuffer): implement dynamic vertical expansion"
+
+4. **Unify echo-area and minibuffer** (3 hours)
+   - [ ] Move all `[:echo/message ...]` events to use minibuffer `:message` mode
+   - [ ] Implement auto-clearing after 2 seconds
+   - [ ] Remove old echo-area component entirely
+   - [ ] Update all event handlers to use new unified system
+   - [ ] Commit: "refactor(minibuffer): unify echo-area into minibuffer"
+
+5. **Add completion UI support** (8 hours)
+   - [ ] Implement completion candidate rendering (vertical list)
+   - [ ] Add arrow key navigation (up/down through candidates)
+   - [ ] Add RET to select candidate
+   - [ ] Add TAB to cycle through matches
+   - [ ] Add visual highlighting for selected candidate
+   - [ ] Test with `switch-to-buffer` (C-x b)
+   - [ ] Commit: "feat(minibuffer): implement completion UI with keyboard navigation"
+
+6. **Enable command-specific customization** (4 hours)
+   - [ ] Add `:custom-renderer` support for advanced commands
+   - [ ] Update `read-from-minibuffer` to accept configuration map
+   - [ ] Document API for commands to customize minibuffer
+   - [ ] Commit: "feat(minibuffer): add command-specific customization API"
+
+**Total: ~29 hours (3-4 days)**
+
+---
+
+### **2. Implement *Messages* Buffer** 📝
+
+**Current Problem:**
+- All messages go to `console.log` (hidden from users)
+- No persistent message history
+- Can't review previous messages
+
+**Emacs Behavior:**
+- Messages go to `*Messages*` buffer (persistent, scrollable)
+- Recent message flashes briefly in minibuffer
+- Users can switch to `*Messages*` to review history
+
+**Implementation Steps:**
+
+1. **Create *Messages* buffer** (3 hours)
+   - [ ] Create special buffer on startup
+   - [ ] Mark as non-file-backed, non-modifiable
+   - [ ] Implement append-only message insertion
+   - [ ] Add timestamp to each message
+   - [ ] Commit: "feat(messages): create *Messages* buffer"
+
+2. **Redirect all console.log calls** (4 hours)
+   - [ ] Create `(message ...)` function (Emacs-style)
+   - [ ] Append to *Messages* buffer
+   - [ ] Flash in minibuffer (2 second display)
+   - [ ] Replace all `console.log` calls in codebase
+   - [ ] Commit: "feat(messages): redirect all logs to *Messages* buffer"
+
+3. **Add message() primitive** (2 hours)
+   - [ ] Implement `(message format-string & args)` function
+   - [ ] Support format strings (e.g., "Saved %s" filename)
+   - [ ] Add to command API
+   - [ ] Commit: "feat(messages): implement message() primitive"
+
+**Total: ~9 hours (1 day)**
+
+---
+
+### **3. Keyboard-Driven File Browsing** 📁
+
+**Current Problem:**
+- C-x C-f opens browser file dialog (requires mouse)
+- C-x C-s opens browser save dialog (requires mouse)
+- No dired-like file navigation
+- Not keyboard-driven like Emacs
+
+**Emacs Behavior:**
+- C-x C-f shows file path in minibuffer with TAB completion
+- Can navigate directories with keyboard
+- See file list in minibuffer (with vertico/icomplete)
+- RET to select file
+
+**Implementation Steps:**
+
+1. **Implement file path completion** (8 hours)
+   - [ ] Add filesystem access API (File System Access API or IndexedDB)
+   - [ ] Implement path completion (TAB expands directories)
+   - [ ] Show file list in minibuffer completion
+   - [ ] Handle relative vs absolute paths
+   - [ ] Commit: "feat(files): implement keyboard-driven file path completion"
+
+2. **Update C-x C-f to use minibuffer** (4 hours)
+   - [ ] Replace browser dialog with `read-file-name`
+   - [ ] Use minibuffer with file path completion
+   - [ ] Support directory navigation (/ to go into dir)
+   - [ ] Support .. to go up
+   - [ ] Commit: "feat(files): replace C-x C-f dialog with minibuffer"
+
+3. **Update C-x C-s to use minibuffer** (2 hours)
+   - [ ] Use `read-file-name` for save path
+   - [ ] Default to current file path
+   - [ ] Allow save-as with different path
+   - [ ] Commit: "feat(files): replace C-x C-s dialog with minibuffer"
+
+**Total: ~14 hours (2 days)**
+
+**Note:** This may require browser filesystem permissions and careful UX design. Consider IndexedDB-based virtual filesystem as alternative.
+
+---
+
+### **4. Fix Remaining E2E Test Failures** 🧪
+
+**From Phase 7.8 test results (68 tests, 1 error, 5 failures):**
+
+1. **Fix isearch minibuffer activation** (6 hours)
+   - [ ] Debug why C-s/C-r don't activate minibuffer
+   - [ ] Ensure isearch uses new minibuffer architecture
+   - [ ] Update isearch to show "I-search:" in minibuffer
+   - [ ] Commit: "fix(isearch): fix minibuffer activation for C-s/C-r"
+
+2. **Add alternative keybinding for M-d** (1 hour)
+   - [ ] Browser blocks Alt+d (address bar focus)
+   - [ ] Add C-M-d or other alternative
+   - [ ] Update E2E test to use alternative
+   - [ ] Document in keybinding reference
+   - [ ] Commit: "fix(keys): add alternative keybinding for kill-word"
+
+3. **Implement insert-file (C-x i)** (4 hours)
+   - [ ] Implement `:insert-file` event handler
+   - [ ] Use minibuffer to read filename
+   - [ ] Insert file contents at point
+   - [ ] Update E2E test
+   - [ ] Commit: "feat(files): implement insert-file (C-x i)"
+
+4. **Implement query-replace-regexp** (6 hours)
+   - [ ] Implement `:query-replace-regexp` event handler
+   - [ ] Reuse query-replace UI logic
+   - [ ] Use regex matching instead of string matching
+   - [ ] Update E2E test
+   - [ ] Commit: "feat(replace): implement query-replace-regexp"
+
+5. **Fix minor-mode-toggling status bar update** (3 hours)
+   - [ ] Debug why mode line doesn't update on toggle
+   - [ ] Ensure subscription updates correctly
+   - [ ] Update E2E test if needed
+   - [ ] Commit: "fix(modes): fix status bar update on minor mode toggle"
+
+**Total: ~20 hours (2-3 days)**
+
+---
+
+### **Success Criteria:**
+
+**Minibuffer:**
+- [ ] Minibuffer always visible (1 empty line below mode line)
+- [ ] Messages flash in minibuffer, persist in *Messages* buffer
+- [ ] Minibuffer expands dynamically for completions (1-20+ lines)
+- [ ] TAB completion works in minibuffer
+- [ ] Commands can customize minibuffer display
+
+**Messages:**
+- [ ] *Messages* buffer exists and captures all logs
+- [ ] `(message ...)` primitive works
+- [ ] No more console.log usage in codebase
+
+**File Operations:**
+- [ ] C-x C-f uses minibuffer with file path completion
+- [ ] C-x C-s uses minibuffer (no browser dialog)
+- [ ] Can navigate directories with keyboard
+
+**Tests:**
+- [ ] 0 E2E test failures (all 68 tests passing)
+- [ ] All Phase 7.8 commands tested and working
+
+**Total Timeline: ~72 hours (9-10 days, or 2 work weeks)**
+
+---
+
 #### Phase 7.9: Elisp Compatibility Foundation 🔧📜
 
 **Status:** 🔲 Not Started
 **Goal:** Enable reuse of Elisp package logic without reimplementing from scratch
 **Timeline:** 3-4 weeks (exploratory/foundational)
-**Prerequisites:** ✅ Phase 7.7 (SCI integration), ✅ Phase 7.8 (core commands complete)
+**Prerequisites:** ✅ Phase 7.7 (SCI integration), ✅ Phase 7.8 (core commands complete), ✅ Phase 7.8.1 (minibuffer redesign)
 **Priority:** **HIGH** - Unlocks ecosystem reuse
 
 **Rationale:**

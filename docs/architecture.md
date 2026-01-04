@@ -317,7 +317,11 @@ Lexicon uses re-frame for state management - a functional, reactive framework fo
               :input ""
               :completions []
               :on-confirm nil
-              :on-cancel [:minibuffer/deactivate]}}
+              :on-cancel [:minibuffer/deactivate]}
+
+ ;; NOTE: Minibuffer redesign planned for Phase 7.8.1
+ ;; See ROADMAP.md Phase 7.8.1 for new architecture
+ ;; Future: Always-visible, dynamic height, unified with echo-area}
 ```
 
 #### Event Flow
