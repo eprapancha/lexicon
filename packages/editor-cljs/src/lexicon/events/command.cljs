@@ -217,9 +217,9 @@
              WasmGapBuffer (get-in db [:system :wasm-constructor])
 
              ;; Format keybindings
-             global-bindings (get-in keymaps [:global])
-             major-bindings (get-in keymaps [:major major-mode])
-             minor-bindings (get-in keymaps [:minor])
+             global-bindings (get-in keymaps [:global :bindings])
+             major-bindings (get-in keymaps [:major major-mode :bindings])
+             minor-bindings (get-in keymaps [:minor :bindings])
 
              format-bindings (fn [bindings title]
                               (when (seq bindings)
