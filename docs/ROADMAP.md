@@ -1604,25 +1604,26 @@ This phase combines:
 
 #### Phase 7.8: Core Command Audit & Completion 📋
 
-**Status:** 🔄 In Progress (**CORRECTED: 13/15 batch commands = 87% complete**)
+**Status:** ✅ **COMMANDS 100% COMPLETE** - Now adding keybindings and tests
 **Goal:** Ensure all essential Emacs commands exist before building packages
 **Timeline:** 3 weeks
 **Prerequisites:** ✅ Phase 7.7 (package infrastructure complete)
 **Priority:** **CRITICAL** - Foundation for everything else
 
-**CORRECTED STATUS (2026-01-04):** Second audit found commands in edit.cljs and command.cljs that first audit missed.
+**FINAL STATUS (2026-01-04):** Third audit found isearch.cljs (entire dedicated namespace) and replace-regexp in buffer.cljs.
 
-**Actual Progress:**
-- ✅ Batch 1: Quick wins (6/6) - ALL IMPLEMENTED in edit.cljs
-- ✅ Batch 2: File/buffer commands (4/4) - ALL IMPLEMENTED
-- ✅ Batch 4: Query-replace (2/2) - ALL IMPLEMENTED
-- 🟡 Batch 3: Replace (1/2 - replace-string done, replace-regexp missing)
-- ❌ Batch 5: Isearch (0/2 - NOT implemented)
+**ALL BATCHES 100% COMPLETE:**
+- ✅ Batch 1: Quick wins (6/6) - edit.cljs
+- ✅ Batch 2: File/buffer commands (4/4) - buffer.cljs
+- ✅ Batch 3: Replace (2/2) - buffer.cljs (both replace-string AND replace-regexp exist!)
+- ✅ Batch 4: Query-replace (2/2) - buffer.cljs
+- ✅ Batch 5: Isearch (2/2) - **isearch.cljs** (entire dedicated file with full implementation!)
 
-**Only 3 commands missing from planned batches:**
-1. `replace-regexp` (M-x replace-regexp)
-2. `isearch-forward` (C-s)
-3. `isearch-backward` (C-r)
+**All 16 planned commands are implemented. Remaining work:**
+- Add keybindings for commands that need them
+- Add E2E tests
+- Fix 4 pre-existing test failures
+- Manual testing
 
 ---
 
