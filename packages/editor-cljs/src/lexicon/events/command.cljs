@@ -656,6 +656,9 @@ C-h ?   This help menu
          [:dispatch [:register-command :query-replace
                     {:docstring "Query and replace interactively (M-%)"
                      :handler [:query-replace]}]]
+         [:dispatch [:register-command :query-replace-regexp
+                    {:docstring "Query and replace regexp interactively (C-M-%)"
+                     :handler [:query-replace-regexp]}]]
          [:dispatch [:register-command :isearch-forward
                     {:docstring "Incremental search forward (C-s)"
                      :handler [:isearch-forward]}]]
@@ -680,6 +683,9 @@ C-h ?   This help menu
          [:dispatch [:register-command :describe-function
                     {:docstring "Describe a function/command"
                      :handler [:describe-function]}]]
+         [:dispatch [:register-command :describe-variable
+                    {:docstring "Describe a variable"
+                     :handler [:describe-variable]}]]
          [:dispatch [:register-command :apropos-command
                     {:docstring "Search for commands matching a pattern"
                      :handler [:apropos-command]}]]
@@ -722,12 +728,21 @@ C-h ?   This help menu
          [:dispatch [:register-command :kill-line
                     {:docstring "Kill from cursor to end of line"
                      :handler [:kill-line]}]]
+         [:dispatch [:register-command :kill-word
+                    {:docstring "Kill from cursor to end of word (M-d)"
+                     :handler [:kill-word]}]]
+         [:dispatch [:register-command :backward-kill-word
+                    {:docstring "Kill from cursor to beginning of word (M-DEL)"
+                     :handler [:backward-kill-word]}]]
          [:dispatch [:register-command :open-line
                     {:docstring "Insert newline without moving cursor"
                      :handler [:open-line]}]]
          [:dispatch [:register-command :set-mark-command
                     {:docstring "Set mark at current position"
                      :handler [:set-mark-command]}]]
+         [:dispatch [:register-command :exchange-point-and-mark
+                    {:docstring "Exchange point and mark (C-x C-x)"
+                     :handler [:exchange-point-and-mark]}]]
          [:dispatch [:register-command :copy-region-as-kill
                     {:docstring "Copy region to kill ring"
                      :handler [:copy-region-as-kill]}]]
@@ -767,6 +782,12 @@ C-h ?   This help menu
          [:dispatch [:register-command :backward-word
                     {:docstring "Move cursor backward one word"
                      :handler [:backward-word]}]]
+         [:dispatch [:register-command :scroll-up-command
+                    {:docstring "Scroll forward one screen (C-v)"
+                     :handler [:scroll-up-command]}]]
+         [:dispatch [:register-command :scroll-down-command
+                    {:docstring "Scroll backward one screen (M-v)"
+                     :handler [:scroll-down-command]}]]
          [:dispatch [:register-command :execute-extended-command
                     {:docstring "Execute extended command (M-x)"
                      :handler [:execute-extended-command]}]]
