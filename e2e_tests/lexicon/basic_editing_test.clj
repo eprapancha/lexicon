@@ -1232,12 +1232,12 @@
     (press-key "k")
     (Thread/sleep 50)
 
-    ;; Minibuffer should prompt for key
-    (let [minibuffer-text (try
-                            (e/get-element-text *driver* {:css ".minibuffer"})
-                            (catch Exception _ ""))]
-      (is (or (.contains minibuffer-text "Describe key")
-              (.contains minibuffer-text "key"))
+    ;; Echo area should prompt for key
+    (let [echo-text (try
+                      (e/get-element-text *driver* {:css ".echo-area"})
+                      (catch Exception _ ""))]
+      (is (or (.contains echo-text "Describe key")
+              (.contains echo-text "key"))
           "Should prompt for key description"))
 
     ;; Press C-f
