@@ -675,7 +675,10 @@ C-h ?   This help menu
                      :handler [:set-major-mode :clojure-mode]}]]
          [:dispatch [:register-command :line-number-mode
                     {:docstring "Toggle line number display"
-                     :handler [:toggle-minor-mode :line-number-mode]}]]]}))
+                     :handler [:toggle-minor-mode :line-number-mode]}]]
+         [:dispatch [:register-command :column-number-mode
+                    {:docstring "Toggle column number display"
+                     :handler [:toggle-minor-mode :column-number-mode]}]]]}))
 
 ;; =============================================================================
 ;; Command Initialization

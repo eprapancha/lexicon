@@ -650,7 +650,7 @@
           (str "Only first should be replaced. Got: " editor-text)))))
 
 (deftest test-p7-8-query-replace-regexp
-  (testing "P7.8 Batch 4: query-replace-regexp (C-M-%)"
+  (testing "P7.8 Batch 4: query-replace-regexp (M-x query-replace-regexp)"
     (e/go *driver* app-url)
     (wait-for-editor-ready)
     (click-editor)
@@ -663,9 +663,13 @@
     (press-meta-key "<")
     (Thread/sleep 20)
 
-    ;; Start query-replace-regexp with C-M-%
-    (press-ctrl-meta-key "%")
+    ;; Start query-replace-regexp with M-x
+    (press-meta-key "x")
     (Thread/sleep 50)
+    (type-text "query-replace-regexp")
+    (Thread/sleep 20)
+    (press-key "Enter")
+    (Thread/sleep 100)
 
     ;; Type regex pattern
     (e/fill *driver* {:css ".minibuffer-input"} "num[0-9]")

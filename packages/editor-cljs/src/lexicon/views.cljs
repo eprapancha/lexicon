@@ -899,29 +899,29 @@
 (defn status-bar
   "Display editor status information"
   []
-  (let [cursor-pos @(rf/subscribe [:lexicon.subs/cursor-position])
-        buffer-length @(rf/subscribe [:buffer-length])
-        buffer-modified? @(rf/subscribe [:buffer-modified?])
-        active-buffer @(rf/subscribe [:active-buffer])
-        minibuffer @(rf/subscribe [:minibuffer])
-        show-line-numbers? @(rf/subscribe [:show-line-numbers?])
+  (let [cursor-pos          @(rf/subscribe [:lexicon.subs/cursor-position])
+        buffer-length       @(rf/subscribe [:buffer-length])
+        buffer-modified?    @(rf/subscribe [:buffer-modified?])
+        active-buffer       @(rf/subscribe [:active-buffer])
+        minibuffer          @(rf/subscribe [:minibuffer])
+        show-line-numbers?  @(rf/subscribe [:show-line-numbers?])
         show-column-number? @(rf/subscribe [:show-column-number?])]
 
     (when-not (:active? minibuffer)
       [:div.status-bar
-       {:style {:position "fixed"
-                :bottom "0"
-                :left "0"
-                :right "0"
-                :height "24px"
+       {:style {:position         "fixed"
+                :bottom           "0"
+                :left             "0"
+                :right            "0"
+                :height           "24px"
                 :background-color "#2d2d30"
-                :color "#cccccc"
-                :font-size "12px"
-                :font-family "monospace"
-                :display "flex"
-                :align-items "center"
-                :padding "0 10px"
-                :border-top "1px solid #3e3e42"}}
+                :color            "#cccccc"
+                :font-size        "12px"
+                :font-family      "monospace"
+                :display          "flex"
+                :align-items      "center"
+                :padding          "0 10px"
+                :border-top       "1px solid #3e3e42"}}
 
        [:span.buffer-info
         (str (:name active-buffer) " " (if buffer-modified? "**" "--"))]
@@ -941,19 +941,25 @@
        [:span.mode-info
         {:style {:margin-left "10px"}}
         (when-let [mode (:major-mode active-buffer)]
-          (str "(" (clojure.string/capitalize (name mode)) ")"))]])))
+          (str "(" (clojure.string/capitalize (name mode)) ")"))
+        ;; Minor mode indicators
+        (let [minor-modes (filter identity
+                                  [(when show-line-numbers? "L")
+                                   (when show-column-number? "C")])]
+          (when (seq minor-modes)
+            (str " (" (clojure.string/join " " minor-modes) ")")))]])))
 
 (defn main-app
-  "Main application component"
-  []
-  (let [initialized?  @(rf/subscribe [:initialized?])
-        editor-ready? @(rf/subscribe [:editor-ready?])
-        wasm-error    @(rf/subscribe [:wasm-error])]
+"Main application component"
+[]
+(let [initialized?  @(rf/subscribe [:initialized?])
+      editor-ready? @(rf/subscribe [:editor-ready?])
+      wasm-error    @(rf/subscribe [:wasm-error])]
 
-    [:<>
-     ;; Add CSS for cursor animation and syntax highlighting
-     [:style
-      "@keyframes cursor-blink {
+  [:<>
+   ;; Add CSS for cursor animation and syntax highlighting
+   [:style
+    "@keyframes cursor-blink {
          0%, 50% { opacity: 1; }
          51%, 100% { opacity: 0; }
        }
@@ -963,40 +969,40 @@
        .syntax-number { color: #b5cea8; }
        .syntax-default { color: #d4d4d4; }"]
 
-     [:div.lexicon-app
-      {:style {:width          "100%"
-               :height         "100vh"
-               :display        "flex"
-               :flex-direction "column"}}
+   [:div.lexicon-app
+    {:style {:width          "100%"
+             :height         "100vh"
+             :display        "flex"
+             :flex-direction "column"}}
 
-      (cond
-        wasm-error
-        [:div.error
-         {:style {:padding          "20px"
-                  :color            "#ff6b6b"
-                  :background-color "#2d1b1b"
-                  :border           "1px solid #ff6b6b"
-                  :border-radius    "4px"
-                  :margin           "20px"
-                  :font-family      "monospace"}}
-         [:h3 "WASM Loading Error"]
-         [:p "Failed to load the WebAssembly module:"]
-         [:pre {:style {:background-color "#1a1a1a"
-                        :padding          "10px"
-                        :border-radius    "4px"
-                        :overflow-x       "auto"}}
-          (str wasm-error)]
-         [:p "Please check the browser console for more details."]]
+    (cond
+      wasm-error
+      [:div.error
+       {:style {:padding          "20px"
+                :color            "#ff6b6b"
+                :background-color "#2d1b1b"
+                :border           "1px solid #ff6b6b"
+                :border-radius    "4px"
+                :margin           "20px"
+                :font-family      "monospace"}}
+       [:h3 "WASM Loading Error"]
+       [:p "Failed to load the WebAssembly module:"]
+       [:pre {:style {:background-color "#1a1a1a"
+                      :padding          "10px"
+                      :border-radius    "4px"
+                      :overflow-x       "auto"}}
+        (str wasm-error)]
+       [:p "Please check the browser console for more details."]]
 
-        (not initialized?)
-        [loading-view]
+      (not initialized?)
+      [loading-view]
 
-        editor-ready?
-        [:<>
-         [editor-view]
-         [status-bar]
-         [echo-area]
-         [minibuffer-view]]
+      editor-ready?
+      [:<>
+       [editor-view]
+       [status-bar]
+       [echo-area]
+       [minibuffer-view]]
 
-        :else
-        [:div.error "Failed to initialize editor"])]]))
+      :else
+      [:div.error "Failed to initialize editor"])]]))

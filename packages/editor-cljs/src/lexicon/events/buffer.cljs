@@ -1244,6 +1244,73 @@
       :fx [[:dispatch [:echo/message (str "Replaced " count " occurrence"
                                           (if (= count 1) "" "s") " (done)")]]]})))
 
+;; =============================================================================
+;; Query Replace Regexp (C-M-%, query-replace-regexp)
+;; =============================================================================
+
+(rf/reg-event-fx
+ :query-replace-regexp
+ (fn [{:keys [db]} [_]]
+   "Start interactive query-replace with regexp (C-M-%)"
+   {:fx [[:dispatch [:minibuffer/activate
+                     {:prompt "Query replace regexp: "
+                      :on-confirm [:query-replace-regexp/read-replacement]}]]]}))
+
+(rf/reg-event-fx
+ :query-replace-regexp/read-replacement
+ (fn [{:keys [db]} [_ regexp-string]]
+   "Read replacement string after regexp string"
+   (if (clojure.string/blank? regexp-string)
+     {:fx [[:dispatch [:echo/message "Empty regexp"]]]}
+     {:fx [[:dispatch [:minibuffer/activate
+                       {:prompt (str "Query replace regexp " regexp-string " with: ")
+                        :on-confirm [:query-replace-regexp/start regexp-string]}]]]})))
+
+(rf/reg-event-fx
+ :query-replace-regexp/start
+ (fn [{:keys [db]} [_ regexp-string replacement-string]]
+   "Initialize query-replace-regexp state and find first match using regexp"
+   (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id        (:buffer-id active-window)
+         buffer           (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         full-text        (.getText wasm-instance)
+         current-pos      (get-in db [:ui :cursor-position] 0)
+         ;; Use regexp search
+         is-regexp?       true
+         regexp-pattern   (try (re-pattern regexp-string) (catch js/Error _ nil))
+         ;; Find first match from current position
+         text-from-pos    (subs full-text current-pos)
+         match-result     (when regexp-pattern (re-find regexp-pattern text-from-pos))
+         match-text       (if (string? match-result) match-result (first match-result))
+         match-index      (when match-text (.indexOf text-from-pos match-text))
+         match            (when (and match-text (>= match-index 0))
+                           {:start (+ current-pos match-index)
+                            :end   (+ current-pos match-index (count match-text))})]
+     (if match
+       ;; Found first match - activate query-replace mode
+       (let [cursor-line-col (linear-to-line-col full-text (:end match))
+             mark-line-col   (linear-to-line-col full-text (:start match))
+             active-window-id (:active-window-id db)]
+         {:db (-> db
+                  (assoc-in [:ui :query-replace :active?] true)
+                  (assoc-in [:ui :query-replace :search-string] regexp-string)
+                  (assoc-in [:ui :query-replace :replacement-string] replacement-string)
+                  (assoc-in [:ui :query-replace :is-regexp?] is-regexp?)
+                  (assoc-in [:ui :query-replace :current-match] match)
+                  (assoc-in [:ui :query-replace :original-cursor-pos] current-pos)
+                  (assoc-in [:ui :query-replace :replaced-count] 0)
+                  (assoc-in [:ui :query-replace :match-history] [])
+                  (assoc-in [:ui :query-replace :replace-all?] false)
+                  (assoc-in [:ui :cursor-position] (:end match))
+                  ;; Set mark and cursor on window to create highlighting region
+                  (update :window-tree db/update-window-in-tree active-window-id
+                          #(-> %
+                               (assoc :mark-position mark-line-col)
+                               (assoc :cursor-position cursor-line-col))))})
+       ;; No match found
+       {:fx [[:dispatch [:echo/message (str "No match for regexp: " regexp-string)]]]}))))
+
 (rf/reg-event-fx
 :close-buffer
 (fn [{:keys [db]} [_ buffer-id]]
