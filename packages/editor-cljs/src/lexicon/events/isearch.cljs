@@ -86,6 +86,13 @@
               (assoc-in [:ui :isearch :match-history] [])
               (assoc-in [:ui :isearch :wrapped?] false)
               (assoc-in [:ui :isearch :failing?] false)
+              ;; Activate minibuffer for isearch input
+              (assoc :minibuffer {:active? true
+                                   :prompt "I-search: "
+                                   :input ""
+                                   :on-change [:isearch/minibuffer-update]
+                                   :on-confirm [:isearch/exit]
+                                   :on-cancel [:isearch/abort]})
               (update-echo-area "" false false))})))
 
 (rf/reg-event-fx
@@ -101,7 +108,49 @@
               (assoc-in [:ui :isearch :match-history] [])
               (assoc-in [:ui :isearch :wrapped?] false)
               (assoc-in [:ui :isearch :failing?] false)
+              ;; Activate minibuffer for isearch input
+              (assoc :minibuffer {:active? true
+                                   :prompt "I-search backward: "
+                                   :input ""
+                                   :on-change [:isearch/minibuffer-update]
+                                   :on-confirm [:isearch/exit]
+                                   :on-cancel [:isearch/abort]})
               (update-echo-area "" false false))})))
+
+(rf/reg-event-fx
+ :isearch/minibuffer-update
+ (fn [{:keys [db]} [_ new-input]]
+   "Handle minibuffer input changes during isearch"
+   (let [isearch-state    (get-in db [:ui :isearch])
+         direction        (:direction isearch-state)
+         active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id        (:buffer-id active-window)
+         buffer           (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         full-text        (.getText wasm-instance)
+         original-pos     (:original-pos isearch-state)
+         case-fold?       (should-use-case-fold? new-input)
+
+         ;; Search from original position
+         match (if (= direction :forward)
+                 (find-next-match full-text new-input original-pos case-fold?)
+                 (find-prev-match full-text new-input original-pos case-fold?))]
+
+     (if match
+       ;; Found match - move to it
+       {:db (-> db
+                (assoc-in [:ui :isearch :search-string] new-input)
+                (assoc-in [:ui :isearch :current-match] match)
+                (assoc-in [:ui :isearch :failing?] false)
+                (assoc-in [:ui :cursor-position] (:start match))
+                (assoc-in [:minibuffer :input] new-input)
+                (update-echo-area new-input false false))}
+       ;; No match - mark as failing
+       {:db (-> db
+                (assoc-in [:ui :isearch :search-string] new-input)
+                (assoc-in [:ui :isearch :failing?] true)
+                (assoc-in [:minibuffer :input] new-input)
+                (update-echo-area new-input true false))}))))
 
 (rf/reg-event-fx
  :isearch/handle-key
@@ -304,6 +353,7 @@
    "Exit isearch and stay at current match (RET)"
    {:db (-> db
             (update :ui dissoc :isearch)
+            (assoc-in [:minibuffer :active?] false)
             (assoc-in [:echo-area :message] ""))}))
 
 (rf/reg-event-fx
@@ -314,4 +364,5 @@
      {:db (-> db
               (assoc-in [:ui :cursor-position] original-pos)
               (update :ui dissoc :isearch)
+              (assoc-in [:minibuffer :active?] false)
               (assoc-in [:echo-area :message] ""))})))

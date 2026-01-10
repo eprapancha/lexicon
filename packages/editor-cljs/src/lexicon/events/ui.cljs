@@ -258,11 +258,16 @@
             (assoc-in [:minibuffer :on-cancel] [:minibuffer/deactivate]))
     :fx [[:focus-editor]]}))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :minibuffer/set-input
- (fn [db [_ input-text]]
-   "Update the minibuffer input text"
-   (assoc-in db [:minibuffer :input] input-text)))
+ (fn [{:keys [db]} [_ input-text]]
+   "Update the minibuffer input text and call on-change handler if present"
+   (let [on-change (get-in db [:minibuffer :on-change])]
+     (if on-change
+       ;; Custom on-change handler exists (e.g., for isearch)
+       {:fx [[:dispatch (conj on-change input-text)]]}
+       ;; Standard minibuffer - just update input
+       {:db (assoc-in db [:minibuffer :input] input-text)}))))
 
 (rf/reg-event-db
  :minibuffer/complete

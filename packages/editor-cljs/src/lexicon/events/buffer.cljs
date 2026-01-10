@@ -372,7 +372,18 @@
  :insert-file
  (fn [{:keys [db]} [_]]
    "Insert contents of a file at point (C-x i)"
-   {:fx [[:open-file-picker-for-insert]]}))
+   {:db (assoc db :minibuffer {:active? true
+                                 :prompt "Insert file: "
+                                 :input ""
+                                 :on-confirm [:insert-file/confirm]
+                                 :on-cancel [:minibuffer/deactivate]})}))
+
+(rf/reg-event-fx
+ :insert-file/confirm
+ (fn [{:keys [db]} [_]]
+   "User confirmed insert-file in minibuffer - open file picker"
+   {:db (assoc-in db [:minibuffer :active?] false)
+    :fx [[:open-file-picker-for-insert]]}))
 
 (rf/reg-fx
  :open-file-picker
