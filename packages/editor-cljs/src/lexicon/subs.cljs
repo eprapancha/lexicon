@@ -2,7 +2,8 @@
   (:require [re-frame.core :as rf]
             [lexicon.cache :as cache]
             [lexicon.wasm-utils :as wasm]
-            [lexicon.db :as db]))
+            [lexicon.db :as db]
+            [lexicon.faces :as faces]))
 
 ;; -- Base Subscriptions --
 
@@ -508,3 +509,20 @@
          highlight-decorations (when ast (ast-to-decorations ast))
          diagnostic-decorations (lsp-diagnostics-to-decorations diagnostics)]
      (concat highlight-decorations diagnostic-decorations))))
+
+;; -- Theme Subscriptions (Phase 7.8.1) --
+
+(rf/reg-sub
+ :current-theme
+ (fn [db _]
+   (:current-theme db :modus-vivendi)))
+
+(rf/reg-sub
+ :theme-face
+ :<- [:current-theme]
+ (fn [theme [_ face]]
+   "Get style map for a face from current theme.
+
+   Usage: @(rf/subscribe [:theme-face :mode-line])
+   Returns: {:color '#ffffff' :background-color '#505050' ...}"
+   (faces/face-to-style theme face)))

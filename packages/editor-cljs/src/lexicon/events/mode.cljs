@@ -30,9 +30,10 @@
          ;; Get mode-specific hook
          mode-hook-name (keyword (str (name mode-keyword) "-hook"))
          mode-hook-commands (get-in db [:hooks mode-hook-name] [])]
-     {:db (assoc-in db [:buffers active-buffer-id :major-mode] mode-keyword)
-      ;; Run general mode hook + mode-specific hooks
-      :fx (into [[:dispatch [:hook/run :mode-hook mode-context]]]
+     {:db db
+      ;; Set mode via canonical event + run hooks
+      :fx (into [[:dispatch [:buffer/set-mode active-buffer-id mode-keyword]]
+                 [:dispatch [:hook/run :mode-hook mode-context]]]
                 (mapv (fn [cmd] [:dispatch cmd]) mode-hook-commands))})))
 
 (rf/reg-event-db

@@ -361,13 +361,9 @@
                           (update :transaction-queue rest)
                           ;; Clear in-flight flag
                           (assoc :transaction-in-flight? false)
-                          ;; Update cursor positions
-                          (assoc-in [:ui :cursor-position] final-cursor)
                           (assoc :window-tree new-window-tree)
                           ;; Mark buffer as modified
                           (assoc-in [:buffers active-buffer-id :is-modified?] true)
-                          ;; Increment editor version (invalidates cache)
-                          (update-in [:buffers active-buffer-id :editor-version] inc)
                           ;; Update cache with fresh values
                           (assoc-in [:buffers active-buffer-id :cache :text] (or text ""))
                           (assoc-in [:buffers active-buffer-id :cache :line-count] line-count)
@@ -377,7 +373,9 @@
 
        ;; Continue processing the queue and trigger incremental parsing
        {:db updated-db
-        :fx [[:editor/process-queue updated-db]
+        :fx [[:dispatch [:cursor/set-position final-cursor]]
+             [:dispatch [:buffer/increment-version active-buffer-id]]
+             [:editor/process-queue updated-db]
              [:dispatch [:parser/request-incremental-parse
                          {:op       (:op operation)
                           :position final-cursor
@@ -479,9 +477,9 @@
        ;; WASM not ready or no active buffer
        {:db db}))))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :apply-transaction-result
- (fn [db [_ {:keys [patch-json transaction transaction-id buffer-id]}]]
+ (fn [{:keys [db]} [_ {:keys [patch-json transaction transaction-id buffer-id]}]]
    "Apply the result of a successful transaction - pure state update"
    (println "📥 Applying transaction result. Patch JSON:" patch-json)
    (try
@@ -524,18 +522,19 @@
                           (println "🔄 Converting cursor pos" final-cursor "to line/col:" result "from text:" (pr-str text))
                           result))]
 
-         (-> db
-             (assoc-in [:system :last-transaction-id] transaction-id)
-             (assoc-in [:system :last-patch] patch)
-             (assoc-in [:ui :cursor-position] final-cursor)
-             (assoc-in [:ui :view-needs-update?] true)
-             (assoc-in [:ui :text-cache] updated-cache)
-             (assoc-in [:buffers buffer-id :is-modified?] true)
-             ;; Update the new buffer-based cursor position
-             (assoc-in [:buffers buffer-id :cursor-position] (or line-col {:line 0 :column 0})))))
+         (let [updated-db (-> db
+                              (assoc-in [:system :last-transaction-id] transaction-id)
+                              (assoc-in [:system :last-patch] patch)
+                              (assoc-in [:ui :view-needs-update?] true)
+                              (assoc-in [:ui :text-cache] updated-cache)
+                              (assoc-in [:buffers buffer-id :is-modified?] true)
+                              ;; Update the new buffer-based cursor position
+                              (assoc-in [:buffers buffer-id :cursor-position] (or line-col {:line 0 :column 0})))]
+           {:db updated-db
+            :fx [[:dispatch [:cursor/set-position final-cursor]]]})))
      (catch js/Error error
        (println "❌ Error processing transaction result:" error)
-       db))))
+       {:db db}))))
 
 (rf/reg-event-db
  :transaction-failed

@@ -811,90 +811,92 @@
        [buffer-tab buffer (= (:id buffer) (:id active-buffer))])]))
 
 (defn minibuffer-view
-  "Minibuffer component for interactive commands (M-x style)"
+  "Minibuffer component - ALWAYS VISIBLE (Emacs-compatible).
+
+  When idle: Shows empty line or echo messages
+  When active: Shows prompt + input for commands like M-x"
   []
   (let [minibuffer @(rf/subscribe [:minibuffer])
-        input-ref (atom nil)]
+        echo @(rf/subscribe [:echo-area])
+        input-ref (atom nil)
+        mode-line-style @(rf/subscribe [:theme-face :mode-line])
+        prompt-style @(rf/subscribe [:theme-face :minibuffer-prompt])
+        active? (:active? minibuffer)
+        echo-message (:message echo)]
 
-    (when (:active? minibuffer)
-      [:div.minibuffer
-       {:style {:position "fixed"
-                :bottom "0"
-                :left "0"
-                :right "0"
-                :height "32px"
-                :background-color "#1e1e1e"
-                :color "#cccccc"
-                :font-size "14px"
-                :font-family "monospace"
-                :display "flex"
-                :align-items "center"
-                :padding "0 10px"
-                :border-top "1px solid #3e3e42"
-                :z-index "1000"}}
+    ;; ALWAYS render - never conditional
+    [:div.minibuffer
+     {:style (merge mode-line-style
+                    {:position "fixed"
+                     :bottom "0"
+                     :left "0"
+                     :right "0"
+                     :height "24px"
+                     :font-size "12px"
+                     :font-family "monospace"
+                     :display "flex"
+                     :align-items "center"
+                     :padding "0 8px"
+                     :border-top (str "1px solid " (:border-color mode-line-style "#3e3e42"))
+                     :z-index "1000"})}
 
-       [:span.minibuffer-prompt
-        {:style {:margin-right "4px"
-                 :color "#569cd6"}}
-        (:prompt minibuffer)]
+     (if active?
+       ;; ACTIVE MODE: Show prompt + input
+       [:<>
+        [:span.minibuffer-prompt
+         {:style (merge prompt-style {:margin-right "4px"})}
+         (:prompt minibuffer)]
 
-       [:input.minibuffer-input
-        {:ref (fn [element]
-                (when element
-                  (reset! input-ref element)
-                  (.focus element)))
-         :type "text"
-         :value (:input minibuffer)
-         :on-change (fn [e]
-                      (rf/dispatch [:minibuffer/set-input (.. e -target -value)]))
-         :on-key-down (fn [e]
-                        (let [key (.-key e)]
-                          (cond
-                            (= key "Enter")
-                            (do
-                              (.preventDefault e)
-                              (rf/dispatch [:minibuffer/confirm]))
+        [:input.minibuffer-input
+         {:ref (fn [element]
+                 (when element
+                   (reset! input-ref element)
+                   (.focus element)))
+          :type "text"
+          :value (:input minibuffer)
+          :on-change (fn [e]
+                       (rf/dispatch [:minibuffer/set-input (.. e -target -value)]))
+          :on-key-down (fn [e]
+                         (let [key (.-key e)]
+                           (cond
+                             (= key "Enter")
+                             (do
+                               (.preventDefault e)
+                               (rf/dispatch [:minibuffer/confirm]))
 
-                            (= key "Tab")
-                            (do
-                              (.preventDefault e)
-                              (rf/dispatch [:minibuffer/complete]))
+                             (= key "Tab")
+                             (do
+                               (.preventDefault e)
+                               (rf/dispatch [:minibuffer/complete]))
 
-                            (or (= key "Escape")
-                                (and (.-ctrlKey e) (= key "g")))
-                            (do
-                              (.preventDefault e)
-                              (rf/dispatch (:on-cancel minibuffer))))))
-         :style {:background-color "transparent"
-                 :border "none"
-                 :outline "none"
-                 :color "#cccccc"
-                 :font-size "14px"
-                 :font-family "monospace"
-                 :flex "1"}}]])))
+                             (or (= key "Escape")
+                                 (and (.-ctrlKey e) (= key "g")))
+                             (do
+                               (.preventDefault e)
+                               (rf/dispatch (:on-cancel minibuffer))))))
+          :style {:background-color "transparent"
+                  :border "none"
+                  :outline "none"
+                  :color (:color mode-line-style "#cccccc")
+                  :font-size "12px"
+                  :font-family "monospace"
+                  :flex "1"}}]]
+
+       ;; IDLE MODE: Show echo message or empty
+       [:span.minibuffer-message
+        {:style {:color (:color mode-line-style "#cccccc")
+                 :font-size "12px"}}
+        (if (and echo-message (not (clojure.string/blank? echo-message)))
+          echo-message
+          "")])]))  ; Empty string when truly idle
 
 (defn echo-area
-  "Echo area for displaying transient messages (below status bar)"
+  "DEPRECATED: Echo area now unified with minibuffer.
+
+  This component is kept for backwards compatibility but does nothing.
+  Echo messages are displayed in the minibuffer when idle."
   []
-  (let [echo @(rf/subscribe [:echo-area])
-        message (:message echo)]
-    (when (not (clojure.string/blank? message))
-      [:div.echo-area
-       {:style {:position "fixed"
-                :bottom "32px"  ; Just above minibuffer
-                :left "0"
-                :right "0"
-                :height "24px"
-                :background-color "#1e1e1e"
-                :color "#cccccc"
-                :font-size "12px"
-                :font-family "monospace"
-                :display "flex"
-                :align-items "center"
-                :padding "0 10px"
-                :border-top "1px solid #3e3e42"
-                :z-index "999"}}
-       message])))
+  nil)
 
 (defn status-bar
   "Display editor status information"
@@ -905,39 +907,66 @@
         active-buffer       @(rf/subscribe [:active-buffer])
         minibuffer          @(rf/subscribe [:minibuffer])
         show-line-numbers?  @(rf/subscribe [:show-line-numbers?])
-        show-column-number? @(rf/subscribe [:show-column-number?])]
+        show-column-number? @(rf/subscribe [:show-column-number?])
+        mode-line-style     @(rf/subscribe [:theme-face :mode-line])
+        buffer-id-style     @(rf/subscribe [:theme-face :mode-line-buffer-id])]
 
-    (when-not (:active? minibuffer)
-      [:div.status-bar
-       {:style {:position         "fixed"
-                :bottom           "0"
-                :left             "0"
-                :right            "0"
-                :height           "24px"
-                :background-color "#2d2d30"
-                :color            "#cccccc"
-                :font-size        "12px"
-                :font-family      "monospace"
-                :display          "flex"
-                :align-items      "center"
-                :padding          "0 10px"
-                :border-top       "1px solid #3e3e42"}}
+    ;; ALWAYS render mode-line (positioned ABOVE minibuffer)
+    [:div.status-bar
+     {:style (merge mode-line-style
+                    {:position    "fixed"
+                     :bottom      "24px"  ; Above minibuffer
+                       :left        "0"
+                       :right       "0"
+                       :height      "24px"
+                       :font-size   "12px"
+                       :font-family "monospace"
+                       :display     "flex"
+                       :align-items "center"
+                       :padding     "0 8px"
+                       :border-top  (str "1px solid " (:border-color mode-line-style "#3e3e42"))})}
 
-       [:span.buffer-info
-        (str (:name active-buffer) " " (if buffer-modified? "**" "--"))]
+     ;; Encoding indicator (U: = UTF-8 Unix)
+     [:span.encoding-info
+      {:style {:margin-right "6px"}}
+      "U:"]
+
+     ;; Modified status (** = modified, -- = unmodified, %% = read-only)
+     [:span.modified-info
+      {:style {:margin-right "6px"}}
+      (if (:is-read-only? active-buffer)
+        (if buffer-modified? "%*" "%%")
+        (if buffer-modified? "**" "--"))]
+
+     ;; Buffer name (styled with mode-line-buffer-id face)
+     [:span.buffer-info
+      {:style (merge buffer-id-style {:margin-right "10px"})}
+      (:name active-buffer)]
 
        [:div.spacer {:style {:flex "1"}}]
 
+       ;; Position indicator (Top/Bot/All/N%)
+       [:span.position-info
+        {:style {:margin-right "8px"}}
+        (when cursor-pos
+          (let [total-lines (get-in active-buffer [:cache :line-count] 1)
+                current-line (:line cursor-pos)]
+            (cond
+              (<= total-lines 1) "All"
+              (= current-line 0) "Top"
+              (>= current-line (dec total-lines)) "Bot"
+              :else (str (int (* 100 (/ (inc current-line) total-lines))) "%"))))]
+
+       ;; Line number (L12 format)
        [:span.cursor-info
         (when cursor-pos
           (str (when show-line-numbers?
-                 (str "Line " (inc (:line cursor-pos))))
-               (when (and show-line-numbers? show-column-number?) ", ")
+                 (str "L" (inc (:line cursor-pos))))
+               (when (and show-line-numbers? show-column-number?) " ")
                (when show-column-number?
-                 (str "Col " (:column cursor-pos)))
-               (when (or show-line-numbers? show-column-number?) " | ")
-               buffer-length " chars"))]
+                 (str "C" (:column cursor-pos)))))]
 
+       ;; Major mode
        [:span.mode-info
         {:style {:margin-left "10px"}}
         (when-let [mode (:major-mode active-buffer)]
@@ -947,7 +976,7 @@
                                   [(when show-line-numbers? "L")
                                    (when show-column-number? "C")])]
           (when (seq minor-modes)
-            (str " (" (clojure.string/join " " minor-modes) ")")))]])))
+            (str " (" (clojure.string/join " " minor-modes) ")")))]]))
 
 (defn main-app
 "Main application component"

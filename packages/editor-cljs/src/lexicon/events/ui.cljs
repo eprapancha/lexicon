@@ -334,19 +334,27 @@
 
 (rf/reg-event-fx
  :echo/message
- (fn [{:keys [db]} [_ message]]
-   "Display a message in the echo area (auto-clears after 3 seconds)"
-   (let [old-timeout-id (get-in db [:echo-area :timeout-id])]
+ (fn [{:keys [db]} [_ message & [persist?]]]
+   "Display a message in the echo area.
+
+   By default, auto-clears after 3 seconds unless persist? is true.
+   During query-replace, messages should persist until user responds."
+   (let [old-timeout-id (get-in db [:echo-area :timeout-id])
+         query-replace-active? (get-in db [:ui :query-replace :active?])]
      ;; Clear previous timeout if any
      (when old-timeout-id
        (js/clearTimeout old-timeout-id))
-     ;; Set new message and create new timeout
-     (let [timeout-id (js/setTimeout
-                        #(rf/dispatch [:echo/clear])
-                        3000)]
+     ;; Set new message and create new timeout (unless persisting or query-replace active)
+     (if (or persist? query-replace-active?)
        {:db (-> db
                 (assoc-in [:echo-area :message] message)
-                (assoc-in [:echo-area :timeout-id] timeout-id))}))))
+                (assoc-in [:echo-area :timeout-id] nil))}
+       (let [timeout-id (js/setTimeout
+                          #(rf/dispatch [:echo/clear])
+                          3000)]
+         {:db (-> db
+                  (assoc-in [:echo-area :message] message)
+                  (assoc-in [:echo-area :timeout-id] timeout-id))})))))
 
 (rf/reg-event-db
  :echo/clear

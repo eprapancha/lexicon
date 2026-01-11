@@ -316,9 +316,9 @@
          {:db (-> db
                   (assoc-in [:help :awaiting-key?] false)
                   (assoc-in [:buffers buffer-id :cache :text] content)
-                  (assoc-in [:buffers buffer-id :cache :line-count] line-count)
-                  (update-in [:buffers buffer-id :editor-version] inc))
-          :fx [[:dispatch [:switch-buffer buffer-id]]
+                  (assoc-in [:buffers buffer-id :cache :line-count] line-count))
+          :fx [[:dispatch [:buffer/increment-version buffer-id]]
+               [:dispatch [:switch-buffer buffer-id]]
                [:dispatch [:echo/clear]]]})
        ;; Create new help buffer
        (let [buffer-id (db/next-buffer-id buffers)
@@ -409,9 +409,9 @@
          (.insert wasm-instance 0 content)
          {:db (-> db
                   (assoc-in [:buffers buffer-id :cache :text] content)
-                  (assoc-in [:buffers buffer-id :cache :line-count] line-count)
-                  (update-in [:buffers buffer-id :editor-version] inc))
-          :fx [[:dispatch [:switch-buffer buffer-id]]]})
+                  (assoc-in [:buffers buffer-id :cache :line-count] line-count))
+          :fx [[:dispatch [:buffer/increment-version buffer-id]]
+               [:dispatch [:switch-buffer buffer-id]]]})
        ;; Create new help buffer
        (let [buffer-id (db/next-buffer-id buffers)
              WasmGapBuffer (get-in db [:system :wasm-constructor])
@@ -494,9 +494,9 @@
          (.insert wasm-instance 0 content)
          {:db (-> db
                   (assoc-in [:buffers buffer-id :cache :text] content)
-                  (assoc-in [:buffers buffer-id :cache :line-count] line-count)
-                  (update-in [:buffers buffer-id :editor-version] inc))
-          :fx [[:dispatch [:switch-buffer buffer-id]]]})
+                  (assoc-in [:buffers buffer-id :cache :line-count] line-count))
+          :fx [[:dispatch [:buffer/increment-version buffer-id]]
+               [:dispatch [:switch-buffer buffer-id]]]})
        ;; Create new help buffer
        (let [buffer-id (db/next-buffer-id buffers)
              WasmGapBuffer (get-in db [:system :wasm-constructor])
@@ -571,9 +571,9 @@
          (.insert wasm-instance 0 content)
          {:db (-> db
                   (assoc-in [:buffers buffer-id :cache :text] content)
-                  (assoc-in [:buffers buffer-id :cache :line-count] line-count)
-                  (update-in [:buffers buffer-id :editor-version] inc))
-          :fx [[:dispatch [:switch-buffer buffer-id]]]})
+                  (assoc-in [:buffers buffer-id :cache :line-count] line-count))
+          :fx [[:dispatch [:buffer/increment-version buffer-id]]
+               [:dispatch [:switch-buffer buffer-id]]]})
        ;; Create new help buffer
        (let [buffer-id (db/next-buffer-id buffers)
              WasmGapBuffer (get-in db [:system :wasm-constructor])
@@ -627,9 +627,9 @@ C-h ?   This help menu
          (.insert wasm-instance 0 content)
          {:db (-> db
                   (assoc-in [:buffers buffer-id :cache :text] content)
-                  (assoc-in [:buffers buffer-id :cache :line-count] line-count)
-                  (update-in [:buffers buffer-id :editor-version] inc))
-          :fx [[:dispatch [:switch-buffer buffer-id]]]})
+                  (assoc-in [:buffers buffer-id :cache :line-count] line-count))
+          :fx [[:dispatch [:buffer/increment-version buffer-id]]
+               [:dispatch [:switch-buffer buffer-id]]]})
        ;; Create new help buffer
        (let [buffer-id (db/next-buffer-id buffers)
              WasmGapBuffer (get-in db [:system :wasm-constructor])

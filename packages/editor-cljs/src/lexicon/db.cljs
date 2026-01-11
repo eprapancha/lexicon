@@ -2,7 +2,31 @@
   (:require [lexicon.constants :as const]))
 
 (def default-db
-  "Default application state database for re-frame"
+  "Default application state database for re-frame
+
+  STATE OWNERSHIP RULES:
+  Each state path is OWNED by exactly ONE module. Other modules MUST dispatch
+  events to the owner instead of directly manipulating state. Violating this
+  creates tight coupling, debugging nightmares, and regression risk.
+
+  OWNERSHIP MAP:
+  - :buffers            → buffer.cljs    (use :create-buffer, :buffer/set-mode, :buffer/update-version)
+  - :window-tree        → ui.cljs        (use :window/set-buffer, :split-window-*, :delete-window)
+  - :ui :cursor-position → edit.cljs    (use :cursor/set-position - TO BE CREATED)
+  - :minibuffer         → ui.cljs        (use :minibuffer/activate, :minibuffer/deactivate, :minibuffer/set-input)
+  - :echo-area          → ui.cljs        (use :echo/message, :echo/clear)
+  - :kill-ring          → edit.cljs      (only kill/yank commands should update)
+  - :keymaps            → keymap.cljs    (use :define-key, :set-keymap-parent)
+  - :commands           → command.cljs   (use :register-command)
+  - :hooks              → hooks.cljs     (use :register-hook, :enable-hook, :disable-hook)
+  - :packages           → packages/loader.cljs (use :load-package, :unload-package)
+
+  WINDOW-SPECIFIC STATE (within :window-tree leaf nodes):
+  - :mark-position      → edit.cljs      (use :set-mark, :deactivate-mark, :exchange-point-and-mark)
+  - :cursor-position    → edit.cljs      (window cursor stored as line/col, synced with :ui :cursor-position)
+
+  See /tmp/state-management-audit.md for violation analysis (62 violations as of 2026-01-11)
+  See .CLAUDE.md Architecture Principles section for detailed ownership rules"
   {:buffers {1 {:id 1
                 :wasm-instance nil                     ; Will be set when WASM loads
                 :file-handle nil
@@ -238,6 +262,9 @@
                                      :font-weight "bold"}
            :completions-first-difference {:foreground "--lexicon-fg-completion-diff"}
            :completions-annotations {:foreground "--lexicon-fg-completion-annotation"}}
+
+   ;; Phase 7.8.1: Theme system - Modus themes support
+   :current-theme :modus-vivendi  ; Active theme (:modus-operandi or :modus-vivendi)
    })
 
 (defn create-buffer

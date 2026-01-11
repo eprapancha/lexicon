@@ -41,6 +41,10 @@
   "Wait for editor to be ready by checking for .editor-wrapper"
   (e/wait-visible *driver* {:css ".editor-wrapper"} {:timeout (/ test-timeout 1000)}))
 
+(defn wait-for-minibuffer-input []
+  "Wait for minibuffer input to be visible (handles re-frame async timing)"
+  (e/wait-visible *driver* {:css ".minibuffer-input"} {:timeout 2}))
+
 (defn click-editor []
   "Click the editor to focus it"
   (e/click *driver* {:css ".editor-wrapper"}))
@@ -669,13 +673,13 @@
     (type-text "query-replace-regexp")
     (Thread/sleep 20)
     (press-key "Enter")
-    (Thread/sleep 100)
+    (wait-for-minibuffer-input)
 
     ;; Type regex pattern
     (e/fill *driver* {:css ".minibuffer-input"} "num[0-9]")
     (Thread/sleep 20)
     (press-minibuffer-enter)
-    (Thread/sleep 50)
+    (wait-for-minibuffer-input)
 
     ;; Type replacement
     (e/fill *driver* {:css ".minibuffer-input"} "NUM")

@@ -409,6 +409,19 @@
                                             #(assoc % :mark-position cursor-pos))]
      (assoc db :window-tree new-tree))))
 
+(rf/reg-event-db
+ :deactivate-mark
+ (fn [db [_]]
+   "Deactivate the mark (clear region highlighting).
+
+   This is a first-class operation that can be used by any command
+   that needs to clear the region, such as query-replace, keyboard-quit, etc."
+   (let [active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         new-tree (db/update-window-in-tree window-tree active-window-id
+                                            #(assoc % :mark-position nil))]
+     (assoc db :window-tree new-tree))))
+
 (rf/reg-event-fx
  :exchange-point-and-mark
  (fn [{:keys [db]} [_]]
@@ -447,13 +460,10 @@
          (if (> length 0)
            (let [copied-text (.getRange wasm-instance start end)
                  kill-ring (:kill-ring db)
-                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons copied-text kill-ring))
-                 new-tree (db/update-window-in-tree window-tree active-window-id
-                                                    #(assoc % :mark-position nil))]
+                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons copied-text kill-ring))]
              (println "✓ Copied" length "characters to kill ring")
-             {:db (-> db
-                      (assoc :kill-ring updated-kill-ring)
-                      (assoc :window-tree new-tree))})
+             {:db (assoc db :kill-ring updated-kill-ring)
+              :fx [[:dispatch [:deactivate-mark]]]})
            {:db db}))
        (do
          (println "⚠ No region selected (set mark with C-SPC first)")
@@ -479,13 +489,10 @@
          (if (> length 0)
            (let [killed-text (.getRange ^js wasm-instance start end)
                  kill-ring (:kill-ring db)
-                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))
-                 new-tree (db/update-window-in-tree window-tree active-window-id
-                                                    #(assoc % :mark-position nil))]
-             {:db (-> db
-                      (assoc :kill-ring updated-kill-ring)
-                      (assoc :window-tree new-tree))
-              :fx [[:dispatch [:editor/queue-transaction
+                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))]
+             {:db (assoc db :kill-ring updated-kill-ring)
+              :fx [[:dispatch [:deactivate-mark]]
+                   [:dispatch [:editor/queue-transaction
                               {:op :delete-range :start start :length length}]]]})
            {:db db}))
        (do
@@ -568,8 +575,9 @@
          (undo/with-undo-recording-disabled*
            (fn []
              (undo/undo-to-boundary! active-buffer-id)))
-         {:db (assoc-in db [:buffers active-buffer-id :undo-in-progress?] true)
-          :fx [[:dispatch-later [{:ms 50 :dispatch [:undo-complete active-buffer-id]}]]]})
+         {:db db
+          :fx [[:dispatch [:buffer/set-undo-in-progress active-buffer-id true]]
+               [:dispatch-later [{:ms 50 :dispatch [:undo-complete active-buffer-id]}]]]})
        (do
          (println "⚠ Nothing to undo")
          {:db db})))))
@@ -589,17 +597,19 @@
          (undo/with-undo-recording-disabled*
            (fn []
              (undo/redo! active-buffer-id)))
-         {:db (assoc-in db [:buffers active-buffer-id :undo-in-progress?] true)
-          :fx [[:dispatch-later [{:ms 50 :dispatch [:undo-complete active-buffer-id]}]]]})
+         {:db db
+          :fx [[:dispatch [:buffer/set-undo-in-progress active-buffer-id true]]
+               [:dispatch-later [{:ms 50 :dispatch [:undo-complete active-buffer-id]}]]]})
        (do
          (println "⚠ Nothing to redo")
          {:db db})))))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :undo-complete
- (fn [db [_ buffer-id]]
+ (fn [{:keys [db]} [_ buffer-id]]
    "Reset undo-in-progress flag after undo/redo operation completes"
-   (assoc-in db [:buffers buffer-id :undo-in-progress?] false)))
+   {:db db
+    :fx [[:dispatch [:buffer/set-undo-in-progress buffer-id false]]]}))
 
 ;; -- Cursor Position Management --
 
@@ -630,6 +640,17 @@
  :set-cursor-position
  (fn [db [_ position]]
    "Update cursor position"
+   (assoc-in db [:ui :cursor-position] position)))
+
+(rf/reg-event-db
+ :cursor/set-position
+ (fn [db [_ position]]
+   "Set cursor position (canonical API for state ownership).
+
+   This is the ONLY event that should update :ui :cursor-position.
+   All other modules must dispatch this event instead of direct manipulation.
+
+   See .CLAUDE.md Architecture Principles: State Management & Ownership"
    (assoc-in db [:ui :cursor-position] position)))
 
 ;; Initialize cursor position when buffer is created

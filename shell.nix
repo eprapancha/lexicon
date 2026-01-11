@@ -8,6 +8,9 @@ pkgs.mkShell {
     # test gh action locally
     act
 
+    # github
+    gh
+    
     # Clojure tooling
     clojure
     babashka
