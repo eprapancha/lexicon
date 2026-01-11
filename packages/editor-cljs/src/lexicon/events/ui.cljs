@@ -235,7 +235,8 @@
    - :on-confirm - Event to dispatch on RET
    - :on-cancel - Event to dispatch on C-g
    - :completions - List of completion candidates
-   - :metadata - Completion metadata (Phase 6C)"
+   - :metadata - Completion metadata (Phase 6C)
+   - :persist? - If true, don't auto-deactivate on confirm (for multi-step prompts)"
    (-> db
        (assoc-in [:minibuffer :active?] true)
        (assoc-in [:minibuffer :prompt] (:prompt config ""))
@@ -244,7 +245,8 @@
        (assoc-in [:minibuffer :on-cancel] (or (:on-cancel config) [:minibuffer/deactivate]))
        (assoc-in [:minibuffer :completions] (or (:completions config) []))
        (assoc-in [:minibuffer :completion-index] 0)
-       (assoc-in [:minibuffer :completion-metadata] (:metadata config)))))
+       (assoc-in [:minibuffer :completion-metadata] (:metadata config))
+       (assoc-in [:minibuffer :persist?] (:persist? config false)))))
 
 (rf/reg-event-fx
  :minibuffer/deactivate
@@ -322,10 +324,16 @@
    "Confirm minibuffer input and execute the configured action"
    (let [minibuffer (:minibuffer db)
          input (:input minibuffer)
-         on-confirm (:on-confirm minibuffer)]
+         on-confirm (:on-confirm minibuffer)
+         persist? (:persist? minibuffer false)]
      (if on-confirm
-       {:fx [[:dispatch (conj on-confirm input)]
-             [:dispatch [:minibuffer/deactivate]]]}
+       (if persist?
+         ;; Multi-step prompt - don't auto-deactivate, let handler manage state
+         {:fx [[:dispatch (conj on-confirm input)]]}
+         ;; Single-step prompt - auto-deactivate after dispatch
+         {:fx [[:dispatch (conj on-confirm input)]
+               [:dispatch [:minibuffer/deactivate]]]})
+       ;; No handler - just deactivate
        {:fx [[:dispatch [:minibuffer/deactivate]]]}))))
 
 ;; =============================================================================

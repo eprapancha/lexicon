@@ -1283,6 +1283,7 @@
    "Start interactive query-replace with regexp (C-M-%)"
    {:fx [[:dispatch [:minibuffer/activate
                      {:prompt "Query replace regexp: "
+                      :persist? true  ; Multi-step prompt
                       :on-confirm [:query-replace-regexp/read-replacement]}]]]}))
 
 (rf/reg-event-fx
@@ -1290,10 +1291,14 @@
  (fn [{:keys [db]} [_ regexp-string]]
    "Read replacement string after regexp string"
    (if (clojure.string/blank? regexp-string)
-     {:fx [[:dispatch [:echo/message "Empty regexp"]]]}
-     {:fx [[:dispatch [:minibuffer/activate
-                       {:prompt (str "Query replace regexp " regexp-string " with: ")
-                        :on-confirm [:query-replace-regexp/start regexp-string]}]]]})))
+     {:fx [[:dispatch [:minibuffer/deactivate]]
+           [:dispatch [:echo/message "Empty regexp"]]]}
+     ;; Update minibuffer for replacement prompt (still persisted)
+     {:db (-> db
+              (assoc-in [:minibuffer :prompt] (str "Query replace regexp " regexp-string " with: "))
+              (assoc-in [:minibuffer :input] "")
+              (assoc-in [:minibuffer :on-confirm] [:query-replace-regexp/start regexp-string])
+              (assoc-in [:minibuffer :persist?] false))})))  ; Last step - allow auto-deactivate
 
 (rf/reg-event-fx
  :query-replace-regexp/start
