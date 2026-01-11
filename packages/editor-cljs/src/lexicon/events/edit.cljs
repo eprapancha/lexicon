@@ -429,15 +429,23 @@
    (let [active-window-id (:active-window-id db)
          window-tree (:window-tree db)
          active-window (db/find-window-in-tree window-tree active-window-id)
-         mark-position (:mark-position active-window)
-         cursor-pos (get-in db [:ui :cursor-position] 0)]
+         mark-position (:mark-position active-window)  ; Linear position
+         cursor-pos (get-in db [:ui :cursor-position] 0)]  ; Linear position
      (if mark-position
-       (let [new-tree (db/update-window-in-tree window-tree active-window-id
+       (let [buffer-id (:buffer-id active-window)
+             buffer-text (get-in db [:buffers buffer-id :cache :text])
+
+             ;; Convert linear mark position to line-col for window cursor
+             mark-line-col (buffer-events/linear-to-line-col buffer-text mark-position)
+
+             ;; Sync window cursor to where mark was (Issue #65)
+             synced-db (buffer-events/sync-window-and-global-cursor db active-window-id mark-line-col)
+
+             ;; Update mark to where cursor was (cursor-pos is already linear)
+             new-tree (db/update-window-in-tree (:window-tree synced-db) active-window-id
                                                 #(assoc % :mark-position cursor-pos))]
          (println "✓ Exchanged point and mark:" cursor-pos "<->" mark-position)
-         (-> db
-             (assoc :window-tree new-tree)
-             (assoc-in [:ui :cursor-position] mark-position)))
+         (assoc synced-db :window-tree new-tree))
        (do
          (println "⚠ No mark set (use C-SPC to set mark first)")
          db)))))

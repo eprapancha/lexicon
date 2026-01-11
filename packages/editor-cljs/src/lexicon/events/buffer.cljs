@@ -971,6 +971,35 @@
       (js/console.error "Error in find-next-match:" e)
       nil)))
 
+(defn sync-window-and-global-cursor
+  "Update both window cursor AND global UI cursor atomically.
+
+   This is required because we have two sources of truth:
+   - :window-tree :cursor-position (line-col map) - for UI rendering
+   - :ui :cursor-position (linear integer) - for E2E tests/legacy code
+
+   These MUST stay synchronized as documented in db.cljs line 31.
+
+   Issue #65: Without this sync, E2E tests fail (read global state)
+   while manual testing works (reads window state)."
+  [db window-id cursor-line-col]
+  (let [window (db/find-window-in-tree (:window-tree db) window-id)
+        buffer-id (:buffer-id window)
+        buffer-text (get-in db [:buffers buffer-id :cache :text])
+
+        ;; Convert line-col to linear for global UI state
+        linear-cursor (line-col-to-linear-pos buffer-text
+                                              (:line cursor-line-col)
+                                              (:column cursor-line-col))
+
+        ;; Update window tree
+        new-tree (db/update-window-in-tree (:window-tree db) window-id
+                                           #(assoc % :cursor-position cursor-line-col))]
+    ;; Update BOTH window AND global cursor
+    (-> db
+        (assoc :window-tree new-tree)
+        (assoc-in [:ui :cursor-position] linear-cursor))))
+
 (rf/reg-event-fx
  :query-replace/start
  (fn [{:keys [db]} [_ search-string replacement-string]]
@@ -989,14 +1018,14 @@
        (let [cursor-line-col (linear-to-line-col full-text (:end match))
               mark-linear-pos (:start match)  ; Linear position for mark
               active-window-id (:active-window-id db)
-              window-tree (:window-tree db)
-              ;; Update window tree with mark and cursor to highlight the match
-              new-tree (-> window-tree
-                          (db/update-window-in-tree active-window-id
-                                                    #(assoc % :mark-position mark-linear-pos))
-                          (db/update-window-in-tree active-window-id
-                                                    #(assoc % :cursor-position cursor-line-col)))
-              new-db (-> db
+
+              ;; Sync window AND global cursor (Issue #65)
+              synced-db (sync-window-and-global-cursor db active-window-id cursor-line-col)
+
+              ;; Update window mark separately
+              new-tree (db/update-window-in-tree (:window-tree synced-db) active-window-id
+                                                 #(assoc % :mark-position mark-linear-pos))
+              new-db (-> synced-db
                         (assoc :window-tree new-tree)
                         (assoc-in [:ui :query-replace :active?] true)
                         (assoc-in [:ui :query-replace :search-string] search-string)
@@ -1084,14 +1113,14 @@
              cursor-line-col (linear-to-line-col new-text (:end next-match))
              mark-linear-pos (:start next-match)  ; Linear position for mark
              active-window-id (:active-window-id db)
-             window-tree (:window-tree db)
-             ;; Update window tree with mark and cursor to highlight the next match
-             new-tree (-> window-tree
-                         (db/update-window-in-tree active-window-id
-                                                   #(assoc % :mark-position mark-linear-pos))
-                         (db/update-window-in-tree active-window-id
-                                                   #(assoc % :cursor-position cursor-line-col)))
-             new-db (-> db
+
+             ;; Sync window AND global cursor (Issue #65)
+             synced-db (sync-window-and-global-cursor db active-window-id cursor-line-col)
+
+             ;; Update window mark separately
+             new-tree (db/update-window-in-tree (:window-tree synced-db) active-window-id
+                                                #(assoc % :mark-position mark-linear-pos))
+             new-db (-> synced-db
                        (assoc :window-tree new-tree)
                        (assoc-in [:buffers buffer-id :cache :text] new-text)
                        (assoc-in [:buffers buffer-id :cache :line-count] line-count)
@@ -1142,14 +1171,14 @@
        (let [cursor-line-col (linear-to-line-col full-text (:end next-match))
              mark-linear-pos (:start next-match)  ; Linear position for mark
              active-window-id (:active-window-id db)
-             window-tree (:window-tree db)
-             ;; Update window tree with mark and cursor to highlight the next match
-             new-tree (-> window-tree
-                         (db/update-window-in-tree active-window-id
-                                                   #(assoc % :mark-position mark-linear-pos))
-                         (db/update-window-in-tree active-window-id
-                                                   #(assoc % :cursor-position cursor-line-col)))
-             new-db (-> db
+
+             ;; Sync window AND global cursor (Issue #65)
+             synced-db (sync-window-and-global-cursor db active-window-id cursor-line-col)
+
+             ;; Update window mark separately
+             new-tree (db/update-window-in-tree (:window-tree synced-db) active-window-id
+                                                #(assoc % :mark-position mark-linear-pos))
+             new-db (-> synced-db
                        (assoc :window-tree new-tree)
                        (update-in [:ui :query-replace :match-history] conj current-match)
                        (assoc-in [:ui :query-replace :current-match] next-match))]
