@@ -226,9 +226,9 @@
 ;; Minibuffer Events
 ;; =============================================================================
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :minibuffer/activate
- (fn [db [_ config]]
+ (fn [{:keys [db]} [_ config]]
    "Activate the minibuffer with given configuration.
    Config keys:
    - :prompt - Prompt string
@@ -237,16 +237,21 @@
    - :completions - List of completion candidates
    - :metadata - Completion metadata (Phase 6C)
    - :persist? - If true, don't auto-deactivate on confirm (for multi-step prompts)"
-   (-> db
-       (assoc-in [:minibuffer :active?] true)
-       (assoc-in [:minibuffer :prompt] (:prompt config ""))
-       (assoc-in [:minibuffer :input] "")
-       (assoc-in [:minibuffer :on-confirm] (:on-confirm config))
-       (assoc-in [:minibuffer :on-cancel] (or (:on-cancel config) [:minibuffer/deactivate]))
-       (assoc-in [:minibuffer :completions] (or (:completions config) []))
-       (assoc-in [:minibuffer :completion-index] 0)
-       (assoc-in [:minibuffer :completion-metadata] (:metadata config))
-       (assoc-in [:minibuffer :persist?] (:persist? config false)))))
+   {:db (-> db
+            (assoc-in [:minibuffer :active?] true)
+            (assoc-in [:minibuffer :prompt] (:prompt config ""))
+            (assoc-in [:minibuffer :input] "")
+            (assoc-in [:minibuffer :on-confirm] (:on-confirm config))
+            (assoc-in [:minibuffer :on-cancel] (or (:on-cancel config) [:minibuffer/deactivate]))
+            (assoc-in [:minibuffer :completions] (or (:completions config) []))
+            (assoc-in [:minibuffer :completion-index] 0)
+            (assoc-in [:minibuffer :completion-metadata] (:metadata config))
+            (assoc-in [:minibuffer :persist?] (:persist? config false))
+            (assoc-in [:minibuffer :show-completions?] false)
+            (assoc-in [:minibuffer :height-lines] 1))
+    ;; TODO: Issue #62 - Implement proper cursor singleton architecture
+    ;; :fx [[:blur-editor]]  ; ❌ Wrong approach - band-aid fix
+    }))
 
 (rf/reg-event-fx
  :minibuffer/deactivate
@@ -257,7 +262,9 @@
             (assoc-in [:minibuffer :prompt] "")
             (assoc-in [:minibuffer :input] "")
             (assoc-in [:minibuffer :on-confirm] nil)
-            (assoc-in [:minibuffer :on-cancel] [:minibuffer/deactivate]))
+            (assoc-in [:minibuffer :on-cancel] [:minibuffer/deactivate])
+            (assoc-in [:minibuffer :show-completions?] false)
+            (assoc-in [:minibuffer :height-lines] 1))
     :fx [[:focus-editor]]}))
 
 (rf/reg-event-fx
@@ -297,6 +304,7 @@
        (-> db
            (assoc-in [:minibuffer :input] (first matches))
            (assoc-in [:minibuffer :show-completions?] false)
+           (assoc-in [:minibuffer :filtered-completions] [])
            (assoc-in [:minibuffer :height-lines] 1))
 
        ;; Multiple matches - show completion list
@@ -316,7 +324,7 @@
              (assoc-in [:minibuffer :input] (if (> (count common-prefix) (count input))
                                               common-prefix
                                               input))
-             (assoc-in [:minibuffer :completions] matches)
+             (assoc-in [:minibuffer :filtered-completions] matches)
              (assoc-in [:minibuffer :show-completions?] true)
              (assoc-in [:minibuffer :completion-index] 0)
              (assoc-in [:minibuffer :height-lines] height-lines)))
@@ -349,7 +357,7 @@
  (fn [db [_]]
    "Move to next completion candidate (Arrow Down)"
    (let [completion-index (get-in db [:minibuffer :completion-index] 0)
-         completions (get-in db [:minibuffer :completions] [])
+         completions (get-in db [:minibuffer :filtered-completions] [])
          num-completions (count completions)
          new-index (if (< completion-index (dec num-completions))
                      (inc completion-index)
@@ -361,7 +369,7 @@
  (fn [db [_]]
    "Move to previous completion candidate (Arrow Up)"
    (let [completion-index (get-in db [:minibuffer :completion-index] 0)
-         completions (get-in db [:minibuffer :completions] [])
+         completions (get-in db [:minibuffer :filtered-completions] [])
          num-completions (count completions)
          new-index (if (> completion-index 0)
                      (dec completion-index)
@@ -372,12 +380,13 @@
  :minibuffer/select-completion
  (fn [db [_ index]]
    "Select a completion candidate (click or Enter on highlighted)"
-   (let [completions (get-in db [:minibuffer :completions] [])
+   (let [completions (get-in db [:minibuffer :filtered-completions] [])
          selected-completion (nth completions index nil)]
      (if selected-completion
        (-> db
            (assoc-in [:minibuffer :input] selected-completion)
            (assoc-in [:minibuffer :show-completions?] false)
+           (assoc-in [:minibuffer :filtered-completions] [])
            (assoc-in [:minibuffer :height-lines] 1))
        db))))
 
@@ -620,3 +629,6 @@
    "Focus the hidden input element to enable keyboard input"
    (when-let [hidden-input (js/document.querySelector ".hidden-input")]
      (.focus hidden-input))))
+
+;; TODO: Issue #62 - :blur-editor removed - wrong architectural approach
+;; Proper fix: Implement cursor singleton with :cursor-owner field

@@ -206,7 +206,8 @@
                 :message-timeout-id nil              ; Timeout ID for auto-clearing message
                 :on-confirm nil                      ; Event vector to dispatch on Enter
                 :on-cancel [:minibuffer/deactivate]  ; Event vector to dispatch on Escape/C-g
-                :completions []                      ; List of possible completions
+                :completions []                      ; Full list of possible completions (never filtered)
+                :filtered-completions []             ; Filtered completions based on input
                 :completion-index 0                  ; Current completion selection index
                 :height-lines 1                      ; Dynamic height (1-20+ lines)
                 :show-completions? false}            ; Whether to show completion candidates

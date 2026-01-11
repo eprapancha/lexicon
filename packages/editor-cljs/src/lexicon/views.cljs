@@ -826,7 +826,7 @@
         height-lines (:height-lines minibuffer 1)
         line-height 24
         total-height (* height-lines line-height)
-        completions (:completions minibuffer)
+        filtered-completions (:filtered-completions minibuffer)
         show-completions? (:show-completions? minibuffer)
         completion-index (:completion-index minibuffer)]
 
@@ -914,12 +914,12 @@
            "")])]  ; Empty string when truly idle
 
      ;; Completion candidates (shown when active and show-completions? is true)
-     (when (and active? show-completions? (seq completions))
+     (when (and active? show-completions? (seq filtered-completions))
        [:div.minibuffer-completions
         {:style {:flex "1"
                  :overflow-y "auto"
                  :padding "4px 8px"}}
-        (for [[idx candidate] (map-indexed vector (take 10 completions))]  ; Show max 10 candidates
+        (for [[idx candidate] (map-indexed vector (take 10 filtered-completions))]  ; Show max 10 candidates
           ^{:key idx}
           [:div.completion-candidate
            {:style {:padding "2px 4px"
