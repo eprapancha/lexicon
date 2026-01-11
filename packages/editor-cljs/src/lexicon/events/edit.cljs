@@ -386,33 +386,45 @@
 
 ;; -- Mark and Region Commands --
 
-(rf/reg-event-fx
+(rf/reg-event-db
  :set-mark-command
- (fn [{:keys [db]} [_]]
+ (fn [db [_]]
    "Set mark at current cursor position (C-SPC)"
-   (let [current-pos (get-in db [:ui :cursor-position] 0)]
+   (let [current-pos (get-in db [:ui :cursor-position] 0)
+         active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         new-tree (db/update-window-in-tree window-tree active-window-id
+                                            #(assoc % :mark-position current-pos))]
      (println "✓ Mark set at position" current-pos)
-     {:fx [[:dispatch [:window/set-mark nil current-pos]]]})))
+     (assoc db :window-tree new-tree))))
 
-(rf/reg-event-fx
+(rf/reg-event-db
  :set-mark
- (fn [{:keys [db]} [_]]
+ (fn [db [_]]
    "Set the mark at the current cursor position"
-   (let [cursor-pos (get-in db [:ui :cursor-position])]
-     {:fx [[:dispatch [:window/set-mark nil cursor-pos]]]})))
+   (let [cursor-pos (get-in db [:ui :cursor-position])
+         active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         new-tree (db/update-window-in-tree window-tree active-window-id
+                                            #(assoc % :mark-position cursor-pos))]
+     (assoc db :window-tree new-tree))))
 
-(rf/reg-event-fx
+(rf/reg-event-db
  :deactivate-mark
- (fn [{:keys [db]} [_]]
+ (fn [db [_]]
    "Deactivate the mark (clear region highlighting).
 
    This is a first-class operation that can be used by any command
    that needs to clear the region, such as query-replace, keyboard-quit, etc."
-   {:fx [[:dispatch [:window/set-mark nil nil]]]}))
+   (let [active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         new-tree (db/update-window-in-tree window-tree active-window-id
+                                            #(assoc % :mark-position nil))]
+     (assoc db :window-tree new-tree))))
 
-(rf/reg-event-fx
+(rf/reg-event-db
  :exchange-point-and-mark
- (fn [{:keys [db]} [_]]
+ (fn [db [_]]
    "Exchange the position of point and mark (C-x C-x)"
    (let [active-window-id (:active-window-id db)
          window-tree (:window-tree db)
@@ -420,13 +432,15 @@
          mark-position (:mark-position active-window)
          cursor-pos (get-in db [:ui :cursor-position] 0)]
      (if mark-position
-       (do
+       (let [new-tree (db/update-window-in-tree window-tree active-window-id
+                                                #(assoc % :mark-position cursor-pos))]
          (println "✓ Exchanged point and mark:" cursor-pos "<->" mark-position)
-         {:fx [[:dispatch [:window/set-mark nil cursor-pos]]
-               [:dispatch [:update-cursor-position mark-position]]]})
+         (-> db
+             (assoc :window-tree new-tree)
+             (assoc-in [:ui :cursor-position] mark-position)))
        (do
          (println "⚠ No mark set (use C-SPC to set mark first)")
-         {:db db})))))
+         db)))))
 
 (rf/reg-event-fx
  :copy-region-as-kill

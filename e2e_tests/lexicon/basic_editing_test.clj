@@ -1468,6 +1468,84 @@
       (is (.contains editor-text "FOO bar FOO baz foo")
           (str "Should have replaced first two 'foo' with 'FOO', got: " editor-text)))))
 
+(deftest test-p7-8-01a-query-replace-cursor-and-region
+  (testing "P7.8-01a: Query-replace cursor movement and region highlighting (Issue #64)"
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
+    ;; Type text with multiple occurrences: "foo bar foo baz foo"
+    ;; Positions: foo(0-3) bar(4-7) foo(8-11) baz(12-15) foo(16-19)
+    (type-text "foo bar foo baz foo")
+    (Thread/sleep 20)
+
+    ;; Go to beginning
+    (press-meta-key "<")
+    (Thread/sleep 20)
+
+    ;; Start query-replace with M-%
+    (press-meta-key "%")
+    (Thread/sleep 50)
+
+    ;; Type search string
+    (e/fill *driver* {:css ".minibuffer-input"} "foo")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 50)
+
+    ;; Type replacement string
+    (e/fill *driver* {:css ".minibuffer-input"} "FOO")
+    (Thread/sleep 20)
+    (press-minibuffer-enter)
+    (Thread/sleep 100)
+
+    ;; ASSERTION 1: After starting query-replace, first match should be highlighted
+    ;; Cursor should be at position 3 (end of first "foo"), mark at position 0 (start)
+    (let [cursor-pos (get-cursor-position)
+          editor-text (get-editor-text)]
+      (is (= 3 (:col cursor-pos))
+          (str "Cursor should be at end of first 'foo' (col 3), got: " cursor-pos))
+      (is (= 0 (:row cursor-pos))
+          (str "Cursor should be on first line, got: " cursor-pos)))
+
+    ;; Press 'y' to replace first occurrence
+    (press-key "y")
+    (Thread/sleep 100)
+
+    ;; ASSERTION 2: After first 'y', cursor should move to end of second match
+    ;; Text is now "FOO bar foo baz foo"
+    ;; Second "foo" is at positions 8-11, cursor should be at col 11
+    (let [cursor-pos (get-cursor-position)
+          editor-text (get-editor-text)]
+      (is (.contains editor-text "FOO bar foo")
+          (str "First 'foo' should be replaced, got: " editor-text))
+      (is (= 11 (:col cursor-pos))
+          (str "Cursor should be at end of second 'foo' (col 11), got: " cursor-pos)))
+
+    ;; Press 'y' to replace second occurrence
+    (press-key "y")
+    (Thread/sleep 100)
+
+    ;; ASSERTION 3: After second 'y', cursor should move to end of third match
+    ;; Text is now "FOO bar FOO baz foo"
+    ;; Third "foo" is at positions 16-19, cursor should be at col 19
+    (let [cursor-pos (get-cursor-position)
+          editor-text (get-editor-text)]
+      (is (.contains editor-text "FOO bar FOO baz foo")
+          (str "Second 'foo' should be replaced, got: " editor-text))
+      (is (= 19 (:col cursor-pos))
+          (str "Cursor should be at end of third 'foo' (col 19), got: " cursor-pos)))
+
+    ;; Press 'q' to quit
+    (press-key "q")
+    (Thread/sleep 100)
+
+    ;; ASSERTION 4: After quitting, verify final text
+    ;; Region should be cleared (we can't easily test mark=nil in E2E, but cursor should remain)
+    (let [editor-text (get-editor-text)]
+      (is (.contains editor-text "FOO bar FOO baz foo")
+          (str "Should have replaced first two 'foo' with 'FOO', got: " editor-text)))))
+
 (deftest test-p7-8-02-query-replace-skip
   (testing "P7.8-02: Query-replace with 'n' (skip and continue)"
     (e/go *driver* app-url)

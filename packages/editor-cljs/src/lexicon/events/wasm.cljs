@@ -118,10 +118,9 @@
    (let [initial-text (.getText ^js instance)
          initial-line-count (count (clojure.string/split initial-text #"\n" -1))
          ;; Create *Messages* buffer (Issue #47)
-         messages-instance (constructor)
          messages-initial-text ";; *Messages* buffer - message history\n\n"
+         messages-instance (new constructor messages-initial-text)
          messages-line-count (count (clojure.string/split messages-initial-text #"\n" -1))]
-     (.setText ^js messages-instance messages-initial-text)
      {:db (-> db
               (assoc :initialized? true)
               (assoc-in [:system :wasm-constructor] constructor)
