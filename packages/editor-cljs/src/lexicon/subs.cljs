@@ -20,6 +20,12 @@
    (:active-window-id db)))
 
 (rf/reg-sub
+ :cursor-owner
+ (fn [db _]
+   "Get the ID of the window or component that currently owns the cursor (Issue #62)"
+   (:cursor-owner db)))
+
+(rf/reg-sub
  :window-tree
  (fn [db _]
    "Get the window tree"

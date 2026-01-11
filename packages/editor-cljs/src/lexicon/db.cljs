@@ -59,6 +59,7 @@
                  :viewport {:start-line 0 :end-line const/DEFAULT_VIEWPORT_LINES}
                  :dimensions {:x 0 :y 0 :width 100 :height 100}}
    :active-window-id 1
+   :cursor-owner 1    ; Issue #62: Cursor singleton - which window/component owns cursor (window-id or :minibuffer)
    :next-window-id 2  ; Counter for generating new window IDs
    :line-height const/DEFAULT_LINE_HEIGHT
    :kill-ring []                                       ; Clipboard history

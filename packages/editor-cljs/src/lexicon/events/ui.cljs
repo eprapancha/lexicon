@@ -53,6 +53,7 @@
      {:db (-> db
               (assoc :window-tree new-tree)
               (assoc :active-window-id new-window-id)
+              (assoc :cursor-owner new-window-id)  ; Issue #62: Transfer cursor to new window
               (assoc :next-window-id (+ new-window-id 2)))})))
 
 (rf/reg-event-fx
@@ -88,6 +89,7 @@
      {:db (-> db
               (assoc :window-tree new-tree)
               (assoc :active-window-id new-window-id)
+              (assoc :cursor-owner new-window-id)  ; Issue #62: Transfer cursor to new window
               (assoc :next-window-id (+ new-window-id 2)))})))
 
 (rf/reg-event-fx
@@ -109,13 +111,17 @@
          next-window (nth all-windows next-index)
          next-window-id (:id next-window)]
 
-     {:db (assoc db :active-window-id next-window-id)})))
+     {:db (-> db
+              (assoc :active-window-id next-window-id)
+              (assoc :cursor-owner next-window-id))})))  ; Issue #62: Transfer cursor ownership
 
 (rf/reg-event-db
  :set-active-window
  (fn [db [_ window-id]]
    "Set the active window by ID (used when clicking on a window)"
-   (assoc db :active-window-id window-id)))
+   (-> db
+       (assoc :active-window-id window-id)
+       (assoc :cursor-owner window-id))))  ; Issue #62: Transfer cursor ownership
 
 (rf/reg-event-fx
  :delete-window
@@ -248,24 +254,24 @@
             (assoc-in [:minibuffer :completion-metadata] (:metadata config))
             (assoc-in [:minibuffer :persist?] (:persist? config false))
             (assoc-in [:minibuffer :show-completions?] false)
-            (assoc-in [:minibuffer :height-lines] 1))
-    ;; TODO: Issue #62 - Implement proper cursor singleton architecture
-    ;; :fx [[:blur-editor]]  ; ❌ Wrong approach - band-aid fix
-    }))
+            (assoc-in [:minibuffer :height-lines] 1)
+            (assoc :cursor-owner :minibuffer))}))
 
 (rf/reg-event-fx
  :minibuffer/deactivate
  (fn [{:keys [db]} [_]]
-   "Deactivate the minibuffer and reset state, then focus editor"
-   {:db (-> db
-            (assoc-in [:minibuffer :active?] false)
-            (assoc-in [:minibuffer :prompt] "")
-            (assoc-in [:minibuffer :input] "")
-            (assoc-in [:minibuffer :on-confirm] nil)
-            (assoc-in [:minibuffer :on-cancel] [:minibuffer/deactivate])
-            (assoc-in [:minibuffer :show-completions?] false)
-            (assoc-in [:minibuffer :height-lines] 1))
-    :fx [[:focus-editor]]}))
+   "Deactivate the minibuffer and reset state, then restore cursor to active window"
+   (let [active-window-id (:active-window-id db)]
+     {:db (-> db
+              (assoc-in [:minibuffer :active?] false)
+              (assoc-in [:minibuffer :prompt] "")
+              (assoc-in [:minibuffer :input] "")
+              (assoc-in [:minibuffer :on-confirm] nil)
+              (assoc-in [:minibuffer :on-cancel] [:minibuffer/deactivate])
+              (assoc-in [:minibuffer :show-completions?] false)
+              (assoc-in [:minibuffer :height-lines] 1)
+              (assoc :cursor-owner active-window-id))  ; Issue #62: Restore cursor to active window
+      :fx [[:focus-editor]]})))
 
 (rf/reg-event-fx
  :minibuffer/set-input

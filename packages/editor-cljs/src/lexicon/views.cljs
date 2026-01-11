@@ -502,6 +502,8 @@
           cursor-pos @(rf/subscribe [:lexicon.subs/window-cursor-position window-id])
           mark-position @(rf/subscribe [:lexicon.subs/window-mark-position window-id])
           buffer-content @(rf/subscribe [:lexicon.subs/window-buffer-content window-id])
+          cursor-owner @(rf/subscribe [:cursor-owner])  ; Issue #62: Cursor singleton
+          owns-cursor? (= cursor-owner window-id)       ; Only render cursor if THIS window owns it
           region-active? (not (nil? mark-position))
           region-decorations (when region-active?
                               (create-region-decorations mark-position cursor-pos buffer-content))
@@ -598,8 +600,8 @@
                         :color "#d4d4d4"}}
                (apply-decorations-to-line line line-number decorations)]))))
 
-      ;; Cursor - only show if this is the active window
-      (when (and is-active? cursor-pos)
+      ;; Cursor - only show if this window owns the cursor (Issue #62)
+      (when (and owns-cursor? cursor-pos)
         (let [{:keys [line column]} cursor-pos
               ;; Calculate relative line position within viewport
               relative-line (- line (:start-line viewport 0))
