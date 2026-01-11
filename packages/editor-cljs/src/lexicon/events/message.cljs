@@ -40,10 +40,10 @@
         ;; Update cache
         (let [updated-text (.getText wasm-instance)
               updated-line-count (count (clojure.string/split updated-text #"\n" -1))]
-          (-> db
-              (assoc-in [:buffers 2 :cache :text] updated-text)
-              (assoc-in [:buffers 2 :cache :line-count] updated-line-count)
-              (update-in [:buffers 2 :editor-version] inc)))))))
+          {:db (-> db
+                   (assoc-in [:buffers 2 :cache :text] updated-text)
+                   (assoc-in [:buffers 2 :cache :line-count] updated-line-count))
+           :fx [[:dispatch [:buffer/increment-version 2]]]})))))
 
 (rf/reg-event-fx
  :message/display
@@ -52,14 +52,17 @@
 
    Issue #47: Unified message system"
    (let [;; Append to *Messages* buffer
-         updated-db (append-to-messages-buffer! db msg)
+         result (append-to-messages-buffer! db msg)
+         updated-db (:db result)
+         effects (:fx result)
          ;; Set up minibuffer flash with auto-clear timeout
          timeout-id (js/setTimeout
                      #(rf/dispatch [:message/clear-minibuffer])
                      2000)]  ; 2 second timeout
      {:db (-> updated-db
               (assoc-in [:minibuffer :message] msg)
-              (assoc-in [:minibuffer :message-timeout-id] timeout-id))})))
+              (assoc-in [:minibuffer :message-timeout-id] timeout-id))
+      :fx effects})))
 
 (rf/reg-event-db
  :message/clear-minibuffer
