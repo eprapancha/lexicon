@@ -54,11 +54,43 @@
   (e/get-element-text *driver* {:css ".editable-area"}))
 
 (defn type-text
-  "Type text with delay between characters"
+  "Type text by triggering input events in JavaScript - much faster than WebDriver calls"
   [text]
-  (doseq [ch text]
-    (e/fill *driver* {:css ".hidden-input"} (str ch))
-    (Thread/sleep 10)))
+  ;; Escape single quotes in text for JavaScript string
+  (let [escaped-text (str/replace text "'" "\\\\'")
+        script (str "
+          const input = document.querySelector('.hidden-input');
+          if (!input) throw new Error('Hidden input not found');
+          input.focus();
+
+          const text = '" escaped-text "';
+          let i = 0;
+
+          function typeNext() {
+            if (i >= text.length) return;
+
+            const char = text[i];
+
+            // Trigger beforeinput event (what the app listens to)
+            const beforeInputEvent = new InputEvent('beforeinput', {
+              bubbles: true,
+              cancelable: true,
+              inputType: 'insertText',
+              data: char
+            });
+            input.dispatchEvent(beforeInputEvent);
+
+            i++;
+            if (i < text.length) {
+              setTimeout(typeNext, 5); // 5ms between chars
+            }
+          }
+
+          typeNext();
+        ")]
+    (e/js-execute *driver* script)
+    ;; Wait for all typing to complete (character count * delay + buffer)
+    (Thread/sleep (+ (* (count text) 8) 50))))
 
 (defn press-key
   "Press a special key (Enter, Backspace, ArrowLeft, etc.)"
