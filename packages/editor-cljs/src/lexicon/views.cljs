@@ -621,18 +621,102 @@
                     :animation "cursor-blink 1s infinite"
                     :z-index "1000"}}]))]])))
 
+(defn window-mode-line
+  "Mode-line for a specific window (Issue #63)"
+  [window-id is-active?]
+  (let [window @(rf/subscribe [:lexicon.subs/window-by-id window-id])
+        buffer @(rf/subscribe [:lexicon.subs/window-buffer window-id])
+        cursor-pos @(rf/subscribe [:lexicon.subs/window-cursor-position window-id])
+        show-line-numbers? @(rf/subscribe [:show-line-numbers?])
+        show-column-number? @(rf/subscribe [:show-column-number?])
+        mode-line-style @(rf/subscribe [:theme-face :mode-line])
+        mode-line-inactive-style @(rf/subscribe [:theme-face :mode-line-inactive])
+        buffer-id-style @(rf/subscribe [:theme-face :mode-line-buffer-id])
+        effective-style (if is-active? mode-line-style mode-line-inactive-style)
+        buffer-modified? (:is-modified? buffer false)]
+    [:div.window-mode-line
+     {:style (merge effective-style
+                    {:height "24px"
+                     :font-size "12px"
+                     :font-family "monospace"
+                     :display "flex"
+                     :align-items "center"
+                     :padding "0 8px"
+                     :border-top (str "1px solid " (:border-color effective-style "#3e3e42"))
+                     :flex-shrink "0"})}
+
+     ;; Encoding indicator (U: = UTF-8 Unix)
+     [:span.encoding-info
+      {:style {:margin-right "6px"}}
+      "U:"]
+
+     ;; Modified status (** = modified, -- = unmodified, %% = read-only)
+     [:span.modified-info
+      {:style {:margin-right "6px"}}
+      (if (:is-read-only? buffer)
+        (if buffer-modified? "%*" "%%")
+        (if buffer-modified? "**" "--"))]
+
+     ;; Buffer name (styled with mode-line-buffer-id face)
+     [:span.buffer-info
+      {:style (merge buffer-id-style {:margin-right "10px"})}
+      (:name buffer)]
+
+     [:div.spacer {:style {:flex "1"}}]
+
+     ;; Position indicator (Top/Bot/All/N%)
+     [:span.position-info
+      {:style {:margin-right "8px"}}
+      (when cursor-pos
+        (let [total-lines (get-in buffer [:cache :line-count] 1)
+              current-line (:line cursor-pos)]
+          (cond
+            (<= total-lines 1) "All"
+            (= current-line 0) "Top"
+            (>= current-line (dec total-lines)) "Bot"
+            :else (str (int (* 100 (/ (inc current-line) total-lines))) "%"))))]
+
+     ;; Line number (L12 format)
+     [:span.cursor-info
+      (when cursor-pos
+        (str (when show-line-numbers?
+               (str "L" (inc (:line cursor-pos))))
+             (when (and show-line-numbers? show-column-number?) " ")
+             (when show-column-number?
+               (str "C" (:column cursor-pos)))))]
+
+     ;; Major mode
+     [:span.mode-info
+      {:style {:margin-left "10px"}}
+      (when-let [mode (:major-mode buffer)]
+        (str "(" (clojure.string/capitalize (name mode)) ")"))
+      ;; Minor mode indicators
+      (let [minor-modes (filter identity
+                                [(when show-line-numbers? "L")
+                                 (when show-column-number? "C")])]
+        (when (seq minor-modes)
+          (str " (" (clojure.string/join " " minor-modes) ")")))]]))
+
 (defn window-pane
-  "Render a single window pane (leaf node)"
+  "Render a single window pane (leaf node) with its own mode-line (Issue #63)"
   [window-id is-active? hidden-input-ref]
   [:div.window-pane
    {:style {:display "flex"
-            :flex-direction "row"
+            :flex-direction "column"  ; Changed from row to column for mode-line
             :width "100%"
             :height "100%"
             :border (if is-active? "2px solid #007acc" "2px solid transparent")
             :box-sizing "border-box"}}
-   [window-pane-gutter window-id]
-   [window-pane-text window-id is-active? hidden-input-ref]])
+   ;; Content area (gutter + text)
+   [:div.window-content
+    {:style {:display "flex"
+             :flex-direction "row"
+             :flex "1"  ; Take remaining space
+             :overflow "hidden"}}
+    [window-pane-gutter window-id]
+    [window-pane-text window-id is-active? hidden-input-ref]]
+   ;; Mode-line at bottom
+   [window-mode-line window-id is-active?]])
 
 (defn render-window-tree
   "Recursively render the window tree"
@@ -943,7 +1027,8 @@
   nil)
 
 (defn status-bar
-  "Display editor status information"
+  "DEPRECATED: Global status bar replaced with per-window mode-lines (Issue #63).
+   This function is kept for reference but should not be used."
   []
   (let [cursor-pos          @(rf/subscribe [:lexicon.subs/cursor-position])
         buffer-length       @(rf/subscribe [:buffer-length])
@@ -1073,7 +1158,7 @@
       editor-ready?
       [:<>
        [editor-view]
-       [status-bar]
+       ;; status-bar removed - now per-window mode-lines (Issue #63)
        [echo-area]
        [minibuffer-view]]
 
