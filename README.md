@@ -21,35 +21,29 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 
 ## Current Status
 
-**Phase 7.2 of 11** - Events Refactoring ✅ COMPLETE | **Ready for Phase 7.3**
+**Phase 7.8.1** ✅ **COMPLETE** - Minibuffer Architecture Redesign
+
+**Recently Completed:**
+- ✅ **Phase 7.8.1:** Complete minibuffer redesign with *Messages* buffer, per-window mode-lines, cursor singleton
+- ✅ **Phases 0-7.7:** Core architecture, hooks, undo, markers, dynamic context, package system
+- ✅ **Core Features:** Text editing, navigation, buffers, windows, modes, completion, help system, kill ring
 
 **What Works:**
-- ✅ **Phases 0-7.2 Complete** - Core architecture + modular event system!
-- ✅ **Phase 7.2 Complete** - Events.cljs refactored into 7 focused modules (86% reduction)!
-  - Text editing (insert, delete, undo, kill ring)
-  - Navigation (C-f/b/n/p, C-a/e, M-f/b, M-</>, arrows)
-  - Multi-buffer support (C-x b, C-x C-f, C-x C-s)
-  - Window management (C-x 2/3, C-x o, C-x 0/1)
-  - Minibuffer with completion (M-x, TAB completion)
-  - Help system (C-h k/f/b/a/?)
-  - Major/minor modes with hooks
-  - Universal argument (C-u)
-  - Mark and region (C-SPC, C-w, M-w, C-y)
-  - Completion framework (metadata, styles, tables, CAPFs)
-  - Built-in packages (project.el, imenu, recentf, savehist)
-  - Buffer-local variables & enhanced hooks
-  - Advice system for function wrapping
-  - Thing-at-point subsystem
-  - Advanced undo with boundaries and groups
-  - Modular event architecture (7 focused modules)
+- Full Emacs-style editing (insert, delete, undo, kill/yank)
+- Multi-buffer/window management (C-x b, C-x 2/3, C-x o, C-x 0/1)
+- Hierarchical keymaps with Emacs precedence
+- Interactive minibuffer with completion (M-x, TAB)
+- Help system (C-h k/f/b/a/?)
+- Package system with SCI sandbox
+- Per-window mode-lines with Emacs theming
+- Advanced undo with boundaries
+- Hook system with priorities
 
 **Current Work:**
-- ✅ **Phases 0-7.2 Complete** - Core + modular architecture ready!
-- ✅ **Phase 7.1 Complete** - Core API contracts and design specifications
-- ✅ **Phase 7.2 Complete** - Events.cljs refactored from 2,958 to 409 lines (7 modules)
-- 📋 **Next: Phase 7.3** - Hook Infrastructure Implementation
+- 🔄 [Issue #60](https://github.com/eprapancha/lexicon/issues/60) - Package isolation + state ownership (11 violations fixed)
+- 📋 [Issue #61](https://github.com/eprapancha/lexicon/issues/61) - Event-driven test synchronization
 
-**See [docs/ROADMAP.md](./docs/ROADMAP.md) for detailed progress and next steps**
+**See [GitHub Issues](https://github.com/eprapancha/lexicon/issues) for current status and roadmap**
 
 ---
 
