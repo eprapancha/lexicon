@@ -5,6 +5,55 @@
 
 ---
 
+## Guardrail 0: Package Isolation from Re-frame
+
+**Rule:** External packages MUST NOT use re-frame directly. Re-frame is a core implementation detail.
+
+### What Qualifies as "External Package"?
+- Any code in `packages/` that is NOT `editor-cljs`, `lexicon-engine`, or `backend-server`
+- Examples: `vertico`, `orderless`, `consult`, `magit`, custom user packages
+- Future completion ecosystem packages (Phase 8+)
+
+### Required Pattern
+
+**❌ VIOLATION:**
+```clojure
+(ns my-package.feature
+  (:require [re-frame.core :as rf]))  ; ❌ Direct re-frame usage
+
+(rf/dispatch [:some-event])  ; ❌ Tight coupling to core
+(rf/subscribe [:some-sub])   ; ❌ Non-portable
+```
+
+**✅ CORRECT:**
+```clojure
+(ns my-package.feature
+  (:require [lexicon.api.buffer :as buffer]
+            [lexicon.api.cursor :as cursor]
+            [lexicon.api.command :as command]))
+
+(buffer/open "file.txt")     ; ✅ Pure API call
+(cursor/move 100)            ; ✅ No re-frame knowledge
+(command/execute :save-buffer) ; ✅ Portable
+```
+
+### Why This Matters
+- **Portability** - Packages work even if core switches from re-frame
+- **Stability** - `lexicon.api.*` is the contract, implementation can change
+- **Separation** - Clear boundary between core and extensions
+- **Maintainability** - Packages don't break on core refactors
+
+### Enforcement
+- Manual code review during package development
+- Future: Linter rule to prevent `re-frame.core` requires in `packages/`
+- Documented in architecture guides
+
+### Exemptions
+- Core packages (`editor-cljs`, `lexicon-engine`, `backend-server`) can use re-frame
+- `evil-mode` gets temporary exemption as it's a core integration example
+
+---
+
 ## Guardrail 1: Mandatory Design Doc for State Changes
 
 **Rule:** ANY PR that modifies state structure requires a design document BEFORE coding.
