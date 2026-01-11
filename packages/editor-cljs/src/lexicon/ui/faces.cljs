@@ -11,8 +11,7 @@
   - Themes swap variable values at :root level
   - No stylesheet regeneration needed for theme changes"
   (:require [re-frame.core :as rf]
-            [clojure.string :as str]
-            [lexicon.api.message :refer [message]]))
+            [clojure.string :as str]))
 
 ;; -- Face Attribute Conversion --
 
@@ -109,7 +108,7 @@
   (fn [{:keys [db]} _]
     (let [faces (:faces db)
           stylesheet (generate-face-stylesheet faces)]
-      (message (str "📋 Initializing face system with " (count faces) " faces"))
+      (js/console.log "📋 Initializing face system with" (count faces) "faces")
       {:fx [[:dom/inject-stylesheet {:id "lexicon-faces"
                                       :content stylesheet}]]})))
 
