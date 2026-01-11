@@ -59,15 +59,15 @@
   [search-string]
   (= search-string (str/lower-case search-string)))
 
-(defn update-echo-area
-  "Update echo area with isearch status message"
-  [db search-string failing? wrapped?]
+(defn isearch-echo-message
+  "Create echo message dispatch event for isearch status"
+  [search-string failing? wrapped?]
   (let [prefix (cond
                  failing? "Failing I-search"
                  wrapped? "Overwrapped I-search"
                  :else "I-search")
         message (str prefix ": " search-string)]
-    (assoc-in db [:echo-area :message] message)))
+    [:dispatch [:echo/message message]]))
 
 ;; =============================================================================
 ;; Phase 1: Basic Isearch
@@ -85,15 +85,14 @@
               (assoc-in [:ui :isearch :original-pos] current-pos)
               (assoc-in [:ui :isearch :match-history] [])
               (assoc-in [:ui :isearch :wrapped?] false)
-              (assoc-in [:ui :isearch :failing?] false)
-              ;; Activate minibuffer for isearch input
-              (assoc :minibuffer {:active? true
-                                   :prompt "I-search: "
-                                   :input ""
-                                   :on-change [:isearch/minibuffer-update]
-                                   :on-confirm [:isearch/exit]
-                                   :on-cancel [:isearch/abort]})
-              (update-echo-area "" false false))})))
+              (assoc-in [:ui :isearch :failing?] false))
+      :fx [[:dispatch [:minibuffer/activate
+                       {:prompt "I-search: "
+                        :input ""
+                        :on-change [:isearch/minibuffer-update]
+                        :on-confirm [:isearch/exit]
+                        :on-cancel [:isearch/abort]}]]
+           (isearch-echo-message "" false false)]})))
 
 (rf/reg-event-fx
  :isearch-backward
@@ -107,15 +106,14 @@
               (assoc-in [:ui :isearch :original-pos] current-pos)
               (assoc-in [:ui :isearch :match-history] [])
               (assoc-in [:ui :isearch :wrapped?] false)
-              (assoc-in [:ui :isearch :failing?] false)
-              ;; Activate minibuffer for isearch input
-              (assoc :minibuffer {:active? true
-                                   :prompt "I-search backward: "
-                                   :input ""
-                                   :on-change [:isearch/minibuffer-update]
-                                   :on-confirm [:isearch/exit]
-                                   :on-cancel [:isearch/abort]})
-              (update-echo-area "" false false))})))
+              (assoc-in [:ui :isearch :failing?] false))
+      :fx [[:dispatch [:minibuffer/activate
+                       {:prompt "I-search backward: "
+                        :input ""
+                        :on-change [:isearch/minibuffer-update]
+                        :on-confirm [:isearch/exit]
+                        :on-cancel [:isearch/abort]}]]
+           (isearch-echo-message "" false false)]})))
 
 (rf/reg-event-fx
  :isearch/minibuffer-update
@@ -141,16 +139,16 @@
        {:db (-> db
                 (assoc-in [:ui :isearch :search-string] new-input)
                 (assoc-in [:ui :isearch :current-match] match)
-                (assoc-in [:ui :isearch :failing?] false)
-                (assoc-in [:ui :cursor-position] (:start match))
-                (assoc-in [:minibuffer :input] new-input)
-                (update-echo-area new-input false false))}
+                (assoc-in [:ui :isearch :failing?] false))
+        :fx [[:dispatch [:cursor/set-position (:start match)]]
+             [:dispatch [:minibuffer/set-input new-input]]
+             (isearch-echo-message new-input false false)]}
        ;; No match - mark as failing
        {:db (-> db
                 (assoc-in [:ui :isearch :search-string] new-input)
-                (assoc-in [:ui :isearch :failing?] true)
-                (assoc-in [:minibuffer :input] new-input)
-                (update-echo-area new-input true false))}))))
+                (assoc-in [:ui :isearch :failing?] true))
+        :fx [[:dispatch [:minibuffer/set-input new-input]]
+             (isearch-echo-message new-input true false)]}))))
 
 (rf/reg-event-fx
  :isearch/handle-key
@@ -215,14 +213,14 @@
        {:db (-> db
                 (assoc-in [:ui :isearch :search-string] new-search)
                 (assoc-in [:ui :isearch :current-match] match)
-                (assoc-in [:ui :isearch :failing?] false)
-                (assoc-in [:ui :cursor-position] (:start match))
-                (update-echo-area new-search false false))}
+                (assoc-in [:ui :isearch :failing?] false))
+        :fx [[:dispatch [:cursor/set-position (:start match)]]
+             (isearch-echo-message new-search false false)]}
        ;; No match - mark as failing
        {:db (-> db
                 (assoc-in [:ui :isearch :search-string] new-search)
-                (assoc-in [:ui :isearch :failing?] true)
-                (update-echo-area new-search true false))}))))
+                (assoc-in [:ui :isearch :failing?] true))
+        :fx [(isearch-echo-message new-search true false)]}))))
 
 (rf/reg-event-fx
  :isearch/delete-char
@@ -241,8 +239,8 @@
                     (assoc-in [:ui :isearch :search-string] "")
                     (assoc-in [:ui :isearch :current-match] nil)
                     (assoc-in [:ui :isearch :failing?] false)
-                    (assoc-in [:ui :isearch :wrapped?] false)
-                    (update-echo-area "" false false))}
+                    (assoc-in [:ui :isearch :wrapped?] false))
+            :fx [(isearch-echo-message "" false false)]}
            ;; Re-search with shorter string
            (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
                  buffer-id        (:buffer-id active-window)
@@ -264,11 +262,11 @@
                         (assoc-in [:ui :isearch :current-match] match)
                         (assoc-in [:ui :isearch :failing?] false)
                         (assoc-in [:ui :cursor-position] (:start match))
-                        (update-echo-area new-search false false))}
+                        (isearch-echo-message new-search false false))}
                {:db (-> db
                         (assoc-in [:ui :isearch :search-string] new-search)
                         (assoc-in [:ui :isearch :failing?] true)
-                        (update-echo-area new-search true false))}))))))))
+                        (isearch-echo-message new-search true false))}))))))))
 
 (rf/reg-event-fx
  :isearch/repeat-forward
@@ -294,7 +292,7 @@
                 (assoc-in [:ui :isearch :current-match] match)
                 (assoc-in [:ui :isearch :failing?] false)
                 (assoc-in [:ui :cursor-position] (:start match))
-                (update-echo-area search-string false false))}
+                (isearch-echo-message search-string false false))}
        ;; No match - try wrapping from beginning
        (let [wrapped-match (find-next-match full-text search-string 0 case-fold?)]
          (if wrapped-match
@@ -303,10 +301,10 @@
                     (assoc-in [:ui :isearch :wrapped?] true)
                     (assoc-in [:ui :isearch :failing?] false)
                     (assoc-in [:ui :cursor-position] (:start wrapped-match))
-                    (update-echo-area search-string false true))}
+                    (isearch-echo-message search-string false true))}
            {:db (-> db
                     (assoc-in [:ui :isearch :failing?] true)
-                    (update-echo-area search-string true false))}))))))
+                    (isearch-echo-message search-string true false))}))))))
 
 (rf/reg-event-fx
  :isearch/repeat-backward
@@ -332,7 +330,7 @@
                 (assoc-in [:ui :isearch :current-match] match)
                 (assoc-in [:ui :isearch :failing?] false)
                 (assoc-in [:ui :cursor-position] (:start match))
-                (update-echo-area search-string false false))}
+                (isearch-echo-message search-string false false))}
        ;; No match - try wrapping from end
        (let [text-length (count full-text)
              wrapped-match (find-prev-match full-text search-string text-length case-fold?)]
@@ -342,10 +340,10 @@
                     (assoc-in [:ui :isearch :wrapped?] true)
                     (assoc-in [:ui :isearch :failing?] false)
                     (assoc-in [:ui :cursor-position] (:start wrapped-match))
-                    (update-echo-area search-string false true))}
+                    (isearch-echo-message search-string false true))}
            {:db (-> db
                     (assoc-in [:ui :isearch :failing?] true)
-                    (update-echo-area search-string true false))}))))))
+                    (isearch-echo-message search-string true false))}))))))
 
 (rf/reg-event-fx
  :isearch/exit
