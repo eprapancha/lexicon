@@ -3,6 +3,7 @@
             [reagent.core :as r]
             [reagent.dom :as rdom]
             [clojure.string :as str]
+            [lexicon.db :as db]  ; For find-window-in-tree
             [lexicon.events]    ; Load event handlers
             [lexicon.subs]      ; Load subscriptions
             [lexicon.lsp]       ; Load LSP handlers
@@ -78,6 +79,42 @@
     ;; Use standard Reagent render - it handles React 18 internally
     (rdom/render [views/main-app] container)))
 
+(defn- expose-editor-state-for-tests
+  "Expose editor state to JavaScript for E2E tests.
+   Creates window.editorState with properties:
+   - point: current cursor position (linear)
+   - buffer: current buffer text"
+  []
+  (when goog.DEBUG  ; Only in development mode
+    (let [get-state (fn []
+                      (let [app-db @re-frame.db/app-db
+                            active-window-id (:active-window-id app-db)
+                            window-tree (:window-tree app-db)
+                            active-window (when window-tree
+                                            (db/find-window-in-tree window-tree active-window-id))
+                            buffer-id (:buffer-id active-window)
+                            buffer (get-in app-db [:buffers buffer-id])
+                            wasm-instance (:wasm-instance buffer)
+                            cursor-pos (get-in app-db [:ui :cursor-position] 0)
+                            buffer-text (when wasm-instance (.getText wasm-instance))]
+                        #js {:point cursor-pos
+                             :buffer (or buffer-text "")}))]
+      ;; Expose as a getter function so it always returns fresh state
+      (aset js/window "editorState"
+            (js/Object.defineProperty
+             #js {}
+             "valueOf"
+             #js {:get get-state
+                  :enumerable true
+                  :configurable true}))
+      ;; Also expose direct properties for simpler access
+      (js/Object.defineProperty
+       js/window
+       "editorState"
+       #js {:get get-state
+            :enumerable true
+            :configurable true}))))
+
 (defn init
   "Initialize the Lexicon editor application"
   []
@@ -94,6 +131,9 @@
 
   ;; Mount the React application
   (mount-app)
+
+  ;; Expose state for E2E tests
+  (expose-editor-state-for-tests)
 
   ;; Load WASM module asynchronously
   (load-wasm-module))
