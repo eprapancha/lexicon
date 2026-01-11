@@ -814,15 +814,21 @@
   "Minibuffer component - ALWAYS VISIBLE (Emacs-compatible).
 
   When idle: Shows empty line or echo messages
-  When active: Shows prompt + input for commands like M-x"
+  When active: Shows prompt + input for commands like M-x
+  Expands dynamically for completions (Phase 7.8.1)"
   []
   (let [minibuffer @(rf/subscribe [:minibuffer])
-        echo @(rf/subscribe [:echo-area])
         input-ref (atom nil)
         mode-line-style @(rf/subscribe [:theme-face :mode-line])
         prompt-style @(rf/subscribe [:theme-face :minibuffer-prompt])
         active? (:active? minibuffer)
-        echo-message (:message echo)]
+        message (:message minibuffer)
+        height-lines (:height-lines minibuffer 1)
+        line-height 24
+        total-height (* height-lines line-height)
+        completions (:completions minibuffer)
+        show-completions? (:show-completions? minibuffer)
+        completion-index (:completion-index minibuffer)]
 
     ;; ALWAYS render - never conditional
     [:div.minibuffer
@@ -831,64 +837,100 @@
                      :bottom "0"
                      :left "0"
                      :right "0"
-                     :height "24px"
+                     :height (str total-height "px")
                      :font-size "12px"
                      :font-family "monospace"
                      :display "flex"
-                     :align-items "center"
-                     :padding "0 8px"
+                     :flex-direction "column"
                      :border-top (str "1px solid " (:border-color mode-line-style "#3e3e42"))
-                     :z-index "1000"})}
+                     :z-index "1000"
+                     :transition "height 0.2s ease-in-out"})}
 
-     (if active?
-       ;; ACTIVE MODE: Show prompt + input
-       [:<>
-        [:span.minibuffer-prompt
-         {:style (merge prompt-style {:margin-right "4px"})}
-         (:prompt minibuffer)]
+     ;; Input line (always at top of minibuffer)
+     [:div.minibuffer-input-line
+      {:style {:display "flex"
+               :align-items "center"
+               :padding "0 8px"
+               :min-height (str line-height "px")}}
 
-        [:input.minibuffer-input
-         {:ref (fn [element]
-                 (when element
-                   (reset! input-ref element)
-                   (.focus element)))
-          :type "text"
-          :value (:input minibuffer)
-          :on-change (fn [e]
-                       (rf/dispatch [:minibuffer/set-input (.. e -target -value)]))
-          :on-key-down (fn [e]
-                         (let [key (.-key e)]
-                           (cond
-                             (= key "Enter")
-                             (do
-                               (.preventDefault e)
-                               (rf/dispatch [:minibuffer/confirm]))
+      (if active?
+        ;; ACTIVE MODE: Show prompt + input
+        [:<>
+         [:span.minibuffer-prompt
+          {:style (merge prompt-style {:margin-right "4px"})}
+          (:prompt minibuffer)]
 
-                             (= key "Tab")
-                             (do
-                               (.preventDefault e)
-                               (rf/dispatch [:minibuffer/complete]))
+         [:input.minibuffer-input
+          {:ref (fn [element]
+                  (when element
+                    (reset! input-ref element)
+                    (.focus element)))
+           :type "text"
+           :value (:input minibuffer)
+           :on-change (fn [e]
+                        (rf/dispatch [:minibuffer/set-input (.. e -target -value)]))
+           :on-key-down (fn [e]
+                          (let [key (.-key e)]
+                            (cond
+                              (= key "Enter")
+                              (do
+                                (.preventDefault e)
+                                (rf/dispatch [:minibuffer/confirm]))
 
-                             (or (= key "Escape")
-                                 (and (.-ctrlKey e) (= key "g")))
-                             (do
-                               (.preventDefault e)
-                               (rf/dispatch (:on-cancel minibuffer))))))
-          :style {:background-color "transparent"
-                  :border "none"
-                  :outline "none"
-                  :color (:color mode-line-style "#cccccc")
-                  :font-size "12px"
-                  :font-family "monospace"
-                  :flex "1"}}]]
+                              (= key "Tab")
+                              (do
+                                (.preventDefault e)
+                                (rf/dispatch [:minibuffer/complete]))
 
-       ;; IDLE MODE: Show echo message or empty
-       [:span.minibuffer-message
-        {:style {:color (:color mode-line-style "#cccccc")
-                 :font-size "12px"}}
-        (if (and echo-message (not (clojure.string/blank? echo-message)))
-          echo-message
-          "")])]))  ; Empty string when truly idle
+                              (= key "ArrowDown")
+                              (when show-completions?
+                                (.preventDefault e)
+                                (rf/dispatch [:minibuffer/completion-next]))
+
+                              (= key "ArrowUp")
+                              (when show-completions?
+                                (.preventDefault e)
+                                (rf/dispatch [:minibuffer/completion-prev]))
+
+                              (or (= key "Escape")
+                                  (and (.-ctrlKey e) (= key "g")))
+                              (do
+                                (.preventDefault e)
+                                (rf/dispatch (:on-cancel minibuffer))))))
+           :style {:background-color "transparent"
+                   :border "none"
+                   :outline "none"
+                   :color (:color mode-line-style "#cccccc")
+                   :font-size "12px"
+                   :font-family "monospace"
+                   :flex "1"}}]]
+
+        ;; IDLE MODE: Show echo message or empty
+        [:span.minibuffer-message
+         {:style {:color (:color mode-line-style "#cccccc")
+                  :font-size "12px"}}
+         (if (and message (not (clojure.string/blank? message)))
+           message
+           "")])]  ; Empty string when truly idle
+
+     ;; Completion candidates (shown when active and show-completions? is true)
+     (when (and active? show-completions? (seq completions))
+       [:div.minibuffer-completions
+        {:style {:flex "1"
+                 :overflow-y "auto"
+                 :padding "4px 8px"}}
+        (for [[idx candidate] (map-indexed vector (take 10 completions))]  ; Show max 10 candidates
+          ^{:key idx}
+          [:div.completion-candidate
+           {:style {:padding "2px 4px"
+                    :cursor "pointer"
+                    :background-color (if (= idx completion-index)
+                                        "rgba(100, 100, 200, 0.3)"  ; Highlight selected
+                                        "transparent")
+                    :border-radius "2px"}
+            :on-click (fn []
+                        (rf/dispatch [:minibuffer/select-completion idx]))}
+           candidate])])]))  ; Display completion candidate
 
 (defn echo-area
   "DEPRECATED: Echo area now unified with minibuffer.

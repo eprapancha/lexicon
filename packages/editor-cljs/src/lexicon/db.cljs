@@ -202,12 +202,16 @@
    :minibuffer {:active? false                       ; Whether minibuffer is currently active
                 :prompt ""                           ; Prompt text (e.g., "M-x ")
                 :input ""                            ; Current user input in minibuffer
+                :message ""                          ; Transient message (unified echo area)
+                :message-timeout-id nil              ; Timeout ID for auto-clearing message
                 :on-confirm nil                      ; Event vector to dispatch on Enter
                 :on-cancel [:minibuffer/deactivate]  ; Event vector to dispatch on Escape/C-g
                 :completions []                      ; List of possible completions
-                :completion-index 0}                 ; Current completion selection index
-   :echo-area {:message ""                           ; Current message to display
-               :timeout-id nil}                      ; Timeout ID for auto-clearing message
+                :completion-index 0                  ; Current completion selection index
+                :height-lines 1                      ; Dynamic height (1-20+ lines)
+                :show-completions? false}            ; Whether to show completion candidates
+   :echo-area {:message ""                           ; DEPRECATED - use :minibuffer :message
+               :timeout-id nil}                      ; DEPRECATED - use :minibuffer :message-timeout-id
    :help {:awaiting-key? false                      ; Waiting for key press for C-h k
           :callback nil}                            ; Callback event vector for key press
    :packages {}                                     ; Loaded packages (Phase 6)

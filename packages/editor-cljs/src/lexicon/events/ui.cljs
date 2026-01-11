@@ -274,7 +274,7 @@
 (rf/reg-event-db
  :minibuffer/complete
  (fn [db [_]]
-   "TAB completion in minibuffer using completion styles (Phase 6C)"
+   "TAB completion in minibuffer - Phase 7.8.1 with visual completion list"
    (let [minibuffer (:minibuffer db)
          input (:input minibuffer)
          completions (:completions minibuffer)
@@ -294,9 +294,12 @@
 
        ;; Single match - complete it
        (= (count matches) 1)
-       (assoc-in db [:minibuffer :input] (first matches))
+       (-> db
+           (assoc-in [:minibuffer :input] (first matches))
+           (assoc-in [:minibuffer :show-completions?] false)
+           (assoc-in [:minibuffer :height-lines] 1))
 
-       ;; Multiple matches - find common prefix and complete to that
+       ;; Multiple matches - show completion list
        (> (count matches) 1)
        (let [common-prefix (reduce (fn [prefix candidate]
                                     (loop [i 0]
@@ -306,13 +309,17 @@
                                         (recur (inc i))
                                         (subs prefix 0 i))))
                                   (first matches)
-                                  (rest matches))]
-         (if (> (count common-prefix) (count input))
-           ;; There's a longer common prefix, complete to it
-           (assoc-in db [:minibuffer :input] common-prefix)
-           ;; No longer prefix, show matches in echo area
-           (-> db
-               (assoc-in [:echo-area :message] (str "[" (clojure.string/join ", " matches) "]")))))
+                                  (rest matches))
+             num-candidates-to-show (min 10 (count matches))
+             height-lines (inc num-candidates-to-show)]  ; +1 for input line
+         (-> db
+             (assoc-in [:minibuffer :input] (if (> (count common-prefix) (count input))
+                                              common-prefix
+                                              input))
+             (assoc-in [:minibuffer :completions] matches)
+             (assoc-in [:minibuffer :show-completions?] true)
+             (assoc-in [:minibuffer :completion-index] 0)
+             (assoc-in [:minibuffer :height-lines] height-lines)))
 
        ;; No matches
        :else
@@ -336,6 +343,44 @@
        ;; No handler - just deactivate
        {:fx [[:dispatch [:minibuffer/deactivate]]]}))))
 
+;; Phase 7.8.1: Completion navigation events
+(rf/reg-event-db
+ :minibuffer/completion-next
+ (fn [db [_]]
+   "Move to next completion candidate (Arrow Down)"
+   (let [completion-index (get-in db [:minibuffer :completion-index] 0)
+         completions (get-in db [:minibuffer :completions] [])
+         num-completions (count completions)
+         new-index (if (< completion-index (dec num-completions))
+                     (inc completion-index)
+                     0)]  ; Wrap around to start
+     (assoc-in db [:minibuffer :completion-index] new-index))))
+
+(rf/reg-event-db
+ :minibuffer/completion-prev
+ (fn [db [_]]
+   "Move to previous completion candidate (Arrow Up)"
+   (let [completion-index (get-in db [:minibuffer :completion-index] 0)
+         completions (get-in db [:minibuffer :completions] [])
+         num-completions (count completions)
+         new-index (if (> completion-index 0)
+                     (dec completion-index)
+                     (dec num-completions))]  ; Wrap around to end
+     (assoc-in db [:minibuffer :completion-index] new-index))))
+
+(rf/reg-event-db
+ :minibuffer/select-completion
+ (fn [db [_ index]]
+   "Select a completion candidate (click or Enter on highlighted)"
+   (let [completions (get-in db [:minibuffer :completions] [])
+         selected-completion (nth completions index nil)]
+     (if selected-completion
+       (-> db
+           (assoc-in [:minibuffer :input] selected-completion)
+           (assoc-in [:minibuffer :show-completions?] false)
+           (assoc-in [:minibuffer :height-lines] 1))
+       db))))
+
 ;; =============================================================================
 ;; Echo Area Events
 ;; =============================================================================
@@ -343,11 +388,11 @@
 (rf/reg-event-fx
  :echo/message
  (fn [{:keys [db]} [_ message & [persist?]]]
-   "Display a message in the echo area.
+   "Display a message in the minibuffer (unified echo area - Phase 7.8.1).
 
    By default, auto-clears after 3 seconds unless persist? is true.
    During query-replace, messages should persist until user responds."
-   (let [old-timeout-id (get-in db [:echo-area :timeout-id])
+   (let [old-timeout-id (get-in db [:minibuffer :message-timeout-id])
          query-replace-active? (get-in db [:ui :query-replace :active?])]
      ;; Clear previous timeout if any
      (when old-timeout-id
@@ -355,23 +400,32 @@
      ;; Set new message and create new timeout (unless persisting or query-replace active)
      (if (or persist? query-replace-active?)
        {:db (-> db
+                (assoc-in [:minibuffer :message] message)
+                (assoc-in [:minibuffer :message-timeout-id] nil)
+                ;; Also update deprecated echo-area for backward compatibility
                 (assoc-in [:echo-area :message] message)
                 (assoc-in [:echo-area :timeout-id] nil))}
        (let [timeout-id (js/setTimeout
                           #(rf/dispatch [:echo/clear])
                           3000)]
          {:db (-> db
+                  (assoc-in [:minibuffer :message] message)
+                  (assoc-in [:minibuffer :message-timeout-id] timeout-id)
+                  ;; Also update deprecated echo-area for backward compatibility
                   (assoc-in [:echo-area :message] message)
                   (assoc-in [:echo-area :timeout-id] timeout-id))})))))
 
 (rf/reg-event-db
  :echo/clear
  (fn [db [_]]
-   "Clear the echo area message"
-   (let [timeout-id (get-in db [:echo-area :timeout-id])]
+   "Clear the echo area message (minibuffer unified - Phase 7.8.1)"
+   (let [timeout-id (get-in db [:minibuffer :message-timeout-id])]
      (when timeout-id
        (js/clearTimeout timeout-id))
      (-> db
+         (assoc-in [:minibuffer :message] "")
+         (assoc-in [:minibuffer :message-timeout-id] nil)
+         ;; Also clear deprecated echo-area for backward compatibility
          (assoc-in [:echo-area :message] "")
          (assoc-in [:echo-area :timeout-id] nil)))))
 
