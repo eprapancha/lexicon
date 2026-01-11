@@ -671,3 +671,29 @@
      (if wasm-instance
        {:fx [[:dispatch [:update-cursor-position 0]]]}
        {:db db}))))
+
+;; -- Keyboard Quit --
+
+(rf/reg-event-fx
+ :keyboard-quit
+ (fn [{:keys [db]} [_]]
+   "Cancel the current operation (equivalent to C-g in Emacs).
+
+   - If minibuffer is active, cancels it and dispatches on-cancel callback
+   - Otherwise clears pending operations and shows 'Quit' message
+
+   Issue #67: Must show 'Quit' message in echo area"
+   (let [minibuffer-active? (get-in db [:minibuffer :active?])
+         on-cancel (get-in db [:minibuffer :on-cancel] [:minibuffer/deactivate])]
+     (if minibuffer-active?
+       ;; If minibuffer is active, cancel it and dispatch on-cancel
+       {:db (-> db
+                (assoc-in [:ui :selection] {:start 0 :end 0})
+                (assoc-in [:fsm :operator-pending] nil))
+        :fx [[:dispatch on-cancel]
+             [:dispatch [:echo/message "Quit"]]]}
+       ;; Otherwise just clear pending operations and show quit message
+       {:db (-> db
+                (assoc-in [:ui :selection] {:start 0 :end 0})
+                (assoc-in [:fsm :operator-pending] nil))
+        :fx [[:dispatch [:echo/message "Quit"]]]}))))
