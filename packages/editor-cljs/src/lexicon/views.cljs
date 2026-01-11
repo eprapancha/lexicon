@@ -634,7 +634,7 @@
         buffer-id-style @(rf/subscribe [:theme-face :mode-line-buffer-id])
         effective-style (if is-active? mode-line-style mode-line-inactive-style)
         buffer-modified? (:is-modified? buffer false)]
-    [:div.window-mode-line
+    [:div.window-mode-line.status-bar  ; Add .status-bar for E2E test compatibility (Issue #66)
      {:style (merge effective-style
                     {:height "24px"
                      :font-size "12px"
