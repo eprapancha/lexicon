@@ -997,14 +997,12 @@
                   (assoc-in [:ui :query-replace :original-cursor-pos] current-pos)
                   (assoc-in [:ui :query-replace :replaced-count] 0)
                   (assoc-in [:ui :query-replace :match-history] [])
-                  (assoc-in [:ui :query-replace :replace-all?] false)
-                  ;; Set mark and cursor on window to create highlighting region
-                  ;; mark-position MUST be linear position, not line-col!
-                  (update :window-tree db/update-window-in-tree active-window-id
-                          #(-> %
-                               (assoc :mark-position (:start match))
-                               (assoc :cursor-position cursor-line-col))))
-          :fx [[:dispatch [:echo/message (str "Query replacing " search-string " with " replacement-string
+                  (assoc-in [:ui :query-replace :replace-all?] false))
+          :fx [;; Set mark and cursor on window to create highlighting region
+               ;; mark-position MUST be linear position, not line-col!
+               [:dispatch [:window/set-mark active-window-id (:start match)]]
+               [:dispatch [:window/set-cursor active-window-id cursor-line-col]]
+               [:dispatch [:echo/message (str "Query replacing " search-string " with " replacement-string
                                               " (y/n/!/q/^/. for help)")]]]})
        ;; No match found
        {:fx [[:dispatch [:echo/message (str "No match for \"" search-string "\"")]]]}))))
@@ -1087,13 +1085,11 @@
                   (update-in [:buffers buffer-id :editor-version] inc)
                   (update-in [:ui :query-replace :replaced-count] inc)
                   (update-in [:ui :query-replace :match-history] conj current-match)
-                  (assoc-in [:ui :query-replace :current-match] next-match)
-                  ;; Set mark and cursor on window to create highlighting region
-                  ;; mark-position MUST be linear position, not line-col!
-                  (update :window-tree db/update-window-in-tree active-window-id
-                          #(-> %
-                               (assoc :mark-position (:start next-match))
-                               (assoc :cursor-position cursor-line-col))))})
+                  (assoc-in [:ui :query-replace :current-match] next-match))
+          :fx [;; Set mark and cursor on window to create highlighting region
+               ;; mark-position MUST be linear position, not line-col!
+               [:dispatch [:window/set-mark active-window-id (:start next-match)]]
+               [:dispatch [:window/set-cursor active-window-id cursor-line-col]]]})
        ;; No more matches - finish
        (let [lines (clojure.string/split new-text #"\n" -1)
              line-count (count lines)
@@ -1137,13 +1133,11 @@
              active-window-id (:active-window-id db)]
          {:db (-> db
                   (update-in [:ui :query-replace :match-history] conj current-match)
-                  (assoc-in [:ui :query-replace :current-match] next-match)
-                  ;; Set mark and cursor on window to create highlighting region
-                  ;; mark-position MUST be linear position, not line-col!
-                  (update :window-tree db/update-window-in-tree active-window-id
-                          #(-> %
-                               (assoc :mark-position (:start next-match))
-                               (assoc :cursor-position cursor-line-col))))})
+                  (assoc-in [:ui :query-replace :current-match] next-match))
+          :fx [;; Set mark and cursor on window to create highlighting region
+               ;; mark-position MUST be linear position, not line-col!
+               [:dispatch [:window/set-mark active-window-id (:start next-match)]]
+               [:dispatch [:window/set-cursor active-window-id cursor-line-col]]]})
        ;; No more matches - finish
        (let [count (:replaced-count qr-state)]
          {:db (update db :ui dissoc :query-replace)

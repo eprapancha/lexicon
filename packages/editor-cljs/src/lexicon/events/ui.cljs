@@ -149,6 +149,46 @@
      {:db (assoc db :window-tree active-window)})))
 
 ;; =============================================================================
+;; Window State Management Events (Issue #60: State Ownership)
+;; =============================================================================
+;; These events provide the canonical API for updating window state.
+;; Other modules MUST use these events instead of directly manipulating :window-tree.
+
+(rf/reg-event-db
+ :window/set-mark
+ (fn [db [_ window-id mark-position]]
+   "Set mark position for a specific window.
+
+   This is the ONLY event that should update window mark-position.
+   Other modules must dispatch this instead of direct manipulation.
+
+   Args:
+     window-id - ID of window to update (defaults to active window if nil)
+     mark-position - Linear position for mark, or nil to clear"
+   (let [target-window-id (or window-id (:active-window-id db))
+         window-tree (:window-tree db)
+         new-tree (db/update-window-in-tree window-tree target-window-id
+                                            #(assoc % :mark-position mark-position))]
+     (assoc db :window-tree new-tree))))
+
+(rf/reg-event-db
+ :window/set-cursor
+ (fn [db [_ window-id cursor-position]]
+   "Set cursor position for a specific window.
+
+   This is the ONLY event that should update window cursor-position.
+   Other modules must dispatch this instead of direct manipulation.
+
+   Args:
+     window-id - ID of window to update (defaults to active window if nil)
+     cursor-position - {:line N :column N} map"
+   (let [target-window-id (or window-id (:active-window-id db))
+         window-tree (:window-tree db)
+         new-tree (db/update-window-in-tree window-tree target-window-id
+                                            #(assoc % :cursor-position cursor-position))]
+     (assoc db :window-tree new-tree))))
+
+;; =============================================================================
 ;; UI State Events
 ;; =============================================================================
 
