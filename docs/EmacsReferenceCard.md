@@ -2,10 +2,10 @@ Below is a **clean, mechanical conversion of the GNU Emacs Reference Card** into
 
 I have:
 
-* Preserved the **section structure** of the refcard  
-* Listed **commands exactly as they appear conceptually**  
-* Added **empty tracking columns only**  
-* Avoided rewording unless required for table structure  
+* Preserved the **section structure** of the refcard
+* Listed **commands exactly as they appear conceptually**
+* Added **empty tracking columns only**
+* Avoided rewording unless required for table structure
 * Avoided adding or removing commands
 
 You can now safely populate this offline.
@@ -15,6 +15,10 @@ You can now safely populate this offline.
 # **Emacs Reference Card → Capability Tracker (Raw)**
 
 *Source: GNU Emacs Reference Card (PDF)*
+
+**Last Updated:** January 11, 2026
+**Status:** Phase 7.8 Complete - All 13 Phase 7.8 commands implemented and marked ✅
+**Baseline:** 68 E2E tests, 1 error, 3 failures
 
 ---
 
@@ -44,9 +48,9 @@ You may choose values such as:
 | ----- | ----- | ----- | ----- | ----- |
 | Read a file into Emacs | `C-x C-f` | ✅ | P0 | Implemented as `find-file` |
 | Save file | `C-x C-s` | ✅ | P0 | Implemented as `save-buffer` |
-| Save all files | `C-x s` | ❌ | P0 | Missing `save-some-buffers` |
-| Insert file into buffer | `C-x i` | ❌ | P0 | Missing `insert-file` |
-| Replace buffer with file | `C-x C-v` | ❌ | P0 | Missing `find-alternate-file` |
+| Save all files | `C-x s` | ✅ | P0 | Implemented as `save-some-buffers` (Phase 7.8 Batch 2) |
+| Insert file into buffer | `C-x i` | ✅ | P0 | Implemented as `insert-file` (Phase 7.8 Batch 2) |
+| Replace buffer with file | `C-x C-v` | ✅ | P0 | Implemented as `find-alternate-file` (Phase 7.8 Batch 2) |
 | Write buffer to file | `C-x C-w` | ✅ | P0 | Implemented as `write-file` |
 
 ---
@@ -58,7 +62,7 @@ You may choose values such as:
 | Select another buffer | `C-x b` | ✅ | P0 | Implemented as `switch-to-buffer` |
 | List all buffers | `C-x C-b` | ✅ | P0 | Implemented as `list-buffers` |
 | Kill a buffer | `C-x k` | ✅ | P0 | Implemented as `kill-buffer` |
-| Revert buffer from file | `M-x revert-buffer` | ❌ | P0 | Missing `revert-buffer` |
+| Revert buffer from file | `M-x revert-buffer` | ✅ | P0 | Implemented as `revert-buffer` (Phase 7.8 Batch 2) |
 
 ---
 
@@ -95,8 +99,8 @@ You may choose values such as:
 
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
-| Scroll forward one screen | `C-v` | ❌ | P0 | Missing `scroll-up-command` |
-| Scroll backward one screen | `M-v` | ❌ | P0 | Missing `scroll-down-command` |
+| Scroll forward one screen | `C-v` | ✅ | P0 | Implemented as `scroll-up-command` (Phase 7.8 Batch 1) |
+| Scroll backward one screen | `M-v` | ✅ | P0 | Implemented as `scroll-down-command` (Phase 7.8 Batch 1) |
 | Scroll one line up | `C-y` | 🚫 | P3 | **INCORRECT** - C-y is `yank` (paste), not scroll |
 | Scroll one line down | `C-e` | 🚫 | P3 | **INCORRECT** - C-e is `end-of-line`, not scroll |
 
@@ -108,7 +112,8 @@ You may choose values such as:
 | ----- | ----- | ----- | ----- | ----- |
 | Delete next character | `C-d` | ✅ | P0 | Implemented as `delete-forward-char` |
 | Delete previous character | `DEL` | ✅ | P0 | Implemented as `delete-backward-char` |
-| Kill word | `M-d` | ❌ | P0 | Missing `kill-word` |
+| Kill word | `M-d` | ✅ | P0 | Implemented as `kill-word` (Phase 7.8 Batch 1) - **Browser may block Alt+d** |
+| Backward kill word | `M-DEL` | ✅ | P0 | Implemented as `backward-kill-word` (Phase 7.8 Batch 1) |
 | Kill line | `C-k` | ✅ | P0 | Implemented as `kill-line` |
 
 ---
@@ -129,7 +134,7 @@ You may choose values such as:
 | Emacs Command | Key Binding | Status | Priority | Comments |
 | ----- | ----- | ----- | ----- | ----- |
 | Set mark | `C-SPC` | ✅ | P0 | Implemented as `set-mark-command` |
-| Exchange point and mark | `C-x C-x` | ❌ | P0 | Missing `exchange-point-and-mark` |
+| Exchange point and mark | `C-x C-x` | ✅ | P0 | Implemented as `exchange-point-and-mark` (Phase 7.8 Batch 1) |
 
 ---
 
@@ -180,7 +185,7 @@ You may choose values such as:
 | Help prefix | `C-h` | ✅ | P0 | Implemented - help prefix works |
 | Describe key | `C-h k` | ✅ | P0 | Implemented as `describe-key` |
 | Describe function | `C-h f` | ✅ | P0 | Implemented as `describe-function` |
-| Describe variable | `C-h v` | ❌ | P0 | Missing `describe-variable` |
+| Describe variable | `C-h v` | ✅ | P0 | Implemented as `describe-variable` (Phase 7.8 Batch 1) |
 | List key bindings | `C-h b` | ✅ | P0 | Implemented as `describe-bindings` |
 
 ---
