@@ -168,21 +168,20 @@
 ;; Prefix Argument (Universal Argument)
 ;; =============================================================================
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :universal-argument
- (fn [db [_]]
+ (fn [{:keys [db]} [_]]
    "Set or multiply the universal argument (C-u)"
    (let [current-prefix (get-in db [:ui :prefix-argument])
          prefix-active? (get-in db [:ui :prefix-argument-active?])]
      (if prefix-active?
        ;; Already active, multiply by 4
-       (-> db
-           (assoc-in [:ui :prefix-argument] (* (or current-prefix 4) 4)))
+       {:db (assoc-in db [:ui :prefix-argument] (* (or current-prefix 4) 4))}
        ;; Not active, set to 4
-       (-> db
-           (assoc-in [:ui :prefix-argument] 4)
-           (assoc-in [:ui :prefix-argument-active?] true)
-           (assoc-in [:echo-area :message] "C-u "))))))
+       {:db (-> db
+                (assoc-in [:ui :prefix-argument] 4)
+                (assoc-in [:ui :prefix-argument-active?] true))
+        :fx [[:dispatch [:echo/message "C-u "]]]}))))
 
 (rf/reg-event-db
  :clear-prefix-argument

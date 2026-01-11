@@ -410,8 +410,8 @@
  :insert-file/confirm
  (fn [{:keys [db]} [_]]
    "User confirmed insert-file in minibuffer - open file picker"
-   {:db (assoc-in db [:minibuffer :active?] false)
-    :fx [[:open-file-picker-for-insert]]}))
+   {:fx [[:dispatch [:minibuffer/deactivate]]
+         [:open-file-picker-for-insert]]}))
 
 (rf/reg-fx
  :open-file-picker
@@ -1294,11 +1294,11 @@
      {:fx [[:dispatch [:minibuffer/deactivate]]
            [:dispatch [:echo/message "Empty regexp"]]]}
      ;; Update minibuffer for replacement prompt (still persisted)
-     {:db (-> db
-              (assoc-in [:minibuffer :prompt] (str "Query replace regexp " regexp-string " with: "))
-              (assoc-in [:minibuffer :input] "")
-              (assoc-in [:minibuffer :on-confirm] [:query-replace-regexp/start regexp-string])
-              (assoc-in [:minibuffer :persist?] false))})))  ; Last step - allow auto-deactivate
+     {:fx [[:dispatch [:minibuffer/activate
+                       {:prompt (str "Query replace regexp " regexp-string " with: ")
+                        :input ""
+                        :on-confirm [:query-replace-regexp/start regexp-string]
+                        :persist? false}]]]})))  ; Last step - allow auto-deactivate
 
 (rf/reg-event-fx
  :query-replace-regexp/start
