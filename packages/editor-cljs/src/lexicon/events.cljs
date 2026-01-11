@@ -16,7 +16,8 @@
             [lexicon.events.edit]
             [lexicon.events.ui]
             [lexicon.events.command]
-            [lexicon.events.isearch]))
+            [lexicon.events.isearch]
+            [lexicon.events.message]))  ; Issue #47: Message system
 
 ;; -- Helper Functions --
 
