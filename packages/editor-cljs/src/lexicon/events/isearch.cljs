@@ -260,13 +260,13 @@
                {:db (-> db
                         (assoc-in [:ui :isearch :search-string] new-search)
                         (assoc-in [:ui :isearch :current-match] match)
-                        (assoc-in [:ui :isearch :failing?] false)
-                        (assoc-in [:ui :cursor-position] (:start match))
-                        (isearch-echo-message new-search false false))}
+                        (assoc-in [:ui :isearch :failing?] false))
+                :fx [[:dispatch [:cursor/set-position (:start match)]]
+                     (isearch-echo-message new-search false false)]}
                {:db (-> db
                         (assoc-in [:ui :isearch :search-string] new-search)
-                        (assoc-in [:ui :isearch :failing?] true)
-                        (isearch-echo-message new-search true false))}))))))))
+                        (assoc-in [:ui :isearch :failing?] true))
+                :fx [(isearch-echo-message new-search true false)]}))))))))
 
 (rf/reg-event-fx
  :isearch/repeat-forward
@@ -290,21 +290,21 @@
        ;; Found next match
        {:db (-> db
                 (assoc-in [:ui :isearch :current-match] match)
-                (assoc-in [:ui :isearch :failing?] false)
-                (assoc-in [:ui :cursor-position] (:start match))
-                (isearch-echo-message search-string false false))}
+                (assoc-in [:ui :isearch :failing?] false))
+        :fx [[:dispatch [:cursor/set-position (:start match)]]
+             (isearch-echo-message search-string false false)]}
        ;; No match - try wrapping from beginning
        (let [wrapped-match (find-next-match full-text search-string 0 case-fold?)]
          (if wrapped-match
            {:db (-> db
                     (assoc-in [:ui :isearch :current-match] wrapped-match)
                     (assoc-in [:ui :isearch :wrapped?] true)
-                    (assoc-in [:ui :isearch :failing?] false)
-                    (assoc-in [:ui :cursor-position] (:start wrapped-match))
-                    (isearch-echo-message search-string false true))}
+                    (assoc-in [:ui :isearch :failing?] false))
+            :fx [[:dispatch [:cursor/set-position (:start wrapped-match)]]
+                 (isearch-echo-message search-string false true)]}
            {:db (-> db
-                    (assoc-in [:ui :isearch :failing?] true)
-                    (isearch-echo-message search-string true false))}))))))
+                    (assoc-in [:ui :isearch :failing?] true))
+            :fx [(isearch-echo-message search-string true false)]}))))))
 
 (rf/reg-event-fx
  :isearch/repeat-backward
@@ -328,9 +328,9 @@
        ;; Found previous match
        {:db (-> db
                 (assoc-in [:ui :isearch :current-match] match)
-                (assoc-in [:ui :isearch :failing?] false)
-                (assoc-in [:ui :cursor-position] (:start match))
-                (isearch-echo-message search-string false false))}
+                (assoc-in [:ui :isearch :failing?] false))
+        :fx [[:dispatch [:cursor/set-position (:start match)]]
+             (isearch-echo-message search-string false false)]}
        ;; No match - try wrapping from end
        (let [text-length (count full-text)
              wrapped-match (find-prev-match full-text search-string text-length case-fold?)]
@@ -338,21 +338,21 @@
            {:db (-> db
                     (assoc-in [:ui :isearch :current-match] wrapped-match)
                     (assoc-in [:ui :isearch :wrapped?] true)
-                    (assoc-in [:ui :isearch :failing?] false)
-                    (assoc-in [:ui :cursor-position] (:start wrapped-match))
-                    (isearch-echo-message search-string false true))}
+                    (assoc-in [:ui :isearch :failing?] false))
+            :fx [[:dispatch [:cursor/set-position (:start wrapped-match)]]
+                 (isearch-echo-message search-string false true)]}
            {:db (-> db
-                    (assoc-in [:ui :isearch :failing?] true)
-                    (isearch-echo-message search-string true false))}))))))
+                    (assoc-in [:ui :isearch :failing?] true))
+            :fx [(isearch-echo-message search-string true false)]}))))))
 
 (rf/reg-event-fx
  :isearch/exit
  (fn [{:keys [db]} [_]]
    "Exit isearch and stay at current match (RET)"
    {:db (-> db
-            (update :ui dissoc :isearch)
-            (assoc-in [:minibuffer :active?] false)
-            (assoc-in [:echo-area :message] ""))}))
+            (update :ui dissoc :isearch))
+    :fx [[:dispatch [:minibuffer/deactivate]]
+         [:dispatch [:echo/clear]]]}))
 
 (rf/reg-event-fx
  :isearch/abort
@@ -360,7 +360,7 @@
    "Abort isearch and return to original position (C-g)"
    (let [original-pos (get-in db [:ui :isearch :original-pos] 0)]
      {:db (-> db
-              (assoc-in [:ui :cursor-position] original-pos)
-              (update :ui dissoc :isearch)
-              (assoc-in [:minibuffer :active?] false)
-              (assoc-in [:echo-area :message] ""))})))
+              (update :ui dissoc :isearch))
+      :fx [[:dispatch [:cursor/set-position original-pos]]
+           [:dispatch [:minibuffer/deactivate]]
+           [:dispatch [:echo/clear]]]})))
