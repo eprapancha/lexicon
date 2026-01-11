@@ -15,7 +15,8 @@
 
   Themes are applied by updating :root CSS variables in one operation."
   (:require [re-frame.core :as rf]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [lexicon.api.message :refer [message]]))
 
 ;; -- CSS Variable Palette Definition --
 
@@ -259,7 +260,7 @@
         (set! (.-type style-element) "text/css")
         (set! (.-textContent style-element) css)
         (.appendChild (.-head js/document) style-element)))
-    (println "✅ Theme applied:" (:name theme))))
+    (message (str "✅ Theme applied: " (:name theme)))))
 
 ;; -- Re-frame Integration --
 
@@ -267,7 +268,7 @@
 (rf/reg-event-fx
   :theme/initialize
   (fn [{:keys [db]} _]
-    (println "🎨 Initializing theme system...")
+    (message "🎨 Initializing theme system...")
     (let [;; Default to light theme
           default-theme-id :lexicon-base-light
           default-theme (get default-themes default-theme-id)]
@@ -286,21 +287,21 @@
           theme (get registry theme-id)]
       (if theme
         (do
-          (println "🎨 Loading theme:" (:name theme))
+          (message (str "🎨 Loading theme: " (:name theme)))
           (inject-theme-css theme)
           {:db (assoc db
                       :theme/active theme-id
                       :theme/current theme)
            :fx [[:dispatch [:echo/message (str "Loaded theme: " (:name theme))]]]})
         (do
-          (println "⚠️ Unknown theme:" theme-id)
+          (message (str "⚠️ Unknown theme: " theme-id))
           {:fx [[:dispatch [:echo/message (str "Unknown theme: " theme-id)]]]})))  ))
 
 ;; Set a single CSS variable (for runtime customization)
 (rf/reg-event-fx
   :theme/set-variable
   (fn [{:keys [db]} [_ var-name value]]
-    (println "🎨 Setting CSS variable:" var-name "=" value)
+    (message (str "🎨 Setting CSS variable: " var-name " = " value))
     ;; Update the CSS variable directly on :root
     (.. js/document -documentElement -style (setProperty var-name value))
     {:db (assoc-in db [:theme/customizations var-name] value)
