@@ -992,7 +992,7 @@
                    :flex "1"}}]]
 
         ;; IDLE MODE: Show echo message or empty
-        [:span.minibuffer-message
+        [:span.minibuffer-message.echo-area  ; Add .echo-area for E2E test compatibility (Issue #67)
          {:style {:color (:color mode-line-style "#cccccc")
                   :font-size "12px"}}
          (if (and message (not (clojure.string/blank? message)))
