@@ -10,9 +10,9 @@
   creates tight coupling, debugging nightmares, and regression risk.
 
   OWNERSHIP MAP:
-  - :buffers            → buffer.cljs    (use :create-buffer, :buffer/set-mode, :buffer/update-version)
-  - :window-tree        → ui.cljs        (use :window/set-buffer, :split-window-*, :delete-window)
-  - :ui :cursor-position → edit.cljs    (use :cursor/set-position - TO BE CREATED)
+  - :buffers            → buffer.cljs    (use :create-buffer, :buffer/set-mode, :buffer/increment-version)
+  - :window-tree        → ui.cljs        (use :window/set-mark, :window/set-cursor, :split-window-*, :delete-window)
+  - :ui :cursor-position → edit.cljs    (use :update-cursor-position, :set-cursor-position)
   - :minibuffer         → ui.cljs        (use :minibuffer/activate, :minibuffer/deactivate, :minibuffer/set-input)
   - :echo-area          → ui.cljs        (use :echo/message, :echo/clear)
   - :kill-ring          → edit.cljs      (only kill/yank commands should update)
@@ -21,11 +21,22 @@
   - :hooks              → hooks.cljs     (use :register-hook, :enable-hook, :disable-hook)
   - :packages           → packages/loader.cljs (use :load-package, :unload-package)
 
-  WINDOW-SPECIFIC STATE (within :window-tree leaf nodes):
-  - :mark-position      → edit.cljs      (use :set-mark, :deactivate-mark, :exchange-point-and-mark)
-  - :cursor-position    → edit.cljs      (window cursor stored as line/col, synced with :ui :cursor-position)
+  BUFFER METADATA (within :buffers buffer-id):
+  - :editor-version     → buffer.cljs    (use :buffer/increment-version)
+  - :undo-in-progress?  → buffer.cljs    (use :buffer/set-undo-in-progress)
+  - :major-mode         → mode.cljs      (use :set-major-mode)
 
-  See /tmp/state-management-audit.md for violation analysis (62 violations as of 2026-01-11)
+  WINDOW-SPECIFIC STATE (within :window-tree leaf nodes):
+  - :mark-position      → ui.cljs        (use :window/set-mark - dispatched from edit.cljs mark commands)
+  - :cursor-position    → ui.cljs        (use :window/set-cursor - window cursor stored as line/col, synced with :ui :cursor-position)
+
+  PROGRESS (Issue #60 - Package Isolation + State Ownership):
+  ✅ Phase 1: Minibuffer/echo-area violations fixed (3 violations)
+  ✅ Phase 2: Mark management API created + violations fixed (7 violations)
+  ✅ Phase 3: Buffer metadata violations fixed (1 violation)
+  ✅ Phase 4: Documentation updated in db.cljs
+
+  See /tmp/state-management-audit.md for original violation analysis (62 violations as of 2026-01-11 AM)
   See .CLAUDE.md Architecture Principles section for detailed ownership rules"
   {:buffers {1 {:id 1
                 :wasm-instance nil                     ; Will be set when WASM loads
