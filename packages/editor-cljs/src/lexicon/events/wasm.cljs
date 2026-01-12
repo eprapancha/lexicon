@@ -14,7 +14,8 @@
             [lexicon.cache :as cache]
             [lexicon.constants :as const]
             [lexicon.advanced-undo :as undo]
-            [lexicon.log :as log]))
+            [lexicon.log :as log]
+            [lexicon.api.message :refer [message]]))
 
 ;; -- Helper Functions --
 
@@ -116,6 +117,9 @@
  :wasm-module-loaded
  (fn [{:keys [db]} [_ {:keys [^js instance constructor]}]]
    "Store the loaded WASM module instance and constructor in the app state"
+   ;; Log WASM module loading (before Messages buffer exists - tests log bus!)
+   (log/info "WASM module loaded successfully")
+
    (let [initial-text (.getText ^js instance)
          initial-line-count (count (clojure.string/split initial-text #"\n" -1))
          ;; Create *Messages* buffer (Issue #47)
@@ -154,7 +158,19 @@
            [:parser/start-worker {:worker-path "/parser-worker.js"}]
            [:dispatch [:ws/connect]]
            ;; Attach Messages buffer to log bus (Issue #73)
-           [:log/attach-messages-buffer nil]]})))
+           [:log/attach-messages-buffer nil]
+           ;; Log after Messages buffer attached (should appear in buffer!)
+           [:dispatch [:log-startup-complete]]]})))
+
+(rf/reg-event-fx
+ :log-startup-complete
+ (fn [_ [_]]
+   "Test that (message) function works - this was the whole point of Log Bus"
+   ;; Test (message) function - should appear in *Messages* buffer AND flash in minibuffer
+   (message "Editor initialized - buffers ready")
+   ;; Also test direct log/info
+   (log/info "Log bus attached to *Messages* buffer")
+   {}))
 
 (rf/reg-event-db
  :wasm-load-failed

@@ -33,7 +33,10 @@
             [lexicon.thing-at-point]      ; Load thing-at-point (Phase 6D Week 2)
             [lexicon.advanced-undo]       ; Load advanced undo (Phase 6D Week 2)
             [lexicon.views :as views]
-            [lexicon.package-loader])) ; Load all packages
+            [lexicon.package-loader]   ; Load all packages
+            ;; Re-export core API functions
+            [lexicon.api.message :as msg]
+            [lexicon.api.buffer :as buf]))
 
 (defn load-wasm-module
   "Asynchronously load the WebAssembly module using dynamic import"
@@ -142,3 +145,74 @@
 
 (defn ^:export main []
   (init))
+
+;; -- Core API Re-exports --
+;; These are the main entry points for packages and extensions.
+;; Usage: (:require [lexicon.core :refer [message point goto-char ...]])
+
+;; Message/Minibuffer API
+(def message
+  "Display a message in the minibuffer and append to *Messages* buffer.
+   See: lexicon.api.message/message"
+  msg/message)
+
+;; Buffer API
+(def point
+  "Return current point (cursor position) as linear byte offset.
+   See: lexicon.api.buffer/point"
+  buf/point)
+
+(def point-min
+  "Return minimum valid point position (always 0).
+   See: lexicon.api.buffer/point-min"
+  buf/point-min)
+
+(def point-max
+  "Return maximum valid point position (end of buffer).
+   See: lexicon.api.buffer/point-max"
+  buf/point-max)
+
+(def goto-char
+  "Move cursor to position POS (linear byte offset).
+   See: lexicon.api.buffer/goto-char"
+  buf/goto-char)
+
+(def buffer-string
+  "Return entire buffer contents as string.
+   See: lexicon.api.buffer/buffer-string"
+  buf/buffer-string)
+
+(def buffer-substring
+  "Return text between START and END positions.
+   See: lexicon.api.buffer/buffer-substring"
+  buf/buffer-substring)
+
+(def line-beginning-position
+  "Return position of beginning of current line.
+   See: lexicon.api.buffer/line-beginning-position"
+  buf/line-beginning-position)
+
+(def line-end-position
+  "Return position of end of current line.
+   See: lexicon.api.buffer/line-end-position"
+  buf/line-end-position)
+
+(def get-buffer
+  "Get buffer by name. Returns buffer map or nil.
+   See: lexicon.api.buffer/get-buffer"
+  buf/get-buffer)
+
+(def buffer-name
+  "Return name of current buffer.
+   See: lexicon.api.buffer/buffer-name"
+  buf/buffer-name)
+
+(def buffer-size
+  "Return size of buffer in characters.
+   See: lexicon.api.buffer/buffer-size"
+  buf/buffer-size)
+
+(def buffer-local-value
+  "Get value of buffer-local variable VAR in BUFFER.
+   See: lexicon.api.buffer/buffer-local-value"
+  buf/buffer-local-value)
