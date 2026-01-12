@@ -5,7 +5,8 @@
             [lexicon.completion.metadata :as completion-metadata]
             [lexicon.advanced-undo :as undo]
             [lexicon.context :as ctx]
-            [lexicon.api.interactive :as interactive]))
+            [lexicon.api.interactive :as interactive]
+            [lexicon.test.signals :as signals]))
 
 ;; =============================================================================
 ;; Command Registry and Execution
@@ -78,7 +79,12 @@
 (rf/reg-event-fx
  :execute-command
  (fn [{:keys [db]} [_ command-name & args]]
-   "Execute a command by name from the central registry with before/after hooks and undo boundaries"
+   "Execute a command by name from the central registry with before/after hooks and undo boundaries
+
+   Issue #74: Tracks command execution for test synchronization"
+   ;; Mark command started for test synchronization
+   (signals/command-started!)
+
    (let [command-def (get-in db [:commands command-name])
          active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
@@ -119,8 +125,13 @@
                 true (conj [:dispatch-with-context {:event [:hook/run :after-command-hook (assoc context :result nil)]
                                                     :context exec-context}])
                 ;; Clear prefix argument if needed
-                should-clear-prefix? (conj [:dispatch [:clear-prefix-argument]]))})
-       {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]}))))
+                should-clear-prefix? (conj [:dispatch [:clear-prefix-argument]])
+                ;; Mark command finished for test synchronization (Issue #74)
+                true (conj [:command/finished nil]))})
+       ;; Command not found - still mark as finished
+       (do
+         (signals/command-finished!)
+         {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]}))))
 
 ;; -- Command Lifecycle Undo Integration --
 
@@ -139,6 +150,14 @@
     (when buffer-id
       (undo/undo-boundary! buffer-id))
     db))
+
+;; -- Test Signal Integration (Issue #74) --
+
+(rf/reg-fx
+  :command/finished
+  (fn [_]
+    "Mark command as finished for test synchronization"
+    (signals/command-finished!)))
 
 (rf/reg-event-fx
  :execute-extended-command

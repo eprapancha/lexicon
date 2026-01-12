@@ -14,7 +14,8 @@
             [lexicon.cache :as cache]
             [lexicon.constants :as const]
             [lexicon.advanced-undo :as undo]
-            [lexicon.log :as log]))
+            [lexicon.log :as log]
+            [lexicon.test.signals :as signals]))
 
 ;; -- Helper Functions --
 
@@ -154,7 +155,11 @@
            [:parser/start-worker {:worker-path "/parser-worker.js"}]
            [:dispatch [:ws/connect]]
            ;; Attach Messages buffer to log bus (Issue #73)
-           [:log/attach-messages-buffer nil]]})))
+           [:log/attach-messages-buffer nil]
+           ;; Signal WASM loaded and buffers ready (Issue #74)
+           [:test/signal :wasm-loaded]
+           [:test/signal :buffers-ready]
+           [:test/signal :ui-ready]]})))
 
 (rf/reg-event-db
  :wasm-load-failed
