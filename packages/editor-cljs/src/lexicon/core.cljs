@@ -4,10 +4,12 @@
             [reagent.dom :as rdom]
             [clojure.string :as str]
             [lexicon.db :as db]  ; For find-window-in-tree
+            [lexicon.log]       ; Load log bus (Issue #73)
             [lexicon.events]    ; Load event handlers
             [lexicon.subs]      ; Load subscriptions
             [lexicon.lsp]       ; Load LSP handlers
             [lexicon.effects]   ; Load DOM effect handlers
+            [lexicon.effects.log]   ; Load log effect handlers (Issue #73)
             [lexicon.ui.faces]  ; Load face system
             [lexicon.ui.text-properties]  ; Load text properties (Phase 6B Week 2)
             [lexicon.ui.overlays]         ; Load overlay system (Phase 6B Week 2)

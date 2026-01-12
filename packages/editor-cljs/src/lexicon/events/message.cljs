@@ -75,6 +75,25 @@
          (assoc-in [:minibuffer :message] "")
          (assoc-in [:minibuffer :message-timeout-id] nil)))))
 
+(rf/reg-event-db
+ :minibuffer/flash-message
+ (fn [db [_ msg]]
+   "Flash a message in the minibuffer with auto-clear timeout.
+
+   This is separate from log bus - it only handles the visual minibuffer flash.
+   The message is logged separately via log bus."
+   (let [;; Clear any existing timeout
+         old-timeout-id (get-in db [:minibuffer :message-timeout-id])
+         _ (when old-timeout-id (js/clearTimeout old-timeout-id))
+
+         ;; Set up new timeout
+         timeout-id (js/setTimeout
+                     #(rf/dispatch [:message/clear-minibuffer])
+                     2000)]  ; 2 second timeout
+     (-> db
+         (assoc-in [:minibuffer :message] msg)
+         (assoc-in [:minibuffer :message-timeout-id] timeout-id)))))
+
 (comment
   ;; Usage:
   (rf/dispatch [:message/display "Hello, world!"])

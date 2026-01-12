@@ -1,11 +1,13 @@
 (ns lexicon.api.message
-  "Emacs-compatible message API (Issue #47).
+  "Emacs-compatible message API (Issue #47, #73).
 
   Provides (message) function that:
-  - Appends to *Messages* buffer with timestamp
+  - Uses log bus for lifecycle-independent logging
+  - Appends to *Messages* buffer with timestamp (via log bus)
   - Flashes in minibuffer for 2 seconds
   - Returns the message string"
-  (:require [re-frame.core :as rf]))
+  (:require [re-frame.core :as rf]
+            [lexicon.log :as log]))
 
 (defn message
   "Display a message in the minibuffer and append to *Messages* buffer.
@@ -13,6 +15,11 @@
   This is the Emacs-compatible message API. Usage:
     (message \"Hello, world!\")
     (message \"Processing %s items\" item-count)
+
+  Implementation (Issue #73):
+  - Uses log bus for lifecycle-independent logging
+  - Log bus handles Messages buffer attachment and replay
+  - Always succeeds, even before Messages buffer exists
 
   Args:
     format-str - Message string (format string support TODO)
@@ -26,8 +33,11 @@
         msg (if (seq args)
               (str format-str " " (clojure.string/join " " args))
               format-str)]
-    ;; Dispatch event to append to *Messages* and flash in minibuffer
-    (rf/dispatch [:message/display msg])
+    ;; Log to log bus (will replay to Messages buffer when it's ready)
+    (log/info msg)
+
+    ;; Flash in minibuffer (separate from logging)
+    (rf/dispatch [:minibuffer/flash-message msg])
     msg))
 
 (comment

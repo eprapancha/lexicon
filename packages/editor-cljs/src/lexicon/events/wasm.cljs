@@ -13,7 +13,8 @@
             [lexicon.db :as db]
             [lexicon.cache :as cache]
             [lexicon.constants :as const]
-            [lexicon.advanced-undo :as undo]))
+            [lexicon.advanced-undo :as undo]
+            [lexicon.log :as log]))
 
 ;; -- Helper Functions --
 
@@ -151,7 +152,9 @@
               (assoc-in [:buffers 2 :next-overlay-id] 1))
       :fx [[:dispatch [:initialize-buffer-cursor 1]]
            [:parser/start-worker {:worker-path "/parser-worker.js"}]
-           [:dispatch [:ws/connect]]]})))
+           [:dispatch [:ws/connect]]
+           ;; Attach Messages buffer to log bus (Issue #73)
+           [:log/attach-messages-buffer nil]]})))
 
 (rf/reg-event-db
  :wasm-load-failed
