@@ -83,6 +83,7 @@
          active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          prefix-arg (get-in db [:ui :prefix-argument])
+         minibuffer-active? (get-in db [:minibuffer :active?])
 
          ;; Context for hooks
          context {:command-id command-name
@@ -100,13 +101,31 @@
          ;; Determine if this is an editing command (should create undo boundary)
          editing-command? (not (#{:undo :redo :universal-argument :execute-extended-command
                                   :describe-bindings :forward-char :backward-char :next-line :previous-line
-                                  :beginning-of-line :end-of-line :beginning-of-buffer :end-of-buffer} command-name))]
+                                  :beginning-of-line :end-of-line :beginning-of-buffer :end-of-buffer} command-name))
+
+         ;; Deactivate minibuffer if active (for M-x case where command needs fresh minibuffer)
+         db' (if minibuffer-active?
+               (-> db
+                   (assoc-in [:minibuffer :active?] false)
+                   (assoc-in [:minibuffer :prompt] "")
+                   (assoc-in [:minibuffer :input] "")
+                   (assoc-in [:minibuffer :on-confirm] nil)
+                   (assoc-in [:minibuffer :on-cancel] nil)
+                   (assoc-in [:minibuffer :completions] [])
+                   (assoc-in [:minibuffer :completion-index] 0)
+                   (assoc-in [:minibuffer :completion-metadata] nil)
+                   (assoc-in [:minibuffer :persist?] false)
+                   (assoc-in [:minibuffer :show-completions?] false)
+                   (assoc-in [:minibuffer :height-lines] 1)
+                   (assoc :cursor-owner :window))
+               db)]
 
      (if command-def
        (let [handler (:handler command-def)
              should-clear-prefix? (not= command-name :universal-argument)]
          ;; Execute command with undo boundaries for editing commands
-         {:fx (cond-> [[:dispatch-with-context {:event [:hook/run :before-command-hook context]
+         {:db db'
+          :fx (cond-> [[:dispatch-with-context {:event [:hook/run :before-command-hook context]
                                                  :context exec-context}]]
                 ;; Insert undo boundary before editing commands
                 editing-command? (conj [:dispatch [:command/begin-undo-boundary active-buffer-id]])
@@ -155,12 +174,13 @@
                        {:prompt "M-x "
                         :completions command-names
                         :metadata metadata
+                        :persist? true
                         :on-confirm [:execute-command-by-name]}]]]})))
 
 (rf/reg-event-fx
  :execute-command-by-name
  (fn [{:keys [db]} [_ command-name-str]]
-   "Execute a command by its string name"
+   "Execute a command by its string name (from M-x)"
    (let [command-keyword (keyword command-name-str)]
      {:fx [[:dispatch [:execute-command command-keyword]]]})))
 

@@ -36,11 +36,16 @@
             (if (or (>= p len) (not (word-char? (get text p))))
               p
               (recur (inc p))))
-          ;; If we're on non-word char, skip to start of next word
-          (loop [p pos]
-            (if (or (>= p len) (word-char? (get text p)))
-              p
-              (recur (inc p)))))))))
+          ;; If we're on non-word char, skip to start of next word, then to end of that word
+          (let [word-start (loop [p pos]
+                             (if (or (>= p len) (word-char? (get text p)))
+                               p
+                               (recur (inc p))))]
+            ;; Now skip to end of that word
+            (loop [p word-start]
+              (if (or (>= p len) (not (word-char? (get text p))))
+                p
+                (recur (inc p))))))))))
 
 (defn find-backward-word-boundary
   "Find the position of the previous word boundary moving backward"
