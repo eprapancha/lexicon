@@ -131,7 +131,7 @@
        ;; Command not found - still mark as finished
        (do
          (signals/command-finished!)
-         {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]}))))
+         {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]})))))
 
 ;; -- Command Lifecycle Undo Integration --
 
