@@ -160,7 +160,7 @@
 (rf/reg-event-fx
  :execute-command-by-name
  (fn [{:keys [db]} [_ command-name-str]]
-   "Execute a command by its string name"
+   "Execute a command by its string name (from M-x)"
    (let [command-keyword (keyword command-name-str)]
      {:fx [[:dispatch [:execute-command command-keyword]]]})))
 
