@@ -10,7 +10,6 @@
             [lexicon.lsp]       ; Load LSP handlers
             [lexicon.effects]   ; Load DOM effect handlers
             [lexicon.effects.log]   ; Load log effect handlers (Issue #73)
-            [lexicon.effects.test]  ; Load test signal handlers (Issue #74)
             [lexicon.ui.faces]  ; Load face system
             [lexicon.ui.text-properties]  ; Load text properties (Phase 6B Week 2)
             [lexicon.ui.overlays]         ; Load overlay system (Phase 6B Week 2)
