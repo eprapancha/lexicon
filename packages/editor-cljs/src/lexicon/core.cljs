@@ -89,7 +89,8 @@
   "Expose editor state to JavaScript for E2E tests.
    Creates window.editorState with properties:
    - point: current cursor position (linear)
-   - buffer: current buffer text"
+   - buffer: current buffer text
+   - prefixArg: current prefix argument (Phase 6.5)"
   []
   (when goog.DEBUG  ; Only in development mode
     (let [get-state (fn []
@@ -102,9 +103,11 @@
                             buffer (get-in app-db [:buffers buffer-id])
                             wasm-instance (:wasm-instance buffer)
                             cursor-pos (get-in app-db [:ui :cursor-position] 0)
-                            buffer-text (when wasm-instance (.getText wasm-instance))]
+                            buffer-text (when wasm-instance (.getText wasm-instance))
+                            prefix-arg (:prefix-arg app-db)]
                         #js {:point cursor-pos
-                             :buffer (or buffer-text "")}))]
+                             :buffer (or buffer-text "")
+                             :prefixArg prefix-arg}))]
       ;; Expose as a getter function so it always returns fresh state
       (aset js/window "editorState"
             (js/Object.defineProperty

@@ -91,9 +91,13 @@
   (Thread/sleep 50))
 
 (defn get-prefix-arg
-  "Get current prefix-arg from re-frame db via JavaScript"
+  "Get current prefix-arg from window.editorState"
   []
-  (e/js-execute *driver* "return window.reFrame?.app_db?.deref()?.prefix_arg || null"))
+  (e/js-execute *driver* "
+    const state = window.editorState;
+    if (!state) return null;
+    return state.prefixArg || null;
+  "))
 
 ;; =============================================================================
 ;; Test Suite: Prefix Argument Accumulation
