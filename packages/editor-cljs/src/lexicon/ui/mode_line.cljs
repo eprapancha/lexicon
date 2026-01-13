@@ -24,7 +24,8 @@
   \" -- *scratch* 1:0 0% (Lisp Interaction)\""
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
-            [lexicon.db :as db]))
+            [lexicon.db :as db]
+            [lexicon.minibuffer :as minibuffer]))
 
 ;; -- Helper Functions --
 
@@ -103,7 +104,7 @@
 
   Args:
   - construct: The character after % (e.g., 'b' for %b)
-  - context: Map with buffer state {:buffer-name, :line, :column, :cursor, :buffer-size, :modified?, :read-only?, :major-mode, :mode-data, :file-name}
+  - context: Map with buffer state {:buffer-name, :line, :column, :cursor, :buffer-size, :modified?, :read-only?, :major-mode, :mode-data, :file-name, :minibuffer-depth}
 
   Returns: String to display for this construct"
   [construct context]
@@ -117,8 +118,9 @@
     \* (format-modified-indicator (:modified? context false) (:read-only? context false))
     \+ (format-plus-indicator (:modified? context false) (:read-only? context false))
     \m (get-mode-name (:major-mode context :fundamental-mode) (:mode-data context {}))
-    \[ ""  ; Recursive edit level - not implemented yet
-    \] ""  ; Recursive edit level - not implemented yet
+    \[ (let [depth (:minibuffer-depth context 0)]
+         (if (> depth 1) (str "[" depth "]") ""))  ; Show [2], [3], etc. for depth > 1
+    \] ""  ; End marker for recursive edit (paired with %[)
     \% "%"
     ;; Unknown construct - return as-is
     (str "%" construct)))
@@ -183,8 +185,12 @@
           column (if line-col (:column line-col) 0)
 
           ;; Get format string (from buffer or use default)
+          ;; %[ shows minibuffer depth when > 1 (Phase 6.5 Week 3-4)
           format-string (or (:mode-line-format buffer)
-                           " %*%* %b   %l:%c  %p  (%m)")
+                           " %[%*%* %b   %l:%c  %p  (%m)")
+
+          ;; Get minibuffer depth (Phase 6.5 Week 3-4)
+          minibuffer-depth (minibuffer/minibuffer-depth db)
 
           ;; Build context map
           context {:buffer-name buffer-name
@@ -196,7 +202,8 @@
                    :modified? modified?
                    :read-only? read-only?
                    :major-mode major-mode
-                   :mode-data mode-data}]
+                   :mode-data mode-data
+                   :minibuffer-depth minibuffer-depth}]
 
       (format-mode-line format-string context))))
 
@@ -209,8 +216,9 @@
 ;; -- Standard Mode-line Variables --
 
 (def standard-mode-line-format
-  "Standard mode-line format string used by most buffers."
-  " %*%* %b   %l:%c  %p  (%m)")
+  "Standard mode-line format string used by most buffers.
+  %[ shows minibuffer depth indicator when depth > 1 (Phase 6.5 Week 3-4)."
+  " %[%*%* %b   %l:%c  %p  (%m)")
 
 (def special-mode-line-format
   "Mode-line format for special (read-only) buffers."

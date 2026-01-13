@@ -90,7 +90,8 @@
    Creates window.editorState with properties:
    - point: current cursor position (linear)
    - buffer: current buffer text
-   - prefixArg: current prefix argument (Phase 6.5)"
+   - prefixArg: current prefix argument (Phase 6.5)
+   - minibufferStack: minibuffer stack for depth tracking (Phase 6.5 Week 3-4)"
   []
   (when goog.DEBUG  ; Only in development mode
     (let [get-state (fn []
@@ -110,10 +111,14 @@
                                             (nil? prefix-arg) nil
                                             (list? prefix-arg) (clj->js prefix-arg)
                                             (= prefix-arg '-) "-"
-                                            :else prefix-arg)]
+                                            :else prefix-arg)
+                            ;; Expose minibuffer stack (Phase 6.5 Week 3-4)
+                            minibuffer-stack (:minibuffer-stack app-db)
+                            minibuffer-stack-js (clj->js minibuffer-stack)]
                         #js {:point cursor-pos
                              :buffer (or buffer-text "")
-                             :prefixArg prefix-arg-js}))]
+                             :prefixArg prefix-arg-js
+                             :minibufferStack minibuffer-stack-js}))]
       ;; Expose as a getter function so it always returns fresh state
       (aset js/window "editorState"
             (js/Object.defineProperty
