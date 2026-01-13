@@ -32,6 +32,7 @@
             [lexicon.advice]              ; Load advice system (Phase 6D Week 2)
             [lexicon.thing-at-point]      ; Load thing-at-point (Phase 6D Week 2)
             [lexicon.advanced-undo]       ; Load advanced undo (Phase 6D Week 2)
+            [lexicon.commands.universal-argument]  ; Load prefix arguments (Phase 6.5 Week 1-2)
             [lexicon.views :as views]
             [lexicon.package-loader]   ; Load all packages
             ;; Re-export core API functions

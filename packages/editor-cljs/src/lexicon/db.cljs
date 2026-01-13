@@ -16,6 +16,8 @@
   - :minibuffer         → ui.cljs        (use :minibuffer/activate, :minibuffer/deactivate, :minibuffer/set-input)
   - :echo-area          → ui.cljs        (use :echo/message, :echo/clear)
   - :kill-ring          → edit.cljs      (only kill/yank commands should update)
+  - :prefix-arg         → command.cljs   (use :set-prefix-arg, :clear-prefix-arg - Phase 6.5)
+  - :current-prefix-arg → command.cljs   (read-only during command execution - Phase 6.5)
   - :keymaps            → keymap.cljs    (use :define-key, :set-keymap-parent)
   - :commands           → command.cljs   (use :register-command)
   - :hooks              → hooks.cljs     (use :register-hook, :enable-hook, :disable-hook)
@@ -76,6 +78,13 @@
    :kill-ring []                                       ; Clipboard history
    :initialized? false                                 ; Whether WASM module is loaded
    :commands {}                                        ; Central command registry
+   ;; Phase 6.5 Week 1-2: Prefix Arguments (Issue #76)
+   ;; Raw prefix argument during accumulation (nil, number, '-, or list like (4), (16))
+   :prefix-arg nil
+   ;; Saved prefix-arg during command execution (for commands to access)
+   :current-prefix-arg nil
+   ;; Active transient keymap (for C-u accumulation)
+   :transient-keymap nil
    ;; Phase 7.3: Hook System - Priority-based hook registry
    ;; Each hook is a vector of hook entries sorted by priority (lowest first)
    ;; Hook entry: {:id keyword :priority int :fn ifn :enabled? bool :package-id keyword :doc string}
@@ -98,8 +107,6 @@
         :text-cache {}                                 ; Text range cache for performance
         :viewport {:start 0 :end 1000}                ; Currently visible text range
         :scroll-position 0                             ; Current scroll position
-        :prefix-argument nil                           ; Universal argument (C-u)
-        :prefix-argument-active? false                 ; Whether prefix argument is active
         :show-line-numbers? true                       ; Show line numbers in status bar (Phase 5)
         :show-column-number? true}                     ; Show column number in status bar (Phase 5)
    :editor {:mode :emacs                              ; Editor mode - simple Emacs mode for now
