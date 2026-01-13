@@ -1,7 +1,7 @@
 # Lexicon Development Roadmap
 
-**Last Updated:** 2025-12-25
-**Current Phase:** Phase 6D - Missing Emacs Infrastructure ✅ COMPLETE
+**Last Updated:** 2026-01-13
+**Current Phase:** Phase 6.5 - Lexicon Core Foundation (Week 1-2: Prefix Arguments #76)
 
 ---
 
@@ -813,6 +813,95 @@ Before opening the project to external contributors and accepting pull requests,
 ---
 
 ## Phase 6.6: Testing Infrastructure Migration
+
+## Phase 6.5: Lexicon Core Foundation
+
+**Status:** 🔲 Ready to Begin
+**Goal:** Implement foundational Emacs systems required for completion ecosystem
+**Timeline:** 8 weeks (4 two-week sprints)
+**Prerequisites:** ✅ Phase 6D complete, ✅ Emacs core comparison analysis complete
+**Priority:** CRITICAL - Blocks Phase 8 (Completion Ecosystem)
+
+### Rationale
+
+**Emacs Core Comparison Analysis** (see `docs/phase-6.5-research.md` and `/home/nixos/Downloads/EmacsComparison.md`) revealed three critical architectural gaps:
+
+1. **No Prefix Arguments (C-u)** - Commands cannot modify behavior based on prefix args
+2. **Single-State Minibuffer** - Cannot handle command-to-command minibuffer handoff (Issue #72)
+3. **No Buffer-Local Environments** - Modes lack per-buffer execution contexts
+4. **No Runtime Evaluation** - Cannot load user init files or evaluate code interactively
+
+**Why Phase 6.5 Blocks Phase 8:**
+- Completion UI (Vertico) requires recursive minibuffer
+- Command modifiers (prefix args) needed for user interaction
+- Mode system requires buffer-local variables
+- Package loading requires runtime eval
+
+**Research Complete:**
+- Emacs source code studied (`/tmp/emacs-source`)
+- SCI (Small Clojure Interpreter) evaluated for runtime eval
+- 5 detailed GitHub issues created with implementation specs
+
+### GitHub Issues (Source of Truth)
+
+**Epic:** [#75 - Phase 6.5: Lexicon Core Foundation](https://github.com/eprapancha/lexicon/issues/75)
+
+**Sub-Issues:**
+- [#76 - Week 1-2: Prefix Arguments (C-u System)](https://github.com/eprapancha/lexicon/issues/76) - `priority-high`
+- [#77 - Week 3-4: Minibuffer State Machine](https://github.com/eprapancha/lexicon/issues/77) - `priority-critical` (Fixes #72)
+- [#78 - Week 5-6: Buffer-Local Environments](https://github.com/eprapancha/lexicon/issues/78) - `priority-high`
+- [#79 - Week 7-8: Runtime Evaluation (SCI Integration)](https://github.com/eprapancha/lexicon/issues/79) - `priority-medium`
+
+### Implementation Overview
+
+**Week 1-2: Prefix Arguments (#76)**
+- Add `:prefix-arg` and `:current-prefix-arg` to db
+- Implement `universal-argument`, `digit-argument`, `negative-argument`
+- Add transient keymap support
+- Update interactive spec parser for "P" and "p" codes
+- Acceptance: C-u → (4), C-u C-u → (16), C-u 5 → 5
+
+**Week 3-4: Minibuffer State Machine (#77)**
+- Change `:minibuffer` from map to stack of frames
+- Implement recursive minibuffer support
+- Fix Issue #72 (query-replace-regexp timeout)
+- Acceptance: Command-to-command minibuffer handoff works
+
+**Week 5-6: Buffer-Local Environments (#78)**
+- Add `:local-vars` map to each buffer
+- Implement variable lookup with global fallback
+- Create `define-minor-mode` infrastructure
+- Acceptance: Modes toggle per-buffer, independent local values
+
+**Week 7-8: Runtime Evaluation (#79)**
+- Integrate `@borkdude/sci` npm package
+- Implement eval functions: `eval-string`, `eval-region`, `eval-last-sexp`
+- Load `~/.lexicon/init.cljs` on startup
+- Acceptance: C-x C-e evaluates code, init file can define commands
+
+### Success Criteria
+
+- [ ] C-u prefix argument system works (Week 1-2)
+- [ ] Minibuffer stack allows recursive activation (Week 3-4)
+- [ ] Issue #72 (query-replace-regexp) resolved (Week 3-4)
+- [ ] Buffer-local variables work independently per buffer (Week 5-6)
+- [ ] Minor modes toggle per-buffer (Week 5-6)
+- [ ] User init file loads on startup (Week 7-8)
+- [ ] C-x C-e evaluates code in *scratch* buffer (Week 7-8)
+- [ ] All E2E tests pass
+- [ ] Zero compilation warnings
+
+### Documentation
+
+- **Research:** `docs/phase-6.5-research.md` - Comprehensive Emacs source analysis
+- **Emacs Comparison:** `/home/nixos/Downloads/EmacsComparison.md` - Gap analysis
+- **Emacs Source:** `/tmp/emacs-source` - Reference implementation
+- **Issue Tracking:** GitHub labels `phase-6.5`
+
+**Progress:** 0/8 weeks complete (0%) - Research complete, ready to begin implementation
+
+---
+
 
 **Status:** 🔲 In Progress
 **Goal:** Migrate from Playwright (JavaScript) to Etaoin (ClojureScript) for E2E tests, establish three-tier testing strategy
