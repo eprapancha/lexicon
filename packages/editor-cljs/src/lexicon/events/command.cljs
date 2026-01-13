@@ -105,24 +105,10 @@
                                   :describe-bindings :forward-char :backward-char :next-line :previous-line
                                   :beginning-of-line :end-of-line :beginning-of-buffer :end-of-buffer} command-name))
 
-         ;; Phase 6.5: Save prefix-arg before command execution (for commands to read via current-prefix-arg)
-         ;; Then deactivate minibuffer if active
-         db' (-> db
-                 (assoc :current-prefix-arg prefix-arg)
-                 (cond->
-                   minibuffer-active?
-                   (-> (assoc-in [:minibuffer :active?] false)
-                       (assoc-in [:minibuffer :prompt] "")
-                       (assoc-in [:minibuffer :input] "")
-                       (assoc-in [:minibuffer :on-confirm] nil)
-                       (assoc-in [:minibuffer :on-cancel] nil)
-                       (assoc-in [:minibuffer :completions] [])
-                       (assoc-in [:minibuffer :completion-index] 0)
-                       (assoc-in [:minibuffer :completion-metadata] nil)
-                       (assoc-in [:minibuffer :persist?] false)
-                       (assoc-in [:minibuffer :show-completions?] false)
-                       (assoc-in [:minibuffer :height-lines] 1)
-                       (assoc :cursor-owner :window))))]
+         ;; Phase 6.5 Week 1-2: Save prefix-arg before command execution
+         ;; Phase 6.5 Week 3-4: REMOVED premature minibuffer deactivation (fixes Issue #72)
+         ;; Commands now manage minibuffer lifecycle themselves via :replace? or explicit deactivation
+         db' (assoc db :current-prefix-arg prefix-arg)]
 
      (if command-def
        (let [handler (:handler command-def)

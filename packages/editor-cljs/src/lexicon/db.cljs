@@ -13,7 +13,8 @@
   - :buffers            → buffer.cljs    (use :create-buffer, :buffer/set-mode, :buffer/increment-version)
   - :window-tree        → ui.cljs        (use :window/set-mark, :window/set-cursor, :split-window-*, :delete-window)
   - :ui :cursor-position → edit.cljs    (use :update-cursor-position, :set-cursor-position)
-  - :minibuffer         → ui.cljs        (use :minibuffer/activate, :minibuffer/deactivate, :minibuffer/set-input)
+  - :minibuffer-stack   → ui.cljs        (use :minibuffer/activate, :minibuffer/deactivate, :minibuffer/set-input - Phase 6.5 Week 3-4)
+  - :minibuffer         → ui.cljs        (DEPRECATED - use :minibuffer-stack - kept for backward compat during migration)
   - :echo-area          → ui.cljs        (use :echo/message, :echo/clear)
   - :kill-ring          → edit.cljs      (only kill/yank commands should update)
   - :prefix-arg         → command.cljs   (use :set-prefix-arg, :clear-prefix-arg - Phase 6.5)
@@ -231,6 +232,21 @@
             :max-retries 5}                            ; Maximum retry attempts
    :transaction-queue []                              ; Queue for pending transactions
    :transaction-in-flight? false                     ; Flag to prevent concurrent transactions
+
+   ;; Phase 6.5 Week 3-4: Minibuffer Stack (Issue #77 - fixes query-replace-regexp timeout)
+   ;; Stack of minibuffer frames, where each frame represents one minibuffer activation
+   ;; Empty stack [] means minibuffer is inactive
+   ;; Stack depth = (count minibuffer-stack) - shows nesting level
+   :minibuffer-stack []
+   ;; Frame structure: {:prompt "" :input "" :on-confirm [...] :on-cancel [...]
+   ;;                   :completions [] :completion-index 0 :metadata nil :persist? false
+   ;;                   :show-completions? false :filtered-completions [] :height-lines 1}
+
+   ;; Configuration for recursive minibuffer support (Phase 6.5 Week 3-4)
+   :enable-recursive-minibuffers false              ; Allow minibuffer activation while already active
+
+   ;; DEPRECATED: Old single-state minibuffer (Phase 6.5 Week 3-4)
+   ;; Kept for backward compatibility during migration - will be removed after all consumers updated
    :minibuffer {:active? false                       ; Whether minibuffer is currently active
                 :prompt ""                           ; Prompt text (e.g., "M-x ")
                 :input ""                            ; Current user input in minibuffer

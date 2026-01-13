@@ -1319,22 +1319,24 @@
 (rf/reg-event-fx
  :query-replace-regexp
  (fn [{:keys [db]} [_]]
-   "Start interactive query-replace with regexp (C-M-%)"
+   "Start interactive query-replace with regexp (C-M-%) - Phase 6.5 Week 3-4"
    {:fx [[:dispatch [:minibuffer/activate
                      {:prompt "Query replace regexp: "
-                      :on-confirm [:query-replace-regexp/read-replacement]}]]]}))
+                      :on-confirm [:query-replace-regexp/read-replacement]
+                      :replace? true}]]]}))
 
 (rf/reg-event-fx
  :query-replace-regexp/read-replacement
  (fn [{:keys [db]} [_ regexp-string]]
-   "Read replacement string after regexp string"
+   "Read replacement string after regexp string - Phase 6.5 Week 3-4"
    (if (clojure.string/blank? regexp-string)
      {:fx [[:dispatch [:minibuffer/deactivate]]
            [:dispatch [:echo/message "Empty regexp"]]]}
-     ;; Update minibuffer for replacement prompt
+     ;; Update minibuffer for replacement prompt (replace current frame)
      {:fx [[:dispatch [:minibuffer/activate
                        {:prompt (str "Query replace regexp " regexp-string " with: ")
-                        :on-confirm [:query-replace-regexp/start regexp-string]}]]]})))
+                        :on-confirm [:query-replace-regexp/start regexp-string]
+                        :replace? true}]]]})))
 
 (rf/reg-event-fx
  :query-replace-regexp/start

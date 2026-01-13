@@ -13,6 +13,7 @@
   (:require [re-frame.core :as rf]
             [re-frame.db]
             [lexicon.db :as db]
+            [lexicon.minibuffer :as minibuffer]
             [lexicon.completion.styles :as completion-styles]
             [lexicon.completion.metadata :as completion-metadata]))
 
@@ -275,54 +276,60 @@
 (rf/reg-event-fx
  :minibuffer/activate
  (fn [{:keys [db]} [_ config]]
-   "Activate the minibuffer with given configuration.
-   Config keys:
-   - :prompt - Prompt string
-   - :on-confirm - Event to dispatch on RET
-   - :on-cancel - Event to dispatch on C-g
-   - :completions - List of completion candidates
-   - :metadata - Completion metadata (Phase 6C)
-   - :persist? - If true, don't auto-deactivate on confirm (for multi-step prompts)"
-   {:db (-> db
-            (assoc-in [:minibuffer :active?] true)
-            (assoc-in [:minibuffer :prompt] (:prompt config ""))
-            (assoc-in [:minibuffer :input] "")
-            (assoc-in [:minibuffer :on-confirm] (:on-confirm config))
-            (assoc-in [:minibuffer :on-cancel] (or (:on-cancel config) [:minibuffer/deactivate]))
-            (assoc-in [:minibuffer :completions] (or (:completions config) []))
-            (assoc-in [:minibuffer :completion-index] 0)
-            (assoc-in [:minibuffer :completion-metadata] (:metadata config))
-            (assoc-in [:minibuffer :persist?] (:persist? config false))
-            (assoc-in [:minibuffer :show-completions?] false)
-            (assoc-in [:minibuffer :height-lines] 1)
-            (assoc :cursor-owner :minibuffer))}))
+   "Activate the minibuffer with given configuration (Phase 6.5 Week 3-4).
+   Now uses stack-based architecture to support recursive minibuffer and fix Issue #72."
+   (let [already-active? (minibuffer/minibuffer-active? db)
+         recursive-allowed? (:enable-recursive-minibuffers db)
+         replace-mode? (:replace? config false)
+         should-replace? (and already-active? replace-mode?)]
+     (cond
+       ;; Minibuffer already active, recursive not allowed, not replacing
+       (and already-active? (not recursive-allowed?) (not replace-mode?))
+       {:fx [[:dispatch [:echo/message "Command attempted to use minibuffer while in minibuffer"]]]}
+       ;; Replace current frame (for M-x to command transition)
+       should-replace?
+       {:db (-> db
+                (minibuffer/replace-current-frame config)
+                (minibuffer/sync-to-legacy)
+                (assoc :cursor-owner :minibuffer))}
+       ;; Push new frame (normal activation or recursive)
+       :else
+       {:db (-> db
+                (minibuffer/push-frame config)
+                (minibuffer/sync-to-legacy)
+                (assoc :cursor-owner :minibuffer))}))))
 
 (rf/reg-event-fx
  :minibuffer/deactivate
  (fn [{:keys [db]} [_]]
-   "Deactivate the minibuffer and reset state, then restore cursor to active window"
-   (let [active-window-id (:active-window-id db)]
-     {:db (-> db
-              (assoc-in [:minibuffer :active?] false)
-              (assoc-in [:minibuffer :prompt] "")
-              (assoc-in [:minibuffer :input] "")
-              (assoc-in [:minibuffer :on-confirm] nil)
-              (assoc-in [:minibuffer :on-cancel] [:minibuffer/deactivate])
-              (assoc-in [:minibuffer :show-completions?] false)
-              (assoc-in [:minibuffer :height-lines] 1)
-              (assoc :cursor-owner active-window-id))  ; Issue #62: Restore cursor to active window
-      :fx [[:focus-editor]]})))
+   "Deactivate the minibuffer (Phase 6.5 Week 3-4).
+   Pops current frame from stack. If stack becomes empty, restores cursor to window."
+   (let [active-window-id (:active-window-id db)
+         db' (-> db
+                 minibuffer/pop-frame
+                 minibuffer/sync-to-legacy)
+         still-active? (minibuffer/minibuffer-active? db')]
+     {:db (cond-> db'
+            ;; If stack is now empty, restore cursor to active window
+            (not still-active?)
+            (assoc :cursor-owner active-window-id))
+      :fx (cond-> []
+            ;; Only focus editor if fully deactivated
+            (not still-active?)
+            (conj [:focus-editor]))}))
 
 (rf/reg-event-fx
  :minibuffer/set-input
  (fn [{:keys [db]} [_ input-text]]
-   "Update the minibuffer input text and call on-change handler if present"
+   "Update the minibuffer input text (Phase 6.5 Week 3-4 - stack-based)"
    (let [on-change (get-in db [:minibuffer :on-change])]
      (if on-change
        ;; Custom on-change handler exists (e.g., for isearch)
        {:fx [[:dispatch (conj on-change input-text)]]}
-       ;; Standard minibuffer - just update input
-       {:db (assoc-in db [:minibuffer :input] input-text)}))))
+       ;; Standard minibuffer - update current frame input
+       {:db (-> db
+                (minibuffer/update-current-frame {:input input-text})
+                minibuffer/sync-to-legacy)}))))
 
 (rf/reg-event-db
  :minibuffer/complete
@@ -382,16 +389,17 @@
 (rf/reg-event-fx
  :minibuffer/confirm
  (fn [{:keys [db]} [_]]
-   "Confirm minibuffer input and execute the configured action"
-   (let [minibuffer (:minibuffer db)
-         input (:input minibuffer)
-         on-confirm (:on-confirm minibuffer)
-         persist? (:persist? minibuffer false)]
+   "Confirm minibuffer input (Phase 6.5 Week 3-4 - stack-based).
+   IMPORTANT: Does NOT auto-deactivate anymore! Commands must deactivate explicitly
+   or use :replace? true to take over the minibuffer slot. This fixes Issue #72."
+   (let [input (minibuffer/get-input db)
+         on-confirm (minibuffer/get-on-confirm db)
+         persist? (minibuffer/get-persist? db)]
      (if on-confirm
        (if persist?
-         ;; Multi-step prompt - don't auto-deactivate, let handler manage state
+         ;; Multi-step prompt - dispatch without deactivating
          {:fx [[:dispatch (conj on-confirm input)]]}
-         ;; Single-step prompt - auto-deactivate after dispatch
+         ;; Single-step prompt - dispatch then deactivate
          {:fx [[:dispatch (conj on-confirm input)]
                [:dispatch [:minibuffer/deactivate]]]})
        ;; No handler - just deactivate
