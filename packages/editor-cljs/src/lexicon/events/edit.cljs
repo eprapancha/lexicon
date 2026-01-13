@@ -110,15 +110,24 @@
 
 (rf/reg-event-fx
  :forward-char
- (fn [{:keys [db]} [_]]
-   "Move cursor forward one character (C-f or Right arrow)"
+ (fn [{:keys [db]} [_ & args]]
+   "Move cursor forward N characters (C-f or Right arrow)
+    With prefix arg, moves that many characters."
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
-         current-pos (get-in db [:ui :cursor-position] 0)]
+         current-pos (get-in db [:ui :cursor-position] 0)
+         ;; Use prefix-arg if available (Phase 6.5)
+         prefix-arg (:current-prefix-arg db)
+         n (if prefix-arg
+             (cond
+               (number? prefix-arg) prefix-arg
+               (list? prefix-arg) (first prefix-arg)
+               :else 1)
+             1)]
      (if wasm-instance
        (let [max-pos (.length wasm-instance)
-             new-pos (min max-pos (inc current-pos))]
+             new-pos (min max-pos (+ current-pos n))]
          {:fx [[:dispatch [:update-cursor-position new-pos]]]})
        {:db db}))))
 
@@ -132,39 +141,62 @@
 
 (rf/reg-event-fx
  :next-line
- (fn [{:keys [db]} [_]]
-   "Move cursor to next line (C-n or Down arrow)"
+ (fn [{:keys [db]} [_ & args]]
+   "Move cursor to next line(s) (C-n or Down arrow)
+    With prefix arg, moves that many lines."
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
-         current-pos (get-in db [:ui :cursor-position] 0)]
+         current-pos (get-in db [:ui :cursor-position] 0)
+         ;; Use prefix-arg if available (Phase 6.5)
+         prefix-arg (:current-prefix-arg db)
+         n (if prefix-arg
+             (cond
+               (number? prefix-arg) prefix-arg
+               (list? prefix-arg) (first prefix-arg)
+               :else 1)
+             1)]
      (if wasm-instance
        (let [text (.getText wasm-instance)
              {:keys [line column]} (linear-pos-to-line-col text current-pos)
              lines (clojure.string/split text #"\n" -1)
-             next-line-num (inc line)]
+             next-line-num (+ line n)]
          (if (< next-line-num (count lines))
            (let [new-pos (buffer-events/line-col-to-linear-pos text next-line-num column)]
              {:fx [[:dispatch [:update-cursor-position new-pos]]]})
-           {:db db}))
+           ;; Move to last line if target exceeds buffer
+           (let [last-line (dec (count lines))
+                 new-pos (buffer-events/line-col-to-linear-pos text last-line column)]
+             {:fx [[:dispatch [:update-cursor-position new-pos]]]})))
        {:db db}))))
 
 (rf/reg-event-fx
  :previous-line
- (fn [{:keys [db]} [_]]
-   "Move cursor to previous line (C-p or Up arrow)"
+ (fn [{:keys [db]} [_ & args]]
+   "Move cursor to previous line(s) (C-p or Up arrow)
+    With prefix arg, moves that many lines."
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
-         current-pos (get-in db [:ui :cursor-position] 0)]
+         current-pos (get-in db [:ui :cursor-position] 0)
+         ;; Use prefix-arg if available (Phase 6.5)
+         prefix-arg (:current-prefix-arg db)
+         n (if prefix-arg
+             (cond
+               (number? prefix-arg) prefix-arg
+               (list? prefix-arg) (first prefix-arg)
+               :else 1)
+             1)]
      (if wasm-instance
        (let [text (.getText wasm-instance)
-             {:keys [line column]} (linear-pos-to-line-col text current-pos)]
-         (if (> line 0)
-           (let [prev-line-num (dec line)
-                 new-pos (buffer-events/line-col-to-linear-pos text prev-line-num column)]
+             {:keys [line column]} (linear-pos-to-line-col text current-pos)
+             prev-line-num (- line n)]
+         (if (>= prev-line-num 0)
+           (let [new-pos (buffer-events/line-col-to-linear-pos text prev-line-num column)]
              {:fx [[:dispatch [:update-cursor-position new-pos]]]})
-           {:db db}))
+           ;; Move to first line if target is negative
+           (let [new-pos (buffer-events/line-col-to-linear-pos text 0 column)]
+             {:fx [[:dispatch [:update-cursor-position new-pos]]]})))
        {:db db}))))
 
 (rf/reg-event-fx

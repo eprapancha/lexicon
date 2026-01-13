@@ -104,10 +104,16 @@
                             wasm-instance (:wasm-instance buffer)
                             cursor-pos (get-in app-db [:ui :cursor-position] 0)
                             buffer-text (when wasm-instance (.getText wasm-instance))
-                            prefix-arg (:prefix-arg app-db)]
+                            prefix-arg (:prefix-arg app-db)
+                            ;; Convert prefix-arg to JS-friendly format
+                            prefix-arg-js (cond
+                                            (nil? prefix-arg) nil
+                                            (list? prefix-arg) (clj->js prefix-arg)
+                                            (= prefix-arg '-) "-"
+                                            :else prefix-arg)]
                         #js {:point cursor-pos
                              :buffer (or buffer-text "")
-                             :prefixArg prefix-arg}))]
+                             :prefixArg prefix-arg-js}))]
       ;; Expose as a getter function so it always returns fresh state
       (aset js/window "editorState"
             (js/Object.defineProperty

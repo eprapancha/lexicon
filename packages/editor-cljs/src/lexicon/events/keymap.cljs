@@ -151,8 +151,12 @@
          (cond
        ;; Found a complete command binding
        command-name
-       {:fx [[:dispatch [:execute-command command-name]]
-             [:dispatch [:clear-prefix-key-state]]]}
+       (let [;; command-name might be a keyword or a vector like [:digit-argument 0]
+             dispatch-vec (if (vector? command-name)
+                           (into [:execute-command] command-name)
+                           [:execute-command command-name])]
+         {:fx [[:dispatch dispatch-vec]
+               [:dispatch [:clear-prefix-key-state]]]})
 
        ;; Check if this might be a prefix for a multi-key sequence
        ;; by seeing if any keybinding starts with this sequence
@@ -191,15 +195,21 @@
             (not prefix-state)
             (not (re-matches #"[CM]-." key-str))  ; Not a modifier combo
             (>= (.charCodeAt key-str 0) 32))     ; Printable ASCII
-       (let [prefix-arg (get-in db [:ui :prefix-argument])
-             prefix-active? (get-in db [:ui :prefix-argument-active?])
-             repeat-count (if (and prefix-active? prefix-arg) prefix-arg 1)
+       (let [;; Phase 6.5: Use new prefix-arg location and convert to number
+             prefix-arg (:prefix-arg db)
+             repeat-count (if prefix-arg
+                           (cond
+                             (number? prefix-arg) prefix-arg
+                             (list? prefix-arg) (first prefix-arg)
+                             :else 1)
+                           1)
              text-to-insert (apply str (repeat repeat-count key-str))]
-         (println "✍️ Inserting character:" key-str "×" repeat-count "=" text-to-insert)
+         ;; (println "✍️ Inserting character:" key-str "×" repeat-count "=" text-to-insert)
          {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
                [:dispatch [:clear-prefix-key-state]]
-               (when prefix-active?
-                 [:dispatch [:clear-prefix-argument]])]})
+               ;; Phase 6.5: Clear prefix-arg after self-insert
+               (when prefix-arg
+                 [:dispatch [:clear-prefix-arg]])]})
 
            ;; Unknown key sequence - clear state and ignore
            :else

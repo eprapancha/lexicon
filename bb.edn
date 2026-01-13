@@ -210,23 +210,49 @@
      (run-cmd "npx shadow-cljs watch test" :dir "packages/editor-cljs"))}
 
   test:e2e
-  {:doc "Run E2E tests with Etaoin (requires Firefox/Chrome WebDriver)"
+  {:doc "Run E2E tests with Etaoin (requires Firefox/Chrome WebDriver)
+         Usage: bb test:e2e [namespace-pattern]
+         Examples:
+           bb test:e2e                              # Run all E2E tests
+           bb test:e2e prefix-argument-test         # Run only prefix-argument tests
+           bb test:e2e basic-editing-test           # Run only basic-editing tests"
    :task
    (do
-     (print-step "🌐" "Running E2E tests with Etaoin...")
-     (println "")
-     (print-step "📋" "Prerequisites:")
-     (println "   1. Firefox installed (or Chrome with geckodriver/chromedriver)")
-     (println "   2. App running at http://localhost:8080 (run 'bb dev' in another terminal)")
-     (println "")
+     (let [test-pattern (first *command-line-args*)
+           config-file (if test-pattern
+                        (let [config-path (str "/tmp/test-" test-pattern ".edn")
+                              ns-regex (str "^lexicon." test-pattern "$")]
+                          (spit config-path
+                                (str "{:kaocha/reporter [kaocha.report/documentation\n"
+                                     "                   kaocha.report.progress/report]\n"
+                                     " :kaocha/color? true\n"
+                                     " :kaocha/fail-fast? false\n"
+                                     " :kaocha/plugins [:kaocha.plugin/junit-xml]\n"
+                                     " :kaocha.plugin.junit-xml/target-file \"test-results/junit-" test-pattern ".xml\"\n"
+                                     " :kaocha/tests\n"
+                                     " [{:kaocha.testable/type :kaocha.type/clojure.test\n"
+                                     "   :kaocha.testable/id :e2e\n"
+                                     "   :kaocha/source-paths []\n"
+                                     "   :kaocha/test-paths [\"e2e_tests\"]\n"
+                                     "   :kaocha/ns-patterns [\"" ns-regex "\"]\n"
+                                     "   :kaocha.filter/skip-meta [:skip]}]}"))
+                          (print-step "🎯" (str "Running E2E tests matching: " ns-regex))
+                          config-path)
+                        "tests.edn")]
+       (print-step "🌐" "Running E2E tests with Etaoin...")
+       (println "")
+       (print-step "📋" "Prerequisites:")
+       (println "   1. Firefox installed (or Chrome with geckodriver/chromedriver)")
+       (println "   2. App running at http://localhost:8080 (run 'bb dev' in another terminal)")
+       (println "")
 
-     (when-not (check-command "firefox")
-       (print-step "⚠️" "Firefox not found - tests may fail")
-       (println "   Install Firefox or update test to use Chrome"))
+       (when-not (check-command "firefox")
+         (print-step "⚠️" "Firefox not found - tests may fail")
+         (println "   Install Firefox or update test to use Chrome"))
 
-     (print-step "🧪" "Running E2E tests...")
-     (run-cmd "clojure -M:e2e -m kaocha.runner --config-file tests.edn")
-     (print-step "✅" "E2E tests completed!"))}
+       (print-step "🧪" "Running E2E tests...")
+       (run-cmd (str "clojure -M:e2e -m kaocha.runner --config-file " config-file))
+       (print-step "✅" "E2E tests completed!")))}
 
   test
   {:doc "Run all tests (unit + E2E + Rust)"

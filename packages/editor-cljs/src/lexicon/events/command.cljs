@@ -191,31 +191,10 @@
      {:fx [[:dispatch [:execute-command command-keyword]]]})))
 
 ;; =============================================================================
-;; Prefix Argument (Universal Argument)
+;; Prefix Argument (Universal Argument) - Phase 6.5
 ;; =============================================================================
-
-(rf/reg-event-fx
- :universal-argument
- (fn [{:keys [db]} [_]]
-   "Set or multiply the universal argument (C-u)"
-   (let [current-prefix (get-in db [:ui :prefix-argument])
-         prefix-active? (get-in db [:ui :prefix-argument-active?])]
-     (if prefix-active?
-       ;; Already active, multiply by 4
-       {:db (assoc-in db [:ui :prefix-argument] (* (or current-prefix 4) 4))}
-       ;; Not active, set to 4
-       {:db (-> db
-                (assoc-in [:ui :prefix-argument] 4)
-                (assoc-in [:ui :prefix-argument-active?] true))
-        :fx [[:dispatch [:echo/message "C-u "]]]}))))
-
-(rf/reg-event-db
- :clear-prefix-argument
- (fn [db [_]]
-   "Clear the prefix argument after command execution"
-   (-> db
-       (assoc-in [:ui :prefix-argument] nil)
-       (assoc-in [:ui :prefix-argument-active?] false))))
+;; Implementation moved to lexicon.commands.universal-argument namespace
+;; Commands registered in :initialize-commands below
 
 ;; =============================================================================
 ;; Help System Commands
@@ -785,6 +764,15 @@ C-h ?   This help menu
          [:dispatch [:register-command :universal-argument
                     {:docstring "Set or multiply universal argument (C-u)"
                      :handler [:universal-argument]}]]
+         [:dispatch [:register-command :universal-argument-more
+                    {:docstring "Multiply universal argument by 4"
+                     :handler [:universal-argument-more]}]]
+         [:dispatch [:register-command :digit-argument
+                    {:docstring "Add digit to universal argument"
+                     :handler [:digit-argument]}]]
+         [:dispatch [:register-command :negative-argument
+                    {:docstring "Negate universal argument"
+                     :handler [:negative-argument]}]]
          [:dispatch [:register-command :split-window-below
                     {:docstring "Split window horizontally"
                      :handler [:split-window-below]}]]
