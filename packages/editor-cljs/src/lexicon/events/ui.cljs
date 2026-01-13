@@ -316,7 +316,7 @@
       :fx (cond-> []
             ;; Only focus editor if fully deactivated
             (not still-active?)
-            (conj [:focus-editor]))}))
+            (conj [:focus-editor]))})))
 
 (rf/reg-event-fx
  :minibuffer/set-input

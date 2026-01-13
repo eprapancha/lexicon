@@ -782,21 +782,24 @@
 (rf/reg-event-fx
  :replace-string
  (fn [{:keys [db]} [_]]
-   "Replace string non-interactively from point to end of buffer (M-x replace-string)"
+   "Replace string non-interactively from point to end of buffer (M-x replace-string) - Phase 6.5 Week 3-4"
    {:fx [[:dispatch [:minibuffer/activate
                     {:prompt "Replace string: "
-                     :on-confirm [:replace-string/read-replacement]}]]]}))
+                     :on-confirm [:replace-string/read-replacement]
+                     :replace? true}]]]}))
 
 (rf/reg-event-fx
  :replace-string/read-replacement
  (fn [{:keys [db]} [_ search-string]]
-   "Read replacement string after search string"
+   "Read replacement string after search string - Phase 6.5 Week 3-4"
    (if (clojure.string/blank? search-string)
-     {:fx [[:dispatch [:echo/message "Empty search string"]]]}
+     {:fx [[:dispatch [:minibuffer/deactivate]]
+           [:dispatch [:echo/message "Empty search string"]]]}
      {:db (assoc-in db [:ui :replace-search-string] search-string)
       :fx [[:dispatch [:minibuffer/activate
                       {:prompt (str "Replace string " search-string " with: ")
-                       :on-confirm [:replace-string/do-replace]}]]]})))
+                       :on-confirm [:replace-string/do-replace]
+                       :replace? true}]]]})))
 
 (rf/reg-event-fx
  :replace-string/do-replace
@@ -844,26 +847,29 @@
  (rf/reg-event-fx
   :replace-regexp
   (fn [{:keys [db]} [_]]
-    "Replace regexp non-interactively from point to end of buffer (M-x replace-regexp)"
+    "Replace regexp non-interactively from point to end of buffer (M-x replace-regexp) - Phase 6.5 Week 3-4"
     {:fx [[:dispatch [:minibuffer/activate
                       {:prompt     "Replace regexp: "
-                       :on-confirm [:replace-regexp/read-replacement]}]]]}))
+                       :on-confirm [:replace-regexp/read-replacement]
+                       :replace? true}]]]}))
 
- (rf/reg-event-fx
-  :replace-regexp/read-replacement
-  (fn [{:keys [db]} [_ regexp-string]]
-    "Read replacement string after regexp"
-    (if (clojure.string/blank? regexp-string)
-      {:fx [[:dispatch [:echo/message "Empty regexp"]]]}
-      ;; Validate regexp
-      (try
-        (js/RegExp. regexp-string)
-        {:db (assoc-in db [:ui :replace-regexp-string] regexp-string)
-         :fx [[:dispatch [:minibuffer/activate
-                          {:prompt     (str "Replace regexp " regexp-string " with: ")
-                           :on-confirm [:replace-regexp/do-replace]}]]]}
-        (catch js/Error e
-          {:fx [[:dispatch [:echo/message (str "Invalid regexp: " (.-message e))]]]})))))
+(rf/reg-event-fx
+ :replace-regexp/read-replacement
+ (fn [{:keys [db]} [_ regexp-string]]
+   "Read replacement string after regexp - Phase 6.5 Week 3-4"
+   (if (clojure.string/blank? regexp-string)
+     {:fx [[:dispatch [:echo/message "Empty regexp"]]
+           [:dispatch [:minibuffer/deactivate]]]}
+     ;; Validate regexp
+     (try
+       (js/RegExp. regexp-string)
+       {:db (assoc-in db [:ui :replace-regexp-string] regexp-string)
+        :fx [[:dispatch [:minibuffer/activate
+                         {:prompt     (str "Replace regexp " regexp-string " with: ")
+                          :on-confirm [:replace-regexp/do-replace]
+                          :replace?   true}]]]}
+       (catch js/Error e
+         {:fx [[:dispatch [:echo/message (str "Invalid regexp: " (.-message e))]]]})))))
 
 (rf/reg-event-fx
  :replace-regexp/do-replace
@@ -920,20 +926,23 @@
 (rf/reg-event-fx
  :query-replace
  (fn [{:keys [db]} [_]]
-   "Start interactive query-replace (M-%)"
+   "Start interactive query-replace (M-%) - Phase 6.5 Week 3-4"
    {:fx [[:dispatch [:minibuffer/activate
                      {:prompt "Query replace: "
-                      :on-confirm [:query-replace/read-replacement]}]]]}))
+                      :on-confirm [:query-replace/read-replacement]
+                      :replace? true}]]]}))
 
 (rf/reg-event-fx
  :query-replace/read-replacement
  (fn [{:keys [db]} [_ search-string]]
-   "Read replacement string after search string"
+   "Read replacement string after search string - Phase 6.5 Week 3-4"
    (if (clojure.string/blank? search-string)
-     {:fx [[:dispatch [:echo/message "Empty search string"]]]}
+     {:fx [[:dispatch [:minibuffer/deactivate]]
+           [:dispatch [:echo/message "Empty search string"]]]}
      {:fx [[:dispatch [:minibuffer/activate
                        {:prompt (str "Query replace " search-string " with: ")
-                        :on-confirm [:query-replace/start search-string]}]]]})))
+                        :on-confirm [:query-replace/start search-string]
+                        :replace? true}]]]})))
 
 (defn linear-to-line-col
   "Convert linear position to line/column. Simple implementation for query-replace."
