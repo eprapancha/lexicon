@@ -56,16 +56,22 @@
    Walks keymap parent chains automatically."
   [db key-sequence-str]
   (let [keymaps (:keymaps db)
+        transient-keymap (:transient-keymap db)
         minor-modes (get-active-minor-modes db)
         major-mode (get-active-major-mode db)]
 
-    ;; Emacs precedence order:
+    ;; Emacs precedence order (Phase 6.5):
+    ;; 0. Transient keymap (for C-u accumulation)
     ;; 1. Active minor mode keymaps (in reverse order of activation)
     ;; 2. Active major mode keymap
     ;; 3. Global keymap
     ;; Each keymap can have a parent chain
 
     (or
+     ;; 0. Check transient keymap (Phase 6.5 Week 1-2)
+     (when transient-keymap
+       (lookup-key-in-keymap keymaps [:transient transient-keymap] key-sequence-str))
+
      ;; 1. Check minor mode keymaps (with parent chains)
      (some (fn [minor-mode]
              (lookup-key-in-keymap keymaps [:minor minor-mode] key-sequence-str))
@@ -151,7 +157,11 @@
        ;; Check if this might be a prefix for a multi-key sequence
        ;; by seeing if any keybinding starts with this sequence
        (let [keymaps (:keymaps db)
+             transient-keymap (:transient-keymap db)
              all-bindings (concat
+                           ;; Include transient keymap if active
+                           (when transient-keymap
+                             (collect-all-bindings-from-keymap keymaps [:transient transient-keymap]))
                            (mapcat #(collect-all-bindings-from-keymap keymaps [:minor %])
                                    (get-active-minor-modes db))
                            (collect-all-bindings-from-keymap keymaps [:major (get-active-major-mode db)])

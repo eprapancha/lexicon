@@ -198,7 +198,20 @@
                                  "ArrowUp" :previous-line}}        ; Up arrow
              :major {:buffer-menu-mode {:parent [:global]
                                         :bindings {"RET" :buffer-menu/select-buffer}}}  ; Major mode keymaps
-             :minor {}}                                 ; Minor mode keymaps
+             :minor {}                                  ; Minor mode keymaps
+             :transient {:universal-argument-map {:parent nil
+                                                  :bindings {"C-u" :universal-argument-more
+                                                            "0" [:digit-argument 0]
+                                                            "1" [:digit-argument 1]
+                                                            "2" [:digit-argument 2]
+                                                            "3" [:digit-argument 3]
+                                                            "4" [:digit-argument 4]
+                                                            "5" [:digit-argument 5]
+                                                            "6" [:digit-argument 6]
+                                                            "7" [:digit-argument 7]
+                                                            "8" [:digit-argument 8]
+                                                            "9" [:digit-argument 9]
+                                                            "-" :negative-argument}}}}
 
             ;; COMMENTED OUT: Evil mode keymaps - not ready yet, focus on basic Emacs first
             ;; :normal-keymap {"d" :delete-operator "w" :forward-word ...}

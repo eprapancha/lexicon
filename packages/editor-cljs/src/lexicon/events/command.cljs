@@ -82,7 +82,8 @@
    (let [command-def (get-in db [:commands command-name])
          active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
-         prefix-arg (get-in db [:ui :prefix-argument])
+         ;; Phase 6.5: Use new prefix-arg location
+         prefix-arg (:prefix-arg db)
          minibuffer-active? (get-in db [:minibuffer :active?])
 
          ;; Context for hooks
@@ -99,30 +100,35 @@
                        :prefix-arg prefix-arg}
 
          ;; Determine if this is an editing command (should create undo boundary)
-         editing-command? (not (#{:undo :redo :universal-argument :execute-extended-command
+         editing-command? (not (#{:undo :redo :universal-argument :universal-argument-more
+                                  :digit-argument :negative-argument :execute-extended-command
                                   :describe-bindings :forward-char :backward-char :next-line :previous-line
                                   :beginning-of-line :end-of-line :beginning-of-buffer :end-of-buffer} command-name))
 
-         ;; Deactivate minibuffer if active (for M-x case where command needs fresh minibuffer)
-         db' (if minibuffer-active?
-               (-> db
-                   (assoc-in [:minibuffer :active?] false)
-                   (assoc-in [:minibuffer :prompt] "")
-                   (assoc-in [:minibuffer :input] "")
-                   (assoc-in [:minibuffer :on-confirm] nil)
-                   (assoc-in [:minibuffer :on-cancel] nil)
-                   (assoc-in [:minibuffer :completions] [])
-                   (assoc-in [:minibuffer :completion-index] 0)
-                   (assoc-in [:minibuffer :completion-metadata] nil)
-                   (assoc-in [:minibuffer :persist?] false)
-                   (assoc-in [:minibuffer :show-completions?] false)
-                   (assoc-in [:minibuffer :height-lines] 1)
-                   (assoc :cursor-owner :window))
-               db)]
+         ;; Phase 6.5: Save prefix-arg before command execution (for commands to read via current-prefix-arg)
+         ;; Then deactivate minibuffer if active
+         db' (-> db
+                 (assoc :current-prefix-arg prefix-arg)
+                 (cond->
+                   minibuffer-active?
+                   (-> (assoc-in [:minibuffer :active?] false)
+                       (assoc-in [:minibuffer :prompt] "")
+                       (assoc-in [:minibuffer :input] "")
+                       (assoc-in [:minibuffer :on-confirm] nil)
+                       (assoc-in [:minibuffer :on-cancel] nil)
+                       (assoc-in [:minibuffer :completions] [])
+                       (assoc-in [:minibuffer :completion-index] 0)
+                       (assoc-in [:minibuffer :completion-metadata] nil)
+                       (assoc-in [:minibuffer :persist?] false)
+                       (assoc-in [:minibuffer :show-completions?] false)
+                       (assoc-in [:minibuffer :height-lines] 1)
+                       (assoc :cursor-owner :window))))]
 
      (if command-def
        (let [handler (:handler command-def)
-             should-clear-prefix? (not= command-name :universal-argument)]
+             ;; Phase 6.5: Don't clear prefix-arg/transient-keymap for prefix argument accumulation commands
+             should-clear-prefix? (not (#{:universal-argument :universal-argument-more
+                                          :digit-argument :negative-argument} command-name))]
          ;; Execute command with undo boundaries for editing commands
          {:db db'
           :fx (cond-> [[:dispatch-with-context {:event [:hook/run :before-command-hook context]
@@ -137,8 +143,8 @@
                 ;; Run after-command hook within dynamic context
                 true (conj [:dispatch-with-context {:event [:hook/run :after-command-hook (assoc context :result nil)]
                                                     :context exec-context}])
-                ;; Clear prefix argument if needed
-                should-clear-prefix? (conj [:dispatch [:clear-prefix-argument]]))})
+                ;; Phase 6.5: Clear prefix-arg and transient-keymap after command execution
+                should-clear-prefix? (conj [:dispatch [:clear-prefix-arg]]))})
        {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]}))))
 
 ;; -- Command Lifecycle Undo Integration --

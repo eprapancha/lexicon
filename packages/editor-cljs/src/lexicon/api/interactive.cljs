@@ -9,7 +9,8 @@
 
    Based on Emacs src/callint.c implementation."
   (:require [clojure.string :as str]
-            [lexicon.api.buffer :as buf]))
+            [lexicon.api.buffer :as buf]
+            [lexicon.commands.universal-argument :as universal-arg]))
 
 ;; -- Interactive Spec Parser --
 
@@ -150,19 +151,18 @@
    The :async type requires minibuffer interaction."
   [db arg-descriptor]
   (case (:type arg-descriptor)
-    ;; Prefix argument (converted to number)
+    ;; Prefix argument (converted to number) - Phase 6.5
+    ;; Use prefix-numeric-value from universal-argument namespace
     :prefix-arg-number
-    (let [prefix-arg (get-in db [:ui :prefix-argument])
-          prefix-active? (get-in db [:ui :prefix-argument-active?])]
+    (let [current-prefix-arg (:current-prefix-arg db)]
       {:type :immediate
-       :value (if (and prefix-active? prefix-arg) prefix-arg 1)})
+       :value (universal-arg/prefix-numeric-value current-prefix-arg)})
 
-    ;; Prefix argument (raw form)
+    ;; Prefix argument (raw form) - Phase 6.5
     :prefix-arg-raw
-    (let [prefix-arg (get-in db [:ui :prefix-argument])
-          prefix-active? (get-in db [:ui :prefix-argument-active?])]
+    (let [current-prefix-arg (:current-prefix-arg db)]
       {:type :immediate
-       :value (if prefix-active? prefix-arg nil)})
+       :value current-prefix-arg})
 
     ;; Region start
     :region-start
