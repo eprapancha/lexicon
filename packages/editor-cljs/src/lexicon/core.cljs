@@ -33,6 +33,12 @@
             [lexicon.thing-at-point]      ; Load thing-at-point (Phase 6D Week 2)
             [lexicon.advanced-undo]       ; Load advanced undo (Phase 6D Week 2)
             [lexicon.commands.universal-argument]  ; Load prefix arguments (Phase 6.5 Week 1-2)
+            [lexicon.variables]           ; Load buffer-local variables (Phase 6.5 Week 5-6)
+            [lexicon.modes]               ; Load minor mode infrastructure (Phase 6.5 Week 5-6)
+            [lexicon.modes.line-number]   ; Load line-number-mode (Phase 6.5 Week 5-6)
+            [lexicon.modes.auto-save]     ; Load auto-save-mode (Phase 6.5 Week 5-6)
+            [lexicon.eval]                ; Load runtime evaluation (Phase 6.5 Week 7-8)
+            [lexicon.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.views :as views]
             [lexicon.package-loader]   ; Load all packages
             ;; Re-export core API functions
@@ -149,6 +155,10 @@
   ;; Initialize theme system (Phase 6B Week 4)
   (rf/dispatch [:theme/initialize])
 
+  ;; Initialize minor modes (Phase 6.5 Week 5-6)
+  (lexicon.modes.line-number/init-line-number-mode!)
+  (lexicon.modes.auto-save/init-auto-save-mode!)
+
   ;; Mount the React application
   (mount-app)
 
@@ -156,7 +166,11 @@
   (expose-editor-state-for-tests)
 
   ;; Load WASM module asynchronously
-  (load-wasm-module))
+  (load-wasm-module)
+
+  ;; Load user init file after everything else is initialized (Phase 6.5 Week 7-8)
+  ;; We do this after WASM loading to ensure all systems are ready
+  (js/setTimeout #(rf/dispatch [:init/load-file]) 1000))
 
 (defn ^:export main []
   (init))

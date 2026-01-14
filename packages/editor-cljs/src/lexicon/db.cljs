@@ -19,6 +19,7 @@
   - :kill-ring          → edit.cljs      (only kill/yank commands should update)
   - :prefix-arg         → command.cljs   (use :set-prefix-arg, :clear-prefix-arg - Phase 6.5)
   - :current-prefix-arg → command.cljs   (read-only during command execution - Phase 6.5)
+  - :global-vars        → variables.cljs (use :set-variable, :get-variable - Phase 6.5 Week 5-6)
   - :keymaps            → keymap.cljs    (use :define-key, :set-keymap-parent)
   - :commands           → command.cljs   (use :register-command)
   - :hooks              → hooks.cljs     (use :register-hook, :enable-hook, :disable-hook)
@@ -28,6 +29,7 @@
   - :editor-version     → buffer.cljs    (use :buffer/increment-version)
   - :undo-in-progress?  → buffer.cljs    (use :buffer/set-undo-in-progress)
   - :major-mode         → mode.cljs      (use :set-major-mode)
+  - :local-vars         → variables.cljs (use :make-local-variable, :set-variable - Phase 6.5 Week 5-6)
 
   WINDOW-SPECIFIC STATE (within :window-tree leaf nodes):
   - :mark-position      → ui.cljs        (use :window/set-mark - dispatched from edit.cljs mark commands)
@@ -176,6 +178,8 @@
                                  "C-o" :open-line                  ; Open line
                                  "C-SPC" :set-mark-command         ; Set mark
                                  "C-x C-x" :exchange-point-and-mark ; Exchange point and mark
+                                 "C-x C-e" :eval-last-sexp         ; Eval last sexp (Phase 6.5 Week 7-8)
+                                 "M-:" :eval-expression            ; Eval expression (Phase 6.5 Week 7-8)
                                  "DEL" :delete-backward-char       ; Backspace
                                  "DELETE" :delete-forward-char     ; Delete
                                  ;; Cursor movement
@@ -244,6 +248,12 @@
 
    ;; Configuration for recursive minibuffer support (Phase 6.5 Week 3-4)
    :enable-recursive-minibuffers false              ; Allow minibuffer activation while already active
+
+   ;; Phase 6.5 Week 5-6: Global Variables
+   ;; Buffer-local variables override these global defaults
+   :global-vars {:fill-column 70                    ; Default fill column for text wrapping
+                 :tab-width 8                       ; Default tab width
+                 :indent-tabs-mode nil}             ; Use spaces instead of tabs by default
 
    ;; DEPRECATED: Old single-state minibuffer (Phase 6.5 Week 3-4)
    ;; Kept for backward compatibility during migration - will be removed after all consumers updated
@@ -331,8 +341,8 @@
    :is-read-only? false                   ; Phase 6B: Read-only buffer flag
    :cursor-position {:line 0 :column 0}   ; Per-buffer cursor position
    :major-mode :fundamental-mode
+   :local-vars {}                         ; Phase 6.5 Week 5-6: Buffer-local variables
    :minor-modes #{}
-   :buffer-local-vars {}
    :ast nil                               ; Parsed AST from Tree-sitter
    :language :text                        ; Language for syntax highlighting
    :diagnostics []
