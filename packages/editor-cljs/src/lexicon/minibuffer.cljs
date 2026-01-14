@@ -45,6 +45,8 @@
    - :show-completions? - Show completion list (default false)
    - :filtered-completions - Filtered completion list (default [])
    - :height-lines - Minibuffer height (default 1)
+   - :custom-renderer - Custom Reagent component fn for rendering (default nil)
+   - :renderer-props - Props map to pass to custom renderer (default {})
 
    Returns updated db with new frame pushed."
   [db config]
@@ -58,7 +60,9 @@
                       :persist? false
                       :show-completions? false
                       :filtered-completions []
-                      :height-lines 1}
+                      :height-lines 1
+                      :custom-renderer nil
+                      :renderer-props {}}
                      config)]
     (update db :minibuffer-stack conj frame)))
 
@@ -94,7 +98,9 @@
                           :persist? false
                           :show-completions? false
                           :filtered-completions []
-                          :height-lines 1}
+                          :height-lines 1
+                          :custom-renderer nil
+                          :renderer-props {}}
                          config)]
         (assoc db :minibuffer-stack (conj new-stack frame))))))
 
@@ -133,7 +139,9 @@
                                    :persist? (:persist? frame)
                                    :show-completions? (:show-completions? frame)
                                    :filtered-completions (:filtered-completions frame)
-                                   :height-lines (:height-lines frame)}))
+                                   :height-lines (:height-lines frame)
+                                   :custom-renderer (:custom-renderer frame)
+                                   :renderer-props (:renderer-props frame)}))
     ;; No frame - mark as inactive
     (assoc-in db [:minibuffer :active?] false)))
 

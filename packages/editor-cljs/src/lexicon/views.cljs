@@ -901,7 +901,9 @@
 
   When idle: Shows empty line or echo messages
   When active: Shows prompt + input for commands like M-x
-  Expands dynamically for completions (Phase 7.8.1)"
+  Expands dynamically for completions (Phase 7.8.1)
+
+  Supports custom renderers via :custom-renderer in frame config (Issue #46)"
   []
   (let [minibuffer @(rf/subscribe [:minibuffer])
         input-ref (atom nil)
@@ -914,7 +916,9 @@
         total-height (* height-lines line-height)
         filtered-completions (:filtered-completions minibuffer)
         show-completions? (:show-completions? minibuffer)
-        completion-index (:completion-index minibuffer)]
+        completion-index (:completion-index minibuffer)
+        custom-renderer (:custom-renderer minibuffer)
+        renderer-props (:renderer-props minibuffer {})]
 
     ;; ALWAYS render - never conditional
     [:div.minibuffer
@@ -999,24 +1003,38 @@
            message
            "")])]  ; Empty string when truly idle
 
-     ;; Completion candidates (shown when active and show-completions? is true)
-     (when (and active? show-completions? (seq filtered-completions))
-       [:div.minibuffer-completions
-        {:style {:flex "1"
-                 :overflow-y "auto"
-                 :padding "4px 8px"}}
-        (for [[idx candidate] (map-indexed vector (take 10 filtered-completions))]  ; Show max 10 candidates
-          ^{:key idx}
-          [:div.completion-candidate
-           {:style {:padding "2px 4px"
-                    :cursor "pointer"
-                    :background-color (if (= idx completion-index)
-                                        "rgba(100, 100, 200, 0.3)"  ; Highlight selected
-                                        "transparent")
-                    :border-radius "2px"}
-            :on-click (fn []
-                        (rf/dispatch [:minibuffer/select-completion idx]))}
-           candidate])])]))  ; Display completion candidate
+     ;; Completion candidates or custom renderer
+     (when active?
+       (if custom-renderer
+         ;; Custom renderer provided - delegate rendering to it (Issue #46)
+         [:div.minibuffer-custom
+          {:style {:flex "1"
+                   :overflow-y "auto"
+                   :padding "4px 8px"}}
+          [custom-renderer (merge renderer-props
+                                  {:minibuffer minibuffer
+                                   :input-ref input-ref
+                                   :mode-line-style mode-line-style
+                                   :prompt-style prompt-style})]]
+
+         ;; Default completion list renderer
+         (when (and show-completions? (seq filtered-completions))
+           [:div.minibuffer-completions
+            {:style {:flex "1"
+                     :overflow-y "auto"
+                     :padding "4px 8px"}}
+            (for [[idx candidate] (map-indexed vector (take 10 filtered-completions))]  ; Show max 10 candidates
+              ^{:key idx}
+              [:div.completion-candidate
+               {:style {:padding "2px 4px"
+                        :cursor "pointer"
+                        :background-color (if (= idx completion-index)
+                                            "rgba(100, 100, 200, 0.3)"  ; Highlight selected
+                                            "transparent")
+                        :border-radius "2px"}
+                :on-click (fn []
+                            (rf/dispatch [:minibuffer/select-completion idx]))}
+               candidate])])))]))  ; Display completion candidate
 
 (defn echo-area
   "DEPRECATED: Echo area now unified with minibuffer.

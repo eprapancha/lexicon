@@ -41,13 +41,13 @@
    'buffer-local-value buf/buffer-local-value})
 
 (defonce sci-context
-  "SCI evaluation context with allowed namespaces.
-
-   Security:
-   - Only approved lexicon.* namespaces accessible
-   - SCI provides safe cljs.core by default
-   - Math and console allowed for convenience
-   - No eval, Function, network access, or timers"
+  ;; SCI evaluation context with allowed namespaces.
+  ;;
+  ;; Security:
+  ;; - Only approved lexicon.* namespaces accessible
+  ;; - SCI provides safe cljs.core by default
+  ;; - Math and console allowed for convenience
+  ;; - No eval, Function, network access, or timers
   (sci/init {:namespaces {'lexicon.core lexicon-api-namespace
                           'lexicon.api.buffer lexicon-api-namespace
                           'lexicon.api.message {'message msg/message}}

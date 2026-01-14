@@ -17,8 +17,8 @@
 ;; =============================================================================
 
 (defonce minor-modes
-  "Registry of defined minor modes.
-  Maps mode keyword to mode definition map."
+  ;; Registry of defined minor modes.
+  ;; Maps mode keyword to mode definition map.
   (atom {}))
 
 (defn register-minor-mode!
