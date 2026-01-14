@@ -1,454 +1,228 @@
 # Emacs Compatibility Contract
 
-**Version:** 1.0
-**Status:** Normative
-**Last Updated:** 2026-01-15
+## Status
 
----
+**Normative / Binding**
 
-## Purpose
-
-This document defines what it means for Lexicon to be "Emacs-compatible."
-
-If code behavior and this contract disagree, **the contract wins** until this document is explicitly updated through documented review.
-
-This is not a feature roadmap. This is a binding specification.
+If code behavior and this contract disagree, **this contract wins**.
+Changes to this document require explicit review and justification.
 
 ---
 
 ## 1. Scope of Compatibility
 
-### 1.1 What Lexicon Guarantees
+Lexicon guarantees **behavioral semantics of interactive editing** equivalent to GNU Emacs, subject to the constraints and exclusions explicitly stated in this document.
 
-Lexicon targets **behavioral semantics of interactive editing**, not internal implementation details.
+### 1.1 What “Emacs-compatible” means in Lexicon
 
-Lexicon SHALL behave like Emacs for:
+Lexicon guarantees that:
 
-- Buffer manipulation (insertion, deletion, movement)
-- Point and mark semantics
-- Kill ring and region operations
-- Command execution lifecycle
-- Keybinding resolution and dispatch
-- Minibuffer interaction patterns
-- Buffer-local variable semantics
-- Hook execution order and guarantees
-- Marker behavior under text modification
+* Interactive editor behavior (commands, buffers, motion, killing/yanking, hooks, minibuffer interaction) behaves **semantically** like Emacs.
+* Compatibility is defined in terms of **observable outcomes**, not internal APIs or implementation details.
+* Editor-facing behavior that is specified in this document **must match Emacs semantics exactly**, not approximately.
 
-### 1.2 What Lexicon Does NOT Guarantee
+Lexicon does **not** guarantee:
 
-Lexicon explicitly does NOT target:
+* Binary compatibility with Emacs Lisp
+* Compatibility with Emacs internal C APIs
+* Exact redisplay timing or frame geometry behavior
+* Terminal escape semantics or TTY behavior
 
-- Emacs Lisp bytecode compatibility
-- C-level internal APIs (e.g., `Lisp_Object` structures)
-- Emacs frame/window geometry primitives
-- Terminal escape sequence handling
-- Native subprocess management
-- Redisplay timing guarantees
-- Exact error symbol hierarchy
-- Font rendering internals
-- Process filters and sentinels
-- Direct filesystem access patterns identical to Emacs
-
-### 1.3 Runtime Constraints
-
-Lexicon operates under browser/WASM constraints:
-
-- No direct filesystem access (uses browser APIs)
-- No native processes (async operations via browser APIs)
-- Single-threaded JavaScript event loop
-- Memory managed by JavaScript runtime
-
-These constraints are **first-class design inputs**, not limitations to be hidden.
+Browser and WASM constraints are first-class and explicitly acknowledged.
 
 ---
 
 ## 2. Execution Model Invariants
 
+Lexicon guarantees a **single semantic execution model** consistent with Emacs.
+
 ### 2.1 Single Semantic Thread
 
-Lexicon MUST maintain the illusion of single-threaded execution for all editor state.
+* Editor state mutation occurs on a single semantic thread.
+* There is no concurrent mutation of editor state.
+* Asynchronous operations resume editor interaction only via command scheduling.
 
-This means:
+### 2.2 Atomic Command Execution
 
-- Commands execute atomically from the editor's perspective
-- No concurrent mutations to buffer contents, point, or mark
-- State transitions are sequential and deterministic
+* Commands run to completion.
+* No other command may interleave during execution.
+* All observable state transitions occur within command boundaries.
 
-### 2.2 Commands Run to Completion
+### 2.3 Command Lifecycle Phases
 
-A command MUST run to completion before the next command begins.
+Each command executes with the following guaranteed ordering:
 
-Partial execution is not permitted.
+1. Pre-command hooks
+2. Interactive argument resolution
+3. Command body execution
+4. Post-command hooks
+5. Command cleanup
 
-This guarantee enables:
+This ordering is guaranteed and relied upon by editor semantics.
 
-- Predictable `this-command` and `last-command` semantics
-- Hook execution without race conditions
-- Undo boundaries aligned with command boundaries
+### 2.4 Prefix Argument Semantics
 
-### 2.3 Asynchronous Work Resumes Via Command Enqueueing
+* Prefix arguments (e.g. `C-u`) are visible during:
 
-Async operations (file loading, network requests, timers) MUST resume by enqueueing new commands onto the command queue.
-
-They SHALL NOT directly mutate editor state.
-
-### 2.4 Command Lifecycle Phases
-
-Every command execution SHALL proceed through these phases:
-
-1. **Pre-command hooks** - Execute in registration order
-2. **Command execution** - Runs to completion
-3. **Post-command hooks** - Execute in registration order
-4. **State cleanup** - Prefix args cleared, transient state reset
-
-This order is guaranteed and non-negotiable.
+  * interactive argument resolution
+  * command execution
+  * pre-command hooks
+  * post-command hooks
+* Prefix arguments are cleared **only after** post-command hooks complete.
 
 ---
 
 ## 3. Dynamic Scoping Commitment
 
-### 3.1 Dynamic Variables Are Guaranteed
+Dynamic scoping is a **core design invariant** of Lexicon.
 
-Lexicon guarantees dynamic scoping semantics equivalent to Emacs for editor state.
+### 3.1 Dynamic Variables
 
-The following variables MUST be dynamically bound during command execution:
+Lexicon guarantees dynamic binding semantics equivalent to Emacs for editor state, including but not limited to:
 
-- `this-command` - Currently executing command
-- `last-command` - Previously executed command
-- `current-prefix-arg` - Prefix argument during command execution
-- `current-buffer` - Buffer in which command is executing (when implemented)
-- `point` - Current point position (when directly accessible)
-- `mark-active` - Whether mark is active
+* `current-buffer`
+* `point`
+* `mark`
+* `this-command`
+* `last-command`
+* minibuffer-related dynamic variables
 
-### 3.2 Buffer-Local Variables Use Dynamic Lookup
+### 3.2 Scope Visibility
 
-Buffer-local variables MUST use dynamic lookup order:
+* Commands, hooks, and interactive evaluation observe the same dynamic bindings.
+* Dynamic bindings are visible to all code executing within the same command invocation.
 
-1. Check buffer-local binding in current buffer
-2. Fall back to global binding
-3. Return nil if unbound
+### 3.3 Dynamic Scope Isolation
 
-This lookup MUST happen at access time, not definition time.
+* Dynamic bindings must not leak outside a command invocation.
+* Nested commands (e.g. minibuffer recursion) receive isolated dynamic environments.
+* Concurrent editor operations must not observe each other’s dynamic bindings.
 
-### 3.3 Lexical Purity Is Not a Goal
+### 3.4 Runtime Evaluation
 
-Lexicon does NOT optimize for lexical scoping or functional purity.
-
-Elisp-style code and SCI evaluation contexts rely on dynamic scope.
-
-This is a conscious design choice, not a compromise.
+Runtime evaluation performed within the editor must respect all active dynamic bindings and command context.
 
 ---
 
-## 4. Core Abstractions Guaranteed by Lexicon
+## 4. Core Abstractions Guaranteed
+
+The following abstractions are guaranteed to exist with the specified semantics.
 
 ### 4.1 Buffers
 
-**What they are:**
-Buffers are containers for text with associated metadata and local state.
-
-**Guarantees:**
-- Every buffer has a unique identity
-- Buffers persist until explicitly killed
-- Buffer contents can be modified via insertion, deletion, and replacement
-- Buffers have a current point position (cursor)
-- Buffers can have buffer-local variables
-
-**Non-guarantees:**
-- Lexicon does NOT guarantee identical buffer object structure to Emacs
-- Lexicon does NOT guarantee binary compatibility with Emacs buffer APIs
-
----
+* Buffers are mutable text containers with identity.
+* Buffers support buffer-local variables.
+* Buffer-local bindings override global bindings dynamically when the buffer is current.
 
 ### 4.2 Point and Mark
 
-**What they are:**
-Point is the current cursor position. Mark is a saved position for region operations.
-
-**Guarantees:**
-- Point is always a valid position within the buffer (1 to buffer-size + 1)
-- Point moves in response to insertion and deletion commands
-- Mark, when set, defines a region from mark to point
-- Region operations (kill, copy) operate on text between mark and point
-
-**Non-guarantees:**
-- Lexicon does NOT guarantee mark ring implementation details
-- Lexicon does NOT guarantee transient-mark-mode behavior (may differ)
-
----
+* Each buffer maintains a point and an optional mark.
+* Motion commands update point and mark consistently with Emacs semantics.
+* Region semantics (`point`–`mark`) are preserved.
 
 ### 4.3 Markers
 
-**What they are:**
-Markers represent semantic positions within a buffer that move in response to text changes.
+* Markers represent semantic positions within a buffer.
+* Markers move in response to text insertion and deletion in a manner consistent with Emacs.
+* Markers are not simple numeric positions.
+* Lexicon does not guarantee binary compatibility with Emacs marker APIs.
 
-**Guarantees:**
-- Markers are NOT simple numeric positions
-- Markers move in response to text insertion and deletion in a manner consistent with Emacs
-- Markers inserted before a position move when text is inserted at that position
-- Markers are invalidated when their buffer is killed
+### 4.4 Commands
 
-**Non-guarantees:**
-- Lexicon does NOT guarantee binary marker API compatibility
-- Lexicon does NOT guarantee insertion-type behavior matches Emacs in all edge cases
-
----
-
-### 4.4 Buffer-Local Variables
-
-**What they are:**
-Variables that can have different values in different buffers.
-
-**Guarantees:**
-- Variables can be made buffer-local via `make-local-variable`
-- Variables can be made automatically buffer-local in all buffers via `make-variable-buffer-local`
-- Buffer-local values are independent across buffers
-- Killing a buffer releases its buffer-local bindings
-
-**Non-guarantees:**
-- Lexicon does NOT guarantee identical default-value behavior for all variables
-- Lexicon does NOT guarantee terminal-local or frame-local variables
-
----
+* Commands are first-class callable editor actions.
+* Commands may be invoked interactively or programmatically.
+* Interactive commands participate fully in the command lifecycle and hook system.
 
 ### 4.5 Hooks
 
-**What they are:**
-Hooks are lists of functions called at specific points in editor operation.
+* Hooks are ordered lists of functions.
+* Hooks may be global or buffer-local.
+* Hooks execute under the same dynamic bindings as the associated command.
 
-**Guarantees:**
-- Hooks execute in registration order
-- Hooks can be added, removed, and queried
-- Pre-command and post-command hooks are guaranteed
-- Mode hooks (on enable/disable) are guaranteed
+#### Hook Error Semantics
 
-**Non-guarantees:**
-- Lexicon does NOT guarantee all Emacs hook names exist
-- Lexicon does NOT guarantee hook depth limits match Emacs exactly
+* Errors thrown by hooks propagate after all remaining hooks of the same phase run.
+* Post-command hooks run even if pre-command hooks or command bodies signal errors.
 
----
+### 4.6 Kill Ring
 
-### 4.6 Commands
-
-**What they are:**
-Commands are functions that can be invoked interactively via keybindings or M-x.
-
-**Guarantees:**
-- Commands are first-class values with metadata (docstring, interactive spec)
-- Commands can be registered, unregistered, and introspected
-- Interactive specs define how commands receive arguments
-- Prefix arguments (C-u) are available to commands via interactive spec codes "P" and "p"
-
-**Non-guarantees:**
-- Lexicon does NOT guarantee all Emacs interactive spec codes are supported
-- Lexicon does NOT guarantee command remapping semantics
-
----
+* Killed text is added to the kill ring.
+* Successive adjacent kills within a command append into a single kill-ring entry.
+* Yank retrieves the most recent kill-ring entry.
+* Yank-pop cycles through the kill ring only if the previous command was a yank.
 
 ### 4.7 Minibuffer
 
-**What it is:**
-The minibuffer is a control plane for command input, completion, and user interaction.
+The minibuffer is a **control plane**, not merely a UI component.
 
-**Guarantees:**
-- The minibuffer is NOT just a text input widget
-- The minibuffer supports recursive activation (depth tracking)
-- Commands can activate the minibuffer while the minibuffer is active
-- The minibuffer has a stack-based state architecture
-- Completion candidates can be displayed and navigated
+Lexicon guarantees that:
 
-**Non-guarantees:**
-- Lexicon does NOT guarantee identical minibuffer window behavior
-- Lexicon does NOT guarantee all Emacs completion styles
-- Lexicon does NOT guarantee exact completing-read API parity
+* The minibuffer supports recursive activation.
+* Each minibuffer recursion level has isolated dynamic bindings.
+* Nested minibuffer invocations are supported.
+* `C-g` aborts only the current minibuffer level.
 
----
+### 4.8 Completion and `completing-read`
 
-### 4.8 Keymaps
+* Completion is defined as a protocol, not a UI.
+* Candidate generation, narrowing, and selection semantics are preserved.
+* Multiple completion UIs may exist, but all must obey the same semantic contract.
 
-**What they are:**
-Keymaps define bindings from key sequences to commands.
+### 4.9 Interactive Argument Specifications
 
-**Guarantees:**
-- Keymaps can be global, mode-local, or transient
-- Key lookup follows precedence: transient → mode → global
-- Prefix keys and key sequences are supported
-- Keymaps can be activated and deactivated dynamically
+Lexicon guarantees support for the following interactive specifiers:
 
-**Non-guarantees:**
-- Lexicon does NOT guarantee keymap inheritance semantics match Emacs
-- Lexicon does NOT guarantee menu-bar or tool-bar keymap support
+* `"p"` — numeric prefix argument
+* `"P"` — raw prefix argument
+* `"r"` — region (point and mark)
+* `"d"` — point
+* `"s"` — string (minibuffer input)
+
+Additional specifiers may be added only by explicit amendment.
 
 ---
 
-### 4.9 Kill Ring
+## 5. Explicit Non-Goals
 
-**What it is:**
-The kill ring stores killed (cut) text for yanking (pasting).
+Lexicon does **not** guarantee:
 
-**Guarantees:**
-- Killed text is added to the kill ring
-- Yank retrieves the most recent kill
-- Kill ring can be cycled (yank-pop)
+* Frame or window geometry parity
+* Redisplay timing equivalence
+* Emacs Lisp bytecode compatibility
+* Native process or terminal semantics
+* Binary compatibility with Emacs packages
 
-**Non-guarantees:**
-- Lexicon does NOT guarantee kill ring size limits match Emacs
-- Lexicon does NOT guarantee interprogram-paste behavior
+Any divergence from Emacs behavior not listed in this section must be documented explicitly.
 
 ---
 
-## 5. Compatibility Is Measured by Tests
+## 6. Compatibility Measurement
 
-### 5.1 Source of Truth
+Emacs compatibility is measured **only** by semantic tests.
 
-Emacs compatibility is validated by **semantic tests derived from Emacs test suite**, not by:
-
-- Visual similarity
-- Anecdotal behavior
-- User expectations
-- Implementation details
-
-### 5.2 Test Categories
-
-Tests are classified into:
-
-- **Category A (Pure Semantic):** Buffer, point, kill/yank, command lifecycle
-- **Category B (Semantic + UI):** Minibuffer, completion, windows
-- **Category C (Implementation-Specific):** Redisplay, frames, processes
-
-Lexicon SHALL prioritize Category A, then Category B.
-
-Category C tests are informative but not binding.
-
-### 5.3 Test Harness
-
-Lexicon maintains a dedicated test namespace `test/lexicon/emacs/` that:
-
-- Re-expresses Emacs semantics in Lexicon's test language
-- Uses editor-facing APIs (commands, public functions)
-- Tests what packages will actually use
-- Documents gaps explicitly when tests fail
+* Tests are derived from the Emacs test suite.
+* Tests assert observable editor behavior, not implementation details.
+* Passing semantic tests is the primary measure of correctness.
+* Known divergences must be documented and justified.
 
 ---
 
-## 6. Explicit Non-Goals
+## 7. Change Control
 
-### 6.1 These Are NOT Compatibility Targets
+This contract is expected to evolve, but:
 
-Lexicon explicitly does NOT target:
+* Changes must be explicit.
+* Changes must be reviewed.
+* Changes must be justified in terms of semantic impact.
 
-- **Frame geometry:** Browser controls window management
-- **Terminal emulation:** Not applicable in browser context
-- **Byte-compiled elisp:** Source-level compatibility only
-- **Exact error symbols:** Error messages are informative, not contractual
-- **Process model:** No native subprocesses
-- **Redisplay internals:** Rendering is browser-delegated
-- **Font rendering:** Browser handles fonts
-- **Exact keymap inheritance:** Simplified precedence model
-- **All interactive spec codes:** Subset supported, documented explicitly
-
-### 6.2 Why These Are Non-Goals
-
-These are excluded because:
-
-- They are browser/WASM constrained
-- They are implementation details, not semantic behaviors
-- They do not affect package compatibility
-- They would increase complexity without proportional value
+Silent drift is not permitted.
 
 ---
 
-## 7. Amendment Process
+## Closing Statement
 
-### 7.1 When This Contract Can Change
+This document defines the **semantic foundation** upon which Lexicon is built.
+All higher-level features, packages, and extensions depend on the guarantees made here.
 
-This contract can be amended when:
+**This contract is the editor’s constitution.**
 
-- New Emacs-semantic guarantees are added
-- Existing guarantees are found to be unimplementable
-- Test-driven development reveals necessary clarifications
-
-### 7.2 When This Contract CANNOT Change
-
-This contract MUST NOT be amended to:
-
-- Retroactively justify existing implementation choices
-- Avoid difficult implementation work
-- Accommodate shortcuts
-
-### 7.3 Amendment Procedure
-
-1. Propose change in GitHub issue tagged `contract-amendment`
-2. Document rationale and impact
-3. Update this document with version bump
-4. Update affected tests
-5. Merge only after explicit approval
-
----
-
-## 8. Relationship to Implementation
-
-### 8.1 Contract Supersedes Code
-
-When implementation behavior contradicts this contract:
-
-- The contract is correct
-- The implementation is wrong
-- File a bug against the implementation
-
-### 8.2 Contract Is Not Exhaustive
-
-This contract does NOT specify every behavior.
-
-For behaviors not specified here:
-
-- Tests derived from Emacs are authoritative
-- Implementation may choose Emacs-compatible behavior
-- Divergence must be documented
-
----
-
-## 9. Future Compatibility Layers
-
-### 9.1 Elisp Compatibility
-
-When elisp compatibility is added via SCI or other means:
-
-- Dynamic scoping guarantees in Section 3 apply
-- Core abstractions in Section 4 must be accessible
-- Execution model in Section 2 must be preserved
-
-### 9.2 Package Compatibility
-
-Packages (Vertico, Magit, Org) rely on:
-
-- Behavioral semantics defined in this contract
-- Tests validating those semantics
-- Explicit non-goals preventing false assumptions
-
-This contract is written to support package compatibility, not user-facing features.
-
----
-
-## 10. Summary
-
-Lexicon is Emacs-compatible when:
-
-1. ✅ Behavioral semantics match Emacs (tested)
-2. ✅ Execution model is single-threaded and atomic
-3. ✅ Dynamic scoping is guaranteed
-4. ✅ Core abstractions behave as specified
-5. ✅ Non-goals are respected
-6. ✅ Tests derived from Emacs pass
-
-Lexicon is NOT Emacs-compatible when:
-
-1. ❌ Only visual similarity is achieved
-2. ❌ Implementation details are copied without semantic understanding
-3. ❌ Tests are written to match current behavior instead of Emacs semantics
-
----
-
-**End of Contract**
-
-This document is the authoritative definition of Emacs compatibility for Lexicon.
