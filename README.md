@@ -40,6 +40,8 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 - Hook system with priorities
 
 **Current Work:**
+- ✅ [Issue #84](https://github.com/eprapancha/lexicon/issues/84) - E2E auto-print *Messages* buffer on test failure
+- ✅ query-replace-regexp command implementation (Phase 7.8)
 - 🔄 [Issue #60](https://github.com/eprapancha/lexicon/issues/60) - Package isolation + state ownership (11 violations fixed)
 - 📋 [Issue #61](https://github.com/eprapancha/lexicon/issues/61) - Event-driven test synchronization
 
