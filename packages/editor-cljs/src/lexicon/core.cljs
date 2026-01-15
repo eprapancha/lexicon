@@ -97,7 +97,8 @@
    - point: current cursor position (linear)
    - buffer: current buffer text
    - prefixArg: current prefix argument (Phase 6.5)
-   - minibufferStack: minibuffer stack for depth tracking (Phase 6.5 Week 3-4)"
+   - minibufferStack: minibuffer stack for depth tracking (Phase 6.5 Week 3-4)
+   - messagesBuffer: *Messages* buffer text (Issue #84)"
   []
   (when goog.DEBUG  ; Only in development mode
     (let [get-state (fn []
@@ -120,11 +121,18 @@
                                             :else prefix-arg)
                             ;; Expose minibuffer stack (Phase 6.5 Week 3-4)
                             minibuffer-stack (:minibuffer-stack app-db)
-                            minibuffer-stack-js (clj->js minibuffer-stack)]
+                            minibuffer-stack-js (clj->js minibuffer-stack)
+                            ;; Expose *Messages* buffer (Issue #84)
+                            messages-buffer (get-in app-db [:buffers 2])
+                            messages-wasm (:wasm-instance messages-buffer)
+                            messages-text (when messages-wasm
+                                           (try (.getText messages-wasm)
+                                                (catch :default _ "")))]
                         #js {:point cursor-pos
                              :buffer (or buffer-text "")
                              :prefixArg prefix-arg-js
-                             :minibufferStack minibuffer-stack-js}))]
+                             :minibufferStack minibuffer-stack-js
+                             :messagesBuffer (or messages-text "")}))]
       ;; Expose as a getter function so it always returns fresh state
       (aset js/window "editorState"
             (js/Object.defineProperty

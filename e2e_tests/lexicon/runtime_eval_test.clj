@@ -4,7 +4,8 @@
   Tests runtime code evaluation with SCI (Small Clojure Interpreter)."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
-            [etaoin.api :as e]))
+            [etaoin.api :as e]
+            [lexicon.test-helpers :as test-helpers]))
 
 ;; Test configuration
 (def app-url "http://localhost:8080")
@@ -13,23 +14,8 @@
 ;; Browser driver
 (def ^:dynamic *driver* nil)
 
-;; Setup/teardown
-(defn start-driver []
-  (e/firefox {:headless true}))
-
-(defn stop-driver [driver]
-  (when driver
-    (e/quit driver)))
-
-(defn with-driver [f]
-  (let [driver (start-driver)]
-    (try
-      (binding [*driver* driver]
-        (f))
-      (finally
-        (stop-driver driver)))))
-
-(use-fixtures :once with-driver)
+;; Setup/teardown - use common fixture with automatic *Messages* printing
+(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
 
 ;; Helper functions
 (defn wait-for-editor-ready []

@@ -12,7 +12,8 @@
   Based on Issue #77 acceptance criteria."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
-            [etaoin.api :as e]))
+            [etaoin.api :as e]
+            [lexicon.test-helpers :as test-helpers :refer [print-messages-buffer]]))
 
 ;; Test configuration
 (def app-url "http://localhost:8080")
@@ -21,23 +22,8 @@
 ;; Browser driver (will be set by fixture)
 (def ^:dynamic *driver* nil)
 
-;; Setup/teardown
-(defn start-driver []
-  (e/firefox {:headless true}))
-
-(defn stop-driver [driver]
-  (when driver
-    (e/quit driver)))
-
-(defn with-driver [f]
-  (let [driver (start-driver)]
-    (try
-      (binding [*driver* driver]
-        (f))
-      (finally
-        (stop-driver driver)))))
-
-(use-fixtures :once with-driver)
+;; Setup/teardown - use common fixture with automatic *Messages* printing
+(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
 
 ;; Helper functions
 (defn wait-for-editor-ready []
@@ -58,6 +44,12 @@
   (doseq [ch text]
     (e/fill *driver* {:css ".hidden-input"} (str ch))
     (Thread/sleep 10)))
+
+(defn type-in-minibuffer
+  "Type text into minibuffer input"
+  [text]
+  (e/fill *driver* {:css ".minibuffer-input"} text)
+  (Thread/sleep 50))
 
 (defn press-alt-key
   "Press Alt+key combination (M-x)"
@@ -197,8 +189,8 @@
     (is (= 1 (get-minibuffer-depth)) "M-x should activate minibuffer (depth 1)")
     (is (minibuffer-visible?) "Minibuffer should be visible")
 
-    ;; Type query-replace-regexp
-    (type-text "query-replace-regexp")
+    ;; Type query-replace-regexp into minibuffer
+    (type-in-minibuffer "query-replace-regexp")
     (Thread/sleep 100)
     (press-enter)
 
@@ -234,8 +226,8 @@
     (Thread/sleep 100)
     (is (= 1 (get-minibuffer-depth)) "M-x should set depth to 1")
 
-    ;; Type replace-string
-    (type-text "replace-string")
+    ;; Type replace-string into minibuffer
+    (type-in-minibuffer "replace-string")
     (press-enter)
     (Thread/sleep 200)
 

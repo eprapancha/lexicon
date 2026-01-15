@@ -9,7 +9,8 @@
   - Batch 5: Isearch (2 commands)"
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
-            [etaoin.api :as e]))
+            [etaoin.api :as e]
+            [lexicon.test-helpers :as test-helpers]))
 
 ;; Test configuration
 (def app-url "http://localhost:8080")
@@ -18,23 +19,8 @@
 ;; Browser driver (will be set by fixture)
 (def ^:dynamic *driver* nil)
 
-;; Setup/teardown
-(defn start-driver []
-  (e/firefox {:headless true}))
-
-(defn stop-driver [driver]
-  (when driver
-    (e/quit driver)))
-
-(defn with-driver [f]
-  (let [driver (start-driver)]
-    (try
-      (binding [*driver* driver]
-        (f))
-      (finally
-        (stop-driver driver)))))
-
-(use-fixtures :once with-driver)
+;; Setup/teardown - use common fixture with automatic *Messages* printing
+(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
 
 ;; Helper functions
 (defn wait-for-editor-ready []
@@ -669,23 +655,25 @@
 
     ;; Start query-replace-regexp with M-x
     (press-meta-key "x")
-    (Thread/sleep 50)
-    (type-text "query-replace-regexp")
-    (Thread/sleep 20)
+    (Thread/sleep 100)
+
+    ;; Type into minibuffer
+    (e/fill *driver* {:css ".minibuffer-input"} "query-replace-regexp")
+    (Thread/sleep 100)
     (press-key "Enter")
-    (wait-for-minibuffer-input)
+    (Thread/sleep 200)
 
     ;; Type regex pattern
     (e/fill *driver* {:css ".minibuffer-input"} "num[0-9]")
-    (Thread/sleep 20)
+    (Thread/sleep 100)
     (press-minibuffer-enter)
-    (wait-for-minibuffer-input)
+    (Thread/sleep 200)
 
     ;; Type replacement
     (e/fill *driver* {:css ".minibuffer-input"} "NUM")
-    (Thread/sleep 20)
-    (press-minibuffer-enter)
     (Thread/sleep 100)
+    (press-minibuffer-enter)
+    (Thread/sleep 200)
 
     ;; Replace first two with 'y', quit with 'q'
     (press-key "y")

@@ -9,7 +9,8 @@
   These tests validate Lexicon's behavioral semantics against Emacs."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
-            [etaoin.api :as e]))
+            [etaoin.api :as e]
+            [lexicon.test-helpers :as test-helpers :refer [is-with-messages get-buffer-text get-point]]))
 
 ;; Test configuration
 (def app-url "http://localhost:8080")
@@ -18,23 +19,8 @@
 ;; Browser driver
 (def ^:dynamic *driver* nil)
 
-;; Setup/teardown
-(defn start-driver []
-  (e/firefox {:headless true}))
-
-(defn stop-driver [driver]
-  (when driver
-    (e/quit driver)))
-
-(defn with-driver [f]
-  (let [driver (start-driver)]
-    (try
-      (binding [*driver* driver]
-        (f))
-      (finally
-        (stop-driver driver)))))
-
-(use-fixtures :once with-driver)
+;; Setup/teardown - use common fixture with automatic *Messages* printing
+(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
 
 ;; Helper functions
 (defn wait-for-editor-ready []
@@ -124,22 +110,6 @@
   (e/fill *driver* {:css ".hidden-input"} (str digit))
   (Thread/sleep 10))
 
-(defn get-buffer-text
-  "Get complete buffer text via window.editorState"
-  []
-  (e/js-execute *driver* "
-    const state = window.editorState;
-    return state ? state.buffer : '';
-  "))
-
-(defn get-point
-  "Get current point position"
-  []
-  (e/js-execute *driver* "
-    const state = window.editorState;
-    return state ? state.point : 0;
-  "))
-
 ;; =============================================================================
 ;; Test 1: count-lines
 ;; =============================================================================
@@ -154,8 +124,8 @@
     ;; Type: foo
     (type-text "foo")
     (Thread/sleep 100)
-    (let [text (get-buffer-text)]
-      (is (= "foo" text)
+    (let [text (get-buffer-text *driver*)]
+      (is-with-messages *driver* (= "foo" text)
           "Buffer with text but no newline should have that text"))
 
     ;; Type: \nbar\nbaz\n
@@ -166,9 +136,9 @@
     (press-enter)
     (Thread/sleep 100)
 
-    (let [text (get-buffer-text)
+    (let [text (get-buffer-text *driver*)
           newline-count (count (re-seq #"\n" text))]
-      (is (= 3 newline-count)
+      (is-with-messages *driver* (= 3 newline-count)
           "Buffer should have 3 newlines"))))
 
 ;; =============================================================================
@@ -184,7 +154,7 @@
 
     ;; Test: newline with arg 1
     (type-text "(a b")
-    (let [saved-point (get-point)]
+    (let [saved-point (get-point *driver*)]
       (type-text " c d)")
       (Thread/sleep 50)
 
@@ -192,11 +162,11 @@
       (press-enter)
       (Thread/sleep 100)
 
-      (let [text (get-buffer-text)
-            point (get-point)]
-        (is (re-find #"\(a b c d\)\n" text)
+      (let [text (get-buffer-text *driver*)
+            point (get-point *driver*)]
+        (is-with-messages *driver* (re-find #"\(a b c d\)\n" text)
             "Newline should insert newline at end")
-        (is (= (+ saved-point 6) point)
+        (is-with-messages *driver* (= (+ saved-point 6) point)
             "Point should move after inserted newline")))))
 
 ;; =============================================================================
@@ -217,8 +187,8 @@
     (press-ctrl-o)
     (Thread/sleep 100)
 
-    (let [text (get-buffer-text)]
-      (is (re-find #"hello world\n" text)
+    (let [text (get-buffer-text *driver*)]
+      (is-with-messages *driver* (re-find #"hello world\n" text)
           "Open-line should insert newline at end"))))
 
 ;; =============================================================================
@@ -245,9 +215,9 @@
     (press-meta-caret)
     (Thread/sleep 100)
 
-    (let [text (get-buffer-text)]
-      (is (or (re-find #" third fourth " text)
-              (re-find #" third\s+fourth " text))
+    (let [text (get-buffer-text *driver*)]
+      (is-with-messages *driver* (or (re-find #" third fourth " text)
+                                      (re-find #" third\s+fourth " text))
           "Delete-indentation should join last line to previous"))))
 
 ;; =============================================================================
@@ -276,6 +246,6 @@
     (press-meta-caret)
     (Thread/sleep 100)
 
-    (let [text (get-buffer-text)]
-      (is (not (nil? text))
+    (let [text (get-buffer-text *driver*)]
+      (is-with-messages *driver* (not (nil? text))
           "Buffer should still have content after delete-indentation"))))

@@ -9,6 +9,7 @@
   (:require [re-frame.core :as rf]
             [re-frame.db]
             [lexicon.db :as db]
+            [lexicon.log :as log]
             [lexicon.completion.metadata :as completion-metadata]))
 
 ;; -- Helper Functions --
@@ -1341,53 +1342,57 @@
    (if (clojure.string/blank? regexp-string)
      {:fx [[:dispatch [:minibuffer/deactivate]]
            [:dispatch [:echo/message "Empty regexp"]]]}
-     ;; Update minibuffer for replacement prompt (replace current frame)
-     {:fx [[:dispatch [:minibuffer/activate
-                       {:prompt (str "Query replace regexp " regexp-string " with: ")
-                        :on-confirm [:query-replace-regexp/start regexp-string]
-                        :replace? true}]]]})))
+     ;; Validate regexp before proceeding
+     (try
+       (js/RegExp. regexp-string)
+       {:fx [[:dispatch [:minibuffer/activate
+                         {:prompt (str "Query replace regexp " regexp-string " with: ")
+                          :on-confirm [:query-replace-regexp/start regexp-string]
+                          :replace? true}]]]}
+       (catch js/Error e
+         {:fx [[:dispatch [:minibuffer/deactivate]]
+               [:dispatch [:echo/message (str "Invalid regexp: " (.-message e))]]]})))))
+
 
 (rf/reg-event-fx
  :query-replace-regexp/start
  (fn [{:keys [db]} [_ regexp-string replacement-string]]
    "Initialize query-replace-regexp state and find first match using regexp"
-   (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-         buffer-id        (:buffer-id active-window)
-         buffer           (get-in db [:buffers buffer-id])
+   (let [active-window     (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id         (:buffer-id active-window)
+         buffer            (get-in db [:buffers buffer-id])
          ^js wasm-instance (:wasm-instance buffer)
-         full-text        (.getText wasm-instance)
-         current-pos      (get-in db [:ui :cursor-position] 0)
-         ;; Use regexp search
-         is-regexp?       true
-         regexp-pattern   (try (re-pattern regexp-string) (catch js/Error _ nil))
-         ;; Find first match from current position
-         text-from-pos    (subs full-text current-pos)
-         match-result     (when regexp-pattern (re-find regexp-pattern text-from-pos))
-         match-text       (if (string? match-result) match-result (first match-result))
-         match-index      (when match-text (.indexOf text-from-pos match-text))
-         match            (when (and match-text (>= match-index 0))
-                           {:start (+ current-pos match-index)
-                            :end   (+ current-pos match-index (count match-text))})]
+         current-pos       (get-in db [:ui :cursor-position] 0)
+         full-text         (.getText wasm-instance)
+         is-regexp?        true  ; query-replace-regexp uses regexp search
+         match             (find-next-match full-text regexp-string current-pos is-regexp?)]
+
      (if match
-       ;; Found first match - activate query-replace mode
+       ;; Found first match - activate query-replace mode and create region to highlight the match
        (let [cursor-line-col (linear-to-line-col full-text (:end match))
-             active-window-id (:active-window-id db)]
-         {:db (-> db
-                  (assoc-in [:ui :query-replace :active?] true)
-                  (assoc-in [:ui :query-replace :search-string] regexp-string)
-                  (assoc-in [:ui :query-replace :replacement-string] replacement-string)
-                  (assoc-in [:ui :query-replace :is-regexp?] is-regexp?)
-                  (assoc-in [:ui :query-replace :current-match] match)
-                  (assoc-in [:ui :query-replace :original-cursor-pos] current-pos)
-                  (assoc-in [:ui :query-replace :replaced-count] 0)
-                  (assoc-in [:ui :query-replace :match-history] [])
-                  (assoc-in [:ui :query-replace :replace-all?] false)
-                  ;; Set mark and cursor on window to create highlighting region
-                  (update :window-tree db/update-window-in-tree active-window-id
-                          #(-> %
-                               (assoc :mark-position (:start match))
-                               (assoc :cursor-position cursor-line-col))))
-         :fx [[:dispatch [:cursor/set-position (:end match)]]]})
+              mark-linear-pos (:start match)  ; Linear position for mark
+              active-window-id (:active-window-id db)
+
+              ;; Sync window AND global cursor (Issue #65)
+              synced-db (sync-window-and-global-cursor db active-window-id cursor-line-col)
+
+              ;; Update window mark separately
+              new-tree (db/update-window-in-tree (:window-tree synced-db) active-window-id
+                                                 #(assoc % :mark-position mark-linear-pos))
+              new-db (-> synced-db
+                        (assoc :window-tree new-tree)
+                        (assoc-in [:ui :query-replace :active?] true)
+                        (assoc-in [:ui :query-replace :search-string] regexp-string)
+                        (assoc-in [:ui :query-replace :replacement-string] replacement-string)
+                        (assoc-in [:ui :query-replace :is-regexp?] is-regexp?)
+                        (assoc-in [:ui :query-replace :current-match] match)
+                        (assoc-in [:ui :query-replace :original-cursor-pos] current-pos)
+                        (assoc-in [:ui :query-replace :replaced-count] 0)
+                        (assoc-in [:ui :query-replace :match-history] [])
+                        (assoc-in [:ui :query-replace :replace-all?] false))]
+         {:db new-db
+          :fx [[:dispatch [:echo/message (str "Query replacing " regexp-string " with " replacement-string
+                                              " (y/n/!/q/^/. for help)")]]]})
        ;; No match found
        {:fx [[:dispatch [:echo/message (str "No match for regexp: " regexp-string)]]]}))))
 
