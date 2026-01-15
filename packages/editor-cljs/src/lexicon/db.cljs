@@ -340,6 +340,7 @@
    :is-modified? false
    :is-read-only? false                   ; Phase 6B: Read-only buffer flag
    :cursor-position {:line 0 :column 0}   ; Per-buffer cursor position
+   :point 0                                ; Linear point position (Emacs compatibility - Phase 6.6)
    :major-mode :fundamental-mode
    :local-vars {}                         ; Phase 6.5 Week 5-6: Buffer-local variables
    :minor-modes #{}

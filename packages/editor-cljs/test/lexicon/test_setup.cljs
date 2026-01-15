@@ -2,6 +2,7 @@
   "Test setup - loads event handlers and initializes WASM for tests"
   (:require [lexicon.events]   ; Register event handlers
             [lexicon.subs]     ; Register subscriptions
+            [cljs.test :refer [use-fixtures async]]
             [re-frame.core :as rf]))
 
 ;; Load WASM module when this namespace loads
@@ -31,3 +32,20 @@
                 :error))))
 
 (.log js/console "Test setup: WASM load initiated")
+
+;; Fixture to ensure WASM is loaded before tests run
+(defn with-wasm-loaded [f]
+  (async done
+    (-> wasm-load-promise
+        (.then (fn [result]
+                 (if (= result :loaded)
+                   (do
+                     (.log js/console "✅ WASM ready, running test")
+                     (f)
+                     (done))
+                   (do
+                     (.error js/console "❌ WASM failed to load")
+                     (done)))))
+        (.catch (fn [e]
+                  (.error js/console "❌ WASM fixture error:" e)
+                  (done))))))

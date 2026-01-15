@@ -1437,3 +1437,53 @@
       ;; Buffer not found - no action needed
       {:db db}))))
 
+;; =============================================================================
+;; Buffer Editing Operations (for Emacs semantic compatibility)
+;; =============================================================================
+
+(rf/reg-event-fx
+ :buffer/insert
+ (fn [{:keys [db]} [_ buffer-id position text]]
+   "Insert TEXT at POSITION in BUFFER-ID.
+
+   Args:
+     buffer-id - Buffer to insert into
+     position - Linear position (0-indexed)
+     text - String to insert
+
+   Contract: 4.1 (Buffers), 4.2 (Point)"
+   (let [^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])]
+     (when wasm-instance
+       (.insert wasm-instance position text))
+     {:db db})))
+
+(rf/reg-event-fx
+ :buffer/goto-char
+ (fn [{:keys [db]} [_ buffer-id position]]
+   "Move point to POSITION in BUFFER-ID.
+
+   Args:
+     buffer-id - Buffer to move point in
+     position - Linear position (0-indexed)
+
+   Contract: 4.2 (Point)"
+   ;; Store point in buffer state
+   (let [current-buffer-id (get-in db [:editor :current-buffer-id])
+         new-db (assoc-in db [:buffers buffer-id :point] position)]
+     ;; If this is the current buffer, also update UI cursor
+     (if (= buffer-id current-buffer-id)
+       {:db new-db
+        :fx [[:dispatch [:cursor/set-position position]]]}
+       {:db new-db}))))
+
+(rf/reg-event-db
+ :set-current-buffer
+ (fn [db [_ buffer-id]]
+   "Set BUFFER-ID as the current buffer.
+
+   Args:
+     buffer-id - Buffer to make current
+
+   Contract: 4.1 (Buffers) - Phase 6.6 Emacs compatibility"
+   (assoc-in db [:editor :current-buffer-id] buffer-id)))
+
