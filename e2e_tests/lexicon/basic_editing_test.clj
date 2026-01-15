@@ -6,51 +6,22 @@
   - Phase 1: P1-01 through P1-05"
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
-            [etaoin.api :as e]))
+            [etaoin.api :as e]
+            [lexicon.test-helpers :as h]))
 
-;; Test configuration
-(def app-url "http://localhost:8080")
-(def test-timeout 10000) ;; 10 seconds
+;; Use shared test helpers
+(use-fixtures :once h/with-driver)
 
-;; Browser driver (will be set by fixture)
-(def ^:dynamic *driver* nil)
-
-;; Setup/teardown
-(defn start-driver []
-  (e/firefox {:headless true}))
-
-(defn stop-driver [driver]
-  (when driver
-    (e/quit driver)))
-
-(defn with-driver [f]
-  (let [driver (start-driver)]
-    (try
-      (binding [*driver* driver]
-        (f))
-      (finally
-        (stop-driver driver)))))
-
-(use-fixtures :once with-driver)
-
-;; Helper functions
-(defn wait-for-editor-ready []
-  "Wait for editor to be ready by checking for .editor-wrapper"
-  (e/wait-visible *driver* {:css ".editor-wrapper"} {:timeout (/ test-timeout 1000)}))
-
-(defn click-editor []
-  "Click the editor to focus it"
-  (e/click *driver* {:css ".editor-wrapper"}))
-
+;; File-specific helper functions
 (defn get-editor-text []
   "Get text content from the editable area"
-  (e/get-element-text *driver* {:css ".editable-area"}))
+  (e/get-element-text h/*driver* {:css ".editable-area"}))
 
 (defn type-text
   "Type text with delay between characters"
   [text]
   (doseq [ch text]
-    (e/fill *driver* {:css ".hidden-input"} (str ch))
+    (e/fill h/*driver* {:css ".hidden-input"} (str ch))
     (Thread/sleep 10)))
 
 (defn press-key
@@ -66,7 +37,7 @@
     });
     input.dispatchEvent(event);
   ")]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 10))
 
 (defn press-minibuffer-enter
@@ -84,7 +55,7 @@
       input.dispatchEvent(event);
     }
   "]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 10))
 
 (defn press-ctrl-key
@@ -102,7 +73,7 @@
     });
     input.dispatchEvent(event);
   ")]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 10))
 
 (defn press-meta-key
@@ -120,7 +91,7 @@
     });
     input.dispatchEvent(event);
   ")]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 10))
 
 (defn get-cursor-position
@@ -145,27 +116,27 @@
     }
     return {row: row, col: col};
   "
-        result (e/js-execute *driver* script)]
+        result (e/js-execute h/*driver* script)]
     result))
 
 (defn get-echo-area-text
   "Get text from the echo area"
   []
   (try
-    (e/get-element-text *driver* {:css ".echo-area"})
+    (e/get-element-text h/*driver* {:css ".echo-area"})
     (catch Exception _ "")))
 
 ;; Tests
 (deftest test-p0-01-basic-text-input
   (testing "P0-01: Basic text input"
     ;; Go to app
-    (e/go *driver* app-url)
+    (h/setup-test!)
 
     ;; Wait for editor to be ready
-    (wait-for-editor-ready)
+    
 
     ;; Focus the editor
-    (click-editor)
+    
 
     ;; Type a sentence
     (let [sentence "The quick brown fox jumps over the lazy dog."]
@@ -181,9 +152,9 @@
 
 (deftest test-p0-02-enter-creates-newline
   (testing "P0-02: Enter/Return key creates newline"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type first line
     (type-text "line 1")
@@ -203,9 +174,9 @@
 
 (deftest test-p0-03-backspace-deletes
   (testing "P0-03: Backspace deletes character"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "abcde")
@@ -224,9 +195,9 @@
 
 (deftest test-regression-typing-after-backspace-all
   (testing "REGRESSION: Typing works after backspacing entire buffer"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Step 1: Type initial text
     (type-text "abcd")
@@ -254,9 +225,9 @@
 
 (deftest test-p0-04-delete-key
   (testing "P0-04: Delete key deletes character forward"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "abcde")
@@ -282,9 +253,9 @@
 
 (deftest test-p0-05-arrow-navigation
   (testing "P0-05: Arrow key navigation"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type two lines
     (type-text "line 1")
@@ -308,9 +279,9 @@
 
 (deftest test-p0-06-mouse-click-positioning
   (testing "P0-06: Mouse click positioning"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type several lines
     (type-text "First line")
@@ -325,7 +296,7 @@
     (Thread/sleep 20)
 
     ;; Click somewhere in the middle
-    (e/click *driver* {:css ".editable-area"})
+    (e/click h/*driver* {:css ".editable-area"})
     (Thread/sleep 10)
 
     ;; Type a character - should insert at clicked position
@@ -341,9 +312,9 @@
 
 (deftest test-p1-01-character-navigation
   (testing "P1-01: Character-wise navigation (C-f, C-b)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type "hello world"
     (type-text "hello world")
@@ -389,9 +360,9 @@
 
 (deftest test-p1-02-line-navigation
   (testing "P1-02: Line-wise navigation (C-p, C-n)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type three lines
     (type-text "line 1")
@@ -430,9 +401,9 @@
 
 (deftest test-p1-03-beginning-end-of-line
   (testing "P1-03: Beginning/end of line (C-a, C-e)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "this is a test")
@@ -469,9 +440,9 @@
 
 (deftest test-p1-04-word-navigation
   (testing "P1-04: Word-wise navigation (M-f, M-b)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "the quick brown fox")
@@ -509,9 +480,9 @@
 
 (deftest test-p1-05-beginning-end-of-buffer
   (testing "P1-05: Beginning/end of buffer (M-<, M->)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type multiple lines
     (type-text "first line")
@@ -557,9 +528,9 @@
 
 (deftest test-p1-06-set-mark
   (testing "P1-06: Setting the mark (C-SPC)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "select this text")
@@ -581,7 +552,7 @@
       });
       input.dispatchEvent(event);
     "]
-      (e/js-execute *driver* script))
+      (e/js-execute h/*driver* script))
     (Thread/sleep 20)
 
     ;; Move forward to select "select this"
@@ -597,9 +568,9 @@
 
 (deftest ^:skip test-p1-07-kill-region
   (testing "P1-07: Kill region (C-w) - SKIPPED: Browser captures C-w (close tab)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "select this text")
@@ -620,7 +591,7 @@
       });
       input.dispatchEvent(event);
     "]
-      (e/js-execute *driver* script))
+      (e/js-execute h/*driver* script))
     (Thread/sleep 10)
 
     ;; Move forward to select "select this"
@@ -639,9 +610,9 @@
 
 (deftest test-p1-08-yank
   (testing "P1-08: Yank (C-y)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type and kill text
     (type-text "select this text")
@@ -660,7 +631,7 @@
       });
       input.dispatchEvent(event);
     "]
-      (e/js-execute *driver* script))
+      (e/js-execute h/*driver* script))
     (Thread/sleep 10)
 
     (dotimes [_ 11]
@@ -687,9 +658,9 @@
 
 (deftest test-p1-09-copy-region
   (testing "P1-09: Copy region (M-w)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "copy this")
@@ -710,7 +681,7 @@
       });
       input.dispatchEvent(event);
     "]
-      (e/js-execute *driver* script))
+      (e/js-execute h/*driver* script))
     (Thread/sleep 10)
 
     ;; Select all text
@@ -740,9 +711,9 @@
 
 (deftest test-p1-10-kill-line
   (testing "P1-10: Kill line (C-k)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "kill the rest of the line")
@@ -769,9 +740,9 @@
 
 (deftest test-p1-11-undo
   (testing "P1-11: Undo (C-/)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type some text
     (type-text "hello")
@@ -800,7 +771,7 @@
         });
         input.dispatchEvent(event);
       "]
-        (e/js-execute *driver* script))
+        (e/js-execute h/*driver* script))
       (Thread/sleep 20))
 
     ;; After undoing, should have less text
@@ -813,9 +784,9 @@
 
 (deftest test-p2-01-switch-to-buffer
   (testing "P2-01: Verify switch-to-buffer (C-x b)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text in *scratch*
     (type-text "scratch buffer content")
@@ -828,11 +799,11 @@
     (Thread/sleep 30)
 
     ;; Minibuffer should be active
-    (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
+    (let [minibuffer-visible (e/exists? h/*driver* {:css ".minibuffer"})]
       (is minibuffer-visible "Minibuffer should be visible"))
 
     ;; Type new buffer name and press Enter in minibuffer
-    (e/fill *driver* {:css ".minibuffer-input"} "test-buffer")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "test-buffer")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 200)  ; Wait for buffer switch and DOM update
@@ -845,9 +816,9 @@
 
 (deftest test-p2-02-buffer-state-preservation
   (testing "P2-02: Verify buffer state preservation"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type in scratch buffer
     (type-text "original scratch")
@@ -896,9 +867,9 @@
 
 (deftest test-p2-03-list-buffers
   (testing "P2-03: Verify list-buffers (C-x C-b)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Create a couple of buffers first
     (press-ctrl-key "x")
@@ -932,24 +903,24 @@
 
 (deftest test-p2-04-buffer-modified-indicator
   (testing "P2-04: Verify buffer modified indicator"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text to modify buffer
     (type-text "modified content")
     (Thread/sleep 30)
 
     ;; Check status bar (mode line) for modified indicator (**)
-    (let [status-bar (e/get-element-text *driver* {:css ".status-bar"})]
+    (let [status-bar (e/get-element-text h/*driver* {:css ".status-bar"})]
       (is (.contains status-bar "**")
           (str "Status bar should show ** for modified buffer. Got: " status-bar)))))
 
 (deftest ^:skip test-p2-05-save-buffer
   (testing "P2-05: Verify save-buffer (C-x C-s) - SKIPPED: Browser file dialog"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type content
     (type-text "content to save")
@@ -967,9 +938,9 @@
 
 (deftest test-p2-5-01-keyboard-quit
   (testing "P2.5-01: Verify keyboard-quit (C-g)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Open minibuffer with C-x b
     (press-ctrl-key "x")
@@ -978,7 +949,7 @@
     (Thread/sleep 30)
 
     ;; Verify minibuffer is open
-    (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
+    (let [minibuffer-visible (e/exists? h/*driver* {:css ".minibuffer"})]
       (is minibuffer-visible "Minibuffer should be visible"))
 
     ;; Press C-g to quit
@@ -987,7 +958,7 @@
 
     ;; Minibuffer should close or echo area should show quit message
     (let [echo-text (try
-                      (e/get-element-text *driver* {:css ".echo-area"})
+                      (e/get-element-text h/*driver* {:css ".echo-area"})
                       (catch Exception _ ""))]
       (is (or (.contains echo-text "Quit")
               (.contains echo-text "quit"))
@@ -995,9 +966,9 @@
 
 (deftest test-p2-5-02-universal-argument
   (testing "P2.5-02: Verify Universal Argument (C-u)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press C-u and type 'a'
     (press-ctrl-key "u")
@@ -1028,9 +999,9 @@
 
 (deftest test-p3-01-horizontal-split
   (testing "P3-01: Verify horizontal split (C-x 2)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press C-x 2 to split horizontally
     (press-ctrl-key "x")
@@ -1039,15 +1010,15 @@
     (Thread/sleep 50)
 
     ;; Check for multiple windows
-    (let [windows (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows (e/query-all h/*driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           (str "Should have at least 2 windows. Got: " (count windows))))))
 
 (deftest test-p3-02-vertical-split
   (testing "P3-02: Verify vertical split (C-x 3)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press C-x 3 to split vertically
     (press-ctrl-key "x")
@@ -1056,15 +1027,15 @@
     (Thread/sleep 50)
 
     ;; Check for multiple windows
-    (let [windows (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows (e/query-all h/*driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           (str "Should have at least 2 windows. Got: " (count windows))))))
 
 (deftest test-p3-03-window-cycling
   (testing "P3-03: Verify window cycling (C-x o)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Split horizontally
     (press-ctrl-key "x")
@@ -1079,7 +1050,7 @@
     (Thread/sleep 50)
 
     ;; Check that windows exist (cycling doesn't change count)
-    (let [windows (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows (e/query-all h/*driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           "Windows should still exist after cycling"))
 
@@ -1089,15 +1060,15 @@
     (press-key "o")
     (Thread/sleep 50)
 
-    (let [windows (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows (e/query-all h/*driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           "Windows should still exist after cycling twice"))))
 
 (deftest test-p3-04-independent-window-state
   (testing "P3-04: Verify independent window state"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Split horizontally
     (press-ctrl-key "x")
@@ -1128,9 +1099,9 @@
 
 (deftest test-p3-05-delete-other-windows
   (testing "P3-05: Verify delete-other-windows (C-x 1)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Create multiple splits
     (press-ctrl-key "x")
@@ -1144,7 +1115,7 @@
     (Thread/sleep 50)
 
     ;; Verify multiple windows exist
-    (let [windows-before (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows-before (e/query-all h/*driver* {:css ".window-pane"})]
       (is (>= (count windows-before) 2)
           "Should have multiple windows before C-x 1"))
 
@@ -1155,15 +1126,15 @@
     (Thread/sleep 50)
 
     ;; Should have only one window now
-    (let [windows-after (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows-after (e/query-all h/*driver* {:css ".window-pane"})]
       (is (= (count windows-after) 1)
           (str "Should have 1 window after C-x 1. Got: " (count windows-after))))))
 
 (deftest test-p3-06-click-to-activate-window
   (testing "P3-06: Verify click-to-activate window"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Split horizontally
     (press-ctrl-key "x")
@@ -1172,13 +1143,13 @@
     (Thread/sleep 50)
 
     ;; Get all windows
-    (let [windows (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows (e/query-all h/*driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           "Should have at least 2 windows")
 
       ;; Click on the first window
       (when (>= (count windows) 2)
-        (e/click *driver* {:css ".window-pane"})  ; Click first matching window
+        (e/click h/*driver* {:css ".window-pane"})  ; Click first matching window
         (Thread/sleep 30)
 
         ;; Type text
@@ -1194,27 +1165,27 @@
 
 (deftest test-p4-01-execute-extended-command
   (testing "P4-01: Verify execute-extended-command (M-x)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press M-x
     (press-meta-key "x")
     (Thread/sleep 50)
 
     ;; Minibuffer should be active with M-x prompt
-    (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
+    (let [minibuffer-visible (e/exists? h/*driver* {:css ".minibuffer"})]
       (is minibuffer-visible "Minibuffer should be visible for M-x"))
 
     ;; Type command in minibuffer and press Enter
-    (e/fill *driver* {:css ".minibuffer-input"} "text-mode")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "text-mode")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
 
     ;; Mode line should show Text mode or command should execute
     (let [status-bar (try
-                      (e/get-element-text *driver* {:css ".status-bar"})
+                      (e/get-element-text h/*driver* {:css ".status-bar"})
                       (catch Exception _ ""))]
       (is (or (.contains status-bar "Text")
               (.contains status-bar "text"))
@@ -1222,9 +1193,9 @@
 
 (deftest test-p4-02-describe-key
   (testing "P4-02: Verify describe-key (C-h k)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press C-h k
     (press-ctrl-key "h")
@@ -1234,7 +1205,7 @@
 
     ;; Echo area should prompt for key
     (let [echo-text (try
-                      (e/get-element-text *driver* {:css ".echo-area"})
+                      (e/get-element-text h/*driver* {:css ".echo-area"})
                       (catch Exception _ ""))]
       (is (or (.contains echo-text "Describe key")
               (.contains echo-text "key"))
@@ -1253,9 +1224,9 @@
 
 (deftest test-p4-03-describe-bindings
   (testing "P4-03: Verify describe-bindings (C-h b)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press C-h b
     (press-ctrl-key "h")
@@ -1273,9 +1244,9 @@
 
 (deftest test-p5-01-minor-mode-toggling
   (testing "P5-01: Verify minor mode toggling"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press M-x line-number-mode
     (press-meta-key "x")
@@ -1287,7 +1258,7 @@
 
     ;; Check mode line for changes
     (let [status-bar-1 (try
-                        (e/get-element-text *driver* {:css ".status-bar"})
+                        (e/get-element-text h/*driver* {:css ".status-bar"})
                         (catch Exception _ ""))]
       ;; Toggle again
       (press-meta-key "x")
@@ -1298,7 +1269,7 @@
       (Thread/sleep 50)
 
       (let [status-bar-2 (try
-                          (e/get-element-text *driver* {:css ".status-bar"})
+                          (e/get-element-text h/*driver* {:css ".status-bar"})
                           (catch Exception _ ""))]
         ;; Mode line should have changed (at least one toggle happened)
         (is (or (not= status-bar-1 status-bar-2)
@@ -1307,9 +1278,9 @@
 
 (deftest test-p6a-01-package-list
   (testing "P6A-01: Verify package system listing"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press M-x package-list
     (press-meta-key "x")
@@ -1328,9 +1299,9 @@
 
 (deftest test-p6b-01-theme-loading
   (testing "P6B-01: Verify theme loading"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press M-x load-theme
     (press-meta-key "x")
@@ -1349,7 +1320,7 @@
     ;; Check that some styling changed (hard to verify visually in E2E)
     ;; We'll just verify the command executed without error
     (let [echo-text (try
-                      (e/get-element-text *driver* {:css ".echo-area"})
+                      (e/get-element-text h/*driver* {:css ".echo-area"})
                       (catch Exception _ ""))]
       (is (or (.contains echo-text "theme")
               (.contains echo-text "Loaded")
@@ -1358,9 +1329,9 @@
 
 (deftest test-p6b-02-font-size-change
   (testing "P6B-02: Verify dynamic font size change"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press M-x set-font-size
     (press-meta-key "x")
@@ -1378,7 +1349,7 @@
 
     ;; Verify command executed (hard to verify size in E2E)
     (let [echo-text (try
-                      (e/get-element-text *driver* {:css ".echo-area"})
+                      (e/get-element-text h/*driver* {:css ".echo-area"})
                       (catch Exception _ ""))]
       (is (or (.contains echo-text "font")
               (.contains echo-text "size")
@@ -1387,12 +1358,12 @@
 
 (deftest test-p6b-03-status-bar-formatting
   (testing "P6B-03: Verify Mode Line Formatting"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Check initial mode line
-    (let [status-bar (e/get-element-text *driver* {:css ".status-bar"})]
+    (let [status-bar (e/get-element-text h/*driver* {:css ".status-bar"})]
       (is (or (.contains status-bar "*scratch*")
               (.contains status-bar "scratch"))
           "Mode line should show buffer name"))
@@ -1402,15 +1373,15 @@
     (Thread/sleep 30)
 
     ;; Check for modified indicator
-    (let [status-bar (e/get-element-text *driver* {:css ".status-bar"})]
+    (let [status-bar (e/get-element-text h/*driver* {:css ".status-bar"})]
       (is (.contains status-bar "**")
           "Mode line should show ** for modified buffer"))))
 
 (deftest ^:skip test-p6d-01-thing-at-point
   (testing "P6D-01: Verify thing-at-point (conceptual) - SKIPPED: Requires custom command"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type URL
     (type-text "https://example.com")
@@ -1423,9 +1394,9 @@
 
 (deftest test-p7-8-01-query-replace-basic-yes
   (testing "P7.8-01: Query-replace with 'y' (replace and continue)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text with multiple occurrences
     (type-text "foo bar foo baz foo")
@@ -1440,13 +1411,13 @@
     (Thread/sleep 50)
 
     ;; Type search string
-    (e/fill *driver* {:css ".minibuffer-input"} "foo")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "foo")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
 
     ;; Type replacement string
-    (e/fill *driver* {:css ".minibuffer-input"} "FOO")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "FOO")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -1470,9 +1441,9 @@
 
 (deftest test-p7-8-01a-query-replace-cursor-and-region
   (testing "P7.8-01a: Query-replace cursor movement and region highlighting (Issue #64)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text with multiple occurrences: "foo bar foo baz foo"
     ;; Positions: foo(0-3) bar(4-7) foo(8-11) baz(12-15) foo(16-19)
@@ -1488,13 +1459,13 @@
     (Thread/sleep 50)
 
     ;; Type search string
-    (e/fill *driver* {:css ".minibuffer-input"} "foo")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "foo")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
 
     ;; Type replacement string
-    (e/fill *driver* {:css ".minibuffer-input"} "FOO")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "FOO")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -1548,9 +1519,9 @@
 
 (deftest test-p7-8-02-query-replace-skip
   (testing "P7.8-02: Query-replace with 'n' (skip and continue)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "apple orange apple banana apple")
@@ -1563,11 +1534,11 @@
     ;; Start query-replace
     (press-meta-key "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "apple")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "apple")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "APPLE")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "APPLE")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -1587,9 +1558,9 @@
 
 (deftest test-p7-8-03-query-replace-all
   (testing "P7.8-03: Query-replace with '!' (replace all remaining)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text with many occurrences
     (type-text "test test test test test")
@@ -1602,11 +1573,11 @@
     ;; Start query-replace
     (press-meta-key "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "test")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "test")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "TEST")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "TEST")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -1624,9 +1595,9 @@
 
 (deftest test-p7-8-04-query-replace-quit
   (testing "P7.8-04: Query-replace with 'q' (quit)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "one two one two one")
@@ -1639,11 +1610,11 @@
     ;; Start query-replace
     (press-meta-key "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "one")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "one")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "ONE")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "ONE")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -1661,9 +1632,9 @@
 
 (deftest test-p7-8-05-query-replace-dot
   (testing "P7.8-05: Query-replace with '.' (replace and quit)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "cat dog cat dog cat")
@@ -1676,11 +1647,11 @@
     ;; Start query-replace
     (press-meta-key "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "cat")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "cat")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "CAT")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "CAT")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -1698,9 +1669,9 @@
 
 (deftest test-p7-8-06-query-replace-no-matches
   (testing "P7.8-06: Query-replace with no matches"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "hello world")
@@ -1709,11 +1680,11 @@
     ;; Start query-replace for nonexistent string
     (press-meta-key "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "xyz")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "xyz")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "ABC")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "ABC")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)

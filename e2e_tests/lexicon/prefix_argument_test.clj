@@ -13,52 +13,17 @@
   Based on Issue #76 acceptance criteria."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
-            [etaoin.api :as e]))
+            [etaoin.api :as e]
+            [lexicon.test-helpers :as h]))
 
-;; Test configuration
-(def app-url "http://localhost:8080")
-(def test-timeout 10000) ;; 10 seconds
+;; Use shared test helpers
+(use-fixtures :once h/with-driver)
 
-;; Browser driver (will be set by fixture)
-(def ^:dynamic *driver* nil)
-
-;; Setup/teardown
-(defn start-driver []
-  (e/firefox {:headless true}))
-
-(defn stop-driver [driver]
-  (when driver
-    (e/quit driver)))
-
-(defn with-driver [f]
-  (let [driver (start-driver)]
-    (try
-      (binding [*driver* driver]
-        (f))
-      (finally
-        (stop-driver driver)))))
-
-(use-fixtures :once with-driver)
-
-;; Helper functions
-(defn wait-for-editor-ready []
-  "Wait for editor to be ready by checking for .editor-wrapper"
-  (e/wait-visible *driver* {:css ".editor-wrapper"} {:timeout (/ test-timeout 1000)}))
-
-(defn click-editor []
-  "Click the editor to focus it"
-  (e/click *driver* {:css ".editor-wrapper"}))
+;; File-specific helper functions
 
 (defn get-editor-text []
   "Get text content from the editable area"
-  (e/get-element-text *driver* {:css ".editable-area"}))
-
-(defn type-text
-  "Type text with delay between characters"
-  [text]
-  (doseq [ch text]
-    (e/fill *driver* {:css ".hidden-input"} (str ch))
-    (Thread/sleep 10)))
+  (e/get-element-text h/*driver* {:css ".editable-area"}))
 
 (defn press-ctrl-key
   "Press Ctrl+key combination (e.g., 'u' for C-u)"
@@ -75,25 +40,25 @@
     });
     input.dispatchEvent(event);
   ")]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 50))
 
 (defn press-key
   "Press a non-modifier key"
   [key]
-  (e/fill *driver* {:css ".hidden-input"} key)
+  (e/fill h/*driver* {:css ".hidden-input"} key)
   (Thread/sleep 50))
 
 (defn press-minus
   "Press the minus key"
   []
-  (e/fill *driver* {:css ".hidden-input"} "-")
+  (e/fill h/*driver* {:css ".hidden-input"} "-")
   (Thread/sleep 50))
 
 (defn get-prefix-arg
   "Get current prefix-arg from window.editorState"
   []
-  (e/js-execute *driver* "
+  (e/js-execute h/*driver* "
     const state = window.editorState;
     if (!state) return null;
     return state.prefixArg || null;
@@ -105,9 +70,7 @@
 
 (deftest test-cu-alone
   (testing "C-u alone sets prefix-arg to (4)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
 
     ;; Press C-u
     (press-ctrl-key "u")
@@ -119,9 +82,7 @@
 
 (deftest test-cu-cu
   (testing "C-u C-u sets prefix-arg to (16)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
 
     ;; Press C-u C-u
     (press-ctrl-key "u")
@@ -134,9 +95,9 @@
 
 (deftest test-cu-digit
   (testing "C-u 5 sets prefix-arg to 5"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press C-u 5
     (press-ctrl-key "u")
@@ -149,9 +110,9 @@
 
 (deftest test-cu-multi-digit
   (testing "C-u 5 2 sets prefix-arg to 52"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press C-u 5 2
     (press-ctrl-key "u")
@@ -164,9 +125,9 @@
 
 (deftest test-cu-minus
   (testing "C-u - sets prefix-arg to '- (symbol)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press C-u -
     (press-ctrl-key "u")
@@ -179,9 +140,9 @@
 
 (deftest test-cu-minus-digit
   (testing "C-u - 5 sets prefix-arg to -5"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press C-u - 5
     (press-ctrl-key "u")
@@ -198,12 +159,12 @@
 
 (deftest test-cu-forward-char
   (testing "C-u 4 C-f moves forward 4 characters"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type some text
-    (type-text "Hello World")
+    (h/type-text "Hello World")
     (Thread/sleep 100)
 
     ;; Move to beginning
@@ -218,7 +179,7 @@
 
     ;; Cursor should be after "Hell" (position 4)
     ;; Insert a marker to verify position
-    (type-text "X")
+    (h/type-text "X")
     (Thread/sleep 100)
 
     (let [text (get-editor-text)]
@@ -227,9 +188,9 @@
 
 (deftest test-prefix-arg-cleared-after-command
   (testing "Prefix arg is cleared after command execution"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Set prefix arg
     (press-ctrl-key "u")

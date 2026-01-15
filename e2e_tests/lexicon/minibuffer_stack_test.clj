@@ -11,53 +11,18 @@
 
   Based on Issue #77 acceptance criteria."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [lexicon.test-helpers :as h]
             [clojure.string :as str]
             [etaoin.api :as e]))
 
-;; Test configuration
-(def app-url "http://localhost:8080")
-(def test-timeout 10000) ;; 10 seconds
+;; Use shared test helpers
+(use-fixtures :once h/with-driver)
 
-;; Browser driver (will be set by fixture)
-(def ^:dynamic *driver* nil)
-
-;; Setup/teardown
-(defn start-driver []
-  (e/firefox {:headless true}))
-
-(defn stop-driver [driver]
-  (when driver
-    (e/quit driver)))
-
-(defn with-driver [f]
-  (let [driver (start-driver)]
-    (try
-      (binding [*driver* driver]
-        (f))
-      (finally
-        (stop-driver driver)))))
-
-(use-fixtures :once with-driver)
-
-;; Helper functions
-(defn wait-for-editor-ready []
-  "Wait for editor to be ready by checking for .editor-wrapper"
-  (e/wait-visible *driver* {:css ".editor-wrapper"} {:timeout (/ test-timeout 1000)}))
-
-(defn click-editor []
-  "Click the editor to focus it"
-  (e/click *driver* {:css ".editor-wrapper"}))
+;; File-specific helper functions
 
 (defn get-editor-text []
   "Get text content from the editable area"
-  (e/get-element-text *driver* {:css ".editable-area"}))
-
-(defn type-text
-  "Type text with delay between characters"
-  [text]
-  (doseq [ch text]
-    (e/fill *driver* {:css ".hidden-input"} (str ch))
-    (Thread/sleep 10)))
+  (e/get-element-text h/*driver* {:css ".editable-area"}))
 
 (defn press-alt-key
   "Press Alt+key combination (M-x)"
@@ -72,7 +37,7 @@
     });
     input.dispatchEvent(event);
   ")]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 50))
 
 (defn press-ctrl-key
@@ -90,13 +55,13 @@
     });
     input.dispatchEvent(event);
   ")]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 50))
 
 (defn press-key
   "Press a non-modifier key"
   [key]
-  (e/fill *driver* {:css ".hidden-input"} key)
+  (e/fill h/*driver* {:css ".hidden-input"} key)
   (Thread/sleep 50))
 
 (defn press-enter []
@@ -116,7 +81,7 @@
       input.dispatchEvent(event);
     }
   "]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 200))
 
 (defn press-escape []
@@ -138,12 +103,12 @@
       input.dispatchEvent(event);
     }
   "]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 100))
 
 (defn get-minibuffer-depth []
   "Get current minibuffer depth from window.editorState"
-  (e/js-execute *driver* "
+  (e/js-execute h/*driver* "
     const state = window.editorState;
     if (!state || !state.minibufferStack) return 0;
     return state.minibufferStack.length;
@@ -152,22 +117,22 @@
 (defn get-minibuffer-prompt []
   "Get current minibuffer prompt"
   (try
-    (e/get-element-text *driver* {:css ".minibuffer-prompt"})
+    (e/get-element-text h/*driver* {:css ".minibuffer-prompt"})
     (catch Exception e
       nil)))
 
 (defn minibuffer-visible? []
   "Check if minibuffer is visible"
-  (e/exists? *driver* {:css ".minibuffer-input"}))
+  (e/exists? h/*driver* {:css ".minibuffer-input"}))
 
 (defn wait-for-minibuffer []
   "Wait for minibuffer to be visible"
-  (e/wait-visible *driver* {:css ".minibuffer-input"} {:timeout 2}))
+  (e/wait-visible h/*driver* {:css ".minibuffer-input"} {:timeout 2}))
 
 (defn get-mode-line-text []
   "Get mode-line text"
   (try
-    (e/get-element-text *driver* {:css ".mode-line"})
+    (e/get-element-text h/*driver* {:css ".mode-line"})
     (catch Exception e
       "")))
 
@@ -177,12 +142,12 @@
 
 (deftest test-issue-72-query-replace-regexp
   (testing "Issue #72: M-x query-replace-regexp activates minibuffer without timeout"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type some text to replace
-    (type-text "hello world hello")
+    (h/type-text "hello world hello")
     (Thread/sleep 100)
 
     ;; Move to beginning
@@ -198,7 +163,7 @@
     (is (minibuffer-visible?) "Minibuffer should be visible")
 
     ;; Type query-replace-regexp
-    (type-text "query-replace-regexp")
+    (h/type-text "query-replace-regexp")
     (Thread/sleep 100)
     (press-enter)
 
@@ -219,12 +184,12 @@
 
 (deftest test-mx-replace-string-transition
   (testing "M-x replace-string transitions by replacing frame (depth stays 1)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
-    (type-text "foo bar foo")
+    (h/type-text "foo bar foo")
     (Thread/sleep 100)
     (press-ctrl-key "a")
     (Thread/sleep 50)
@@ -235,7 +200,7 @@
     (is (= 1 (get-minibuffer-depth)) "M-x should set depth to 1")
 
     ;; Type replace-string
-    (type-text "replace-string")
+    (h/type-text "replace-string")
     (press-enter)
     (Thread/sleep 200)
 
@@ -252,18 +217,18 @@
 
 (deftest test-minibuffer-depth-inactive
   (testing "Minibuffer depth is 0 when inactive"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Initially depth should be 0
     (is (= 0 (get-minibuffer-depth)) "Depth should be 0 when inactive")))
 
 (deftest test-minibuffer-depth-active
   (testing "Minibuffer depth is 1 when M-x is active"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Activate M-x
     (press-alt-key "x")
@@ -273,9 +238,9 @@
 
 (deftest test-minibuffer-cancel-restores-depth
   (testing "Canceling minibuffer restores depth to 0"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Activate M-x
     (press-alt-key "x")
@@ -294,9 +259,9 @@
 
 (deftest test-recursive-minibuffer-blocked-by-default
   (testing "Recursive minibuffer is blocked when enable-recursive-minibuffers is false (default)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Activate M-x
     (press-alt-key "x")
@@ -316,9 +281,9 @@
 
 (deftest test-mode-line-no-depth-indicator-when-inactive
   (testing "Mode-line has no depth indicator when minibuffer is inactive"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     (let [mode-line (get-mode-line-text)]
       (is (not (str/includes? mode-line "[2]")) "Should not show [2] when depth is 0")
@@ -326,9 +291,9 @@
 
 (deftest test-mode-line-no-depth-indicator-at-depth-1
   (testing "Mode-line has no depth indicator when depth is 1 (only shows when > 1)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Activate M-x (depth 1)
     (press-alt-key "x")

@@ -9,55 +9,26 @@
   - Batch 5: Isearch (2 commands)"
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
-            [etaoin.api :as e]))
+            [etaoin.api :as e]
+            [lexicon.test-helpers :as h]))
 
-;; Test configuration
-(def app-url "http://localhost:8080")
-(def test-timeout 10000) ;; 10 seconds
+;; Use shared test helpers
+(use-fixtures :once h/with-driver)
 
-;; Browser driver (will be set by fixture)
-(def ^:dynamic *driver* nil)
-
-;; Setup/teardown
-(defn start-driver []
-  (e/firefox {:headless true}))
-
-(defn stop-driver [driver]
-  (when driver
-    (e/quit driver)))
-
-(defn with-driver [f]
-  (let [driver (start-driver)]
-    (try
-      (binding [*driver* driver]
-        (f))
-      (finally
-        (stop-driver driver)))))
-
-(use-fixtures :once with-driver)
-
-;; Helper functions
-(defn wait-for-editor-ready []
-  "Wait for editor to be ready by checking for .editor-wrapper"
-  (e/wait-visible *driver* {:css ".editor-wrapper"} {:timeout (/ test-timeout 1000)}))
-
+;; File-specific helper functions
 (defn wait-for-minibuffer-input []
   "Wait for minibuffer input to be visible (handles re-frame async timing)"
-  (e/wait-visible *driver* {:css ".minibuffer-input"} {:timeout 2}))
-
-(defn click-editor []
-  "Click the editor to focus it"
-  (e/click *driver* {:css ".editor-wrapper"}))
+  (e/wait-visible h/*driver* {:css ".minibuffer-input"} {:timeout 2}))
 
 (defn get-editor-text []
   "Get text content from the editable area"
-  (e/get-element-text *driver* {:css ".editable-area"}))
+  (e/get-element-text h/*driver* {:css ".editable-area"}))
 
 (defn type-text
   "Type text with delay between characters"
   [text]
   (doseq [ch text]
-    (e/fill *driver* {:css ".hidden-input"} (str ch))
+    (e/fill h/*driver* {:css ".hidden-input"} (str ch))
     (Thread/sleep 10)))
 
 (defn press-key
@@ -73,7 +44,7 @@
     });
     input.dispatchEvent(event);
   ")]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 10))
 
 (defn press-minibuffer-enter
@@ -91,7 +62,7 @@
       input.dispatchEvent(event);
     }
   "]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 10))
 
 (defn press-ctrl-key
@@ -109,7 +80,7 @@
     });
     input.dispatchEvent(event);
   ")]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 10))
 
 (defn press-meta-key
@@ -127,7 +98,7 @@
     });
     input.dispatchEvent(event);
   ")]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 10))
 
 (defn press-ctrl-meta-key
@@ -148,14 +119,14 @@
     });
     input.dispatchEvent(event);
   ")]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 10))
 
 (defn get-echo-area-text
   "Get text from the echo area"
   []
   (try
-    (e/get-element-text *driver* {:css ".echo-area"})
+    (e/get-element-text h/*driver* {:css ".echo-area"})
     (catch Exception _ "")))
 
 (defn set-mark-command
@@ -172,7 +143,7 @@
     });
     input.dispatchEvent(event);
   "]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 20))
 
 ;; =============================================================================
@@ -181,9 +152,9 @@
 
 (deftest test-p7-8-kill-word
   (testing "P7.8 Batch 1: kill-word (M-d)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text with multiple words
     (type-text "the quick brown fox")
@@ -217,9 +188,9 @@
 
 (deftest test-p7-8-backward-kill-word
   (testing "P7.8 Batch 1: backward-kill-word (M-DEL)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "hello world testing")
@@ -249,9 +220,9 @@
 
 (deftest test-p7-8-scroll-up-command
   (testing "P7.8 Batch 1: scroll-up-command (C-v)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type many lines to enable scrolling
     (dotimes [i 30]
@@ -276,9 +247,9 @@
 
 (deftest test-p7-8-scroll-down-command
   (testing "P7.8 Batch 1: scroll-down-command (M-v)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type many lines
     (dotimes [i 30]
@@ -298,9 +269,9 @@
 
 (deftest test-p7-8-exchange-point-and-mark
   (testing "P7.8 Batch 1: exchange-point-and-mark (C-x C-x)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "select this text")
@@ -336,9 +307,9 @@
 
 (deftest test-p7-8-describe-variable
   (testing "P7.8 Batch 1: describe-variable (C-h v)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press C-h v
     (press-ctrl-key "h")
@@ -347,12 +318,12 @@
     (Thread/sleep 50)
 
     ;; Minibuffer should prompt for variable name
-    (let [minibuffer-exists (e/exists? *driver* {:css ".minibuffer-input"})]
+    (let [minibuffer-exists (e/exists? h/*driver* {:css ".minibuffer-input"})]
       (is minibuffer-exists "Minibuffer should prompt for variable name"))
 
     ;; Type a variable name
-    (when (e/exists? *driver* {:css ".minibuffer-input"})
-      (e/fill *driver* {:css ".minibuffer-input"} "fill-column")
+    (when (e/exists? h/*driver* {:css ".minibuffer-input"})
+      (e/fill h/*driver* {:css ".minibuffer-input"} "fill-column")
       (Thread/sleep 20)
       (press-minibuffer-enter)
       (Thread/sleep 100))
@@ -370,9 +341,9 @@
 
 (deftest test-p7-8-save-some-buffers
   (testing "P7.8 Batch 2: save-some-buffers (C-x s)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Modify buffer
     (type-text "modified content")
@@ -392,9 +363,9 @@
 
 (deftest test-p7-8-find-alternate-file
   (testing "P7.8 Batch 2: find-alternate-file (C-x C-v)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type some content
     (type-text "original content")
@@ -407,14 +378,14 @@
     (Thread/sleep 50)
 
     ;; Minibuffer should prompt for file
-    (let [minibuffer-exists (e/exists? *driver* {:css ".minibuffer-input"})]
+    (let [minibuffer-exists (e/exists? h/*driver* {:css ".minibuffer-input"})]
       (is minibuffer-exists "Minibuffer should prompt for file name"))))
 
 (deftest test-p7-8-insert-file
   (testing "P7.8 Batch 2: insert-file (C-x i)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Press C-x i
     (press-ctrl-key "x")
@@ -423,14 +394,14 @@
     (Thread/sleep 50)
 
     ;; Minibuffer should prompt for file
-    (let [minibuffer-exists (e/exists? *driver* {:css ".minibuffer-input"})]
+    (let [minibuffer-exists (e/exists? h/*driver* {:css ".minibuffer-input"})]
       (is minibuffer-exists "Minibuffer should prompt for file to insert"))))
 
 (deftest test-p7-8-revert-buffer
   (testing "P7.8 Batch 2: revert-buffer (M-x revert-buffer)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type content
     (type-text "content to revert")
@@ -441,7 +412,7 @@
     (Thread/sleep 50)
 
     ;; Type command
-    (e/fill *driver* {:css ".minibuffer-input"} "revert-buffer")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "revert-buffer")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -456,9 +427,9 @@
 
 (deftest test-p7-8-replace-string
   (testing "P7.8 Batch 3: replace-string (M-x replace-string)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text with replaceable content
     (type-text "foo bar foo baz foo")
@@ -471,19 +442,19 @@
     ;; Execute M-x replace-string
     (press-meta-key "x")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "replace-string")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "replace-string")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
 
     ;; Enter search string
-    (e/fill *driver* {:css ".minibuffer-input"} "foo")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "foo")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
 
     ;; Enter replacement string
-    (e/fill *driver* {:css ".minibuffer-input"} "FOO")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "FOO")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -495,9 +466,9 @@
 
 (deftest test-p7-8-replace-regexp
   (testing "P7.8 Batch 3: replace-regexp (M-x replace-regexp)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text with pattern
     (type-text "test1 test2 test3")
@@ -510,19 +481,19 @@
     ;; Execute M-x replace-regexp
     (press-meta-key "x")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "replace-regexp")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "replace-regexp")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
 
     ;; Enter regex pattern
-    (e/fill *driver* {:css ".minibuffer-input"} "test[0-9]")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "test[0-9]")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
 
     ;; Enter replacement
-    (e/fill *driver* {:css ".minibuffer-input"} "TEST")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "TEST")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -538,9 +509,9 @@
 
 (deftest test-p7-8-query-replace-basic
   (testing "P7.8 Batch 4: query-replace (M-%) - basic yes/no/quit"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text with multiple occurrences
     (type-text "foo bar foo baz foo")
@@ -555,13 +526,13 @@
     (Thread/sleep 50)
 
     ;; Type search string
-    (e/fill *driver* {:css ".minibuffer-input"} "foo")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "foo")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
 
     ;; Type replacement string
-    (e/fill *driver* {:css ".minibuffer-input"} "FOO")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "FOO")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -585,9 +556,9 @@
 
 (deftest test-p7-8-query-replace-all
   (testing "P7.8 Batch 4: query-replace (M-%) - replace all with '!'"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "test test test test")
@@ -600,11 +571,11 @@
     ;; Start query-replace
     (press-meta-key "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "test")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "test")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "TEST")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "TEST")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -620,9 +591,9 @@
 
 (deftest test-p7-8-query-replace-dot
   (testing "P7.8 Batch 4: query-replace (M-%) - replace and quit with '.'"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "cat dog cat dog cat")
@@ -635,11 +606,11 @@
     ;; Start query-replace
     (press-meta-key "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "cat")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "cat")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "CAT")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "CAT")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -655,9 +626,9 @@
 
 (deftest test-p7-8-query-replace-regexp
   (testing "P7.8 Batch 4: query-replace-regexp (M-x query-replace-regexp)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text with pattern
     (type-text "num1 num2 num3")
@@ -676,13 +647,13 @@
     (wait-for-minibuffer-input)
 
     ;; Type regex pattern
-    (e/fill *driver* {:css ".minibuffer-input"} "num[0-9]")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "num[0-9]")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (wait-for-minibuffer-input)
 
     ;; Type replacement
-    (e/fill *driver* {:css ".minibuffer-input"} "NUM")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "NUM")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
@@ -706,9 +677,9 @@
 
 (deftest test-p7-8-isearch-forward
   (testing "P7.8 Batch 5: isearch-forward (C-s)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "hello world testing hello")
@@ -723,12 +694,12 @@
     (Thread/sleep 50)
 
     ;; Minibuffer should show isearch prompt
-    (let [minibuffer-exists (e/exists? *driver* {:css ".minibuffer"})]
+    (let [minibuffer-exists (e/exists? h/*driver* {:css ".minibuffer"})]
       (is minibuffer-exists "Isearch should activate minibuffer"))
 
     ;; Type search string
-    (when (e/exists? *driver* {:css ".minibuffer-input"})
-      (e/fill *driver* {:css ".minibuffer-input"} "hello")
+    (when (e/exists? h/*driver* {:css ".minibuffer-input"})
+      (e/fill h/*driver* {:css ".minibuffer-input"} "hello")
       (Thread/sleep 50))
 
     ;; Press Enter to exit isearch
@@ -741,9 +712,9 @@
 
 (deftest test-p7-8-isearch-backward
   (testing "P7.8 Batch 5: isearch-backward (C-r)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "hello world testing hello")
@@ -756,12 +727,12 @@
     (Thread/sleep 50)
 
     ;; Minibuffer should show isearch prompt
-    (let [minibuffer-exists (e/exists? *driver* {:css ".minibuffer"})]
+    (let [minibuffer-exists (e/exists? h/*driver* {:css ".minibuffer"})]
       (is minibuffer-exists "Isearch backward should activate minibuffer"))
 
     ;; Type search string
-    (when (e/exists? *driver* {:css ".minibuffer-input"})
-      (e/fill *driver* {:css ".minibuffer-input"} "hello")
+    (when (e/exists? h/*driver* {:css ".minibuffer-input"})
+      (e/fill h/*driver* {:css ".minibuffer-input"} "hello")
       (Thread/sleep 50))
 
     ;; Press Enter to exit isearch
@@ -777,9 +748,9 @@
 
 (deftest test-p7-8-kill-word-and-yank
   (testing "P7.8 Integration: kill-word + yank"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "hello world testing")
@@ -810,9 +781,9 @@
 
 (deftest test-p7-8-backward-kill-word-and-yank
   (testing "P7.8 Integration: backward-kill-word + yank"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "alpha beta gamma")
@@ -839,9 +810,9 @@
 
 (deftest test-p7-8-query-replace-with-region
   (testing "P7.8 Integration: query-replace within region"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test!)
+    
+    
 
     ;; Type text
     (type-text "foo bar foo baz foo qux foo")
@@ -863,11 +834,11 @@
     ;; Start query-replace (should only affect region if implemented)
     (press-meta-key "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "foo")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "foo")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "FOO")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "FOO")
     (Thread/sleep 20)
     (press-minibuffer-enter)
     (Thread/sleep 100)
