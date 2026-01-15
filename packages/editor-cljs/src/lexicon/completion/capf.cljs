@@ -12,7 +12,8 @@
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
             [lexicon.completion.tables :as tables]
-            [lexicon.completion.metadata :as metadata]))
+            [lexicon.completion.metadata :as metadata]
+            [lexicon.log :as log]))
 
 ;; -- CAPF Protocol --
 
@@ -216,7 +217,7 @@
             result (try
                      (capf db buffer-id)
                      (catch js/Error e
-                       (js/console.warn "CAPF error:" e)
+                       (log/warn (str "CAPF error: " e))
                        nil))]
         (if (and result
                  (not= (:exclusive result) :no))
@@ -327,7 +328,7 @@
   (fn [{:keys [db]} [_ buffer-id candidate status]]
     ;; Status can be: :finished, :sole, :exact
     ;; For now, just log - modes can override
-    (js/console.log "CAPF exit:" candidate status)
+    (log/info (str "CAPF exit: " candidate " " status))
     {}))
 
 ;; -- Mode Integration --

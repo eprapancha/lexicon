@@ -6,7 +6,8 @@
             [lexicon.advanced-undo :as undo]
             [lexicon.context :as ctx]
             [lexicon.api.interactive :as interactive]
-            [lexicon.api.buffer :as buffer-api]))
+            [lexicon.api.buffer :as buffer-api]
+            [lexicon.log :as log]))
 
 ;; =============================================================================
 ;; Command Registry and Execution
@@ -922,13 +923,12 @@ C-h ?   This help menu
                  (get-in db [:buffers buffer-id :point] 0))
          newlines (apply str (repeat n "\n"))
          ^js wasm-instance (:wasm-instance buffer)]
-     (js/console.log "OPEN-LINE DEBUG:"
-                     "cursor-pos=" (pr-str cursor-pos)
-                     "point=" point
-                     "buffer-text=" (when wasm-instance (.getText wasm-instance)))
+     (log/info (str "OPEN-LINE DEBUG: cursor-pos=" (pr-str cursor-pos)
+                    " point=" point
+                    " buffer-text=" (when wasm-instance (.getText wasm-instance))))
      (when wasm-instance
        (.insert wasm-instance point newlines)
-       (js/console.log "AFTER INSERT:" (.getText wasm-instance)))
+       (log/info (str "AFTER INSERT: " (.getText wasm-instance))))
      ;; Point stays at original position
      db)))
 
@@ -953,10 +953,9 @@ C-h ?   This help menu
        db
        (let [text (.getText wasm-instance)
              point (get-in db [:buffers buffer-id :point] 0)
-             _ (js/console.log "DELETE-INDENTATION:"
-                              "text=" (pr-str text)
-                              "point=" point
-                              "join-following?" join-following?)
+             _ (log/info (str "DELETE-INDENTATION: text=" (pr-str text)
+                             " point=" point
+                             " join-following?" join-following?))
              ;; Find which newline to delete
              newline-pos (if join-following?
                            ;; Forward: find first \n at or after point
@@ -971,7 +970,7 @@ C-h ?   This help menu
                                (< i 0) nil
                                (= \newline (get text i)) i
                                :else (recur (dec i)))))]
-         (js/console.log "newline-pos=" newline-pos)
+         (log/info (str "newline-pos=" newline-pos))
          (if-not newline-pos
            db
            ;; Delete whitespace around newline and add single space

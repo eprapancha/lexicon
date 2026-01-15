@@ -21,7 +21,8 @@
     2. All :around advice (can wrap execution)
     3. Original function (or :override if present)
     4. All :after advice (can modify result)"
-  (:require [re-frame.core :as rf]))
+  (:require [re-frame.core :as rf]
+            [lexicon.log :as log]))
 
 ;; -- Advice Registry --
 
@@ -97,7 +98,7 @@
            (try
              (apply (:function advice) current-args)
              (catch js/Error e
-               (js/console.warn "Before advice error:" e)
+               (log/warn (str "Before advice error: " e))
                current-args)))
          args
          before-advice))
@@ -111,7 +112,7 @@
            (try
              ((:function advice) current-result)
              (catch js/Error e
-               (js/console.warn "After advice error:" e)
+               (log/warn (str "After advice error: " e))
                current-result)))
          result
          after-advice))
@@ -127,7 +128,7 @@
              (try
                (apply (:function advice) wrapped-fn args)
                (catch js/Error e
-                 (js/console.warn "Around advice error:" e)
+                 (log/warn (str "Around advice error: " e))
                  (apply wrapped-fn args)))))
          original-fn
          (reverse around-advice)))  ; Reverse so outer advice wraps inner
@@ -261,15 +262,15 @@
 
 ;; Example: Log function calls
 (defn advice-log-call [original-fn & args]
-  (js/console.log "Calling function with args:" args)
+  (log/info (str "Calling function with args: " (pr-str args)))
   (let [result (apply original-fn args)]
-    (js/console.log "Function returned:" result)
+    (log/info (str "Function returned: " (pr-str result)))
     result))
 
 ;; Example: Validate arguments
 (defn advice-validate-non-nil [& args]
   (when (some nil? args)
-    (js/console.warn "Function called with nil argument"))
+    (log/warn "Function called with nil argument"))
   args)
 
 ;; Example: Cache results
@@ -279,7 +280,7 @@
   (let [cache-key [original-fn args]]
     (if-let [cached (get @advice-cache cache-key)]
       (do
-        (js/console.log "Returning cached result")
+        (log/info "Returning cached result")
         cached)
       (let [result (apply original-fn args)]
         (swap! advice-cache assoc cache-key result)

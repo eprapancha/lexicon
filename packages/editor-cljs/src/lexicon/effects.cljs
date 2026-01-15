@@ -1,7 +1,8 @@
 (ns lexicon.effects
   "Re-frame effect handlers for DOM manipulation and side effects."
   (:require [re-frame.core :as rf]
-            [lexicon.context :as ctx]))
+            [lexicon.context :as ctx]
+            [lexicon.log :as log]))
 
 ;; -- DOM Effect Handlers --
 
@@ -18,11 +19,11 @@
     (if-let [existing-style (js/document.getElementById id)]
       ;; Update existing stylesheet
       (do
-        (js/console.log "🎨 Updating stylesheet:" id)
+        (log/info (str "🎨 Updating stylesheet: " id))
         (set! (.-textContent existing-style) content))
       ;; Create new stylesheet
       (let [style-element (js/document.createElement "style")]
-        (js/console.log "🎨 Creating new stylesheet:" id)
+        (log/info (str "🎨 Creating new stylesheet: " id))
         (set! (.-id style-element) id)
         (set! (.-type style-element) "text/css")
         (set! (.-textContent style-element) content)
@@ -36,7 +37,7 @@
   :dom/remove-stylesheet
   (fn [stylesheet-id]
     (when-let [style-element (js/document.getElementById stylesheet-id)]
-      (js/console.log "🗑️  Removing stylesheet:" stylesheet-id)
+      (log/info (str "🗑️ Removing stylesheet: " stylesheet-id))
       (.remove style-element))))
 
 ;; Focus the minibuffer input element.
