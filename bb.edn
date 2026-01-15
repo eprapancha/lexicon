@@ -211,14 +211,21 @@
 
   test:e2e
   {:doc "Run E2E tests with Etaoin (requires Firefox/Chrome WebDriver)
-         Usage: bb test:e2e [namespace-pattern]
+         Usage: bb test:e2e [--full] [namespace-pattern]
          Examples:
-           bb test:e2e                              # Run all E2E tests
-           bb test:e2e prefix-argument-test         # Run only prefix-argument tests
-           bb test:e2e basic-editing-test           # Run only basic-editing tests"
+           bb test:e2e                              # Run all E2E tests (fast mode, default)
+           bb test:e2e --full                       # Run all tests in full mode (reload per test)
+           bb test:e2e prefix-argument-test         # Run only prefix-argument tests (fast mode)
+           bb test:e2e --full prefix-argument-test  # Run specific tests in full mode
+
+         Fast mode (default): Reuses browser session, resets buffer between tests (60-80% faster)
+         Full mode (--full): Reloads page per test for complete isolation (slower, for CI)"
    :task
    (do
-     (let [test-pattern (first *command-line-args*)
+     (let [args *command-line-args*
+           full-mode? (some (fn [x] (= "--full" x)) args)
+           test-pattern (first (remove (fn [x] (= "--full" x)) args))
+           fast-mode-str (if full-mode? "false" "true")
            config-file (if test-pattern
                         (let [config-path (str "/tmp/test-" test-pattern ".edn")
                               ns-regex (str "^lexicon." test-pattern "$")]
@@ -239,11 +246,17 @@
                           (print-step "🎯" (str "Running E2E tests matching: " ns-regex))
                           config-path)
                         "tests.edn")]
-       (print-step "🌐" "Running E2E tests with Etaoin...")
+       (print-step "🌐" (str "Running E2E tests with Etaoin (" (if full-mode? "full" "fast") " mode)..."))
        (println "")
        (print-step "📋" "Prerequisites:")
        (println "   1. Firefox installed (or Chrome with geckodriver/chromedriver)")
        (println "   2. App running at http://localhost:8080 (run 'bb dev' in another terminal)")
+       (println "")
+
+       (when full-mode?
+         (print-step "🐢" "Full mode: Page reloads per test (slower, complete isolation)"))
+       (when-not full-mode?
+         (print-step "⚡" "Fast mode: Browser session reused (60-80% faster)"))
        (println "")
 
        (when-not (check-command "firefox")
@@ -251,7 +264,7 @@
          (println "   Install Firefox or update test to use Chrome"))
 
        (print-step "🧪" "Running E2E tests...")
-       (run-cmd (str "clojure -M:e2e -m kaocha.runner --config-file " config-file))
+       (run-cmd (str "clojure -J-Dtest.fast=" fast-mode-str " -M:e2e -m kaocha.runner --config-file " config-file))
        (print-step "✅" "E2E tests completed!")))}
 
   test
