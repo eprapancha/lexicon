@@ -5,13 +5,39 @@
   Detailed behavioral testing will require additional UI features."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
-            [etaoin.api :as e]
-            [lexicon.test-helpers :as h]))
+            [etaoin.api :as e]))
 
-;; Use shared test helpers
-(use-fixtures :once h/with-driver)
+;; Test configuration
+(def app-url "http://localhost:8080")
+(def test-timeout 10000)
 
-;; File-specific helper functions
+;; Browser driver
+(def ^:dynamic *driver* nil)
+
+;; Setup/teardown
+(defn start-driver []
+  (e/firefox {:headless true}))
+
+(defn stop-driver [driver]
+  (when driver
+    (e/quit driver)))
+
+(defn with-driver [f]
+  (let [driver (start-driver)]
+    (try
+      (binding [*driver* driver]
+        (f))
+      (finally
+        (stop-driver driver)))))
+
+(use-fixtures :once with-driver)
+
+;; Helper functions
+(defn wait-for-editor-ready []
+  (e/wait-visible *driver* {:css ".editor-wrapper"} {:timeout (/ test-timeout 1000)}))
+
+(defn click-editor []
+  (e/click *driver* {:css ".editor-wrapper"}))
 
 (defn press-alt-key [key]
   (let [script (str "
@@ -24,11 +50,11 @@
     });
     input.dispatchEvent(event);
   ")]
-    (e/js-execute h/*driver* script))
+    (e/js-execute *driver* script))
   (Thread/sleep 50))
 
 (defn type-in-minibuffer [text]
-  (e/fill h/*driver* {:css ".minibuffer-input"} text)
+  (e/fill *driver* {:css ".minibuffer-input"} text)
   (Thread/sleep 100))
 
 (defn press-enter []
@@ -47,7 +73,7 @@
       input.dispatchEvent(event);
     }
   "]
-    (e/js-execute h/*driver* script))
+    (e/js-execute *driver* script))
   (Thread/sleep 200))
 
 (defn execute-command [command-name]
@@ -58,14 +84,19 @@
 
 (defn get-minibuffer-text []
   (try
-    (e/get-element-text h/*driver* {:css ".minibuffer-prompt"})
+    (e/get-element-text *driver* {:css ".minibuffer-prompt"})
     (catch Exception _ "")))
+
+(defn setup-test []
+  (e/go *driver* app-url)
+  (wait-for-editor-ready)
+  (click-editor))
 
 ;; Tests
 
 (deftest test-minor-mode-commands-registered
   (testing "Minor mode commands are registered - line-number-mode"
-    (h/setup-test!)
+    (setup-test)
 
     ;; Execute the command - if it's not registered, minibuffer would show error
     (execute-command "line-number-mode")
@@ -73,12 +104,12 @@
 
     ;; If we get here without exceptions, the command executed
     ;; Check that we're back at the editor (not stuck in error state)
-    (is (e/exists? h/*driver* {:css ".editor-wrapper"})
+    (is (e/exists? *driver* {:css ".editor-wrapper"})
         "Editor should remain functional after line-number-mode command")))
 
 (deftest test-auto-save-mode-command
   (testing "Minor mode commands are registered - auto-save-mode"
-    (h/setup-test!)
+    (setup-test)
 
     ;; Execute auto-save-mode
     (execute-command "auto-save-mode")
@@ -89,15 +120,15 @@
     (Thread/sleep 300)
 
     ;; System should remain stable
-    (is (e/exists? h/*driver* {:css ".editor-wrapper"})
+    (is (e/exists? *driver* {:css ".editor-wrapper"})
         "Editor should remain functional after toggling auto-save-mode")))
 
 (deftest test-modes-namespace-loaded
   (testing "Modes infrastructure loaded without errors"
-    (h/setup-test!)
+    (setup-test)
 
     ;; Check that lexicon.modes namespace is available
-    (let [result (e/js-execute h/*driver* "
+    (let [result (e/js-execute *driver* "
       try {
         return typeof lexicon !== 'undefined' && typeof lexicon.modes !== 'undefined';
       } catch (e) {
@@ -108,10 +139,10 @@
 
 (deftest test-variables-namespace-loaded
   (testing "Variables infrastructure loaded without errors"
-    (h/setup-test!)
+    (setup-test)
 
     ;; Check that lexicon.variables namespace is available
-    (let [result (e/js-execute h/*driver* "
+    (let [result (e/js-execute *driver* "
       try {
         return typeof lexicon !== 'undefined' && typeof lexicon.variables !== 'undefined';
       } catch (e) {
@@ -122,11 +153,11 @@
 
 (deftest test-system-stability
   (testing "System remains stable with new infrastructure"
-    (h/setup-test!)
+    (setup-test)
 
     ;; Perform basic operations to ensure no regressions
     ;; Type some text
-    (e/fill h/*driver* {:css ".hidden-input"} "hello")
+    (e/fill *driver* {:css ".hidden-input"} "hello")
     (Thread/sleep 200)
 
     ;; Open a buffer
@@ -140,9 +171,9 @@
     (Thread/sleep 200)
 
     ;; Type more text
-    (e/fill h/*driver* {:css ".hidden-input"} "world")
+    (e/fill *driver* {:css ".hidden-input"} "world")
     (Thread/sleep 200)
 
     ;;  System should be fully functional
-    (is (e/exists? h/*driver* {:css ".editor-wrapper"})
+    (is (e/exists? *driver* {:css ".editor-wrapper"})
         "Editor should remain fully functional with all infrastructure loaded")))

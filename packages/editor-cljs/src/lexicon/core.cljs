@@ -97,9 +97,7 @@
    - point: current cursor position (linear)
    - buffer: current buffer text
    - prefixArg: current prefix argument (Phase 6.5)
-   - minibufferStack: minibuffer stack for depth tracking (Phase 6.5 Week 3-4)
-
-   Also exposes window.resetBufferForTests() for fast test mode."
+   - minibufferStack: minibuffer stack for depth tracking (Phase 6.5 Week 3-4)"
   []
   (when goog.DEBUG  ; Only in development mode
     (let [get-state (fn []
@@ -126,8 +124,7 @@
                         #js {:point cursor-pos
                              :buffer (or buffer-text "")
                              :prefixArg prefix-arg-js
-                             :minibufferStack minibuffer-stack-js
-                             :wasmInstance wasm-instance}))]
+                             :minibufferStack minibuffer-stack-js}))]
       ;; Expose as a getter function so it always returns fresh state
       (aset js/window "editorState"
             (js/Object.defineProperty
@@ -142,12 +139,7 @@
        "editorState"
        #js {:get get-state
             :enumerable true
-            :configurable true})
-
-      ;; Expose reset function separately for fast test mode
-      (aset js/window "resetBufferForTests"
-            (fn []
-              (rf/dispatch [:cursor/set-position {:line 0 :column 0}]))))))
+            :configurable true}))))
 
 (defn init
   "Initialize the Lexicon editor application"
