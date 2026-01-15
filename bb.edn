@@ -287,9 +287,9 @@
          (run-cmd "cargo test" :dir "packages/lexicon-engine")))
 
      (println "")
-     (print-step "🌐" "Running E2E tests...")
+     (print-step "🌐" "Running E2E tests (full mode for CI)...")
      (when (fs/exists? "e2e_tests")
-       (run-cmd "clojure -M:e2e -m kaocha.runner --config-file tests.edn"))
+       (run-cmd "clojure -J-Dtest.fast=false -M:e2e -m kaocha.runner --config-file tests.edn"))
      (println "")
 
      (print-step "✅" "All tests completed!"))}
