@@ -411,15 +411,7 @@
            {:db db}))
        {:db db}))))
 
-(rf/reg-event-fx
- :open-line
- (fn [{:keys [db]} [_]]
-   "Insert a newline after cursor without moving cursor (C-o)"
-   (let [current-pos (get-in db [:ui :cursor-position] 0)]
-     {:fx [[:dispatch [:editor/queue-transaction
-                      {:op :insert :text "\n"}]]
-           ;; After insertion, move cursor back to original position
-           [:dispatch-later [{:ms 50 :dispatch [:update-cursor-position current-pos]}]]]})))
+;; :open-line moved to lexicon.events.command (Phase 6.6)
 
 ;; -- Mark and Region Commands --
 

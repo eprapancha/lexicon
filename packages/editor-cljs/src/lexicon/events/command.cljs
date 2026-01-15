@@ -5,7 +5,8 @@
             [lexicon.completion.metadata :as completion-metadata]
             [lexicon.advanced-undo :as undo]
             [lexicon.context :as ctx]
-            [lexicon.api.interactive :as interactive]))
+            [lexicon.api.interactive :as interactive]
+            [lexicon.api.buffer :as buffer-api]))
 
 ;; =============================================================================
 ;; Command Registry and Execution
@@ -798,6 +799,13 @@ C-h ?   This help menu
          [:dispatch [:register-command :open-line
                     {:docstring "Insert newline without moving cursor"
                      :handler [:open-line]}]]
+         [:dispatch [:register-command :newline
+                    {:docstring "Insert newline and move cursor (RET)"
+                     :handler [:newline]
+                     :interactive "p"}]]
+         [:dispatch [:register-command :delete-indentation
+                    {:docstring "Join current line to previous (M-^)"
+                     :handler [:delete-indentation]}]]
          [:dispatch [:register-command :set-mark-command
                     {:docstring "Set mark at current position"
                      :handler [:set-mark-command]}]]
@@ -862,6 +870,132 @@ C-h ?   This help menu
 ;; =============================================================================
 
 ;; Registry for command functions
+;; =============================================================================
+;; Emacs Editing Commands (Phase 6.6)
+;; =============================================================================
+
+(rf/reg-event-db
+ :newline
+ (fn [db [_]]
+   "Insert newline(s) at point. Number determined by prefix argument.
+
+   Contract: 2.4 (Prefix Arguments), 4.2 (Point), 4.1 (Buffers)
+   Emacs equivalent: (newline &optional arg)
+
+   Semantics:
+   - Insert N newlines where N = prefix-arg (default 1)
+   - Move point after inserted newlines"
+   (let [prefix-arg (or (:current-prefix-arg db) 1)
+         n (if (number? prefix-arg) prefix-arg 1)
+         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id (:buffer-id active-window)
+         buffer (get-in db [:buffers buffer-id])
+         cursor-pos (:cursor-position active-window)
+         point (if cursor-pos
+                 (buffer-api/line-col-to-point buffer (:line cursor-pos) (:column cursor-pos))
+                 (get-in db [:buffers buffer-id :point] 0))
+         newlines (apply str (repeat n "\n"))
+         ^js wasm-instance (:wasm-instance buffer)]
+     (when wasm-instance
+       (.insert wasm-instance point newlines))
+     (assoc-in db [:buffers buffer-id :point] (+ point n)))))
+
+(rf/reg-event-db
+ :open-line
+ (fn [db [_]]
+   "Insert newline(s) at point WITHOUT moving point.
+
+   Contract: 4.2 (Point), 4.1 (Buffers)
+   Emacs equivalent: (open-line n)
+
+   Semantics:
+   - Insert N newlines where N = prefix-arg (default 1)
+   - Point stays BEFORE inserted newlines"
+   (let [prefix-arg (or (:current-prefix-arg db) 1)
+         n (if (number? prefix-arg) prefix-arg 1)
+         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id (:buffer-id active-window)
+         buffer (get-in db [:buffers buffer-id])
+         cursor-pos (:cursor-position active-window)
+         point (if cursor-pos
+                 (buffer-api/line-col-to-point buffer (:line cursor-pos) (:column cursor-pos))
+                 (get-in db [:buffers buffer-id :point] 0))
+         newlines (apply str (repeat n "\n"))
+         ^js wasm-instance (:wasm-instance buffer)]
+     (js/console.log "OPEN-LINE DEBUG:"
+                     "cursor-pos=" (pr-str cursor-pos)
+                     "point=" point
+                     "buffer-text=" (when wasm-instance (.getText wasm-instance)))
+     (when wasm-instance
+       (.insert wasm-instance point newlines)
+       (js/console.log "AFTER INSERT:" (.getText wasm-instance)))
+     ;; Point stays at original position
+     db)))
+
+(rf/reg-event-db
+ :delete-indentation
+ (fn [db [_]]
+   "Join current line to previous line, removing whitespace between.
+
+   Contract: 4.1 (Buffers), 4.2 (Point)
+   Emacs equivalent: (delete-indentation &optional join-following-p)
+
+   Semantics:
+   - Without prefix arg: Join current line to previous
+   - With prefix arg: Join current line to following
+   - Remove whitespace at join point, leave single space"
+   (let [prefix-arg (:current-prefix-arg db)
+         join-following? (boolean prefix-arg)
+         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])]
+     (if-not wasm-instance
+       db
+       (let [text (.getText wasm-instance)
+             point (get-in db [:buffers buffer-id :point] 0)
+             _ (js/console.log "DELETE-INDENTATION:"
+                              "text=" (pr-str text)
+                              "point=" point
+                              "join-following?" join-following?)
+             ;; Find which newline to delete
+             newline-pos (if join-following?
+                           ;; Forward: find first \n at or after point
+                           (loop [i point]
+                             (cond
+                               (>= i (count text)) nil
+                               (= \newline (get text i)) i
+                               :else (recur (inc i))))
+                           ;; Backward: find last \n before point
+                           (loop [i (dec point)]
+                             (cond
+                               (< i 0) nil
+                               (= \newline (get text i)) i
+                               :else (recur (dec i)))))]
+         (js/console.log "newline-pos=" newline-pos)
+         (if-not newline-pos
+           db
+           ;; Delete whitespace around newline and add single space
+           (let [;; Find trailing whitespace before newline
+                 ws-start (loop [i (dec newline-pos)]
+                            (if (and (>= i 0) (re-matches #"\s" (str (get text i))))
+                              (recur (dec i))
+                              (inc i)))
+                 ;; Find leading whitespace after newline
+                 ws-end (loop [i (inc newline-pos)]
+                          (if (and (< i (count text)) (re-matches #"\s" (str (get text i))))
+                            (recur (inc i))
+                            i))
+                 ;; Need space between non-empty parts
+                 has-before (and (> ws-start 0) (not= ws-start newline-pos))
+                 has-after (and (< ws-end (count text)) (not= ws-end (inc newline-pos)))
+                 space (if (and has-before has-after) " " "")
+                 new-point (+ ws-start (count space))]
+             ;; Delete range and insert space
+             (.delete wasm-instance ws-start (- ws-end ws-start))
+             (when (not-empty space)
+               (.insert wasm-instance ws-start space))
+             (assoc-in db [:buffers buffer-id :point] new-point))))))))
+
 (defonce command-registry (atom {}))
 
 (defn register-command!
