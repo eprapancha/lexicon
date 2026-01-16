@@ -78,21 +78,19 @@
 (rf/reg-event-db
  :minibuffer/flash-message
  (fn [db [_ msg]]
-   "Flash a message in the minibuffer with auto-clear timeout.
+   "Display a message in the minibuffer (echo area).
 
-   This is separate from log bus - it only handles the visual minibuffer flash.
+   Emacs semantics: Message persists until replaced by another message,
+   NOT cleared after a timeout.
+
+   This is separate from log bus - it only handles the visual minibuffer display.
    The message is logged separately via log bus."
-   (let [;; Clear any existing timeout
+   (let [;; Clear any existing timeout (cleanup from old implementation)
          old-timeout-id (get-in db [:minibuffer :message-timeout-id])
-         _ (when old-timeout-id (js/clearTimeout old-timeout-id))
-
-         ;; Set up new timeout
-         timeout-id (js/setTimeout
-                     #(rf/dispatch [:message/clear-minibuffer])
-                     2000)]  ; 2 second timeout
+         _ (when old-timeout-id (js/clearTimeout old-timeout-id))]
      (-> db
          (assoc-in [:minibuffer :message] msg)
-         (assoc-in [:minibuffer :message-timeout-id] timeout-id)))))
+         (assoc-in [:minibuffer :message-timeout-id] nil)))))
 
 (comment
   ;; Usage:

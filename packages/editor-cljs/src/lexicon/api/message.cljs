@@ -37,7 +37,8 @@
     (log/info msg)
 
     ;; Flash in minibuffer (separate from logging)
-    (rf/dispatch [:minibuffer/flash-message msg])
+    ;; Use dispatch-sync so message is immediately visible (important for tests and predictability)
+    (rf/dispatch-sync [:minibuffer/flash-message msg])
     msg))
 
 (comment
