@@ -60,9 +60,14 @@
         (catch js/Error _ "")))))
 
 (defn insert-text
-  "Insert text into buffer at current position."
+  "Insert text into buffer at end of buffer."
   [buffer-id text]
-  (let [point (get-in @rfdb/app-db [:ui :cursor-position] 0)]
+  (let [buffer (get-in @rfdb/app-db [:buffers buffer-id])
+        ^js wasm-instance (:wasm-instance buffer)
+        ;; Insert at end of buffer - get length from text
+        point (if wasm-instance
+                (count (.getText wasm-instance))
+                0)]
     (rf/dispatch-sync [:buffer/insert buffer-id point text])))
 
 (defn buffer-file

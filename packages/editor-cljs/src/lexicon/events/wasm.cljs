@@ -126,41 +126,47 @@
          messages-initial-text ";; *Messages* buffer - message history\n\n"
          messages-instance (new constructor messages-initial-text)
          messages-line-count (count (clojure.string/split messages-initial-text #"\n" -1))]
-     {:db (-> db
-              (assoc :initialized? true)
-              (assoc-in [:system :wasm-constructor] constructor)
-              (assoc-in [:buffers 1 :wasm-instance] instance)
-              ;; Initialize cache with initial text and line count
-              (assoc-in [:buffers 1 :cache :text] initial-text)
-              (assoc-in [:buffers 1 :cache :line-count] initial-line-count)
-              ;; Create *Messages* buffer (Issue #47)
-              (assoc-in [:buffers 2 :id] 2)
-              (assoc-in [:buffers 2 :wasm-instance] messages-instance)
-              (assoc-in [:buffers 2 :name] "*Messages*")
-              (assoc-in [:buffers 2 :is-modified?] false)
-              (assoc-in [:buffers 2 :is-read-only?] true)
-              (assoc-in [:buffers 2 :major-mode] :fundamental-mode)
-              (assoc-in [:buffers 2 :minor-modes] #{})
-              (assoc-in [:buffers 2 :buffer-local-vars] {})
-              (assoc-in [:buffers 2 :file-handle] nil)
-              (assoc-in [:buffers 2 :ast] nil)
-              (assoc-in [:buffers 2 :language] :text)
-              (assoc-in [:buffers 2 :diagnostics] [])
-              (assoc-in [:buffers 2 :undo-stack] [])
-              (assoc-in [:buffers 2 :undo-in-progress?] false)
-              (assoc-in [:buffers 2 :editor-version] 0)
-              (assoc-in [:buffers 2 :cache :text] messages-initial-text)
-              (assoc-in [:buffers 2 :cache :line-count] messages-line-count)
-              (assoc-in [:buffers 2 :text-properties] {})
-              (assoc-in [:buffers 2 :overlays] {})
-              (assoc-in [:buffers 2 :next-overlay-id] 1))
-      :fx [[:dispatch [:initialize-buffer-cursor 1]]
-           [:parser/start-worker {:worker-path "/parser-worker.js"}]
-           [:dispatch [:ws/connect]]
-           ;; Attach Messages buffer to log bus (Issue #73)
-           [:log/attach-messages-buffer nil]
-           ;; Log after Messages buffer attached (should appear in buffer!)
-           [:dispatch [:log-startup-complete]]]})))
+     (let [;; Detect test mode by checking port (8021 = test, 8080 = dev)
+           test-mode? (= "8021" (.-port (.-location js/window)))
+           ;; Skip WebSocket and parser worker in test mode
+           production-fx (if test-mode?
+                           []
+                           [[:parser/start-worker {:worker-path "/parser-worker.js"}]
+                            [:dispatch [:ws/connect]]])]
+       {:db (-> db
+                (assoc :initialized? true)
+                (assoc-in [:system :wasm-constructor] constructor)
+                (assoc-in [:buffers 1 :wasm-instance] instance)
+                ;; Initialize cache with initial text and line count
+                (assoc-in [:buffers 1 :cache :text] initial-text)
+                (assoc-in [:buffers 1 :cache :line-count] initial-line-count)
+                ;; Create *Messages* buffer (Issue #47)
+                (assoc-in [:buffers 2 :id] 2)
+                (assoc-in [:buffers 2 :wasm-instance] messages-instance)
+                (assoc-in [:buffers 2 :name] "*Messages*")
+                (assoc-in [:buffers 2 :is-modified?] false)
+                (assoc-in [:buffers 2 :is-read-only?] true)
+                (assoc-in [:buffers 2 :major-mode] :fundamental-mode)
+                (assoc-in [:buffers 2 :minor-modes] #{})
+                (assoc-in [:buffers 2 :buffer-local-vars] {})
+                (assoc-in [:buffers 2 :file-handle] nil)
+                (assoc-in [:buffers 2 :ast] nil)
+                (assoc-in [:buffers 2 :language] :text)
+                (assoc-in [:buffers 2 :diagnostics] [])
+                (assoc-in [:buffers 2 :undo-stack] [])
+                (assoc-in [:buffers 2 :undo-in-progress?] false)
+                (assoc-in [:buffers 2 :editor-version] 0)
+                (assoc-in [:buffers 2 :cache :text] messages-initial-text)
+                (assoc-in [:buffers 2 :cache :line-count] messages-line-count)
+                (assoc-in [:buffers 2 :text-properties] {})
+                (assoc-in [:buffers 2 :overlays] {})
+                (assoc-in [:buffers 2 :next-overlay-id] 1))
+        :fx (concat [[:dispatch [:initialize-buffer-cursor 1]]]
+                    production-fx
+                    [;; Attach Messages buffer to log bus (Issue #73)
+                     [:log/attach-messages-buffer nil]
+                     ;; Log after Messages buffer attached (should appear in buffer!)
+                     [:dispatch [:log-startup-complete]]])}))))
 
 (rf/reg-event-fx
  :log-startup-complete
