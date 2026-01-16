@@ -12,16 +12,15 @@
 ;; Test Context - Matches existing test pattern
 ;; =============================================================================
 
-(defmacro with-editor
-  "Execute body with a fresh editor context.
+(defn reset-editor-db!
+  "Reset re-frame db to default while preserving WASM constructor.
 
-  Resets db while preserving WASM constructor (like core-test)."
-  [& body]
-  `(let [wasm-constructor# (get-in @rfdb/app-db [:system :wasm-constructor])]
-     (reset! rfdb/app-db db/default-db)
-     (when wasm-constructor#
-       (swap! rfdb/app-db assoc-in [:system :wasm-constructor] wasm-constructor#))
-     ~@body))
+  This is a function, not a macro, so it can be called from tests."
+  []
+  (let [wasm-constructor (get-in @rfdb/app-db [:system :wasm-constructor])]
+    (reset! rfdb/app-db db/default-db)
+    (when wasm-constructor
+      (swap! rfdb/app-db assoc-in [:system :wasm-constructor] wasm-constructor))))
 
 (defn current-db
   "Get current re-frame database."

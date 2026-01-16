@@ -10,18 +10,18 @@
 
 (deftest ^:critical buffer-can-exist-without-file
   (testing "Emacs invariant: Buffers are primary entities, files are optional"
-    (h/with-editor
-      (let [buf (h/create-buffer "scratch")]
-        (is (some? buf) "Buffer should be created")
-        (is (nil? (h/buffer-file buf)) "Buffer should have no file association")
-        (h/insert-text buf "hello")
-        (is (= "hello" (h/buffer-text buf)) "Buffer should contain inserted text")))))
+    (h/reset-editor-db!)
+    (let [buf (h/create-buffer "scratch")]
+      (is (some? buf) "Buffer should be created")
+      (is (nil? (h/buffer-file buf)) "Buffer should have no file association")
+      (h/insert-text buf "hello")
+      (is (= "hello" (h/buffer-text buf)) "Buffer should contain inserted text"))))
 
 (deftest ^:critical buffer-identity-is-stable
   (testing "Emacs invariant: Buffer identity stable independent of content changes"
-    (h/with-editor
-      (let [buf (h/create-buffer "test" "initial")]
-        (is (= "initial" (h/buffer-text buf)) "Initial text correct")
-        (h/insert-text buf " more")
-        (is (= "initial more" (h/buffer-text buf)) "Text mutation preserves buffer identity")
-        (is (some? buf) "Buffer ID remains stable")))))
+    (h/reset-editor-db!)
+    (let [buf (h/create-buffer "test" "initial")]
+      (is (= "initial" (h/buffer-text buf)) "Initial text correct")
+      (h/insert-text buf " more")
+      (is (= "initial more" (h/buffer-text buf)) "Text mutation preserves buffer identity")
+      (is (some? buf) "Buffer ID remains stable"))))
