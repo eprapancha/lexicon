@@ -19,5 +19,5 @@
          :test-dir "resources/public/test"
          :devtools {:http-root "resources/public"
                     :http-port 8021}
-         :ns-regexp "lexicon\\.emacs\\..*"
+         :ns-regexp "lexicon\\.(emacs|semantic|core-test|window-test)\\..*"
          :autorun true}}}}}
