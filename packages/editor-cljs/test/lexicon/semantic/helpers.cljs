@@ -108,6 +108,26 @@
   [text]
   (api-msg/message text))
 
+(defn visit-file
+  "Associate a file path with a buffer (without actually loading the file)."
+  [buffer-id file-path]
+  (swap! rfdb/app-db assoc-in [:buffers buffer-id :file-handle] file-path))
+
+(defn current-buffer
+  "Get the ID of the currently active buffer."
+  []
+  (let [active-window-id (get-in @rfdb/app-db [:active-window-id])
+        window-tree (get-in @rfdb/app-db [:window-tree])
+        find-window (fn find-window [tree id]
+                      (cond
+                        (nil? tree) nil
+                        (= (:id tree) id) tree
+                        (= (:type tree) :leaf) nil
+                        :else (or (find-window (:first tree) id)
+                                  (find-window (:second tree) id))))]
+    (when-let [window (find-window window-tree active-window-id)]
+      (:buffer-id window))))
+
 ;; =============================================================================
 ;; WASM Fixture - Required for all semantic tests
 ;; =============================================================================

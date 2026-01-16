@@ -25,3 +25,13 @@
       (h/insert-text buf " more")
       (is (= "initial more" (h/buffer-text buf)) "Text mutation preserves buffer identity")
       (is (some? buf) "Buffer ID remains stable"))))
+
+(deftest ^:critical buffer-can-change-visited-file
+  (testing "Emacs invariant: File association is mutable metadata, not buffer identity"
+    (h/reset-editor-db!)
+    (let [buf (h/create-buffer "test")
+          original-buf-id buf]
+      (h/visit-file buf "/tmp/a.txt")
+      (h/visit-file buf "/tmp/b.txt")
+      (is (= "/tmp/b.txt" (h/buffer-file buf)) "File association can be changed")
+      (is (= original-buf-id buf) "Buffer ID remains stable despite file changes"))))
