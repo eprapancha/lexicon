@@ -35,3 +35,15 @@
       (h/visit-file buf "/tmp/b.txt")
       (is (= "/tmp/b.txt" (h/buffer-file buf)) "File association can be changed")
       (is (= original-buf-id buf) "Buffer ID remains stable despite file changes"))))
+
+(deftest ^:critical multiple-buffers-can-coexist
+  (testing "Emacs invariant: Multiple independent buffers can exist simultaneously"
+    (h/reset-editor-db!)
+    (let [buf-a (h/create-buffer "a" "content-a")
+          buf-b (h/create-buffer "b" "content-b")]
+      (is (not= buf-a buf-b) "Buffers have distinct IDs")
+      (is (= "content-a" (h/buffer-text buf-a)) "Buffer A retains its content")
+      (is (= "content-b" (h/buffer-text buf-b)) "Buffer B retains its content")
+      (h/insert-text buf-a " more")
+      (is (= "content-a more" (h/buffer-text buf-a)) "Changes to A don't affect B")
+      (is (= "content-b" (h/buffer-text buf-b)) "Buffer B unchanged"))))

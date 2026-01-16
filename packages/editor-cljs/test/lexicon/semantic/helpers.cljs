@@ -151,69 +151,19 @@
 ;; Point/Mark Operations
 ;; =============================================================================
 
-(defn- find-window-for-buffer
-  "Find the first window displaying the given buffer ID."
-  [window-tree buffer-id]
-  (cond
-    (nil? window-tree) nil
-    (= (:type window-tree) :leaf)
-    (when (= buffer-id (:buffer-id window-tree))
-      window-tree)
-    :else
-    (or (find-window-for-buffer (:first window-tree) buffer-id)
-        (find-window-for-buffer (:second window-tree) buffer-id))))
-
 (defn point
-  "Get point (cursor position) for buffer. Returns character position (0-based)."
+  "Get point (cursor position) for buffer. Returns character position (0-based).
+
+  In Emacs, point is buffer-local, not window-local. We store it in the buffer."
   [buffer-id]
-  (let [window-tree (get-in @rfdb/app-db [:window-tree])
-        window (find-window-for-buffer window-tree buffer-id)]
-    (when window
-      (let [{:keys [line column]} (:cursor-position window)
-            buffer (get-in @rfdb/app-db [:buffers buffer-id])
-            ^js wasm-instance (:wasm-instance buffer)]
-        (when wasm-instance
-          ;; Convert line/col to character position
-          (let [text (.getText wasm-instance)
-                lines (clojure.string/split-lines text)
-                chars-before-line (reduce + 0 (map #(inc (count %)) (take line lines)))]
-            (+ chars-before-line column)))))))
+  (get-in @rfdb/app-db [:buffers buffer-id :point] 0))
 
 (defn set-point
-  "Set point (cursor position) for buffer to given character position."
+  "Set point (cursor position) for buffer to given character position.
+
+  In Emacs, point is buffer-local, not window-local. We store it in the buffer."
   [buffer-id pos]
-  (let [window-tree (get-in @rfdb/app-db [:window-tree])
-        buffer (get-in @rfdb/app-db [:buffers buffer-id])
-        ^js wasm-instance (:wasm-instance buffer)]
-    (when wasm-instance
-      ;; Convert character position to line/col
-      (let [text (.getText wasm-instance)
-            lines (clojure.string/split-lines text)
-            ;; Find which line contains this position
-            [line col] (loop [remaining-pos pos
-                              line-num 0
-                              lines-list lines]
-                         (if (empty? lines-list)
-                           [line-num 0]
-                           (let [line-length (inc (count (first lines-list)))] ; +1 for newline
-                             (if (< remaining-pos line-length)
-                               [line-num remaining-pos]
-                               (recur (- remaining-pos line-length)
-                                      (inc line-num)
-                                      (rest lines-list))))))]
-        ;; Update all windows displaying this buffer
-        (letfn [(update-window [tree]
-                  (cond
-                    (nil? tree) nil
-                    (= (:type tree) :leaf)
-                    (if (= buffer-id (:buffer-id tree))
-                      (assoc tree :cursor-position {:line line :column col})
-                      tree)
-                    :else
-                    (assoc tree
-                           :first (update-window (:first tree))
-                           :second (update-window (:second tree)))))]
-          (swap! rfdb/app-db update :window-tree update-window))))))
+  (swap! rfdb/app-db assoc-in [:buffers buffer-id :point] pos))
 
 ;; =============================================================================
 ;; WASM Fixture - Required for all semantic tests
