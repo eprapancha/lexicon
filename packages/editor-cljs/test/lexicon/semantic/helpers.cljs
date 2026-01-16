@@ -6,21 +6,34 @@
             [re-frame.core :as rf]
             [re-frame.db :as rfdb]
             [lexicon.db :as db]
-            [lexicon.test-setup :as setup]))
+            [lexicon.test-setup :as setup]
+            [lexicon.api.message :as api-msg]
+            [lexicon.effects.log]))  ; Load log effect handlers
 
 ;; =============================================================================
 ;; Test Context - Matches existing test pattern
 ;; =============================================================================
 
 (defn reset-editor-db!
-  "Reset re-frame db to default while preserving WASM constructor.
+  "Reset editor to clean state while preserving WASM and system buffers.
 
-  This is a function, not a macro, so it can be called from tests."
+  Clears user-created buffers (ID >= 3) but keeps:
+  - Buffer 1: *scratch*
+  - Buffer 2: *Messages*
+  - WASM constructor"
   []
-  (let [wasm-constructor (get-in @rfdb/app-db [:system :wasm-constructor])]
+  (let [wasm-constructor (get-in @rfdb/app-db [:system :wasm-constructor])
+        buffer-1 (get-in @rfdb/app-db [:buffers 1])
+        buffer-2 (get-in @rfdb/app-db [:buffers 2])]
+    ;; Start with default-db
     (reset! rfdb/app-db db/default-db)
+    ;; Restore WASM and system buffers
     (when wasm-constructor
-      (swap! rfdb/app-db assoc-in [:system :wasm-constructor] wasm-constructor))))
+      (swap! rfdb/app-db assoc-in [:system :wasm-constructor] wasm-constructor))
+    (when buffer-1
+      (swap! rfdb/app-db assoc-in [:buffers 1] buffer-1))
+    (when buffer-2
+      (swap! rfdb/app-db assoc-in [:buffers 2] buffer-2))))
 
 (defn current-db
   "Get current re-frame database."
@@ -50,9 +63,18 @@
        buffer-id))))
 
 (defn buffer-text
-  "Get text content of buffer."
-  [buffer-id]
-  (let [buffer (get-in @rfdb/app-db [:buffers buffer-id])
+  "Get text content of buffer by ID or name."
+  [buffer-id-or-name]
+  (let [buffer-id (if (string? buffer-id-or-name)
+                    ;; Look up by name
+                    (let [buffers (get-in @rfdb/app-db [:buffers])]
+                      (->> buffers
+                           vals
+                           (filter #(= buffer-id-or-name (:name %)))
+                           first
+                           :id))
+                    buffer-id-or-name)
+        buffer (get-in @rfdb/app-db [:buffers buffer-id])
         ^js wasm-instance (:wasm-instance buffer)]
     (when wasm-instance
       (try
@@ -80,6 +102,11 @@
   [name]
   (let [buffers (get-in @rfdb/app-db [:buffers])]
     (some #(= name (:name %)) (vals buffers))))
+
+(defn message
+  "Display a message in the echo area and append to *Messages* buffer."
+  [text]
+  (api-msg/message text))
 
 ;; =============================================================================
 ;; WASM Fixture - Required for all semantic tests
