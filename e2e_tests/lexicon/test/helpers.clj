@@ -16,9 +16,14 @@
   - [ ] Tier 3 (Nice to Have - Week 4-6): 18 functions needed
   - [ ] Tier 4 (Future Work - Week 7-8): 27 functions needed
 
-  See /tmp/test-helper-analysis.md for complete requirements."
-  (:require [re-frame.core :as rf]
-            [re-frame.db]
+  See /tmp/test-helper-analysis.md for complete requirements.
+
+  NOTE: This file was originally written to use re-frame, but e2e tests
+  run in JVM Clojure which cannot load ClojureScript libraries like re-frame.
+  The re-frame dependencies have been commented out. E2E tests that need
+  re-frame functionality should be migrated to ClojureScript browser tests."
+  (:require ;; [re-frame.core :as rf]  ; Can't use in JVM Clojure
+            ;; [re-frame.db]            ; Can't use in JVM Clojure
             [lexicon.db :as db]
             [lexicon.init :as init]))
 
