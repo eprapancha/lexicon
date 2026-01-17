@@ -98,7 +98,8 @@
 (defn insert-text
   "Insert text into buffer at end of buffer.
 
-  Respects read-only flag - no insertion if buffer is read-only."
+  Respects read-only flag - no insertion if buffer is read-only.
+  Records undo entry."
   [buffer-id text]
   (let [buffer (get-in @rfdb/app-db [:buffers buffer-id])
         ^js wasm-instance (:wasm-instance buffer)
@@ -108,6 +109,12 @@
       (let [point (if wasm-instance
                     (count (.getText wasm-instance))
                     0)]
+        ;; Record undo entry before making the change
+        (swap! rfdb/app-db update-in [:buffers buffer-id :undo-stack] conj
+               {:type :delete
+                :position point
+                :text text})
+        ;; Make the change
         (rf/dispatch-sync [:buffer/insert buffer-id point text])))))
 
 (defn buffer-file
@@ -463,6 +470,29 @@
         text-to-yank (peek kill-ring)]
     (when (and buf-id text-to-yank)
       (insert-text buf-id text-to-yank))))
+
+;; =============================================================================
+;; Undo Operations
+;; =============================================================================
+
+(defn undo
+  "Undo the last change in a buffer."
+  [buffer-id]
+  (let [buffer (get-in @rfdb/app-db [:buffers buffer-id])
+        ^js wasm-instance (:wasm-instance buffer)
+        undo-stack (:undo-stack buffer)]
+    (when (and wasm-instance (seq undo-stack))
+      (let [undo-entry (peek undo-stack)]
+        ;; Pop the undo entry
+        (swap! rfdb/app-db update-in [:buffers buffer-id :undo-stack] pop)
+        ;; Apply the undo
+        (case (:type undo-entry)
+          :delete
+          ;; Undo an insertion by deleting the text
+          (let [{:keys [position text]} undo-entry]
+            (.delete wasm-instance position (count text)))
+          ;; Other undo types can be added here
+          nil)))))
 
 ;; =============================================================================
 ;; WASM Fixture - Required for all semantic tests
