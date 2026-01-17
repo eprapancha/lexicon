@@ -330,6 +330,69 @@
       (swap! rfdb/app-db assoc :window-tree active-window))))
 
 ;; =============================================================================
+;; Minibuffer Operations
+;; =============================================================================
+
+(defn activate-minibuffer
+  "Activate the minibuffer with a prompt.
+
+  In Emacs, the minibuffer is a real buffer. We create a buffer named ' *Minibuf-0*'
+  and track it in the minibuffer-stack.
+
+  Returns the buffer ID of the minibuffer."
+  [prompt]
+  (let [;; Create minibuffer buffer if it doesn't exist
+        mb-buffer-id (or (let [buffers (get-in @rfdb/app-db [:buffers])]
+                           (->> buffers vals
+                                (filter #(= " *Minibuf-0*" (:name %)))
+                                first :id))
+                         (create-buffer " *Minibuf-0*" ""))]
+    ;; Clear the minibuffer content
+    (let [buffer (get-in @rfdb/app-db [:buffers mb-buffer-id])
+          ^js wasm-instance (:wasm-instance buffer)]
+      (when wasm-instance
+        (let [len (.length wasm-instance)]
+          (when (> len 0)
+            (.delete wasm-instance 0 len)))))
+
+    ;; Push minibuffer frame onto stack
+    (swap! rfdb/app-db update :minibuffer-stack conj
+           {:buffer-id mb-buffer-id
+            :prompt prompt
+            :on-confirm nil
+            :on-cancel nil})
+
+    ;; Mark minibuffer as active (legacy support)
+    (swap! rfdb/app-db assoc-in [:minibuffer :active?] true)
+
+    mb-buffer-id))
+
+(defn deactivate-minibuffer
+  "Deactivate the minibuffer (pop from stack).
+
+  In Emacs, the minibuffer buffer persists even when deactivated."
+  []
+  (swap! rfdb/app-db update :minibuffer-stack pop)
+  (when (empty? (get-in @rfdb/app-db [:minibuffer-stack]))
+    (swap! rfdb/app-db assoc-in [:minibuffer :active?] false)))
+
+(defn minibuffer-insert
+  "Insert text into the active minibuffer."
+  [text]
+  (let [mb-frame (peek (get-in @rfdb/app-db [:minibuffer-stack]))
+        mb-buffer-id (:buffer-id mb-frame)]
+    (when mb-buffer-id
+      (insert-text mb-buffer-id text))))
+
+(defn minibuffer-contents
+  "Get the contents of the active minibuffer."
+  []
+  (let [mb-frame (peek (get-in @rfdb/app-db [:minibuffer-stack]))
+        mb-buffer-id (:buffer-id mb-frame)]
+    (when mb-buffer-id
+      (buffer-text mb-buffer-id))))
+
+;; =============================================================================
 ;; WASM Fixture - Required for all semantic tests
 ;; =============================================================================
 
