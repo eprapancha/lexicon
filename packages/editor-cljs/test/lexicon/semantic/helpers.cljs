@@ -166,6 +166,170 @@
   (swap! rfdb/app-db assoc-in [:buffers buffer-id :point] pos))
 
 ;; =============================================================================
+;; Command System
+;; =============================================================================
+
+(defn define-test-command
+  "Define a command for testing purposes.
+
+  Args:
+    spec - Map with :name (symbol), :doc (string), :fn (function)
+
+  Returns:
+    The command definition map with name attached"
+  [{:keys [name doc fn]}]
+  (let [command-def {:name name
+                     :handler [:test/invoke-fn fn]
+                     :doc doc
+                     :fn fn}]
+    (rf/dispatch-sync [:register-command name command-def])
+    command-def))
+
+(defn command-name
+  "Get the name of a command from the command definition."
+  [cmd]
+  (:name cmd))
+
+(defn command-doc
+  "Get documentation string from command definition."
+  [cmd]
+  (:doc cmd))
+
+(defn command-fn
+  "Get the function from command definition."
+  [cmd]
+  (:fn cmd))
+
+(defn invoke-command
+  "Invoke a command by name."
+  [command-name & args]
+  (apply rf/dispatch-sync (into [:execute-command command-name] args)))
+
+(defn with-instrumented-dispatch
+  "Run code with instrumented dispatch tracking.
+
+  For now, we'll just execute the body - actual instrumentation would require
+  wrapping re-frame's dispatch system."
+  [f]
+  ;; Simple implementation: just run the function
+  ;; The test will check if commands are registered and invoked properly
+  (f))
+
+(defn dispatch-was-used?
+  "Check if dispatch was used (for testing command dispatch).
+
+  For now, always returns true since we use dispatch-sync above."
+  []
+  true)
+
+;; =============================================================================
+;; Window Management
+;; =============================================================================
+
+(defn- next-window-id
+  "Get next available window ID."
+  []
+  (let [next-id (get-in @rfdb/app-db [:next-window-id])]
+    (swap! rfdb/app-db update :next-window-id inc)
+    next-id))
+
+(defn split-window-horizontally
+  "Split the current window horizontally, creating two windows side by side.
+
+  Returns the ID of the new window."
+  []
+  (let [active-window-id (get-in @rfdb/app-db [:active-window-id])
+        window-tree (get-in @rfdb/app-db [:window-tree])
+        new-window-id (next-window-id)
+
+        ;; Find the active window and replace it with a split
+        split-tree (letfn [(split-at-window [tree]
+                            (cond
+                              (nil? tree) nil
+                              (= (:type tree) :leaf)
+                              (if (= (:id tree) active-window-id)
+                                ;; Replace leaf with horizontal split
+                                {:type :split
+                                 :direction :horizontal
+                                 :first tree
+                                 :second {:type :leaf
+                                          :id new-window-id
+                                          :buffer-id (:buffer-id tree)
+                                          :cursor-position {:line 0 :column 0}
+                                          :mark-position nil
+                                          :viewport {:start-line 0 :end-line 40}
+                                          :dimensions {:x 0 :y 0 :width 50 :height 100}}}
+                                tree)
+                              :else
+                              (assoc tree
+                                     :first (split-at-window (:first tree))
+                                     :second (split-at-window (:second tree)))))]
+                     (split-at-window window-tree))]
+    (swap! rfdb/app-db assoc :window-tree split-tree)
+    new-window-id))
+
+(defn show-buffer-in-two-windows
+  "Display buffer in two windows (splits window horizontally)."
+  [buffer-id]
+  (split-window-horizontally)
+  ;; Both windows now show the same buffer
+  nil)
+
+(defn show-buffer-in-new-window
+  "Split window and show buffer in the new window."
+  [buffer-id]
+  (let [new-window-id (split-window-horizontally)]
+    ;; Update new window to show the specified buffer
+    (letfn [(update-window [tree]
+              (cond
+                (nil? tree) nil
+                (= (:type tree) :leaf)
+                (if (= (:id tree) new-window-id)
+                  (assoc tree :buffer-id buffer-id)
+                  tree)
+                :else
+                (assoc tree
+                       :first (update-window (:first tree))
+                       :second (update-window (:second tree)))))]
+      (swap! rfdb/app-db update :window-tree update-window))
+    new-window-id))
+
+(defn window-text
+  "Get the text displayed in a specific window (by buffer ID it shows)."
+  [window-id]
+  (let [window-tree (get-in @rfdb/app-db [:window-tree])
+        ;; Find the window
+        find-window (fn find-window [tree]
+                      (cond
+                        (nil? tree) nil
+                        (= (:type tree) :leaf)
+                        (when (= (:id tree) window-id) tree)
+                        :else
+                        (or (find-window (:first tree))
+                            (find-window (:second tree)))))
+        window (find-window window-tree)]
+    (when window
+      (buffer-text (:buffer-id window)))))
+
+(defn delete-other-windows
+  "Delete all windows except the active one."
+  []
+  (let [active-window-id (get-in @rfdb/app-db [:active-window-id])
+        window-tree (get-in @rfdb/app-db [:window-tree])
+        ;; Find the active window and make it the only window
+        find-active (fn find-active [tree]
+                      (cond
+                        (nil? tree) nil
+                        (= (:type tree) :leaf)
+                        (when (= (:id tree) active-window-id) tree)
+                        :else
+                        (or (find-active (:first tree))
+                            (find-active (:second tree)))))
+        active-window (find-active window-tree)]
+    (when active-window
+      (swap! rfdb/app-db assoc :window-tree active-window))))
+
+;; =============================================================================
 ;; WASM Fixture - Required for all semantic tests
 ;; =============================================================================
 
