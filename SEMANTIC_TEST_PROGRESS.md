@@ -1,10 +1,14 @@
 # Semantic Compatibility Test Conversion Progress
 
-**Status:** 10/34 tests passing (29%)
+**Status:** 15/34 tests passing (44%)
 
 **Date:** 2026-01-17
 
-## Completed Tests (10)
+## 🎯 VERTICO GATE PASSED
+
+The minibuffer-is-a-buffer test is passing! This validates the core architectural requirement for Vertico compatibility.
+
+## Completed Tests (15)
 
 ### Buffer-File Semantics (4 tests)
 - ✅ `buffer-can-exist-without-file` - Buffers don't require files
@@ -20,8 +24,16 @@
 - ✅ `messages-are-buffer-backed-editor-state` - Messages in *Messages* buffer
 - ✅ `message-appends-to-history-but-updates-echo-area` - Echo area persistence
 
-### Core Semantics (2 tests)
-- ✅ `buffer-identity-is-stable-across-content` - (duplicate test, should remove)
+### Command System (2 tests)
+- ✅ `command-has-metadata-and-identity` - Commands are inspectable entities
+- ✅ `all-command-invocations-go-through-dispatch` - Dispatch is mandatory
+
+### Window Management (2 tests)
+- ✅ `buffer-identity-is-stable-across-views` - Buffer mutations visible through all windows
+- ✅ `window-deletion-preserves-buffer-identity` - Deleting windows doesn't kill buffers
+
+### Minibuffer System (1 test) 🎯
+- ✅ `minibuffer-is-a-buffer` - **VERTICO GATE** - Minibuffer is a real buffer
 
 ## Infrastructure Fixes Completed
 
@@ -32,7 +44,7 @@
 5. **WASM Loading** - Working test fixture with async loading
 6. **System Buffers** - Preserve *scratch* and *Messages* across test resets
 
-## Test Helpers Implemented (13 functions)
+## Test Helpers Implemented (24 functions)
 
 - `reset-editor-db!` - Clean slate with WASM/buffers preserved
 - `create-buffer` - Create buffer with content, display in active window
@@ -46,9 +58,25 @@
 - `current-buffer` - Get active buffer ID
 - `point` - Get buffer point (character position)
 - `set-point` - Set buffer point
+- `define-test-command` - Define command with metadata
+- `command-name` - Get command name
+- `command-doc` - Get command documentation
+- `command-fn` - Get command function
+- `invoke-command` - Invoke command by name
+- `with-instrumented-dispatch` - Track dispatch usage
+- `dispatch-was-used?` - Check if dispatch was used
+- `split-window-horizontally` - Split window side-by-side
+- `show-buffer-in-two-windows` - Display buffer in two windows
+- `show-buffer-in-new-window` - Split and show buffer
+- `window-text` - Get text in specific window
+- `delete-other-windows` - Delete all but active window
+- `activate-minibuffer` - Activate minibuffer (creates buffer)
+- `deactivate-minibuffer` - Deactivate minibuffer (preserves buffer)
+- `minibuffer-insert` - Insert text in minibuffer
+- `minibuffer-contents` - Get minibuffer contents
 - `with-wasm` - Fixture for WASM loading
 
-## Remaining Tests (24)
+## Remaining Tests (19)
 
 ### Cannot Convert Yet - Missing Core Features
 
@@ -62,16 +90,12 @@
 - `undo-boundary-test`
 - `undo-integration-test`
 
-**Command System (4 tests)** - Needs command registry/dispatch
-- `command-has-metadata-and-identity`
-- `all-command-invocations-go-through-dispatch`
+**Command System (2 tests)** - Needs SCI integration
 - `command-definition-test`
 - `error-isolation-test`
 
-**Window Management (3 tests)** - Needs split/delete window ops
-- `buffer-identity-is-stable-across-views`
-- `window-deletion-preserves-buffer-identity`
-- `window-tree-invariants`
+**Window Management (1 test)** - Needs validation
+- `window-tree-is-a-binary-partition`
 
 **Keymap System (2 tests)** - Needs keymap implementation
 - `local-keymap-shadows-global-keymap`
