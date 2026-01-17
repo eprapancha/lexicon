@@ -214,3 +214,53 @@
            ;; Unknown key sequence - clear state and ignore
            :else
            {:fx [[:dispatch [:clear-prefix-key-state]]]}))))))
+
+;; -- Simple Test API Events --
+;; These provide a simple interface for tests to set keybindings directly
+
+(rf/reg-event-db
+ :keymap/set-global
+ (fn [db [_ key-sequence command]]
+   "Set a global keybinding (test API).
+
+   Args:
+     key-sequence - String like \"C-x C-f\"
+     command - Keyword or function to invoke"
+   (assoc-in db [:keymaps :global :bindings key-sequence] command)))
+
+(rf/reg-event-db
+ :keymap/set-local
+ (fn [db [_ buffer-id key-sequence command]]
+   "Set a buffer-local keybinding (test API).
+
+   Args:
+     buffer-id - Buffer to set binding for
+     key-sequence - String like \"C-x C-f\"
+     command - Keyword or function to invoke"
+   (assoc-in db [:buffers buffer-id :local-keymap key-sequence] command)))
+
+(rf/reg-event-db
+ :input/keys
+ (fn [db [_ key-sequence]]
+   "Simulate key input for testing (test API).
+
+   Accumulates in :pending-keys until a complete binding is found.
+
+   Args:
+     key-sequence - String like \"C-x\" or \"C-f\""
+   (let [pending (get-in db [:pending-keys] "")
+         full-sequence (str pending key-sequence)
+         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id (:buffer-id active-window)
+
+         ;; Try to resolve: buffer-local first, then global
+         command (or (get-in db [:buffers buffer-id :local-keymap full-sequence])
+                     (get-in db [:keymaps :global :bindings full-sequence]))]
+
+     (if command
+       ;; Found complete binding - invoke and clear
+       (-> db
+           (assoc :last-invoked-command command)
+           (assoc :pending-keys ""))
+       ;; No complete binding - accumulate
+       (assoc db :pending-keys full-sequence)))))
