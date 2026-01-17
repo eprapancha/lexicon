@@ -15,17 +15,13 @@
 (deftest ^:critical defcommand-registers-editor-command
   (testing "Emacs invariant: Commands defined from Lisp are first-class"
     (h/reset-editor-db!)
-    ;; TODO: Implement eval-lisp helper and defcommand support
-    ;; For now, this will fail
-    ;; (h/eval-lisp
-    ;;  '(defcommand hello ()
-    ;;     "Say hello"
-    ;;     (message "hello")))
-    ;; (h/invoke-command 'hello)
-    ;; (is (re-find #"hello" (h/echo-area-text)))
-
-    ;; Placeholder assertion until SCI integration is implemented
-    (is false "SCI integration not yet implemented - defcommand unavailable")))
+    ;; Define command via eval-lisp
+    (h/eval-lisp "(defcommand 'hello (fn [] (message \"hello\")) \"Say hello\")")
+    ;; Invoke the command
+    (h/invoke-command 'hello)
+    ;; Check that message was displayed
+    (is (re-find #"hello" (h/echo-area-text))
+        "Command defined via defcommand should execute and display message")))
 
 ;; =============================================================================
 ;; Error Isolation Tests
@@ -39,15 +35,10 @@
       ;; Capture state before error
       (let [text-before (h/buffer-text buf)
             point-before (h/point buf)]
-        ;; TODO: Implement eval-lisp and editor-snapshot helpers
-        ;; (try
-        ;;   (h/eval-lisp '(+ 1 :boom))
-        ;;   (catch :default _))
-        ;; Verify state unchanged
+        ;; Evaluate invalid Lisp code that will error
+        (h/eval-lisp "(+ 1 :boom)")
+        ;; Verify state unchanged despite error
         (is (= text-before (h/buffer-text buf))
             "Buffer text should be unchanged after Lisp error")
         (is (= point-before (h/point buf))
-            "Point should be unchanged after Lisp error")))
-
-    ;; Placeholder - will fail until SCI is integrated
-    (is false "SCI integration not yet implemented - error isolation untestable")))
+            "Point should be unchanged after Lisp error")))))

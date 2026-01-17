@@ -40,6 +40,28 @@
    'buffer-size buf/buffer-size
    'buffer-local-value buf/buffer-local-value})
 
+;; Store for command function bodies
+(defonce command-functions (atom {}))
+
+(defn defcommand-impl
+  "Implementation of defcommand function for SCI.
+
+  Usage: (defcommand 'hello (fn [] (message \"hello\")) \"Doc\")
+
+  Registers command that can be invoked via invoke-command."
+  [cmd-name cmd-fn doc-str]
+  (let [;; Convert symbol to keyword for command registry
+        cmd-keyword (if (symbol? cmd-name) (keyword cmd-name) cmd-name)
+        command-def {:name cmd-keyword
+                     :doc (or doc-str "")
+                     :handler [:sci/eval-command cmd-keyword]
+                     :fn cmd-fn}]
+    ;; Store function for execution
+    (swap! command-functions assoc cmd-keyword cmd-fn)
+    ;; Register command
+    (rf/dispatch-sync [:register-command cmd-keyword command-def])
+    cmd-keyword))
+
 (defonce sci-context
   ;; SCI evaluation context with allowed namespaces.
   ;;
@@ -50,7 +72,9 @@
   ;; - No eval, Function, network access, or timers
   (sci/init {:namespaces {'lexicon.core lexicon-api-namespace
                           'lexicon.api.buffer lexicon-api-namespace
-                          'lexicon.api.message {'message msg/message}}
+                          'lexicon.api.message {'message msg/message}
+                          'user (merge lexicon-api-namespace
+                                       {'defcommand defcommand-impl})}
              :classes {'js {'Math js/Math         ; Allow Math for arithmetic
                             'Date js/Date          ; Allow Date for timestamps
                             'console js/console}   ; Allow console for debugging
@@ -201,6 +225,20 @@
                                     (rf/dispatch [:eval/string input]))
                       :initial-input ""
                       :allow-empty? false}]]]}))
+
+(rf/reg-event-db
+  :sci/eval-command
+  (fn [db [_ cmd-name]]
+    "Execute a command defined via defcommand in SCI."
+    (let [cmd-fn (get @command-functions cmd-name)]
+      (when cmd-fn
+        (try
+          ;; Call the command function
+          (cmd-fn)
+          (catch :default e
+            (.error js/console "Command error:" (ex-message e))))))
+    ;; Return the current db state (which may have been modified by swap! in message)
+    @re-frame.db/app-db))
 
 ;; =============================================================================
 ;; Command Registration

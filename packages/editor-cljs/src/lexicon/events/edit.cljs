@@ -857,7 +857,11 @@
              ;; Filter edit and marker entries
              undoable-entries (filter #(#{:edit :marker} (:type %)) entries)
              ;; Reverse order for undo
-             reversed-entries (reverse undoable-entries)]
+             reversed-entries (reverse undoable-entries)
+             ;; Find point marker to restore
+             marker-entry (first (filter #(and (= (:type %) :marker)
+                                                (= (:marker-id %) :point))
+                                          reversed-entries))]
 
          ;; Apply undo entries
          (doseq [entry reversed-entries]
@@ -867,13 +871,16 @@
                :marker nil
                nil)))
 
-         ;; Update db with new undo/redo stacks
+         ;; Update db with new undo/redo stacks AND restore point
          (let [new-db (-> db
                           (assoc-in [:buffers buffer-id :undo-stack]
                                     (subvec undo-stack 0 boundary-index))
                           (update-in [:buffers buffer-id :redo-stack]
                                      (fn [redo]
-                                       (conj (or redo []) {:entries entries :boundary-index boundary-index}))))]
+                                       (conj (or redo []) {:entries entries :boundary-index boundary-index})))
+                          ;; Restore point from marker if present
+                          (cond-> marker-entry
+                            (assoc-in [:buffers buffer-id :point] (:old-pos marker-entry))))]
            {:db new-db}))
        {:db db}))))
 

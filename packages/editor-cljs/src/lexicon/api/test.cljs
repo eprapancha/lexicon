@@ -9,7 +9,8 @@
   ⚠️  Direct access to @rfdb/app-db is FORBIDDEN in tests."
   (:require [re-frame.core :as rf]
             [re-frame.db]
-            [lexicon.api.message :as api-msg]))
+            [lexicon.api.message :as api-msg]
+            [lexicon.eval :as eval]))
 
 ;; =============================================================================
 ;; Buffer Operations
@@ -112,6 +113,13 @@
   [buffer-id]
   ;; TODO: Implement :edit/undo event
   (rf/dispatch-sync [:edit/undo buffer-id]))
+
+(defn undo-boundary!
+  "Insert undo boundary in buffer.
+
+  Groups operations between boundaries into single undo unit."
+  [buffer-id]
+  (rf/dispatch-sync [:undo/boundary buffer-id]))
 
 ;; =============================================================================
 ;; Mode Operations
@@ -278,6 +286,44 @@
   (rf/dispatch-sync [:register-command name command-def]))
 
 (defn invoke-command!
-  "Invoke command by name."
+  "Invoke command by name (symbol or keyword).
+
+  For test synchronicity, directly dispatches the command handler
+  instead of going through :execute-command which uses async fx."
   [command-name & args]
-  (rf/dispatch-sync (into [:execute-command command-name] args)))
+  (let [cmd-keyword (if (symbol? command-name) (keyword command-name) command-name)
+        command-def (get-in @re-frame.db/app-db [:commands cmd-keyword])
+        handler (:handler command-def)]
+    (if handler
+      ;; Directly dispatch the handler synchronously for tests
+      (rf/dispatch-sync (into handler args))
+      (.error js/console "Command not found:" cmd-keyword))))
+
+;; =============================================================================
+;; SCI/Lisp Operations
+;; =============================================================================
+
+(defn eval-lisp
+  "Evaluate Lisp code (string).
+
+  Returns: {:success true :result value} or {:success false :error e}"
+  [code-str]
+  (eval/eval-string code-str))
+
+;; =============================================================================
+;; File Operations
+;; =============================================================================
+
+(defn save-buffer!
+  "Save buffer to its associated file.
+
+  Buffer must have a file association via set-buffer-file!."
+  [buffer-id]
+  (rf/dispatch-sync [:save-buffer buffer-id]))
+
+(defn revert-buffer!
+  "Revert buffer to contents from disk.
+
+  Discards all unsaved changes and reloads from file."
+  [buffer-id]
+  (rf/dispatch-sync [:revert-buffer buffer-id]))

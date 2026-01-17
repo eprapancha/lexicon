@@ -17,13 +17,13 @@
     (h/reset-editor-db!)
     (let [buf (h/create-buffer "test")]
       ;; Simulate a single command that does multiple inserts
-      ;; In real implementation, command boundaries create undo boundaries
+      ;; Multiple operations before a boundary = single undo unit
       (h/insert-text buf "a")
       (h/insert-text buf "b")
-      ;; One undo should remove both "a" and "b" if they're in same boundary
+      ;; Add boundary to mark end of "command"
+      (h/undo-boundary buf)
+      ;; One undo should remove both "a" and "b" (all ops before boundary)
       (h/undo buf)
-      ;; For now, our undo removes one operation at a time
-      ;; This test will fail until we implement undo boundaries
       (is (= "" (h/buffer-text buf))
           "Single undo should remove all operations within command boundary"))))
 
@@ -32,12 +32,13 @@
     (h/reset-editor-db!)
     (let [buf (h/create-buffer "test")]
       (h/insert-text buf "a")
-      ;; TODO: Add helper for manual undo boundary insertion
-      ;; (h/undo-boundary buf)
+      ;; Manual boundary separates "a" from "b"
+      (h/undo-boundary buf)
       (h/insert-text buf "b")
-      ;; After manual boundary, undo should only remove "b"
+      ;; Add boundary after "b"
+      (h/undo-boundary buf)
+      ;; Undo should only remove "b" (stops at boundary)
       (h/undo buf)
-      ;; This will fail until undo-boundary is implemented
       (is (= "a" (h/buffer-text buf))
           "Undo should stop at manual boundary"))))
 

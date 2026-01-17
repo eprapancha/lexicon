@@ -7,6 +7,7 @@
   - Flashes in minibuffer for 2 seconds
   - Returns the message string"
   (:require [re-frame.core :as rf]
+            [re-frame.db :as rfdb]
             [lexicon.log :as log]))
 
 (defn message
@@ -37,8 +38,8 @@
     (log/info msg)
 
     ;; Flash in minibuffer (separate from logging)
-    ;; Use dispatch-sync so message is immediately visible (important for tests and predictability)
-    (rf/dispatch-sync [:minibuffer/flash-message msg])
+    ;; Directly update db to avoid dispatch-sync issues when called from event handlers
+    (swap! rfdb/app-db assoc-in [:minibuffer :message] msg)
     msg))
 
 (comment

@@ -1499,23 +1499,33 @@
                        " pos=" position
                        " after=" (pr-str buffer-text-after))]
        ;; Record undo entry directly (synchronous for tests)
+       ;; NOTE: Boundaries are added by commands, not by individual operations
        (let [should-record? (and wasm-instance (not read-only?))
              recording-enabled? (get-in db [:undo :recording-enabled?] true)
+             current-point (get-in db [:buffers buffer-id :point] 0)
+             ;; Point should move forward by length of inserted text
+             point-after-insert (+ position (count text))
              new-db (if (and should-record? recording-enabled?)
-                      (let [undo-entry {:type :edit
+                      (let [;; Record point before the edit (for undo restoration)
+                            marker-entry {:type :marker
+                                          :marker-id :point
+                                          :old-pos current-point
+                                          :new-pos point-after-insert}
+                            undo-entry {:type :edit
                                         :op :insert
                                         :position position
                                         :text text}
                             stack (get-in db [:buffers buffer-id :undo-stack] [])
-                            last-entry (peek stack)
-                            ;; Add boundary if stack isn't empty and last entry isn't boundary
-                            should-add-boundary? (and (seq stack)
-                                                      (not= (:type last-entry) :boundary))
-                            updated-stack (cond-> (conj stack undo-entry)
-                                            should-add-boundary?
-                                            (conj {:type :boundary}))]
-                        (assoc-in db [:buffers buffer-id :undo-stack] updated-stack))
-                      db)]
+                            ;; Add marker, then edit entry
+                            updated-stack (-> stack
+                                              (conj marker-entry)
+                                              (conj undo-entry))]
+                        (-> db
+                            (assoc-in [:buffers buffer-id :undo-stack] updated-stack)
+                            ;; Update point after insertion (Emacs semantics)
+                            (assoc-in [:buffers buffer-id :point] point-after-insert)))
+                      ;; Even if not recording, still update point
+                      (assoc-in db [:buffers buffer-id :point] point-after-insert))]
          {:db new-db})))))
 
 (rf/reg-event-fx

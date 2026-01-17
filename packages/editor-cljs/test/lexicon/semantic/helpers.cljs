@@ -15,6 +15,7 @@
             [lexicon.db :as db]
             [lexicon.test-setup :as setup]
             [lexicon.api.test :as api]
+            [lexicon.effects]
             [lexicon.effects.log]))
 
 ;; =============================================================================
@@ -157,6 +158,11 @@
   Will fail until :edit/undo event is implemented."
   [buffer-id]
   (api/undo! buffer-id))
+
+(defn undo-boundary
+  "Insert undo boundary - uses API."
+  [buffer-id]
+  (api/undo-boundary! buffer-id))
 
 ;; =============================================================================
 ;; Modes - Uses API (will fail until implemented)
@@ -324,6 +330,31 @@
   "Get last command - uses API."
   []
   (api/last-invoked-command))
+
+;; =============================================================================
+;; SCI/Lisp Integration - Uses API
+;; =============================================================================
+
+(defn eval-lisp
+  "Evaluate Lisp code - uses API.
+
+  Returns: {:success true :result value} or {:success false :error e}"
+  [code-str]
+  (api/eval-lisp code-str))
+
+;; =============================================================================
+;; File Operations - Uses API
+;; =============================================================================
+
+(defn save-buffer
+  "Save buffer - uses API."
+  [buffer-id]
+  (api/save-buffer! buffer-id))
+
+(defn revert-buffer
+  "Revert buffer - uses API."
+  [buffer-id]
+  (api/revert-buffer! buffer-id))
 
 ;; =============================================================================
 ;; Messages - Uses API

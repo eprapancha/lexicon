@@ -119,10 +119,21 @@
 
 ;; -- Undo Execution --
 
-(defn find-previous-boundary
-  "Find index of previous undo boundary in STACK starting from INDEX.
+(defn skip-trailing-boundaries
+  "Skip any trailing boundaries from end of stack.
 
-  Returns: Index of boundary or 0 if no boundary found"
+  Returns: Index of first non-boundary from end (or index if no boundaries)"
+  [stack index]
+  (loop [i (dec index)]
+    (cond
+      (< i 0) 0
+      (= (:type (nth stack i)) :boundary) (recur (dec i))
+      :else (inc i))))  ; Return index AFTER the non-boundary
+
+(defn find-previous-boundary
+  "Find index of previous boundary, starting from INDEX and going backwards.
+
+  Returns: Index of the boundary (or 0 if not found)"
   [stack index]
   (loop [i (dec index)]
     (cond
@@ -131,14 +142,24 @@
       :else (recur (dec i)))))
 
 (defn extract-undo-group
-  "Extract entries between INDEX and previous boundary in STACK.
+  "Extract entries between boundaries for undo.
+
+  Steps:
+  1. Skip any trailing boundaries
+  2. Extract from after previous boundary to end
+  3. Return entries and where to truncate stack
 
   Returns: {:entries [...] :boundary-index N}"
   [stack index]
-  (let [boundary-index (find-previous-boundary stack index)
-        entries (subvec stack boundary-index index)]
+  (let [;; Skip trailing boundaries to find actual edit operations
+        end-index (skip-trailing-boundaries stack index)
+        ;; Find the boundary before these operations
+        boundary-idx (find-previous-boundary stack end-index)
+        ;; Extract from after boundary to end
+        start-index (if (pos? boundary-idx) (inc boundary-idx) 0)
+        entries (subvec stack start-index end-index)]
     {:entries entries
-     :boundary-index boundary-index}))
+     :boundary-index boundary-idx}))
 
 (defn invert-undo-entry
   "Invert ENTRY for redo.
