@@ -1,6 +1,6 @@
 # Semantic Compatibility Test Conversion Progress
 
-**Status:** 15/34 tests passing (44%)
+**Status:** 18/34 tests passing (53%)
 
 **Date:** 2026-01-17
 
@@ -8,7 +8,7 @@
 
 The minibuffer-is-a-buffer test is passing! This validates the core architectural requirement for Vertico compatibility.
 
-## Completed Tests (15)
+## Completed Tests (18)
 
 ### Buffer-File Semantics (4 tests)
 - ✅ `buffer-can-exist-without-file` - Buffers don't require files
@@ -35,6 +35,13 @@ The minibuffer-is-a-buffer test is passing! This validates the core architectura
 ### Minibuffer System (1 test) 🎯
 - ✅ `minibuffer-is-a-buffer` - **VERTICO GATE** - Minibuffer is a real buffer
 
+### Mode System (2 tests)
+- ✅ `exactly-one-major-mode-per-buffer` - Only one major mode per buffer
+- ✅ `multiple-minor-modes-can-coexist` - Minor modes are composable
+
+### Read-Only Buffers (1 test)
+- ✅ `read-only-buffer-prevents-modification` - Read-only buffers reject edits
+
 ## Infrastructure Fixes Completed
 
 1. **CORS/WebSocket** - Skip WebSocket/parser in test mode (port 8021)
@@ -44,7 +51,7 @@ The minibuffer-is-a-buffer test is passing! This validates the core architectura
 5. **WASM Loading** - Working test fixture with async loading
 6. **System Buffers** - Preserve *scratch* and *Messages* across test resets
 
-## Test Helpers Implemented (24 functions)
+## Test Helpers Implemented (30 functions)
 
 - `reset-editor-db!` - Clean slate with WASM/buffers preserved
 - `create-buffer` - Create buffer with content, display in active window
@@ -74,9 +81,15 @@ The minibuffer-is-a-buffer test is passing! This validates the core architectura
 - `deactivate-minibuffer` - Deactivate minibuffer (preserves buffer)
 - `minibuffer-insert` - Insert text in minibuffer
 - `minibuffer-contents` - Get minibuffer contents
+- `set-read-only` - Set buffer read-only flag
+- `enable-major-mode` - Set major mode
+- `current-major-mode` - Get major mode
+- `enable-minor-mode` - Enable minor mode
+- `minor-mode-enabled?` - Check minor mode
+- `with-buffer` - Macro to execute code in buffer context
 - `with-wasm` - Fixture for WASM loading
 
-## Remaining Tests (19)
+## Remaining Tests (16)
 
 ### Cannot Convert Yet - Missing Core Features
 
