@@ -1,8 +1,8 @@
 # Semantic Compatibility Test Conversion Progress
 
-**Status:** ~10/34 tests passing (29%) - HONEST BASELINE after cleanup
+**Status:** 23/34 tests passing (68%)
 
-**Date:** 2026-01-17
+**Date:** 2026-01-17 (Updated 12:30 PM)
 
 ## ⚠️ NUCLEAR RESET - Honest Assessment
 
@@ -20,7 +20,7 @@ See `SEMANTIC_TEST_AUDIT.md` for full details.
 
 The minibuffer-is-a-buffer test was previously "passing" but using fake minibuffer activation logic in helpers. Real status unknown until proper implementation.
 
-## Completed Tests (21)
+## Completed Tests (23)
 
 ### Buffer-File Semantics (4 tests)
 - ✅ `buffer-can-exist-without-file` - Buffers don't require files
@@ -54,14 +54,19 @@ The minibuffer-is-a-buffer test was previously "passing" but using fake minibuff
 ### Read-Only Buffers (1 test)
 - ✅ `read-only-buffer-prevents-modification` - Read-only buffers reject edits
 
-### Kill Ring (1 test)
+### Kill Ring (2 tests)
 - ✅ `kill-ring-is-global` - Kill ring is shared across all buffers
+- ✅ `consecutive-kills-append` - Consecutive kills append to single kill ring entry
 
 ### Window Tree (1 test)
 - ✅ `window-tree-is-a-binary-partition` - Window splits form binary tree structure
 
 ### Undo System (1 test)
 - ✅ `undo-is-buffer-local` - Undo history belongs to buffer, not editor
+
+### Keymap System (2 tests)
+- ✅ `local-keymap-shadows-global-keymap` - Local keymaps override global
+- ✅ `prefix-key-waits-for-completion` - Prefix keys don't invoke eagerly
 
 ## Infrastructure Fixes Completed
 
@@ -113,12 +118,9 @@ The minibuffer-is-a-buffer test was previously "passing" but using fake minibuff
 - `with-buffer` - Macro to execute code in buffer context
 - `with-wasm` - Fixture for WASM loading
 
-## Remaining Tests (13)
+## Remaining Tests (11)
 
 ### Cannot Convert Yet - Missing Core Features
-
-**Kill Ring (1 test)** - Needs consecutive kill appending
-- `consecutive-kills-append`
 
 **Undo System (3 tests)** - Needs redo and undo boundaries
 - `undo-is-not-destructive`
@@ -128,10 +130,6 @@ The minibuffer-is-a-buffer test was previously "passing" but using fake minibuff
 **Command System (2 tests)** - Needs SCI integration
 - `command-definition-test`
 - `error-isolation-test`
-
-**Keymap System (2 tests)** - Needs keymap implementation
-- `local-keymap-shadows-global-keymap`
-- `prefix-key-waits-for-completion`
 
 **Filesystem (5 tests)** - Needs async file I/O
 - `async-io-test`
