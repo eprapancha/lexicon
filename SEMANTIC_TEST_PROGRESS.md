@@ -1,6 +1,6 @@
 # Semantic Compatibility Test Conversion Progress
 
-**Status:** 18/34 tests passing (53%)
+**Status:** 21/34 tests passing (62%)
 
 **Date:** 2026-01-17
 
@@ -8,7 +8,7 @@
 
 The minibuffer-is-a-buffer test is passing! This validates the core architectural requirement for Vertico compatibility.
 
-## Completed Tests (18)
+## Completed Tests (21)
 
 ### Buffer-File Semantics (4 tests)
 - ✅ `buffer-can-exist-without-file` - Buffers don't require files
@@ -42,6 +42,15 @@ The minibuffer-is-a-buffer test is passing! This validates the core architectura
 ### Read-Only Buffers (1 test)
 - ✅ `read-only-buffer-prevents-modification` - Read-only buffers reject edits
 
+### Kill Ring (1 test)
+- ✅ `kill-ring-is-global` - Kill ring is shared across all buffers
+
+### Window Tree (1 test)
+- ✅ `window-tree-is-a-binary-partition` - Window splits form binary tree structure
+
+### Undo System (1 test)
+- ✅ `undo-is-buffer-local` - Undo history belongs to buffer, not editor
+
 ## Infrastructure Fixes Completed
 
 1. **CORS/WebSocket** - Skip WebSocket/parser in test mode (port 8021)
@@ -51,12 +60,12 @@ The minibuffer-is-a-buffer test is passing! This validates the core architectura
 5. **WASM Loading** - Working test fixture with async loading
 6. **System Buffers** - Preserve *scratch* and *Messages* across test resets
 
-## Test Helpers Implemented (30 functions)
+## Test Helpers Implemented (33 functions)
 
 - `reset-editor-db!` - Clean slate with WASM/buffers preserved
 - `create-buffer` - Create buffer with content, display in active window
 - `buffer-text` - Get buffer content by ID or name
-- `insert-text` - Insert at end of buffer
+- `insert-text` - Insert at end of buffer (records undo entries)
 - `buffer-file` - Get file association
 - `buffer-exists?` - Check if buffer exists by name
 - `message` - Display message in echo area + *Messages*
@@ -86,19 +95,20 @@ The minibuffer-is-a-buffer test is passing! This validates the core architectura
 - `current-major-mode` - Get major mode
 - `enable-minor-mode` - Enable minor mode
 - `minor-mode-enabled?` - Check minor mode
+- `kill-region` - Kill text and add to kill ring
+- `yank` - Yank most recent kill
+- `undo` - Undo last change in buffer
 - `with-buffer` - Macro to execute code in buffer context
 - `with-wasm` - Fixture for WASM loading
 
-## Remaining Tests (16)
+## Remaining Tests (13)
 
 ### Cannot Convert Yet - Missing Core Features
 
-**Kill Ring (2 tests)** - Needs kill/yank implementation
-- `kill-ring-is-global`
+**Kill Ring (1 test)** - Needs consecutive kill appending
 - `consecutive-kills-append`
 
-**Undo System (4 tests)** - Needs undo/redo implementation
-- `undo-is-buffer-local`
+**Undo System (3 tests)** - Needs redo and undo boundaries
 - `undo-is-not-destructive`
 - `undo-boundary-test`
 - `undo-integration-test`
@@ -106,9 +116,6 @@ The minibuffer-is-a-buffer test is passing! This validates the core architectura
 **Command System (2 tests)** - Needs SCI integration
 - `command-definition-test`
 - `error-isolation-test`
-
-**Window Management (1 test)** - Needs validation
-- `window-tree-is-a-binary-partition`
 
 **Keymap System (2 tests)** - Needs keymap implementation
 - `local-keymap-shadows-global-keymap`
