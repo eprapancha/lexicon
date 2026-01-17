@@ -8,11 +8,17 @@
   ⚠️  Tests MUST use only these functions.
   ⚠️  Direct access to @rfdb/app-db is FORBIDDEN in tests."
   (:require [re-frame.core :as rf]
+            [re-frame.db]
             [lexicon.api.message :as api-msg]))
 
 ;; =============================================================================
 ;; Buffer Operations
 ;; =============================================================================
+
+(defn insert-text!
+  "Insert text at position in buffer."
+  [buffer-id position text]
+  (rf/dispatch-sync [:buffer/insert buffer-id position text]))
 
 (defn create-buffer!
   "Create a new buffer with name and optional content.
@@ -21,21 +27,30 @@
   ([name]
    (create-buffer! name ""))
   ([name content]
-   ;; TODO: Update :create-buffer event to accept content parameter
-   (rf/dispatch-sync [:create-buffer name])
-   ;; Return buffer ID from event result
-   ;; For now, return nil - tests will need to query
-   nil))
-
-(defn insert-text!
-  "Insert text at position in buffer."
-  [buffer-id position text]
-  (rf/dispatch-sync [:buffer/insert buffer-id position text]))
+   ;; Create WASM instance
+   (let [WasmGapBuffer (get-in @re-frame.db/app-db [:system :wasm-constructor])
+         wasm-instance (when WasmGapBuffer (new WasmGapBuffer (or content "")))]
+     (when wasm-instance
+       ;; Dispatch buffer creation with WASM instance
+       (rf/dispatch-sync [:create-buffer name wasm-instance])
+       ;; Find the buffer by name and return its ID
+       (let [buffers (get-in @re-frame.db/app-db [:buffers])]
+         (->> buffers
+              vals
+              (filter #(= name (:name %)))
+              first
+              :id))))))
 
 (defn buffer-text
   "Get text content of buffer."
   [buffer-id]
-  @(rf/subscribe [:buffer/text buffer-id]))
+  ;; TODO: Use subscription when implemented
+  ;; For now, direct query (temporary)
+  (let [buffer (get-in @re-frame.db/app-db [:buffers buffer-id])
+        wasm-instance (:wasm-instance buffer)]
+    (when wasm-instance
+      (try (.getText ^js wasm-instance)
+           (catch js/Error _ "")))))
 
 (defn set-buffer-file!
   "Associate file path with buffer."
@@ -46,7 +61,8 @@
 (defn buffer-file
   "Get file path associated with buffer."
   [buffer-id]
-  @(rf/subscribe [:buffer/file buffer-id]))
+  ;; TODO: Use subscription when implemented
+  (get-in @re-frame.db/app-db [:buffers buffer-id :file-handle]))
 
 (defn set-read-only!
   "Set read-only flag for buffer."
@@ -61,7 +77,8 @@
 (defn point
   "Get point (cursor position) for buffer."
   [buffer-id]
-  @(rf/subscribe [:buffer/point buffer-id]))
+  ;; TODO: Use subscription when implemented
+  (get-in @re-frame.db/app-db [:buffers buffer-id :point] 0))
 
 (defn set-point!
   "Set point for buffer."
@@ -109,7 +126,8 @@
 (defn major-mode
   "Get major mode of buffer."
   [buffer-id]
-  @(rf/subscribe [:buffer/major-mode buffer-id]))
+  ;; TODO: Use subscription when implemented
+  (get-in @re-frame.db/app-db [:buffers buffer-id :major-mode]))
 
 (defn enable-minor-mode!
   "Enable minor mode for buffer."
@@ -120,7 +138,8 @@
 (defn minor-mode-enabled?
   "Check if minor mode is enabled in buffer."
   [buffer-id mode-symbol]
-  @(rf/subscribe [:buffer/minor-mode-enabled? buffer-id mode-symbol]))
+  ;; TODO: Use subscription when implemented
+  (contains? (get-in @re-frame.db/app-db [:buffers buffer-id :minor-modes] #{}) mode-symbol))
 
 ;; =============================================================================
 ;; Window Operations
@@ -143,7 +162,18 @@
 (defn current-buffer
   "Get ID of buffer in active window."
   []
-  @(rf/subscribe [:window/active-buffer]))
+  ;; TODO: Use subscription when implemented
+  (let [active-window-id (get-in @re-frame.db/app-db [:active-window-id])
+        window-tree (get-in @re-frame.db/app-db [:window-tree])
+        find-window (fn find-window [tree id]
+                      (cond
+                        (nil? tree) nil
+                        (= (:id tree) id) tree
+                        (= (:type tree) :leaf) nil
+                        :else (or (find-window (:first tree) id)
+                                  (find-window (:second tree) id))))]
+    (when-let [window (find-window window-tree active-window-id)]
+      (:buffer-id window))))
 
 ;; =============================================================================
 ;; Minibuffer Operations
@@ -182,7 +212,9 @@
 (defn lookup-key
   "Look up command for key sequence in buffer context."
   [buffer-id key-sequence]
-  @(rf/subscribe [:keymap/lookup buffer-id key-sequence]))
+  ;; TODO: Use subscription when implemented
+  (or (get-in @re-frame.db/app-db [:buffers buffer-id :local-keymap key-sequence])
+      (get-in @re-frame.db/app-db [:keymaps :global key-sequence])))
 
 (defn press-keys!
   "Simulate key sequence input."
@@ -193,12 +225,14 @@
 (defn in-prefix-state?
   "Check if waiting for key sequence completion."
   []
-  @(rf/subscribe [:input/prefix-state?]))
+  ;; TODO: Use subscription when implemented
+  (seq (get-in @re-frame.db/app-db [:pending-keys])))
 
 (defn last-invoked-command
   "Get last command invoked via key sequence."
   []
-  @(rf/subscribe [:input/last-command]))
+  ;; TODO: Use subscription when implemented
+  (get-in @re-frame.db/app-db [:last-invoked-command]))
 
 ;; =============================================================================
 ;; Message Operations
@@ -212,7 +246,8 @@
 (defn echo-area-text
   "Get current echo area text."
   []
-  @(rf/subscribe [:minibuffer/message]))
+  ;; TODO: Use subscription when implemented
+  (get-in @re-frame.db/app-db [:minibuffer :message]))
 
 ;; =============================================================================
 ;; Command System

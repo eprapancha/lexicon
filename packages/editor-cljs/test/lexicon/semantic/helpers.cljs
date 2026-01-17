@@ -57,36 +57,23 @@
 (defn create-buffer
   "Create buffer using API.
 
-  NOTE: Current API doesn't return buffer ID, so we need to find it by name.
-  This is a test helper limitation, not bypassing logic."
+  Returns buffer ID from API."
   ([name]
    (create-buffer name ""))
   ([name content]
-   (api/create-buffer! name content)
-   ;; Find buffer by name (query is OK)
-   (let [buffers (get-in @rfdb/app-db [:buffers])]
-     (->> buffers
-          vals
-          (filter #(= name (:name %)))
-          first
-          :id))))
+   (api/create-buffer! name content)))
 
 (defn buffer-text
-  "Get buffer text - uses API subscription."
+  "Get buffer text - uses API."
   [buffer-id-or-name]
   (let [buffer-id (if (string? buffer-id-or-name)
+                    ;; Look up by name
                     (let [buffers (get-in @rfdb/app-db [:buffers])]
                       (->> buffers vals
                            (filter #(= buffer-id-or-name (:name %)))
                            first :id))
                     buffer-id-or-name)]
-    ;; TODO: Once api/buffer-text uses subscription, use that
-    ;; For now, direct query (temporary)
-    (let [buffer (get-in @rfdb/app-db [:buffers buffer-id])
-          wasm-instance (:wasm-instance buffer)]
-      (when wasm-instance
-        (try (.getText wasm-instance)
-             (catch js/Error _ ""))))))
+    (api/buffer-text buffer-id)))
 
 (defn insert-text
   "Insert text using API."
