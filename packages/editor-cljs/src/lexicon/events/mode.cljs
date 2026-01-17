@@ -37,6 +37,26 @@
                 (mapv (fn [cmd] [:dispatch cmd]) mode-hook-commands))})))
 
 (rf/reg-event-db
+ :mode/set-major
+ (fn [db [_ buffer-id mode-symbol]]
+   "Set major mode for a specific buffer (test/API version).
+
+   Args:
+     buffer-id - Buffer to set mode for
+     mode-symbol - Symbol representing the major mode"
+   (assoc-in db [:buffers buffer-id :major-mode] mode-symbol)))
+
+(rf/reg-event-db
+ :mode/enable-minor
+ (fn [db [_ buffer-id mode-symbol]]
+   "Enable a minor mode for a specific buffer (test/API version).
+
+   Args:
+     buffer-id - Buffer to enable mode for
+     mode-symbol - Symbol representing the minor mode"
+   (update-in db [:buffers buffer-id :minor-modes] (fnil conj #{}) mode-symbol)))
+
+(rf/reg-event-db
  :toggle-minor-mode
  (fn [db [_ mode-keyword]]
    "Toggle a minor mode for the active buffer"

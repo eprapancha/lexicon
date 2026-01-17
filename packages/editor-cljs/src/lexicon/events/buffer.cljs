@@ -78,6 +78,34 @@
    See .CLAUDE.md Architecture Principles: State Management & Ownership"
    (assoc-in db [:buffers buffer-id :undo-in-progress?] value)))
 
+(rf/reg-event-db
+ :buffer/set-file
+ (fn [db [_ buffer-id file-path]]
+   "Associate a file path with a buffer.
+
+   This is the ONLY event that should update buffer :file-handle.
+   See .CLAUDE.md Architecture Principles: State Management & Ownership"
+   (assoc-in db [:buffers buffer-id :file-handle] file-path)))
+
+(rf/reg-event-db
+ :buffer/set-point
+ (fn [db [_ buffer-id position]]
+   "Set point (cursor position) for a buffer.
+
+   Point is buffer-local in Emacs semantics.
+   This is the ONLY event that should update buffer :point.
+   See .CLAUDE.md Architecture Principles: State Management & Ownership"
+   (assoc-in db [:buffers buffer-id :point] position)))
+
+(rf/reg-event-db
+ :buffer/set-read-only
+ (fn [db [_ buffer-id read-only?]]
+   "Set read-only flag for a buffer.
+
+   This is the ONLY event that should update buffer :is-read-only?.
+   See .CLAUDE.md Architecture Principles: State Management & Ownership"
+   (assoc-in db [:buffers buffer-id :is-read-only?] read-only?)))
+
 (rf/reg-event-fx
  :switch-buffer
  (fn [{:keys [db]} [_ buffer-id]]
@@ -1457,8 +1485,11 @@
      text - String to insert
 
    Contract: 4.1 (Buffers), 4.2 (Point)"
-   (let [^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])]
-     (when wasm-instance
+   (let [buffer (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         read-only? (:is-read-only? buffer)]
+     ;; Only insert if buffer is not read-only
+     (when (and wasm-instance (not read-only?))
        (.insert wasm-instance position text))
      {:db db})))
 
