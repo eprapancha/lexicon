@@ -447,7 +447,8 @@
 (defn kill-region
   "Kill (cut) text from start to end position in current buffer.
 
-  Adds the killed text to the kill ring."
+  Adds the killed text to the kill ring. If the last command was also
+  a kill, appends to the last kill ring entry instead of creating a new one."
   [start end]
   (let [buf-id (current-buffer)]
     (when buf-id
@@ -456,9 +457,19 @@
         (when wasm-instance
           ;; Get the text being killed
           (let [text (.getText wasm-instance)
-                killed-text (subs text start end)]
-            ;; Add to kill ring
-            (swap! rfdb/app-db update :kill-ring conj killed-text)
+                killed-text (subs text start end)
+                last-command (get-in @rfdb/app-db [:last-command])]
+            ;; If last command was kill-region, append to last kill
+            ;; Otherwise, push new kill ring entry
+            (if (= last-command :kill-region)
+              (swap! rfdb/app-db update :kill-ring
+                     (fn [kr]
+                       (if (seq kr)
+                         (conj (pop kr) (str (peek kr) killed-text))
+                         [killed-text])))
+              (swap! rfdb/app-db update :kill-ring conj killed-text))
+            ;; Mark this command as kill-region
+            (swap! rfdb/app-db assoc :last-command :kill-region)
             ;; Delete the text
             (.delete wasm-instance start (- end start))))))))
 

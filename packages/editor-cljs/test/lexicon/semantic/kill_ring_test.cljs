@@ -19,3 +19,17 @@
       (h/yank)
       (is (seq (h/buffer-text "b")) "Yanked text should appear in buffer b")
       (is (= "x" (h/buffer-text "b")) "Should yank the text that was killed in buffer a"))))
+
+(deftest ^:critical consecutive-kills-append
+  (testing "Emacs invariant: Consecutive kills append to form single kill ring entry"
+    (h/reset-editor-db!)
+    (with-buffer "test"
+      (h/insert-text (h/current-buffer) "abcdef")
+      ;; Kill "ab"
+      (h/kill-region 0 2)
+      ;; Kill "cd" consecutively - should append
+      (h/kill-region 0 2)
+      ;; Yank should get "abcd" (both kills appended)
+      (h/yank)
+      (is (= "abcd" (h/buffer-text "test"))
+          "Consecutive kills should append into single kill ring entry"))))
