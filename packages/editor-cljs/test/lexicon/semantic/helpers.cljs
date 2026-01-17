@@ -96,20 +96,29 @@
         (catch js/Error _ "")))))
 
 (defn insert-text
-  "Insert text into buffer at end of buffer."
+  "Insert text into buffer at end of buffer.
+
+  Respects read-only flag - no insertion if buffer is read-only."
   [buffer-id text]
   (let [buffer (get-in @rfdb/app-db [:buffers buffer-id])
         ^js wasm-instance (:wasm-instance buffer)
-        ;; Insert at end of buffer - get length from text
-        point (if wasm-instance
-                (count (.getText wasm-instance))
-                0)]
-    (rf/dispatch-sync [:buffer/insert buffer-id point text])))
+        read-only? (:is-read-only? buffer)]
+    ;; Only insert if buffer is not read-only
+    (when-not read-only?
+      (let [point (if wasm-instance
+                    (count (.getText wasm-instance))
+                    0)]
+        (rf/dispatch-sync [:buffer/insert buffer-id point text])))))
 
 (defn buffer-file
   "Get file path associated with buffer."
   [buffer-id]
   (get-in @rfdb/app-db [:buffers buffer-id :file-handle]))
+
+(defn set-read-only
+  "Set read-only flag for buffer."
+  [buffer-id read-only?]
+  (swap! rfdb/app-db assoc-in [:buffers buffer-id :is-read-only?] read-only?))
 
 (defn buffer-exists?
   "Check if buffer with name exists."
@@ -146,6 +155,38 @@
                                   (find-window (:second tree) id))))]
     (when-let [window (find-window window-tree active-window-id)]
       (:buffer-id window))))
+
+;; =============================================================================
+;; Major/Minor Mode Operations
+;; =============================================================================
+
+(defn enable-major-mode
+  "Set the major mode for current buffer."
+  [mode-symbol]
+  (let [buf-id (current-buffer)]
+    (when buf-id
+      (swap! rfdb/app-db assoc-in [:buffers buf-id :major-mode] mode-symbol))))
+
+(defn current-major-mode
+  "Get the major mode of current buffer."
+  []
+  (let [buf-id (current-buffer)]
+    (when buf-id
+      (get-in @rfdb/app-db [:buffers buf-id :major-mode]))))
+
+(defn enable-minor-mode
+  "Enable a minor mode for current buffer."
+  [mode-symbol]
+  (let [buf-id (current-buffer)]
+    (when buf-id
+      (swap! rfdb/app-db update-in [:buffers buf-id :minor-modes] (fnil conj #{}) mode-symbol))))
+
+(defn minor-mode-enabled?
+  "Check if a minor mode is enabled in current buffer."
+  [mode-symbol]
+  (let [buf-id (current-buffer)]
+    (when buf-id
+      (contains? (get-in @rfdb/app-db [:buffers buf-id :minor-modes]) mode-symbol))))
 
 ;; =============================================================================
 ;; Point/Mark Operations
