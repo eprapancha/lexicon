@@ -17,7 +17,8 @@
             [lexicon.events.ui]
             [lexicon.events.command]
             [lexicon.events.isearch]
-            [lexicon.events.message]))  ; Issue #47: Message system
+            [lexicon.events.message]  ; Issue #47: Message system
+            [lexicon.events.window]))  ; Window management (splitting, deletion)
 
 ;; -- Helper Functions --
 
