@@ -434,6 +434,37 @@
       (buffer-text mb-buffer-id))))
 
 ;; =============================================================================
+;; Kill Ring Operations
+;; =============================================================================
+
+(defn kill-region
+  "Kill (cut) text from start to end position in current buffer.
+
+  Adds the killed text to the kill ring."
+  [start end]
+  (let [buf-id (current-buffer)]
+    (when buf-id
+      (let [buffer (get-in @rfdb/app-db [:buffers buf-id])
+            ^js wasm-instance (:wasm-instance buffer)]
+        (when wasm-instance
+          ;; Get the text being killed
+          (let [text (.getText wasm-instance)
+                killed-text (subs text start end)]
+            ;; Add to kill ring
+            (swap! rfdb/app-db update :kill-ring conj killed-text)
+            ;; Delete the text
+            (.delete wasm-instance start (- end start))))))))
+
+(defn yank
+  "Yank (paste) the most recent kill ring entry at end of current buffer."
+  []
+  (let [buf-id (current-buffer)
+        kill-ring (get-in @rfdb/app-db [:kill-ring])
+        text-to-yank (peek kill-ring)]
+    (when (and buf-id text-to-yank)
+      (insert-text buf-id text-to-yank))))
+
+;; =============================================================================
 ;; WASM Fixture - Required for all semantic tests
 ;; =============================================================================
 
