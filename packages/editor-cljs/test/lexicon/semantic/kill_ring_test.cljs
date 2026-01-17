@@ -25,11 +25,12 @@
     (h/reset-editor-db!)
     (with-buffer "test"
       (h/insert-text (h/current-buffer) "abcdef")
-      ;; Kill "ab"
+      ;; Kill "ab" - leaves "cdef", point at 0
       (h/kill-region 0 2)
-      ;; Kill "cd" consecutively - should append
+      ;; Kill "cd" consecutively - should append to get "abcd" in kill ring
+      ;; Leaves "ef", point at 0
       (h/kill-region 0 2)
-      ;; Yank should get "abcd" (both kills appended)
+      ;; Yank at point 0 inserts "abcd" before "ef" -> "abcdef"
       (h/yank)
-      (is (= "abcd" (h/buffer-text "test"))
-          "Consecutive kills should append into single kill ring entry"))))
+      (is (= "abcdef" (h/buffer-text "test"))
+          "Consecutive kills should append and yank should restore them"))))

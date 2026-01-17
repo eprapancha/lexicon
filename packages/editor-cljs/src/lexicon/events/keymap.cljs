@@ -239,9 +239,9 @@
      command - Keyword or function to invoke"
    (assoc-in db [:buffers buffer-id :local-keymap key-sequence] command)))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :input/keys
- (fn [db [_ key-sequence]]
+ (fn [{:keys [db]} [_ key-sequence]]
    "Simulate key input for testing (test API).
 
    Accumulates in :pending-keys until a complete binding is found.
@@ -249,7 +249,9 @@
    Args:
      key-sequence - String like \"C-x\" or \"C-f\""
    (let [pending (get-in db [:pending-keys] "")
-         full-sequence (str pending key-sequence)
+         full-sequence (if (empty? pending)
+                        key-sequence
+                        (str pending " " key-sequence))
          active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          buffer-id (:buffer-id active-window)
 
@@ -259,8 +261,9 @@
 
      (if command
        ;; Found complete binding - invoke and clear
-       (-> db
-           (assoc :last-invoked-command command)
-           (assoc :pending-keys ""))
+       {:db (-> db
+                (assoc :last-invoked-command command)
+                (assoc :pending-keys ""))
+        :fx [[:dispatch [:execute-command command]]]}
        ;; No complete binding - accumulate
-       (assoc db :pending-keys full-sequence)))))
+       {:db (assoc db :pending-keys full-sequence)}))))

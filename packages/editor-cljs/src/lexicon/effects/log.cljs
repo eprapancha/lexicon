@@ -20,13 +20,8 @@
             ^js wasm-instance (:wasm-instance messages-buffer)]
         (when wasm-instance
           (let [buffer-length (.length wasm-instance)]
-            ;; Append text to end of buffer (no timestamp - already in log entry)
-            (.insert wasm-instance buffer-length text)
-            ;; Update cache
-            (let [updated-text (.getText wasm-instance)
-                  updated-line-count (count (clojure.string/split updated-text #"\n" -1))]
-              (rf/dispatch-sync [:buffer/update-cache 2 updated-text updated-line-count])
-              (rf/dispatch-sync [:buffer/increment-version 2])))))))))
+            ;; Append text to end of buffer
+            (.insert wasm-instance buffer-length text))))))))
 
 ;; Register this namespace to ensure effect handlers are loaded
 (defn register-effects! []

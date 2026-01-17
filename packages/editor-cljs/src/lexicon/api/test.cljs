@@ -175,6 +175,11 @@
     (when-let [window (find-window window-tree active-window-id)]
       (:buffer-id window))))
 
+(defn show-buffer!
+  "Show buffer in active window."
+  [buffer-id]
+  (rf/dispatch-sync [:window/show-buffer buffer-id]))
+
 ;; =============================================================================
 ;; Minibuffer Operations
 ;; =============================================================================
@@ -184,8 +189,22 @@
 
   Returns minibuffer buffer ID."
   [prompt]
-  ;; TODO: Implement :minibuffer/activate event
-  (rf/dispatch-sync [:minibuffer/activate prompt]))
+  (rf/dispatch-sync [:minibuffer/activate {:prompt prompt
+                                            :on-confirm [:minibuffer/deactivate]
+                                            :on-cancel [:minibuffer/deactivate]}])
+  ;; TODO: Return actual minibuffer buffer ID
+  ;; For now, create the minibuffer buffer explicitly
+  (let [WasmGapBuffer (get-in @re-frame.db/app-db [:system :wasm-constructor])
+        wasm-instance (when WasmGapBuffer (new WasmGapBuffer ""))]
+    (when wasm-instance
+      (rf/dispatch-sync [:create-buffer " *Minibuf-0*" wasm-instance])
+      ;; Find the buffer by name and return its ID
+      (let [buffers (get-in @re-frame.db/app-db [:buffers])]
+        (->> buffers
+             vals
+             (filter #(= " *Minibuf-0*" (:name %)))
+             first
+             :id)))))
 
 (defn deactivate-minibuffer!
   "Deactivate minibuffer."
@@ -214,7 +233,7 @@
   [buffer-id key-sequence]
   ;; TODO: Use subscription when implemented
   (or (get-in @re-frame.db/app-db [:buffers buffer-id :local-keymap key-sequence])
-      (get-in @re-frame.db/app-db [:keymaps :global key-sequence])))
+      (get-in @re-frame.db/app-db [:keymaps :global :bindings key-sequence])))
 
 (defn press-keys!
   "Simulate key sequence input."
@@ -226,7 +245,7 @@
   "Check if waiting for key sequence completion."
   []
   ;; TODO: Use subscription when implemented
-  (seq (get-in @re-frame.db/app-db [:pending-keys])))
+  (boolean (seq (get-in @re-frame.db/app-db [:pending-keys] ""))))
 
 (defn last-invoked-command
   "Get last command invoked via key sequence."
@@ -261,4 +280,4 @@
 (defn invoke-command!
   "Invoke command by name."
   [command-name & args]
-  (apply rf/dispatch-sync (into [:execute-command command-name] args)))
+  (rf/dispatch-sync (into [:execute-command command-name] args)))

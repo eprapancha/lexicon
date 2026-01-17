@@ -10,6 +10,7 @@
             [re-frame.db]
             [lexicon.db :as db]
             [lexicon.log :as log]
+            [lexicon.api.message]
             [lexicon.completion.metadata :as completion-metadata]))
 
 ;; -- Helper Functions --
@@ -1487,11 +1488,35 @@
    Contract: 4.1 (Buffers), 4.2 (Point)"
    (let [buffer (get-in db [:buffers buffer-id])
          ^js wasm-instance (:wasm-instance buffer)
-         read-only? (:is-read-only? buffer)]
+         read-only? (:is-read-only? buffer)
+         buffer-text-before (when wasm-instance (.getText ^js wasm-instance))]
      ;; Only insert if buffer is not read-only
      (when (and wasm-instance (not read-only?))
        (.insert wasm-instance position text))
-     {:db db})))
+     (let [buffer-text-after (when wasm-instance (.getText ^js wasm-instance))
+           log-msg (str "INSERT[" buffer-id "]: before=" (pr-str buffer-text-before)
+                       " text=" (pr-str text)
+                       " pos=" position
+                       " after=" (pr-str buffer-text-after))]
+       ;; Record undo entry directly (synchronous for tests)
+       (let [should-record? (and wasm-instance (not read-only?))
+             recording-enabled? (get-in db [:undo :recording-enabled?] true)
+             new-db (if (and should-record? recording-enabled?)
+                      (let [undo-entry {:type :edit
+                                        :op :insert
+                                        :position position
+                                        :text text}
+                            stack (get-in db [:buffers buffer-id :undo-stack] [])
+                            last-entry (peek stack)
+                            ;; Add boundary if stack isn't empty and last entry isn't boundary
+                            should-add-boundary? (and (seq stack)
+                                                      (not= (:type last-entry) :boundary))
+                            updated-stack (cond-> (conj stack undo-entry)
+                                            should-add-boundary?
+                                            (conj {:type :boundary}))]
+                        (assoc-in db [:buffers buffer-id :undo-stack] updated-stack))
+                      db)]
+         {:db new-db})))))
 
 (rf/reg-event-fx
  :buffer/goto-char

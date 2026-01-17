@@ -9,7 +9,7 @@
   - ONLY test setup and queries
 
   Test helpers are for TESTING, not IMPLEMENTING."
-  (:require [cljs.test :refer [use-fixtures async]]
+  (:require [cljs.test :refer [use-fixtures async] :as cljs.test]
             [re-frame.core :as rf]
             [re-frame.db :as rfdb]
             [lexicon.db :as db]
@@ -49,6 +49,7 @@
         (.catch (fn [e]
                   (.error js/console "❌ WASM failed:" e)
                   (done))))))
+
 
 ;; =============================================================================
 ;; Buffer Operations - Using API ONLY
@@ -142,8 +143,7 @@
   Will fail until :edit/yank event is implemented."
   []
   (let [buf-id (current-buffer)
-        current-text (buffer-text buf-id)
-        position (count current-text)]
+        position (point buf-id)]
     (when buf-id
       (api/yank! buf-id position))))
 
@@ -215,15 +215,18 @@
 (defn show-buffer-in-two-windows
   "Show buffer in two windows - uses API."
   [buffer-id]
+  ;; Show buffer in current window first
+  (api/show-buffer! buffer-id)
+  ;; Then split - new window will show same buffer
   (split-window-horizontally))
 
 (defn show-buffer-in-new-window
   "Show buffer in new window - uses API."
   [buffer-id]
-  (split-window-horizontally)
-  ;; TODO: Switch new window to show buffer
-  ;; Need :window/show-buffer event
-  )
+  ;; Show buffer in current window
+  (api/show-buffer! buffer-id)
+  ;; Split creates new window showing same buffer
+  (split-window-horizontally))
 
 (defn window-text
   "Get text in window - uses queries."

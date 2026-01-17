@@ -97,20 +97,20 @@
 
 (rf/reg-event-db
  :window/show-buffer
- (fn [db [_ window-id buffer-id]]
-   "Show a buffer in a specific window.
+ (fn [db [_ buffer-id]]
+   "Show a buffer in the active window.
 
    Args:
-     window-id - Window to update
      buffer-id - Buffer to display"
-   (let [window-tree (:window-tree db)
+   (let [active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
 
          update-window (fn update-window [tree]
                          (cond
                            (nil? tree) nil
 
                            (and (= (:type tree) :leaf)
-                                (= (:id tree) window-id))
+                                (= (:id tree) active-window-id))
                            (assoc tree :buffer-id buffer-id)
 
                            (= (:type tree) :split)

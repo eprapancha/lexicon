@@ -171,11 +171,10 @@
 (rf/reg-event-fx
  :log-startup-complete
  (fn [_ [_]]
-   "Test that (message) function works - this was the whole point of Log Bus"
-   ;; Test (message) function - should appear in *Messages* buffer AND flash in minibuffer
-   (message "Editor initialized - buffers ready")
-   ;; Also test direct log/info
-   (log/info "Log bus attached to *Messages* buffer")
+   "Log startup completion"
+   ;; Can't use log/info or message from within event handler (dispatch-sync forbidden)
+   (js/console.log "Editor initialized - buffers ready")
+   (js/console.log "Log bus attached to *Messages* buffer")
    {}))
 
 (rf/reg-event-db

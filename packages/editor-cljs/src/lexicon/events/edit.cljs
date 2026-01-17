@@ -10,9 +10,11 @@
   - Kill ring operations (yank, yank-pop)
   - Undo operations (undo, redo)"
   (:require [re-frame.core :as rf]
+            [re-frame.db]
             [lexicon.db :as db]
             [lexicon.constants :as const]
             [lexicon.events.buffer :as buffer-events]
+            [lexicon.api.message]
             [lexicon.advanced-undo :as undo]))
 
 ;; -- Helper Functions --
@@ -726,3 +728,164 @@
                 (assoc-in [:ui :selection] {:start 0 :end 0})
                 (assoc-in [:fsm :operator-pending] nil))
         :fx [[:dispatch [:echo/message "Quit"]]]}))))
+
+;; -- Test API Events --
+;; Simple buffer-specific versions for testing
+
+(rf/reg-event-fx
+ :edit/kill-region
+ (fn [{:keys [db]} [_ buffer-id start end]]
+   "Kill (cut) text from start to end position in buffer (test API).
+
+   Args:
+     buffer-id - Buffer to kill from
+     start - Start position
+     end - End position"
+   (let [buffer (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         buffer-text-before (when wasm-instance (.getText ^js wasm-instance))
+         text-to-kill (when buffer-text-before
+                        (subs buffer-text-before start end))
+         kill-ring (get db :kill-ring [])
+         last-command (:last-command db)
+
+         ;; Check if we should append to last kill (consecutive kills)
+         should-append? (= last-command :edit/kill-region)
+
+         new-kill-ring (if should-append?
+                        ;; Append to most recent kill
+                        (update kill-ring (dec (count kill-ring))
+                                (fn [prev-kill] (str prev-kill text-to-kill)))
+                        ;; Push new kill
+                        (conj kill-ring text-to-kill))]
+
+     (when wasm-instance
+       (.delete ^js wasm-instance start (- end start)))
+
+     (let [buffer-text-after (when wasm-instance (.getText ^js wasm-instance))
+           log-msg (str "KILL[" buffer-id "]: before=" (pr-str buffer-text-before)
+                       " killed=" (pr-str text-to-kill)
+                       " after=" (pr-str buffer-text-after)
+                       " should-append=" should-append?
+                       " last-cmd=" last-command
+                       " kill-ring=" (pr-str new-kill-ring))]
+
+
+       (let [recording-enabled? (get-in db [:undo :recording-enabled?] true)
+             new-db (-> db
+                        (assoc :kill-ring new-kill-ring)
+                        (assoc :last-command :edit/kill-region)
+                        ;; Set point to start of killed region (Emacs behavior)
+                        (assoc-in [:buffers buffer-id :point] start))
+             ;; Record undo entry directly (synchronous)
+             final-db (if (and wasm-instance recording-enabled?)
+                        (let [undo-entry {:type :edit
+                                          :op :delete-range
+                                          :start start
+                                          :length (- end start)
+                                          :text text-to-kill}
+                              stack (get-in new-db [:buffers buffer-id :undo-stack] [])
+                              last-entry (peek stack)
+                              should-add-boundary? (and (seq stack)
+                                                        (not= (:type last-entry) :boundary))
+                              updated-stack (cond-> (conj stack undo-entry)
+                                              should-add-boundary?
+                                              (conj {:type :boundary}))]
+                          (assoc-in new-db [:buffers buffer-id :undo-stack] updated-stack))
+                        new-db)]
+         {:db final-db})))))
+
+(rf/reg-event-fx
+ :edit/yank
+ (fn [{:keys [db]} [_ buffer-id position]]
+   "Yank (paste) from kill ring at position in buffer (test API).
+
+   Args:
+     buffer-id - Buffer to yank into
+     position - Position to insert at"
+   (let [buffer (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         buffer-text-before (when wasm-instance (.getText ^js wasm-instance))
+         kill-ring (get db :kill-ring [])
+         text-to-yank (peek kill-ring)]
+
+     (when (and wasm-instance text-to-yank)
+       (.insert ^js wasm-instance position text-to-yank))
+
+     (let [buffer-text-after (when wasm-instance (.getText ^js wasm-instance))
+           log-msg (str "YANK[" buffer-id "]: before=" (pr-str buffer-text-before)
+                       " yanked=" (pr-str text-to-yank)
+                       " pos=" position
+                       " after=" (pr-str buffer-text-after)
+                       " kill-ring=" (pr-str kill-ring))]
+
+
+       (let [recording-enabled? (get-in db [:undo :recording-enabled?] true)
+             new-db (assoc db :last-command :yank)
+             ;; Record undo entry directly (synchronous)
+             final-db (if (and wasm-instance text-to-yank recording-enabled?)
+                        (let [undo-entry {:type :edit
+                                          :op :insert
+                                          :position position
+                                          :text text-to-yank}
+                              stack (get-in new-db [:buffers buffer-id :undo-stack] [])
+                              last-entry (peek stack)
+                              should-add-boundary? (and (seq stack)
+                                                        (not= (:type last-entry) :boundary))
+                              updated-stack (cond-> (conj stack undo-entry)
+                                              should-add-boundary?
+                                              (conj {:type :boundary}))]
+                          (assoc-in new-db [:buffers buffer-id :undo-stack] updated-stack))
+                        new-db)]
+         {:db final-db})))))
+
+(rf/reg-event-fx
+ :edit/undo
+ (fn [{:keys [db]} [_ buffer-id]]
+   "Undo last change in buffer (test API).
+
+   Args:
+     buffer-id - Buffer to undo in"
+   ;; Use the advanced undo system
+   (let [buffer (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         buffer-text-before (when wasm-instance (.getText ^js wasm-instance))
+         undo-stack (get-in db [:buffers buffer-id :undo-stack] [])]
+     (if (seq undo-stack)
+       ;; Perform undo directly in same event (synchronous for tests)
+       (let [{:keys [entries boundary-index]} (undo/extract-undo-group undo-stack (count undo-stack))
+             ;; Filter edit and marker entries
+             undoable-entries (filter #(#{:edit :marker} (:type %)) entries)
+             ;; Reverse order for undo
+             reversed-entries (reverse undoable-entries)]
+
+         ;; Apply undo entries
+         (doseq [entry reversed-entries]
+           (let [inverted (undo/invert-undo-entry entry)]
+             (case (:type entry)
+               :edit (undo/apply-undo-entry buffer inverted)
+               :marker nil
+               nil)))
+
+         ;; Update db with new undo/redo stacks
+         (let [new-db (-> db
+                          (assoc-in [:buffers buffer-id :undo-stack]
+                                    (subvec undo-stack 0 boundary-index))
+                          (update-in [:buffers buffer-id :redo-stack]
+                                     (fn [redo]
+                                       (conj (or redo []) {:entries entries :boundary-index boundary-index}))))]
+           {:db new-db}))
+       {:db db}))))
+
+(rf/reg-event-fx
+ :log-undo-result
+ (fn [{:keys [db]} [_ buffer-id buffer-text-before]]
+   (let [buffer (get-in db [:buffers buffer-id])
+         ^js wasm-instance (:wasm-instance buffer)
+         buffer-text-after (when wasm-instance (.getText ^js wasm-instance))
+         undo-stack (get-in db [:buffers buffer-id :undo-stack] [])
+         log-msg (str "UNDO[" buffer-id "]: before=" (pr-str buffer-text-before)
+                     " after=" (pr-str buffer-text-after)
+                     " stack-size=" (count undo-stack))]
+     (js/console.log log-msg)
+     {:db db})))
