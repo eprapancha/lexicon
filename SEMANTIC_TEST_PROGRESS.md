@@ -1,12 +1,24 @@
 # Semantic Compatibility Test Conversion Progress
 
-**Status:** 21/34 tests passing (62%)
+**Status:** ~10/34 tests passing (29%) - HONEST BASELINE after cleanup
 
 **Date:** 2026-01-17
 
-## 🎯 VERTICO GATE PASSED
+## ⚠️ NUCLEAR RESET - Honest Assessment
 
-The minibuffer-is-a-buffer test is passing! This validates the core architectural requirement for Vertico compatibility.
+**Previous status (FALSE):** 24/34 tests "passing"
+
+**Problem:** 73% of test helpers were implementing application logic instead of testing it. Tests were passing by testing the helpers, not the application.
+
+**Action:** Removed all application logic from helpers. Created `lexicon.api.test` boundary. Now tests call real events only.
+
+**Current status (HONEST):** Awaiting test run to determine actual passing count (estimated ~10/34)
+
+See `SEMANTIC_TEST_AUDIT.md` for full details.
+
+## 🎯 VERTICO GATE - Status Unknown
+
+The minibuffer-is-a-buffer test was previously "passing" but using fake minibuffer activation logic in helpers. Real status unknown until proper implementation.
 
 ## Completed Tests (21)
 
