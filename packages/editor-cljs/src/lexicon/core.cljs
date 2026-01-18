@@ -147,7 +147,9 @@
        "editorState"
        #js {:get get-state
             :enumerable true
-            :configurable true}))))
+            :configurable true}))
+    ;; Expose re-frame dispatch for testing (Issue #97)
+    (aset js/window "lexiconDispatch" rf/dispatch)))
 
 (defn init
   "Initialize the Lexicon editor application"

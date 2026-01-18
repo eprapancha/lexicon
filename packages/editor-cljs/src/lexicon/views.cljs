@@ -4,7 +4,8 @@
             [reagent.dom :as rdom]
             [lexicon.constants :as const]
             [lexicon.subs :as subs]
-            [lexicon.events :as events]))
+            [lexicon.events :as events]
+            [lexicon.log :as log]))
 
 ;; -- Input Event Handling --
 

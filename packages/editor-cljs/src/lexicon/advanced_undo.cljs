@@ -20,7 +20,8 @@
       (delete-text ...))
     (undo!)  ; Undo to previous boundary"
   (:require [re-frame.core :as rf]
-            [lexicon.api.message]))
+            [lexicon.api.message]
+            [lexicon.log :as log]))
 
 ;; -- Undo Stack Management --
 
@@ -172,7 +173,8 @@
                           :start (:position entry)
                           :length (count (:text entry)))
            :delete-range (assoc entry :op :insert
-                                :position (:start entry)))
+                                :position (:start entry)
+                                :text (:text entry)))  ; Preserve the deleted text for re-insertion
     entry))
 
 (defn apply-undo-entry
@@ -216,15 +218,14 @@
               ;; Get point position for restoration
               marker-entry (first (filter #(= (:type %) :marker) reversed-entries))]
 
-          ;; Apply undo entries
+          ;; Apply undo entries (entries are already inverted, don't invert again!)
           (doseq [entry reversed-entries]
-            (let [inverted (invert-undo-entry entry)]
-              (case (:type entry)
-                :edit (apply-undo-entry buffer-state inverted)
-                :marker (when (= (:marker-id entry) :point)
-                          ;; Restore point position
-                          nil) ;; Will be handled via cursor update
-                nil)))
+            (case (:type entry)
+              :edit (apply-undo-entry buffer-state entry)
+              :marker (when (= (:marker-id entry) :point)
+                        ;; Restore point position
+                        nil) ;; Will be handled via cursor update
+              nil))
 
           ;; Update undo stack and redo stack, restore cursor
           {:db (-> db

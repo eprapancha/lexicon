@@ -52,7 +52,8 @@
                          (let [text (:text operation)]
                            {:op :delete-range
                             :start current-cursor
-                            :length (count text)})
+                            :length (count text)
+                            :text text})  ; Store the inserted text so invert can re-insert it
 
                          :delete-backward
                          (when (> current-cursor 0)

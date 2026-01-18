@@ -15,6 +15,7 @@
             [lexicon.constants :as const]
             [lexicon.events.buffer :as buffer-events]
             [lexicon.api.message]
+            [lexicon.log :as log]
             [lexicon.advanced-undo :as undo]))
 
 ;; -- Helper Functions --
@@ -606,11 +607,12 @@
    "Undo the last command using advanced undo system (C-/ or C-_)"
    (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
-         undo-stack       (get-in db [:buffers active-buffer-id :undo-stack] [])]
+         buffer-name      (get-in db [:buffers active-buffer-id :name])
+         undo-stack       (get-in db [:buffers active-buffer-id :undo-stack] [])
+         stack-size       (count undo-stack)]
 
      (if (seq undo-stack)
        (do
-         (println "⏪ Advanced Undo: undoing to boundary")
          ;; Disable undo recording during undo operation
          (undo/with-undo-recording-disabled*
            (fn []
@@ -618,9 +620,7 @@
          {:db db
           :fx [[:dispatch [:buffer/set-undo-in-progress active-buffer-id true]]
                [:dispatch-later [{:ms 50 :dispatch [:undo-complete active-buffer-id]}]]]})
-       (do
-         (println "⚠ Nothing to undo")
-         {:db db})))))
+       {:db db}))))
 
 (rf/reg-event-fx
  :redo
@@ -647,9 +647,27 @@
 (rf/reg-event-fx
  :undo-complete
  (fn [{:keys [db]} [_ buffer-id]]
-   "Reset undo-in-progress flag after undo/redo operation completes"
-   {:db db
-    :fx [[:dispatch [:buffer/set-undo-in-progress buffer-id false]]]}))
+   "Reset undo-in-progress flag after undo/redo operation completes and trigger view update"
+   (let [^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+         text (when wasm-instance (.getText wasm-instance))
+         lines (when text (clojure.string/split text #"\n" -1))
+         line-count (if lines (count lines) 1)
+         ;; Get point position from buffer (set by undo operation)
+         point-pos (get-in db [:buffers buffer-id :point] 0)
+         line-col (when text (linear-pos-to-line-col text point-pos))
+         active-window-id (:active-window-id db)
+         window-tree (:window-tree db)
+         new-window-tree (db/update-window-in-tree window-tree active-window-id
+                                                   #(assoc % :cursor-position (or line-col {:line 0 :column 0})))]
+     {:db (-> db
+              (assoc :window-tree new-window-tree)
+              (assoc-in [:buffers buffer-id :cache :text] (or text ""))
+              (assoc-in [:buffers buffer-id :cache :line-count] line-count)
+              (assoc-in [:ui :cursor-position] point-pos)
+              (assoc-in [:ui :view-needs-update?] true))
+      :fx [[:dispatch [:buffer/set-undo-in-progress buffer-id false]]
+           [:dispatch [:buffer/increment-version buffer-id]]
+           [:dispatch [:cursor/set-position point-pos]]]})))
 
 ;; -- Cursor Position Management --
 

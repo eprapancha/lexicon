@@ -101,11 +101,12 @@
                        :buffer active-buffer-id
                        :prefix-arg prefix-arg}
 
-         ;; Determine if this is an editing command (should create undo boundary)
-         editing-command? (not (#{:undo :redo :universal-argument :universal-argument-more
-                                  :digit-argument :negative-argument :execute-extended-command
-                                  :describe-bindings :forward-char :backward-char :next-line :previous-line
-                                  :beginning-of-line :end-of-line :beginning-of-buffer :end-of-buffer} command-name))
+         ;; Determine if this command should create undo boundaries
+         ;; In Emacs, most commands create undo boundaries to separate typing sequences
+         ;; Only exclude: undo/redo (which manage undo stack), prefix-arg commands, and help commands
+         creates-boundary? (not (#{:undo :redo :universal-argument :universal-argument-more
+                                   :digit-argument :negative-argument :execute-extended-command
+                                   :describe-bindings} command-name))
 
          ;; Phase 6.5 Week 1-2: Save prefix-arg before command execution
          ;; Phase 6.5 Week 3-4: REMOVED premature minibuffer deactivation (fixes Issue #72)
@@ -117,17 +118,17 @@
              ;; Phase 6.5: Don't clear prefix-arg/transient-keymap for prefix argument accumulation commands
              should-clear-prefix? (not (#{:universal-argument :universal-argument-more
                                           :digit-argument :negative-argument} command-name))]
-         ;; Execute command with undo boundaries for editing commands
+         ;; Execute command with undo boundaries
          {:db db'
           :fx (cond-> [[:dispatch-with-context {:event [:hook/run :before-command-hook context]
                                                  :context exec-context}]]
-                ;; Insert undo boundary before editing commands
-                editing-command? (conj [:dispatch [:command/begin-undo-boundary active-buffer-id]])
+                ;; Insert undo boundary before command (separates previous typing from command)
+                creates-boundary? (conj [:dispatch [:command/begin-undo-boundary active-buffer-id]])
                 ;; Execute the command with dynamic context binding
                 true (conj [:dispatch-with-context {:event (into handler args)
                                                     :context exec-context}])
-                ;; Insert undo boundary after editing commands
-                editing-command? (conj [:dispatch [:command/end-undo-boundary active-buffer-id]])
+                ;; Insert undo boundary after command (separates command from future typing)
+                creates-boundary? (conj [:dispatch [:command/end-undo-boundary active-buffer-id]])
                 ;; Run after-command hook within dynamic context
                 true (conj [:dispatch-with-context {:event [:hook/run :after-command-hook (assoc context :result nil)]
                                                     :context exec-context}])

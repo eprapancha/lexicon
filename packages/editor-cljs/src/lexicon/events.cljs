@@ -121,6 +121,8 @@
         shift? (.-shiftKey event)
         key (.-key event)
         code (.-code event)]
+    ;; DEBUG: Log key event details to *Messages* buffer
+    (rf/dispatch [:message/add (str "🔍 KEY EVENT: key=" key " code=" code " ctrl=" ctrl? " meta=" meta? " alt=" alt? " shift=" shift?)])
     (cond
       ;; Special handling for certain keys
       (= key "Control") nil  ; Ignore standalone modifier keys

@@ -7,7 +7,8 @@
   - Prefix key state management
   - Special key insertion (SPC, RET, TAB)"
   (:require [re-frame.core :as rf]
-            [lexicon.db :as db]))
+            [lexicon.db :as db]
+            [lexicon.log :as log]))
 
 ;; -- Helper Functions --
 
