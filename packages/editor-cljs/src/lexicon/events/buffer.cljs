@@ -1395,7 +1395,6 @@
          full-text         (.getText wasm-instance)
          is-regexp?        true  ; query-replace-regexp uses regexp search
          match             (find-next-match full-text regexp-string current-pos is-regexp?)]
-
      (if match
        ;; Found first match - activate query-replace mode and create region to highlight the match
        (let [cursor-line-col (linear-to-line-col full-text (:end match))
