@@ -297,7 +297,7 @@
        {:db (-> db
                 (minibuffer/push-frame config)
                 (minibuffer/sync-to-legacy)
-                (assoc :cursor-owner :minibuffer))})))))
+                (assoc :cursor-owner :minibuffer))}))))
 
 (rf/reg-event-fx
  :minibuffer/deactivate

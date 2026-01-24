@@ -18,7 +18,8 @@
             [lexicon.events.command]
             [lexicon.events.isearch]
             [lexicon.events.message]  ; Issue #47: Message system
-            [lexicon.events.window]))  ; Window management (splitting, deletion)
+            [lexicon.events.window]   ; Window management (splitting, deletion)
+            [lexicon.events.dired]))  ; Directory editor (Issue #93)
 
 ;; -- Helper Functions --
 

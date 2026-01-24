@@ -862,6 +862,9 @@ C-h ?   This help menu
          [:dispatch [:register-command :execute-extended-command
                     {:docstring "Execute extended command (M-x)"
                      :handler [:execute-extended-command]}]]
+         [:dispatch [:register-command :dired
+                    {:docstring "Open directory editor (Dired)"
+                     :handler [:dired]}]]
          ;; Initialize mode commands
          [:dispatch [:initialize-mode-commands]]
          ;; Update save-buffer to use hooks
