@@ -23,6 +23,9 @@
      :doc \"Documentation\"}"
    (assoc-in db [:commands command-name] command-definition)))
 
+;; Note: :run-lisp-command is registered in lexicon.lisp to avoid circular deps
+;; It calls lexicon.lisp/run-lisp-command with the command args
+
 (rf/reg-event-fx
  :execute-command-interactive
  (fn [{:keys [db]} [_ command-name]]
@@ -176,8 +179,14 @@
  :execute-command-by-name
  (fn [{:keys [db]} [_ command-name-str]]
    "Execute a command by its string name (from M-x)"
-   (let [command-keyword (keyword command-name-str)]
-     {:fx [[:dispatch [:execute-command command-keyword]]]})))
+   (let [command-keyword (keyword command-name-str)
+         command-def (get-in db [:commands command-keyword])
+         has-interactive? (some? (:interactive command-def))]
+     (if has-interactive?
+       ;; Has interactive spec - use interactive handler
+       {:fx [[:dispatch [:execute-command-interactive command-keyword]]]}
+       ;; No interactive spec - execute directly
+       {:fx [[:dispatch [:execute-command command-keyword]]]}))))
 
 ;; =============================================================================
 ;; Prefix Argument (Universal Argument) - Phase 6.5
@@ -862,9 +871,8 @@ C-h ?   This help menu
          [:dispatch [:register-command :execute-extended-command
                     {:docstring "Execute extended command (M-x)"
                      :handler [:execute-extended-command]}]]
-         [:dispatch [:register-command :dired
-                    {:docstring "Open directory editor (Dired)"
-                     :handler [:dired]}]]
+         ;; Note: Dired is now a package, not a core command
+         ;; It self-registers when loaded via lexicon.dired (through package_loader)
          ;; Initialize mode commands
          [:dispatch [:initialize-mode-commands]]
          ;; Update save-buffer to use hooks

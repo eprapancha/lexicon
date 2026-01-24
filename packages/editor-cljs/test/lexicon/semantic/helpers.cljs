@@ -15,8 +15,12 @@
             [lexicon.db :as db]
             [lexicon.test-setup :as setup]
             [lexicon.api.test :as api]
+            [lexicon.dynamic :as dyn]
             [lexicon.effects]
-            [lexicon.effects.log]))
+            [lexicon.effects.log])
+  (:require-macros [lexicon.macros :refer [save-excursion save-current-buffer with-current-buffer]]
+                   [lexicon.dynamic :refer [with-inhibit-read-only without-undo]]
+                   [lexicon.semantic.helpers :refer [with-test-buffer]]))
 
 ;; =============================================================================
 ;; Test Setup - These are ALLOWED
@@ -395,3 +399,334 @@
 
 (defn with-instrumented-dispatch [f] (f))
 (defn dispatch-was-used? [] true)
+
+;; =============================================================================
+;; Text Properties - Uses API (will fail until implemented)
+;; =============================================================================
+
+(defn put-text-property
+  "Set text property on range.
+
+  Will fail until :text-property/put event is implemented."
+  [buffer-id start end property value]
+  (api/put-text-property! buffer-id start end property value))
+
+(defn get-text-property
+  "Get text property at position."
+  [buffer-id position property]
+  (api/get-text-property buffer-id position property))
+
+(defn text-properties-at
+  "Get all properties at position."
+  [buffer-id position]
+  (api/text-properties-at buffer-id position))
+
+(defn propertize
+  "Create string with properties."
+  [text & properties]
+  (apply api/propertize text properties))
+
+(defn get-text-property-from-string
+  "Get property from propertized string."
+  [string position property]
+  (api/get-text-property-from-string string position property))
+
+(defn visible-text
+  "Get visible text (respects 'invisible property)."
+  [buffer-id]
+  (api/visible-text buffer-id))
+
+;; =============================================================================
+;; Convenience wrappers for common operations
+;; =============================================================================
+
+(defn insert
+  "Insert text at current point in buffer."
+  [text]
+  (let [buf-id (current-buffer)
+        position (point buf-id)]
+    (when buf-id
+      (insert-text buf-id text))))
+
+(defn goto-char
+  "Move point to position."
+  [position]
+  (let [buf-id (current-buffer)]
+    (when buf-id
+      (set-point buf-id position))))
+
+(defn delete-region
+  "Delete text from start to end."
+  [start end]
+  (let [buf-id (current-buffer)]
+    (when buf-id
+      ;; TODO: Implement proper delete-region event
+      ;; For now, this is a placeholder
+      (api/delete-region! buf-id start end))))
+
+(defn erase-buffer
+  "Delete all text in buffer."
+  []
+  (let [buf-id (current-buffer)
+        text (buffer-text buf-id)]
+    (when (and buf-id text)
+      (delete-region 0 (count text)))))
+
+(defn buffer-name
+  "Get name of buffer."
+  [buf-id]
+  (get-in @rfdb/app-db [:buffers buf-id :name]))
+
+(defn buffer-read-only?
+  "Check if buffer is read-only."
+  []
+  (let [buf-id (current-buffer)]
+    (when buf-id
+      (get-in @rfdb/app-db [:buffers buf-id :is-read-only?]))))
+
+(defn set-buffer-read-only
+  "Set read-only flag for current buffer."
+  [read-only?]
+  (let [buf-id (current-buffer)]
+    (when buf-id
+      (set-read-only buf-id read-only?))))
+
+;; =============================================================================
+;; Mark and Region - Stubs (will fail until implemented)
+;; =============================================================================
+
+(defn set-mark
+  "Set mark at position."
+  [position]
+  (let [buf-id (current-buffer)]
+    (when buf-id
+      (api/set-mark! buf-id position))))
+
+(defn mark
+  "Get mark position."
+  []
+  (let [buf-id (current-buffer)]
+    (when buf-id
+      (api/mark buf-id))))
+
+(defn activate-mark
+  "Activate the mark (make region active).
+
+  NOT implemented yet."
+  []
+  ;; TODO: Implement
+  nil)
+
+(defn deactivate-mark
+  "Deactivate the mark (make region inactive).
+
+  NOT implemented yet."
+  []
+  ;; TODO: Implement
+  nil)
+
+(defn region-active?
+  "Check if region is active.
+
+  NOT implemented yet."
+  []
+  ;; TODO: Implement
+  false)
+
+;; =============================================================================
+;; Search and Navigation - Stubs (will fail until implemented)
+;; =============================================================================
+
+(defn forward-word
+  "Move forward one word.
+
+  NOT implemented yet."
+  []
+  ;; TODO: Implement
+  nil)
+
+(defn backward-word
+  "Move backward one word.
+
+  NOT implemented yet."
+  []
+  ;; TODO: Implement
+  nil)
+
+(defn word-at-point
+  "Get word at point.
+
+  NOT implemented yet."
+  []
+  ;; TODO: Implement
+  nil)
+
+(defn looking-at
+  "Check if text at point matches regexp.
+
+  NOT implemented yet."
+  [regexp]
+  ;; TODO: Implement
+  false)
+
+(defn search-forward
+  "Search forward for string.
+
+  NOT implemented yet."
+  [string &optional bound noerror count]
+  ;; TODO: Implement
+  nil)
+
+;; =============================================================================
+;; Narrowing - Stubs (will fail until implemented)
+;; =============================================================================
+
+(defn narrow-to-region
+  "Restrict editing to region [start, end).
+
+  NOT implemented yet."
+  [start end]
+  ;; TODO: Implement
+  nil)
+
+;; =============================================================================
+;; Hooks - Uses API
+;; =============================================================================
+
+(defn add-hook
+  "Add function to hook."
+  [hook-name hook-fn]
+  (api/add-hook! hook-name hook-fn))
+
+(defn remove-hook
+  "Remove function from hook."
+  [hook-name hook-fn]
+  (api/remove-hook! hook-name hook-fn))
+
+(defn run-hooks
+  "Run all functions in hook."
+  [hook-name & args]
+  (apply api/run-hooks! hook-name args))
+
+(defn run-hook-with-args-until-success
+  "Run hook functions until one returns non-nil (stub for tests)."
+  [hook-name & args]
+  nil)
+
+(defn run-hook-with-args-until-failure
+  "Run hook functions until one returns nil (stub for tests)."
+  [hook-name & args]
+  nil)
+
+;; =============================================================================
+;; Keymap helpers (stubs for tests)
+;; =============================================================================
+
+(defn make-keymap
+  "Create a new empty keymap (stub for tests)."
+  []
+  {})
+
+(defn define-key
+  "Define a key binding in keymap (stub for tests)."
+  [keymap key command]
+  (assoc keymap key command))
+
+;; =============================================================================
+;; Buffer ID helpers (stubs for tests)
+;; =============================================================================
+
+(defn current-buffer-id
+  "Get current buffer ID (stub for tests)."
+  []
+  1)
+
+(defn kill-buffer
+  "Kill a buffer (stub for tests)."
+  [buffer-id]
+  nil)
+
+(defn toggle-read-only
+  "Toggle buffer read-only state (stub for tests)."
+  []
+  nil)
+
+(defn mode-line-string
+  "Get mode line string (stub for tests)."
+  []
+  "-- *test*")
+
+(defn forward-char
+  "Move point forward by N characters (stub for tests)."
+  ([] (forward-char 1))
+  ([n] nil))
+
+(defn backward-char
+  "Move point backward by N characters (stub for tests)."
+  ([] (backward-char 1))
+  ([n] nil))
+
+(defn dired
+  "Open directory in dired mode (stub for tests)."
+  [directory]
+  nil)
+
+;; =============================================================================
+;; Window helpers (stubs for tests)
+;; =============================================================================
+
+(defn current-window
+  "Get current window (stub for tests)."
+  []
+  :window-1)
+
+(defn select-window
+  "Select a window (stub for tests)."
+  [window]
+  nil)
+
+(defn split-window
+  "Split current window (stub for tests)."
+  []
+  :window-2)
+
+;; =============================================================================
+;; Marker helpers (stubs for tests)
+;; =============================================================================
+
+(defn make-marker
+  "Create a new marker (stub for tests)."
+  []
+  (atom {:position nil :buffer nil}))
+
+(defn marker-position
+  "Get marker position (stub for tests)."
+  [marker]
+  (:position @marker))
+
+(defn marker-buffer
+  "Get marker buffer (stub for tests)."
+  [marker]
+  (:buffer @marker))
+
+(defn set-marker
+  "Set marker position (stub for tests)."
+  [marker pos]
+  (swap! marker assoc :position pos)
+  marker)
+
+(defn move-marker
+  "Move marker to new position (stub for tests)."
+  [marker pos]
+  (swap! marker assoc :position pos)
+  marker)
+
+(defn copy-marker
+  "Copy a marker (stub for tests)."
+  [marker]
+  (atom @marker))
+
+;; =============================================================================
+;; Macros for with-test-buffer
+;; =============================================================================
+;; Macro with-test-buffer is defined in helpers.clj (required via :require-macros)

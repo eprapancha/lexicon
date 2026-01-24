@@ -16,6 +16,7 @@
   it means we need to add it to the public API, not create test-only functions."
   (:require [re-frame.core :as rf]
             [re-frame.db :as rfdb]
+            [clojure.string :as str]
             [lexicon.api.buffer :as buf]
             [lexicon.api.message :as msg]
             [lexicon.db :as db]))
@@ -104,6 +105,77 @@
   [buffer-name]
   (when-let [buffer (buf/get-buffer @rfdb/app-db buffer-name)]
     (:id buffer)))
+
+;; =============================================================================
+;; Search Functions
+;; =============================================================================
+
+(defn- case-fold-search?
+  "Return true if search should be case-insensitive.
+   Emacs convention: case-insensitive if search string is all lowercase."
+  [string]
+  (= string (str/lower-case string)))
+
+(defn search-forward
+  "Search forward for STRING starting after point.
+   If found, move point to end of match and return point.
+   If not found, return nil and leave point unchanged.
+
+   Optional BOUND limits search to that position.
+   Optional NOERROR if non-nil suppresses error (default behavior).
+   Optional COUNT searches for Nth occurrence.
+
+  Usage: (search-forward \"pattern\")
+         (search-forward \"pattern\" limit)
+  Returns: Position after match or nil"
+  ([string] (search-forward string nil true 1))
+  ([string bound] (search-forward string bound true 1))
+  ([string bound noerror] (search-forward string bound noerror 1))
+  ([string bound _noerror _count]
+   (when-not (str/blank? string)
+     (let [text (buffer-string)
+           current-pos (point)
+           case-fold? (case-fold-search? string)
+           search-text (if case-fold? (str/lower-case text) text)
+           search-term (if case-fold? (str/lower-case string) string)
+           text-from-pos (subs search-text current-pos)
+           effective-bound (or bound (count text))
+           match-index (.indexOf text-from-pos search-term)]
+       (when (and (>= match-index 0)
+                  (<= (+ current-pos match-index (count string)) effective-bound))
+         (let [match-end (+ current-pos match-index (count string))]
+           (rf/dispatch-sync [:cursor/set-position match-end])
+           match-end))))))
+
+(defn search-backward
+  "Search backward for STRING starting before point.
+   If found, move point to beginning of match and return point.
+   If not found, return nil and leave point unchanged.
+
+   Optional BOUND limits search to that position.
+   Optional NOERROR if non-nil suppresses error (default behavior).
+   Optional COUNT searches for Nth occurrence.
+
+  Usage: (search-backward \"pattern\")
+         (search-backward \"pattern\" limit)
+  Returns: Position at start of match or nil"
+  ([string] (search-backward string nil true 1))
+  ([string bound] (search-backward string bound true 1))
+  ([string bound noerror] (search-backward string bound noerror 1))
+  ([string bound _noerror _count]
+   (when-not (str/blank? string)
+     (let [text (buffer-string)
+           current-pos (point)
+           case-fold? (case-fold-search? string)
+           search-text (if case-fold? (str/lower-case text) text)
+           search-term (if case-fold? (str/lower-case string) string)
+           text-before-pos (subs search-text 0 current-pos)
+           effective-bound (or bound 0)
+           match-index (.lastIndexOf text-before-pos search-term)]
+       (when (and (>= match-index 0)
+                  (>= match-index effective-bound))
+         (rf/dispatch-sync [:cursor/set-position match-index])
+         match-index)))))
 
 ;; =============================================================================
 ;; Buffer Mutation Functions
@@ -497,6 +569,54 @@
 ;; Commands
 ;; =============================================================================
 
+(def ^:private lisp-command-registry
+  "Registry of Lisp command functions.
+   Maps command keywords to their implementing functions."
+  (atom {}))
+
+(defn define-command
+  "Define a command that can be invoked via M-x.
+
+  This is how packages register commands with the editor.
+  The function will be called when the command is executed.
+
+  Usage: (define-command 'my-command my-fn \"Description\" {:interactive ...})
+  Returns: nil
+
+  Options:
+  - :interactive - Interactive spec for prompting (optional)
+    Example: [{:type :async :prompt \"Directory: \"}]"
+  ([command-name command-fn docstring]
+   (define-command command-name command-fn docstring {}))
+  ([command-name command-fn docstring options]
+   (let [cmd-keyword (if (symbol? command-name) (keyword command-name) command-name)]
+     (rf/dispatch-sync [:register-command cmd-keyword
+                        (merge {:docstring docstring
+                                :handler [:run-lisp-command cmd-keyword]}
+                               (when (:interactive options)
+                                 {:interactive (:interactive options)}))])
+     ;; Store the function in a registry for :run-lisp-command to find
+     (swap! lisp-command-registry assoc cmd-keyword command-fn)
+     nil)))
+
+(defn run-lisp-command
+  "Execute a Lisp command by keyword.
+   Called by :run-lisp-command event handler.
+
+  Usage: (run-lisp-command :dired \"/home\")
+  Returns: Result of command function"
+  [command-keyword & args]
+  (when-let [command-fn (get @lisp-command-registry command-keyword)]
+    (apply command-fn args)))
+
+;; Register the event handler for running lisp commands
+;; This is done here to avoid circular deps with events/command.cljs
+(rf/reg-event-fx
+ :run-lisp-command
+ (fn [_ [_ command-keyword & args]]
+   (apply run-lisp-command command-keyword args)
+   {}))
+
 (defn call-interactively
   "Call COMMAND interactively.
 
@@ -524,6 +644,89 @@
     (get-in db [:minibuffer :message])))
 
 ;; =============================================================================
+;; Filesystem Primitives (for packages like Dired)
+;; =============================================================================
+
+;; Note: These use a mock filesystem for now. Real filesystem access
+;; will be implemented via File System Access API when available.
+
+(def ^:private mock-filesystem
+  "Mock filesystem for testing Dired and other packages.
+   In production, this will be replaced with real FS access."
+  {"/" [{:name "home" :type :directory :size 4096 :modified "2025-01-20"}
+        {:name "usr" :type :directory :size 4096 :modified "2025-01-20"}
+        {:name "tmp" :type :directory :size 4096 :modified "2025-01-20"}
+        {:name "etc" :type :directory :size 4096 :modified "2025-01-20"}]
+   "/home" [{:name "user" :type :directory :size 4096 :modified "2025-01-20"}]
+   "/home/user" [{:name "documents" :type :directory :size 4096 :modified "2025-01-20"}
+                 {:name "file.txt" :type :file :size 1234 :modified "2025-01-20"}
+                 {:name "notes.org" :type :file :size 5678 :modified "2025-01-20"}]})
+
+(defn directory-files
+  "Return list of files in DIRECTORY.
+
+  Usage: (directory-files \"/home/user\")
+  Returns: Vector of filename strings"
+  [directory]
+  (let [entries (get mock-filesystem directory [])]
+    (mapv :name entries)))
+
+(defn file-attributes
+  "Return attributes of FILE as a map.
+
+  Usage: (file-attributes \"/home/user/file.txt\")
+  Returns: {:name \"file.txt\" :type :file :size 1234 :modified \"...\"}"
+  [file-path]
+  (let [parent-dir (or (re-find #".*/" file-path) "/")
+        filename (last (str/split file-path #"/"))
+        entries (get mock-filesystem (str/replace parent-dir #"/$" "") [])]
+    (first (filter #(= (:name %) filename) entries))))
+
+(defn file-directory-p
+  "Return true if PATH is a directory.
+
+  Usage: (file-directory-p \"/home\")
+  Returns: Boolean"
+  [path]
+  (let [attrs (file-attributes path)]
+    (= (:type attrs) :directory)))
+
+(defn file-exists-p
+  "Return true if FILE exists.
+
+  Usage: (file-exists-p \"/home/user/file.txt\")
+  Returns: Boolean"
+  [file-path]
+  (some? (file-attributes file-path)))
+
+(defn insert-directory
+  "Insert directory listing for DIR at point.
+
+  This is the core primitive for Dired buffer generation.
+  Formats entries in ls -l style.
+
+  Usage: (insert-directory \"/home/user\")
+  Returns: nil (side effect: inserts text)"
+  [directory]
+  (let [entries (get mock-filesystem directory [])
+        header (str "  " directory ":\n")
+        pad-left (fn [s width]
+                   (let [s (str s)
+                         pad (- width (count s))]
+                     (if (pos? pad)
+                       (str (apply str (repeat pad " ")) s)
+                       s)))
+        format-entry (fn [{:keys [name type size modified]}]
+                       (let [type-char (if (= type :directory) "d" "-")
+                             perms "rwxr-xr-x"]
+                         (str "  " type-char perms "  "
+                              (pad-left size 6) "  "
+                              modified "  " name)))
+        lines (map format-entry entries)
+        content (str header (str/join "\n" lines) "\n")]
+    (insert content)))
+
+;; =============================================================================
 ;; Export for SCI
 ;; =============================================================================
 
@@ -543,6 +746,9 @@
    'buffer-substring buffer-substring
    'insert insert
    'delete-region delete-region
+   ;; Search
+   'search-forward search-forward
+   'search-backward search-backward
    ;; Buffer info
    'buffer-name buffer-name
    'buffer-size buffer-size
@@ -587,4 +793,10 @@
    'call-interactively call-interactively
    ;; Messages
    'message message
-   'current-message current-message})
+   'current-message current-message
+   ;; Filesystem (for packages like Dired)
+   'directory-files directory-files
+   'file-attributes file-attributes
+   'file-directory-p file-directory-p
+   'file-exists-p file-exists-p
+   'insert-directory insert-directory})

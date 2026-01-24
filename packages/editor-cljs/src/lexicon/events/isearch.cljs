@@ -1,6 +1,8 @@
 (ns lexicon.events.isearch
   "Incremental search (isearch) implementation - C-s and C-r
 
+  Uses lexicon.lisp primitives for buffer access following Emacs architecture.
+
   Phase 1: Basic isearch
   - Activate isearch mode
   - Accumulate search string
@@ -18,11 +20,17 @@
   - Command keys exit isearch"
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
-            [lexicon.db :as db]))
+            [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
 ;; Helper Functions
 ;; =============================================================================
+
+(defn- case-fold-search?
+  "Return true if search should be case-insensitive.
+   Emacs convention: case-insensitive if search string is all lowercase."
+  [string]
+  (= string (str/lower-case string)))
 
 (defn find-next-match
   "Find next match for search-string in text starting from pos.
@@ -53,12 +61,6 @@
               abs-end (+ abs-start (count search-string))]
           {:start abs-start :end abs-end})))))
 
-(defn should-use-case-fold?
-  "Return true if search should be case-insensitive.
-   Emacs convention: case-insensitive if search string is all lowercase."
-  [search-string]
-  (= search-string (str/lower-case search-string)))
-
 (defn isearch-echo-message
   "Create echo message dispatch event for isearch status"
   [search-string failing? wrapped?]
@@ -77,7 +79,7 @@
  :isearch-forward
  (fn [{:keys [db]} [_]]
    "Start incremental search forward (C-s)"
-   (let [current-pos (get-in db [:ui :cursor-position] 0)]
+   (let [current-pos (lisp/point)]
      {:db (-> db
               (assoc-in [:ui :isearch :active?] true)
               (assoc-in [:ui :isearch :direction] :forward)
@@ -98,7 +100,7 @@
  :isearch-backward
  (fn [{:keys [db]} [_]]
    "Start incremental search backward (C-r)"
-   (let [current-pos (get-in db [:ui :cursor-position] 0)]
+   (let [current-pos (lisp/point)]
      {:db (-> db
               (assoc-in [:ui :isearch :active?] true)
               (assoc-in [:ui :isearch :direction] :backward)
@@ -119,15 +121,11 @@
  :isearch/minibuffer-update
  (fn [{:keys [db]} [_ new-input]]
    "Handle minibuffer input changes during isearch"
-   (let [isearch-state    (get-in db [:ui :isearch])
-         direction        (:direction isearch-state)
-         active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-         buffer-id        (:buffer-id active-window)
-         buffer           (get-in db [:buffers buffer-id])
-         ^js wasm-instance (:wasm-instance buffer)
-         full-text        (.getText wasm-instance)
-         original-pos     (:original-pos isearch-state)
-         case-fold?       (should-use-case-fold? new-input)
+   (let [isearch-state (get-in db [:ui :isearch])
+         direction (:direction isearch-state)
+         full-text (lisp/buffer-string)
+         original-pos (:original-pos isearch-state)
+         case-fold? (case-fold-search? new-input)
 
          ;; Search from original position
          match (if (= direction :forward)
@@ -191,17 +189,13 @@
  :isearch/add-char
  (fn [{:keys [db]} [_ char]]
    "Add character to search string and search incrementally"
-   (let [isearch-state    (get-in db [:ui :isearch])
-         search-string    (:search-string isearch-state)
-         direction        (:direction isearch-state)
-         new-search       (str search-string char)
-         active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-         buffer-id        (:buffer-id active-window)
-         buffer           (get-in db [:buffers buffer-id])
-         ^js wasm-instance (:wasm-instance buffer)
-         full-text        (.getText wasm-instance)
-         current-pos      (get-in db [:ui :cursor-position] 0)
-         case-fold?       (should-use-case-fold? new-search)
+   (let [isearch-state (get-in db [:ui :isearch])
+         search-string (:search-string isearch-state)
+         direction (:direction isearch-state)
+         new-search (str search-string char)
+         full-text (lisp/buffer-string)
+         current-pos (lisp/point)
+         case-fold? (case-fold-search? new-search)
 
          ;; Search from current position
          match (if (= direction :forward)
@@ -242,14 +236,10 @@
                     (assoc-in [:ui :isearch :wrapped?] false))
             :fx [(isearch-echo-message "" false false)]}
            ;; Re-search with shorter string
-           (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-                 buffer-id        (:buffer-id active-window)
-                 buffer           (get-in db [:buffers buffer-id])
-                 ^js wasm-instance (:wasm-instance buffer)
-                 full-text        (.getText wasm-instance)
-                 original-pos     (:original-pos isearch-state)
-                 direction        (:direction isearch-state)
-                 case-fold?       (should-use-case-fold? new-search)
+           (let [full-text (lisp/buffer-string)
+                 original-pos (:original-pos isearch-state)
+                 direction (:direction isearch-state)
+                 case-fold? (case-fold-search? new-search)
 
                  ;; Search from original position
                  match (if (= direction :forward)
@@ -272,18 +262,14 @@
  :isearch/repeat-forward
  (fn [{:keys [db]} [_]]
    "Find next occurrence (C-s during isearch)"
-   (let [isearch-state    (get-in db [:ui :isearch])
-         search-string    (:search-string isearch-state)
-         current-match    (:current-match isearch-state)
-         active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-         buffer-id        (:buffer-id active-window)
-         buffer           (get-in db [:buffers buffer-id])
-         ^js wasm-instance (:wasm-instance buffer)
-         full-text        (.getText wasm-instance)
-         case-fold?       (should-use-case-fold? search-string)
+   (let [isearch-state (get-in db [:ui :isearch])
+         search-string (:search-string isearch-state)
+         current-match (:current-match isearch-state)
+         full-text (lisp/buffer-string)
+         case-fold? (case-fold-search? search-string)
 
          ;; Search from after current match
-         search-pos (if current-match (:end current-match) (get-in db [:ui :cursor-position] 0))
+         search-pos (if current-match (:end current-match) (lisp/point))
          match (find-next-match full-text search-string search-pos case-fold?)]
 
      (if match
@@ -310,18 +296,14 @@
  :isearch/repeat-backward
  (fn [{:keys [db]} [_]]
    "Find previous occurrence (C-r during isearch)"
-   (let [isearch-state    (get-in db [:ui :isearch])
-         search-string    (:search-string isearch-state)
-         current-match    (:current-match isearch-state)
-         active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-         buffer-id        (:buffer-id active-window)
-         buffer           (get-in db [:buffers buffer-id])
-         ^js wasm-instance (:wasm-instance buffer)
-         full-text        (.getText wasm-instance)
-         case-fold?       (should-use-case-fold? search-string)
+   (let [isearch-state (get-in db [:ui :isearch])
+         search-string (:search-string isearch-state)
+         current-match (:current-match isearch-state)
+         full-text (lisp/buffer-string)
+         case-fold? (case-fold-search? search-string)
 
          ;; Search backwards from before current match
-         search-pos (if current-match (:start current-match) (get-in db [:ui :cursor-position] 0))
+         search-pos (if current-match (:start current-match) (lisp/point))
          match (find-prev-match full-text search-string search-pos case-fold?)]
 
      (if match

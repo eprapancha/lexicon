@@ -15,7 +15,8 @@
             [lexicon.constants :as const]
             [lexicon.advanced-undo :as undo]
             [lexicon.log :as log]
-            [lexicon.api.message :refer [message]]))
+            [lexicon.api.message :refer [message]]
+            [lexicon.dynamic :as dyn]))
 
 ;; -- Helper Functions --
 
@@ -267,7 +268,8 @@
              is-read-only? (:is-read-only? active-buffer false)]
 
          ;; Phase 6B Week 3: Read-only buffer enforcement
-         (if is-read-only?
+         ;; Check if buffer is read-only AND inhibit-read-only is not set
+         (if (and is-read-only? (not (dyn/inhibit-read-only?)))
            (do
              (println "🚫 Buffer is read-only, rejecting operation:" (:op operation))
              (rf/dispatch [:echo/message "Buffer is read-only"])

@@ -21,6 +21,11 @@
   [buffer-id position text]
   (rf/dispatch-sync [:buffer/insert buffer-id position text]))
 
+(defn delete-region!
+  "Delete text from start to end in buffer."
+  [buffer-id start end]
+  (rf/dispatch-sync [:buffer/delete buffer-id start end]))
+
 (defn create-buffer!
   "Create a new buffer with name and optional content.
 
@@ -85,6 +90,44 @@
   "Set point for buffer."
   [buffer-id position]
   (rf/dispatch-sync [:buffer/set-point buffer-id position]))
+
+(defn mark
+  "Get mark position for buffer.
+
+  Returns nil if mark not set."
+  [buffer-id]
+  ;; Mark is stored in the active window, not the buffer
+  (let [active-window-id (get-in @re-frame.db/app-db [:active-window-id])
+        window-tree (get-in @re-frame.db/app-db [:window-tree])
+        find-window (fn find-window [tree id]
+                      (cond
+                        (nil? tree) nil
+                        (= (:id tree) id) tree
+                        (= (:type tree) :leaf) nil
+                        :else (or (find-window (:first tree) id)
+                                  (find-window (:second tree) id))))
+        window (find-window window-tree active-window-id)]
+    (when window
+      (let [mark-pos (:mark-position window)]
+        ;; Mark is stored as {:line N :column M}, convert to linear
+        (when mark-pos
+          (let [buffer (get-in @re-frame.db/app-db [:buffers buffer-id])
+                ^js wasm-instance (:wasm-instance buffer)
+                text (when wasm-instance (.getText wasm-instance))]
+            (when text
+              ;; Convert line/col to linear position
+              ;; TODO: Use proper conversion function
+              (+ (:line mark-pos) (:column mark-pos)))))))))
+
+(defn set-mark!
+  "Set mark at position in buffer."
+  [buffer-id position]
+  ;; TODO: Implement proper :set-mark event
+  ;; For now, use existing :window/set-mark
+  (let [active-window-id (get-in @re-frame.db/app-db [:active-window-id])]
+    ;; Convert linear position to line/col
+    ;; TODO: Use proper conversion function
+    (rf/dispatch-sync [:window/set-mark active-window-id {:line position :column 0}])))
 
 ;; =============================================================================
 ;; Kill Ring Operations
@@ -327,3 +370,146 @@
   Discards all unsaved changes and reloads from file."
   [buffer-id]
   (rf/dispatch-sync [:revert-buffer buffer-id]))
+
+;; =============================================================================
+;; Hooks
+;; =============================================================================
+
+(defn add-hook!
+  "Add function to hook.
+
+  Args:
+    hook-name - Keyword identifying the hook
+    hook-fn   - Function to add
+
+  Usage:
+    (add-hook! :before-change-functions my-fn)"
+  [hook-name hook-fn]
+  (rf/dispatch-sync [:hooks/add hook-name hook-fn]))
+
+(defn remove-hook!
+  "Remove function from hook.
+
+  Args:
+    hook-name - Keyword identifying the hook
+    hook-fn   - Function to remove (must be identical? to added fn)
+
+  Usage:
+    (remove-hook! :before-change-functions my-fn)"
+  [hook-name hook-fn]
+  (rf/dispatch-sync [:hooks/remove hook-name hook-fn]))
+
+(defn run-hooks!
+  "Run all functions in hook with arguments.
+
+  Args:
+    hook-name - Keyword identifying the hook
+    args      - Arguments to pass to hook functions
+
+  Usage:
+    (run-hooks! :before-change-functions start end)"
+  [hook-name & args]
+  (apply rf/dispatch-sync :hooks/run hook-name args))
+
+;; =============================================================================
+;; Text Properties
+;; =============================================================================
+
+(defn put-text-property!
+  "Set text property on range in buffer.
+
+  Properties are metadata attached to text ranges:
+  - 'invisible - hide text from display
+  - 'face - styling/highlighting
+  - 'keymap - region-specific key bindings
+  - 'mouse-face - hover highlighting
+  - 'help-echo - tooltip text"
+  [buffer-id start end property value]
+  (rf/dispatch-sync [:text-property/put buffer-id start end property value]))
+
+(defn get-text-property
+  "Get text property value at position in buffer."
+  [buffer-id position property]
+  (let [props (get-in @re-frame.db/app-db [:buffers buffer-id :text-properties])]
+    ;; Find the property range containing position
+    (some (fn [[range-start range-data]]
+            (some (fn [[range-end prop-map]]
+                    (when (and (>= position range-start)
+                               (< position range-end))
+                      (get prop-map property)))
+                  range-data))
+          props)))
+
+(defn text-properties-at
+  "Get all text properties at position in buffer.
+
+  Returns property map {:face :bold :invisible t ...}"
+  [buffer-id position]
+  (let [props (get-in @re-frame.db/app-db [:buffers buffer-id :text-properties])]
+    (reduce
+     (fn [acc [range-start range-data]]
+       (reduce
+        (fn [acc2 [range-end prop-map]]
+          (if (and (>= position range-start)
+                   (< position range-end))
+            (merge acc2 prop-map)
+            acc2))
+        acc
+        range-data))
+     {}
+     props)))
+
+(defn propertize
+  "Create string with text properties.
+
+  Usage: (propertize \"text\" 'face 'bold 'help-echo \"tooltip\")
+
+  Returns string with properties metadata."
+  [text & properties]
+  (let [prop-map (apply hash-map properties)]
+    ;; Return as ClojureScript with-meta for property storage
+    (with-meta text {:text-properties {0 {(count text) prop-map}}})
+    ))
+
+(defn get-text-property-from-string
+  "Get property from propertized string."
+  [string position property]
+  (let [props (-> string meta :text-properties)]
+    (some (fn [[range-start range-data]]
+            (some (fn [[range-end prop-map]]
+                    (when (and (>= position range-start)
+                               (< position range-end))
+                      (get prop-map property)))
+                  range-data))
+          props)))
+
+(defn visible-text
+  "Get visible text (respects 'invisible property).
+
+  Returns text with invisible regions removed."
+  [buffer-id]
+  (let [full-text (buffer-text buffer-id)
+        props (get-in @re-frame.db/app-db [:buffers buffer-id :text-properties])]
+    (if (empty? props)
+      full-text
+      ;; Build list of invisible ranges
+      (let [invisible-ranges
+            (for [[start-pos range-map] props
+                  [end-pos prop-map] range-map
+                  :when (get prop-map 'invisible)]
+              [start-pos end-pos])
+            ;; Sort ranges by start position
+            sorted-ranges (sort-by first invisible-ranges)]
+        ;; Remove invisible text
+        (loop [result []
+               pos 0
+               ranges sorted-ranges]
+          (if (empty? ranges)
+            ;; No more invisible ranges, add rest of text
+            (apply str (conj result (subs full-text pos)))
+            (let [[inv-start inv-end] (first ranges)]
+              ;; Add visible text before this invisible range
+              (recur
+               (conj result (subs full-text pos inv-start))
+               inv-end
+               (rest ranges)))))))))

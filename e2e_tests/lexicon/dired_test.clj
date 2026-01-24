@@ -34,12 +34,14 @@
 (defn press-meta-key
   "Press Meta/Alt+key combination (e.g., 'x' for M-x)"
   [key]
-  (let [script (str "
+  (let [key-code (str "Key" (str/upper-case key))
+        script (str "
     const input = document.querySelector('.hidden-input');
     if (input) {
       input.focus();
       const event = new KeyboardEvent('keydown', {
         key: '" key "',
+        code: '" key-code "',
         altKey: true,
         bubbles: true
       });
@@ -120,6 +122,18 @@
             (Thread/sleep 100)
             (recur (inc attempts))))))))
 
+(defn wait-for-editor-ready
+  "Wait for the editor to be fully initialized"
+  []
+  (e/wait-visible *driver* {:css ".editable-area"} {:timeout 10})
+  (Thread/sleep 200))
+
+(defn click-editor
+  "Click on the editor to ensure it has focus"
+  []
+  (e/click *driver* {:css ".editable-area"})
+  (Thread/sleep 50))
+
 ;;; =============================================================================
 ;;; CRITICAL TESTS - Core Dired Functionality
 ;;; =============================================================================
@@ -138,6 +152,11 @@
   - Observes only visible buffer state
   - No internal state inspection"
   (testing "Dired opens a directory and displays file listing"
+    ;; Setup
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
     ;; M-x dired
     (press-meta-key "x")
     (Thread/sleep 100)
@@ -176,6 +195,11 @@
   - Validates buffer property system works
   - Tests error handling infrastructure"
   (testing "Dired buffer rejects direct text editing"
+    ;; Setup
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
     ;; Open dired
     (press-meta-key "x")
     (Thread/sleep 100)
@@ -224,6 +248,10 @@
 
   NOTE: Requires filesystem provider with mock FS for testing"
   (testing "Deleting a file removes it from listing"
+    ;; Setup
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
     ;; TODO: This test requires:
     ;; 1. Mock filesystem provider for e2e tests
     ;; 2. Ability to inject test files
@@ -261,6 +289,10 @@
 
   NOTE: Requires mark system implementation"
   (testing "File marks persist through buffer refresh"
+    ;; Setup
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
     ;; TODO: This test requires:
     ;; 1. Mock FS with known files
     ;; 2. Mark command ('m') implementation
@@ -293,6 +325,10 @@
 
   NOTE: Requires refresh command and point tracking"
   (testing "Cursor stays on same file after refresh"
+    ;; Setup
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
     ;; TODO: This test requires:
     ;; 1. Mock FS with multiple files
     ;; 2. Navigation commands (n/p or arrow keys)
@@ -323,6 +359,11 @@
 
   NOTE: Requires sort command implementation"
   (testing "Sorting files by name does not modify filesystem"
+    ;; Setup
+    (e/go *driver* app-url)
+    (wait-for-editor-ready)
+    (click-editor)
+
     ;; TODO: This test requires:
     ;; 1. Mock FS with unsorted files
     ;; 2. Sort command ('s' or equivalent)

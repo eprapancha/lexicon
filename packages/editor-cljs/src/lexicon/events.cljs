@@ -19,7 +19,8 @@
             [lexicon.events.isearch]
             [lexicon.events.message]  ; Issue #47: Message system
             [lexicon.events.window]   ; Window management (splitting, deletion)
-            [lexicon.events.dired]))  ; Directory editor (Issue #93)
+            [lexicon.events.text-properties]  ; Text properties system (DIRED_CORE_PRIMITIVES_ANALYSIS.md - Priority 1)
+            [lexicon.events.hooks]))  ; Hook system (DIRED_CORE_PRIMITIVES_ANALYSIS.md - Priority 4)
 
 ;; -- Helper Functions --
 

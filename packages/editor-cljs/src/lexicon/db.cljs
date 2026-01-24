@@ -371,6 +371,13 @@
   [buffers]
   (inc (apply max 0 (keys buffers))))
 
+(defn find-buffer-by-name
+  "Find a buffer by its name
+
+  Returns the first buffer matching the given name, or nil if not found."
+  [buffers buffer-name]
+  (first (filter #(= (:name %) buffer-name) (vals buffers))))
+
 ;; -- Window Tree Functions --
 
 (defn next-window-id

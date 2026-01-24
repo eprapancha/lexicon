@@ -283,6 +283,10 @@
 (defn collect-all-args
   "Collect all arguments according to the interactive spec.
 
+   Accepts two formats:
+   1. Emacs string format: \"p\", \"r\\nsPattern: \", etc.
+   2. Lexicon vector format: [{:type :async :prompt \"...\"}]
+
    Returns:
    {:immediate-args [val1 val2 ...]   ; Arguments available immediately
     :async-prompts [{:prompt ... :read-fn ... :index N} ...]  ; Args needing I/O
@@ -290,18 +294,37 @@
 
    If :async-prompts is empty, all args are ready.
    Otherwise, need to prompt user for remaining args."
-  [db spec-string]
-  (let [arg-descriptors (parse-interactive-spec spec-string)
-        collected (mapv #(collect-arg db %) arg-descriptors)
-        immediate-args (vec (map :value (filter #(= (:type %) :immediate) collected)))
-        async-args (vec (keep-indexed
-                         (fn [idx coll]
-                           (when (= (:type coll) :async)
-                             (assoc coll :index idx)))
-                         collected))]
-    {:immediate-args immediate-args
-     :async-prompts async-args
-     :total-args (count arg-descriptors)}))
+  [db spec]
+  (cond
+    ;; Vector format (Lexicon custom format) - use directly as async prompts
+    (vector? spec)
+    {:immediate-args []
+     :async-prompts (vec (keep-indexed
+                          (fn [idx prompt-desc]
+                            (when (= (:type prompt-desc) :async)
+                              (assoc prompt-desc :index idx)))
+                          spec))
+     :total-args (count spec)}
+
+    ;; String format (Emacs format) - parse and collect
+    (string? spec)
+    (let [arg-descriptors (parse-interactive-spec spec)
+          collected (mapv #(collect-arg db %) arg-descriptors)
+          immediate-args (vec (map :value (filter #(= (:type %) :immediate) collected)))
+          async-args (vec (keep-indexed
+                           (fn [idx coll]
+                             (when (= (:type coll) :async)
+                               (assoc coll :index idx)))
+                           collected))]
+      {:immediate-args immediate-args
+       :async-prompts async-args
+       :total-args (count arg-descriptors)})
+
+    ;; Nil or unknown format
+    :else
+    {:immediate-args []
+     :async-prompts []
+     :total-args 0}))
 
 ;; -- Helper Functions --
 
