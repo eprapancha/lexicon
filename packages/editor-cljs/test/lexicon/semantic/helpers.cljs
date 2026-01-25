@@ -1337,6 +1337,77 @@
   ;; TODO: Implement via API
   nil)
 
+;; =============================================================================
+;; Extended Package Stubs (Issues #115-#124)
+;; =============================================================================
+
+;; Buffer Menu (#115)
+(defn list-buffers
+  "Display buffer list (stub for tests)."
+  []
+  nil)
+
+;; Project/Xref (#116)
+(defn project-root
+  "Get project root for PATH (stub for tests)."
+  [path]
+  nil)
+
+;; Window Extensions (#117)
+(defn windmove-left
+  "Move to window on left (stub for tests)."
+  []
+  nil)
+
+;; File Persistence (#118)
+(defn recentf-list
+  "Get recent files list (stub for tests)."
+  []
+  [])
+
+;; Diff/Merge (#119) - stubs only
+
+;; Text Expansion (#120)
+(defn dabbrev-expand
+  "Expand word at point from buffer (stub for tests)."
+  []
+  nil)
+
+;; Editing Enhancements (#121) - uses existing helpers
+
+;; Programming Support (#122)
+(defn compile
+  "Run compile command (stub for tests)."
+  [command]
+  nil)
+
+(defn imenu-create-index
+  "Create buffer index (stub for tests)."
+  []
+  nil)
+
+;; Visual Enhancements (#123)
+(defn show-paren-data-function
+  "Get matching paren data (stub for tests)."
+  []
+  nil)
+
+;; Documentation (#124)
+(defn eldoc-documentation-function
+  "Get eldoc documentation (stub for tests)."
+  []
+  nil)
+
+(defn apropos-command
+  "Search commands by pattern (stub for tests)."
+  [pattern]
+  nil)
+
+(defn describe-function
+  "Show function documentation (stub for tests)."
+  [function]
+  nil)
+
 (defn buffer-name-from-id
   "Get buffer name from ID (stub for tests)."
   [buffer-id]

@@ -230,4 +230,17 @@
 (def hs-hide-block h/hs-hide-block)
 (def hs-toggle-hiding h/hs-toggle-hiding)
 
+;; Extended Packages (Issues #115-#124)
+(def list-buffers h/list-buffers)
+(def project-root h/project-root)
+(def windmove-left h/windmove-left)
+(def recentf-list h/recentf-list)
+(def dabbrev-expand h/dabbrev-expand)
+(def compile h/compile)
+(def imenu-create-index h/imenu-create-index)
+(def show-paren-data-function h/show-paren-data-function)
+(def eldoc-documentation-function h/eldoc-documentation-function)
+(def apropos-command h/apropos-command)
+(def describe-function h/describe-function)
+
 ;; Macros - with-test-buffer is imported via :require-macros from lexicon.semantic.helpers
