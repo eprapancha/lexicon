@@ -1,34 +1,30 @@
-# Test Directory Policy
+# DO NOT ADD TESTS HERE
 
-**All editor tests MUST be implemented as E2E tests using Etaoin.**
+This directory is intentionally empty. A lint rule (`bb lint:browser-tests`) enforces this.
 
-Tests are located in: `/e2e_tests/lexicon/`
+All tests must be written in `/e2e_tests/` using Etaoin with keyboard simulation.
 
-## Why E2E Tests Only?
+## Correct Pattern
 
-ClojureScript unit tests in this directory have been deprecated because:
+```clojure
+;; In e2e_tests/lexicon/my_test.clj
+(ns lexicon.my-test
+  (:require [clojure.test :refer [deftest is use-fixtures]]
+            [lexicon.test-helpers :as h]))
 
-1. **API Boundary Enforcement**: ClojureScript tests frequently bypassed the Lisp API interface, reaching directly into re-frame events, subscriptions, and internal state. This made tests pass while the actual user-facing API was broken.
+(use-fixtures :once h/with-driver)
 
-2. **False Confidence**: Tests that cheat by accessing internals provide false confidence. A passing test suite that doesn't exercise the real API boundaries is worse than no tests.
-
-3. **E2E Tests the Real Thing**: Etaoin tests run against the actual browser application, testing the complete stack through the same interface users interact with.
-
-## Running E2E Tests
-
-```bash
-# Run all E2E tests
-bb test:e2e
-
-# Run specific test file
-bb test:e2e markers-test
-bb test:e2e basic-editing-test
+(deftest test-something
+  (h/setup-test*)
+  (h/clear-buffer)
+  (h/type-text "hello")
+  (h/press-ctrl "z")
+  (is (= "" (h/get-buffer-text*))))
 ```
 
-## Writing New Tests
+## Why?
 
-1. Create test files in `/e2e_tests/lexicon/`
-2. Use the `evalLisp` helper to test Lisp API functions
-3. Test through the public API only - no internal access
-
-See existing tests for examples.
+- E2E tests simulate real user interaction (keyboard, mouse)
+- No evalLisp - tests what users actually experience
+- Debuggable with full Clojure tooling
+- Run: `bb test:e2e my-test`

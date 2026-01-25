@@ -63,6 +63,22 @@
     (rf/dispatch-sync [:register-command cmd-keyword command-def])
     cmd-keyword))
 
+;; Atom to hold sci-context (allows setq-sci to access it)
+(defonce sci-context-atom (atom nil))
+
+(defn setq-impl
+  "Runtime implementation of setq that interns variables into SCI context.
+
+  This makes variables defined via setq available for subsequent evaluations.
+  Called from the setq macro with quoted symbol and evaluated value."
+  [var val]
+  ;; Store in global-vars for compatibility
+  (swap! lisp/global-vars assoc var val)
+  ;; Intern into SCI 'user namespace so bare symbols resolve
+  (when-let [ctx @sci-context-atom]
+    (sci/intern ctx 'user var val))
+  val)
+
 (def sci-context
   ;; SCI evaluation context with allowed namespaces.
   ;;
@@ -76,12 +92,60 @@
                           'lexicon.api.message {'message msg/message}
                           ;; Use full lisp.cljs API as user namespace (includes markers)
                           'user (merge lisp/sci-namespace
-                                       {'defcommand defcommand-impl})}
+                                       {'defcommand defcommand-impl
+                                        ;; Override setq runtime implementation
+                                        'setq-impl setq-impl
+                                        ;; Emacs compatibility: t = true, nil already works
+                                        't true})}
              :classes {'js {'Math js/Math         ; Allow Math for arithmetic
                             'Date js/Date          ; Allow Date for timestamps
                             'console js/console}   ; Allow console for debugging
                        'Math js/Math}
              :disable-arity-checks false}))
+
+;; Initialize the atom so setq-impl can use it
+(reset! sci-context-atom sci-context)
+
+;; Define setq macro in the SCI context
+;; This makes setq work like a special form (doesn't evaluate first arg)
+(sci/eval-string* sci-context
+  "(defmacro setq
+     [& pairs]
+     (let [pair-forms (partition 2 pairs)]
+       `(do
+          ~@(map (fn [[sym val]]
+                   `(setq-impl '~sym ~val))
+                 pair-forms))))")
+
+;; Define save-excursion macro - saves point, mark, and buffer, restores on exit
+(sci/eval-string* sci-context
+  "(defmacro save-excursion
+     [& body]
+     `(let [saved-point# (point)
+            saved-mark# (mark)
+            saved-buffer# (current-buffer)]
+        (try
+          (do ~@body)
+          (finally
+            (when (not= (current-buffer) saved-buffer#)
+              (set-buffer saved-buffer#))
+            (goto-char saved-point#)
+            (when saved-mark#
+              (set-mark saved-mark#))))))")
+
+;; Define while macro for loops
+(sci/eval-string* sci-context
+  "(defmacro while
+     [test & body]
+     `(loop []
+        (when ~test
+          ~@body
+          (recur))))")
+
+;; Define let* as alias for let (Emacs compatibility)
+(sci/eval-string* sci-context
+  "(defmacro let* [bindings & body]
+     `(let ~bindings ~@body))")
 
 ;; =============================================================================
 ;; Core Evaluation Functions

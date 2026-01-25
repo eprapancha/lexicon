@@ -188,6 +188,95 @@
             (println "See: docs/ARCHITECTURE_BOUNDARY.md")
             (System/exit 1)))))
 
+    (defn lint-e2e!
+      "Check that E2E tests don't use evalLisp for user actions.
+
+       Tests should simulate user interaction via keyboard, not call Lisp directly.
+       Allowed: Reading state (get-buffer-text, get-point) for verification.
+       Blocked: eval-lisp, evalLisp, setup-eval - these bypass user interaction."
+      []
+      (print-step "🔍" "Checking E2E tests don't use evalLisp...")
+      (let [;; Files that legitimately need eval (testing the eval system itself)
+            exempt-files (set ["test_helpers.clj"           ;; Defines the helpers
+                               "runtime_eval_test.clj"      ;; Tests eval itself
+                               "sci_integration_test.clj"]) ;; Tests SCI integration
+            ;; Bad patterns - evalLisp usage in test code
+            bad-patterns [[(re-pattern "eval-lisp") "uses eval-lisp (should use keyboard simulation)"]
+                         [(re-pattern "evalLisp") "uses evalLisp (should use keyboard simulation)"]
+                         [(re-pattern "setup-eval") "uses setup-eval (should use keyboard simulation)"]
+                         [(re-pattern "def \\^:dynamic \\*driver\\*") "defines own *driver* (use h/with-driver)"]
+                         [(re-pattern "with-driver-and-messages") "uses old fixture (use h/with-driver)"]]
+            test-files (fs/glob "e2e_tests" "**/*.clj")
+            violations (atom [])]
+        (doseq [file test-files]
+          (let [filename (str (fs/file-name file))]
+            (when-not (contains? exempt-files filename)
+              (let [content (slurp (str file))
+                    file-violations (atom [])]
+                ;; Check each bad pattern
+                (doseq [[pat desc] bad-patterns]
+                  (when (re-find pat content)
+                    (swap! file-violations conj desc)))
+                (when (seq (deref file-violations))
+                  (swap! violations conj {:file (str file)
+                                         :issues (deref file-violations)}))))))
+        (if (seq (deref violations))
+          (do
+            (println "\nERROR: E2E tests should not use evalLisp:\n")
+            (doseq [{:keys [file issues]} (sort-by :file (deref violations))]
+              (println (str "  " file))
+              (doseq [issue issues]
+                (println (str "    - " issue))))
+            (println "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            (println "E2E tests should simulate USER ACTIONS via keyboard:")
+            (println "")
+            (println "  BAD:  (eval-lisp \"(insert \\\"hello\\\")\")")
+            (println "  GOOD: (h/type-text \"hello\")")
+            (println "")
+            (println "  BAD:  (eval-lisp \"(undo)\")")
+            (println "  GOOD: (h/press-ctrl \"z\")")
+            (println "")
+            (println "Reading state for verification is OK:")
+            (println "  (is (= \"hello\" (h/get-buffer-text*)))")
+            (println "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+            (System/exit 1))
+          (print-step "✅" "E2E tests don't use evalLisp"))))
+
+    (defn lint-browser-tests!
+      "Check that no browser-based tests exist in packages/editor-cljs/test/.
+       All E2E tests should be in e2e_tests/ using Etaoin."
+      []
+      (print-step "🔍" "Checking for browser-based tests...")
+      (let [test-dir "packages/editor-cljs/test"
+            test-files (->> (fs/glob test-dir "**/*.cljs")
+                           (concat (fs/glob test-dir "**/*_test.clj"))
+                           (filter (fn [f] (not (str/ends-with? (str f) ".gitkeep"))))
+                           (map str)
+                           vec)]
+        (if (seq test-files)
+          (do
+            (println "\nERROR: Browser-based tests found in packages/editor-cljs/test/\n")
+            (doseq [f test-files]
+              (println (str "  " f)))
+            (println "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            (println "DO NOT write tests in packages/editor-cljs/test/")
+            (println "")
+            (println "All E2E tests should be written in e2e_tests/ using Etaoin.")
+            (println "See: e2e_tests/lexicon/keyboard_demo_test.clj for the pattern.")
+            (println "")
+            (println "Browser-based tests are:")
+            (println "  - Hard to debug (no REPL, limited stack traces)")
+            (println "  - Flaky (timing issues)")
+            (println "  - Slow to run")
+            (println "")
+            (println "Etaoin tests are:")
+            (println "  - Real browser simulation (Firefox/Chrome)")
+            (println "  - Debuggable with full Clojure tooling")
+            (println "  - Reliable and reproducible")
+            (println "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+            (System/exit 1))
+          (print-step "✅" "No browser-based tests found"))))
+
     (defn lint-kondo!
       "Run clj-kondo static analysis on ClojureScript code.
        Currently warn-only (doesn't fail build) - fix issues incrementally.
@@ -225,11 +314,21 @@
   {:doc "Run clj-kondo static analysis"
    :task (lint-kondo!)}
 
+  lint:e2e
+  {:doc "Check E2E tests don't use evalLisp (should simulate user interaction)"
+   :task (lint-e2e!)}
+
+  lint:browser-tests
+  {:doc "Check no browser-based tests in packages/editor-cljs/test/"
+   :task (lint-browser-tests!)}
+
   lint
-  {:doc "Run all linters (architecture + clj-kondo)"
+  {:doc "Run all linters (architecture + clj-kondo + e2e + browser-tests)"
    :task (do
            (lint-architecture!)
-           (lint-kondo!))}
+           (lint-kondo!)
+           (lint-e2e!)
+           (lint-browser-tests!))}
 
   ;; Individual build tasks
   build-wasm

@@ -36,6 +36,105 @@
          '*last-command* nil
          '*this-command* nil}))
 
+;; =============================================================================
+;; Hooks System
+;; =============================================================================
+
+;; Atom storing hook lists: symbol -> vector of functions
+(defonce hooks-registry
+  (atom {}))
+
+(defn add-hook
+  "Add FUNCTION to HOOK.
+
+  HOOK is a symbol naming a hook variable.
+  FUNCTION is the function to add.
+
+  Functions are called in the order they were added.
+
+  Usage: (add-hook 'my-hook (fn [] (insert \"ran\")))
+  Returns: nil"
+  [hook-symbol function]
+  (swap! hooks-registry update hook-symbol
+         (fn [fns] (conj (or fns []) function)))
+  nil)
+
+(defn remove-hook
+  "Remove FUNCTION from HOOK.
+
+  Usage: (remove-hook 'my-hook my-fn)
+  Returns: nil"
+  [hook-symbol function]
+  (swap! hooks-registry update hook-symbol
+         (fn [fns] (vec (remove #(= % function) (or fns [])))))
+  nil)
+
+(defn run-hooks
+  "Run all functions on HOOK.
+
+  Each function is called with no arguments.
+
+  Usage: (run-hooks 'my-hook)
+  Returns: nil"
+  [hook-symbol]
+  (let [fns (get @hooks-registry hook-symbol [])]
+    (doseq [f fns]
+      (f)))
+  nil)
+
+(defn run-hook-with-args
+  "Run all functions on HOOK with ARGS.
+
+  Each function is called with the provided arguments.
+
+  Usage: (run-hook-with-args 'my-hook arg1 arg2)
+  Returns: nil"
+  [hook-symbol & args]
+  (let [fns (get @hooks-registry hook-symbol [])]
+    (doseq [f fns]
+      (apply f args)))
+  nil)
+
+(defn run-hook-with-args-until-success
+  "Run functions on HOOK until one returns non-nil.
+
+  Stops at first function that returns a non-nil value.
+  Returns that value.
+
+  Usage: (run-hook-with-args-until-success 'my-hook)
+  Returns: First non-nil return value, or nil if all return nil"
+  [hook-symbol & args]
+  (let [fns (get @hooks-registry hook-symbol [])]
+    (loop [remaining fns]
+      (if (empty? remaining)
+        nil
+        (let [f (first remaining)
+              result (apply f args)]
+          (if result
+            result
+            (recur (rest remaining))))))))
+
+(defn run-hook-with-args-until-failure
+  "Run functions on HOOK until one returns nil.
+
+  Stops at first function that returns nil.
+  Returns nil if any function returned nil, otherwise returns
+  the result of the last function.
+
+  Usage: (run-hook-with-args-until-failure 'my-hook)
+  Returns: nil if any function returned nil"
+  [hook-symbol & args]
+  (let [fns (get @hooks-registry hook-symbol [])]
+    (loop [remaining fns
+           last-result nil]
+      (if (empty? remaining)
+        last-result
+        (let [f (first remaining)
+              result (apply f args)]
+          (if (nil? result)
+            nil  ; Stop and return nil on failure
+            (recur (rest remaining) result)))))))
+
 (defn setq
   "Set variable VAR to VALUE.
 
@@ -674,6 +773,8 @@
             pos (or (buf/point db) 0)
             recording-enabled? (get-in db [:undo :recording-enabled?] true)
             undo-enabled? (get-in db [:buffers buffer-id :undo-enabled?] true)]
+        ;; Run before-change-functions hook
+        (run-hook-with-args 'before-change-functions pos pos)
         ;; Insert directly into WASM buffer
         (when wasm-instance
           (.insert ^js wasm-instance pos text-str)
@@ -713,7 +814,10 @@
                                (assoc-in [:buffers buffer-id :undo-stack] (conj stack point-marker undo-entry))
                                ;; Clear redo stack on new edit
                                (assoc-in [:buffers buffer-id :redo-stack] [])))
-                         db-with-cache))))))))
+                         db-with-cache)))
+            ;; Run after-change-functions hook: (beg end old-len)
+            ;; For insert: old-len is 0, end is new position
+            (run-hook-with-args 'after-change-functions pos new-pos 0))))))
     nil))
 
 (defn delete-region
@@ -737,6 +841,9 @@
         deleted-text (when (and wasm-instance (pos? length))
                        (let [current-text (.getText ^js wasm-instance)]
                          (subs current-text actual-start actual-end)))]
+    ;; Run before-change-functions hook
+    (when (pos? length)
+      (run-hook-with-args 'before-change-functions actual-start actual-end))
     (when (and wasm-instance (pos? length))
       (.delete ^js wasm-instance actual-start length)
       ;; Update cache
@@ -778,8 +885,11 @@
                            (assoc-in [:buffers buffer-id :undo-stack] (conj stack point-marker undo-entry))
                            ;; Clear redo stack on new edit
                            (assoc-in [:buffers buffer-id :redo-stack] [])))
-                     db-with-cache))))))
-    nil))
+                     db-with-cache))))
+        ;; Run after-change-functions hook: (beg end old-len)
+        ;; For delete: beg and end are both actual-start (region collapsed), old-len is the deleted length
+        (run-hook-with-args 'after-change-functions actual-start actual-start length))
+    nil)))
 
 (defn erase-buffer
   "Delete entire contents of current buffer.
@@ -1843,6 +1953,93 @@
     nil))
 
 ;; =============================================================================
+;; Additional Buffer Functions
+;; =============================================================================
+
+(defn get-buffer-create
+  "Get buffer by NAME, creating it if it doesn't exist.
+
+  Usage: (get-buffer-create \"*scratch*\")
+  Returns: Buffer ID"
+  [buffer-name]
+  (if-let [existing (get-buffer buffer-name)]
+    existing
+    (create-buffer buffer-name)))
+
+(defn kill-buffer
+  "Kill buffer with NAME or ID.
+
+  Usage: (kill-buffer \"*scratch*\")
+         (kill-buffer buffer-id)
+  Returns: t if killed, nil if not"
+  [buffer-or-name]
+  (let [buffer-id (if (string? buffer-or-name)
+                    (get-buffer buffer-or-name)
+                    buffer-or-name)]
+    (when buffer-id
+      (swap! rfdb/app-db update :buffers dissoc buffer-id)
+      true)))
+
+(defn looking-at
+  "Return t if text after point matches REGEXP.
+
+  Usage: (looking-at \"Hello\")
+  Returns: Boolean"
+  [regexp]
+  (let [text (buffer-string)
+        pos (point)
+        remaining (subs text pos)
+        pattern (re-pattern (str "^" regexp))]
+    (boolean (re-find pattern remaining))))
+
+(defn forward-word
+  "Move point forward ARG words.
+
+  Returns count of words that could NOT be moved.
+
+  Usage: (forward-word)
+         (forward-word 2)
+  Returns: Integer"
+  ([] (forward-word 1))
+  ([arg]
+   (let [text (buffer-string)
+         text-len (count text)]
+     (loop [remaining arg
+            pos (point)]
+       (if (or (<= remaining 0) (>= pos text-len))
+         (do
+           (goto-char pos)
+           (max 0 remaining))
+         ;; Skip whitespace
+         (let [pos-after-ws (loop [p pos]
+                              (if (and (< p text-len)
+                                       (let [ch (nth text p)]
+                                         (or (= ch \space) (= ch \tab) (= ch \newline))))
+                                (recur (inc p))
+                                p))
+               ;; Skip word chars
+               pos-after-word (loop [p pos-after-ws]
+                                (if (and (< p text-len)
+                                         (let [ch (nth text p)]
+                                           (not (or (= ch \space) (= ch \tab) (= ch \newline)))))
+                                  (recur (inc p))
+                                  p))]
+           (if (= pos-after-word pos-after-ws)
+             ;; No word found
+             (do
+               (goto-char pos-after-ws)
+               remaining)
+             (recur (dec remaining) pos-after-word))))))))
+
+(defn lisp-error
+  "Signal an error with MESSAGE.
+
+  Usage: (error \"Something went wrong\")
+  Throws: Exception"
+  [& args]
+  (throw (js/Error. (apply str args))))
+
+;; =============================================================================
 ;; Export for SCI
 ;; =============================================================================
 
@@ -1981,4 +2178,17 @@
    ;; Global variables (#106)
    'setq setq
    'symbol-value symbol-value
-   '*prefix-arg* (fn [] (get @global-vars '*prefix-arg*))})
+   '*prefix-arg* (fn [] (get @global-vars '*prefix-arg*))
+   ;; Hooks (#106)
+   'add-hook add-hook
+   'remove-hook remove-hook
+   'run-hooks run-hooks
+   'run-hook-with-args run-hook-with-args
+   'run-hook-with-args-until-success run-hook-with-args-until-success
+   'run-hook-with-args-until-failure run-hook-with-args-until-failure
+   ;; Additional buffer functions
+   'get-buffer-create get-buffer-create
+   'kill-buffer kill-buffer
+   'looking-at looking-at
+   'forward-word forward-word
+   'error lisp-error})
