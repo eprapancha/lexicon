@@ -243,4 +243,41 @@
 (def apropos-command h/apropos-command)
 (def describe-function h/describe-function)
 
+;; Grep & Highlighting (#125)
+(def grep h/grep)
+(def grep-find h/grep-find)
+(def hi-lock-mode h/hi-lock-mode)
+(def highlight-regexp h/highlight-regexp)
+
+;; Remote Files / TRAMP (#126)
+(def tramp-dissect-file-name h/tramp-dissect-file-name)
+(def tramp-tramp-file-p h/tramp-tramp-file-p)
+(def tramp-methods h/tramp-methods)
+
+;; Terminal Emulation (#127)
+(def term h/term)
+(def term-line-mode h/term-line-mode)
+(def term-char-mode h/term-char-mode)
+(def comint-send-input h/comint-send-input)
+(def comint-previous-input h/comint-previous-input)
+(def ansi-color-apply h/ansi-color-apply)
+
+;; Incremental Completion (#128)
+(def icomplete-completions h/icomplete-completions)
+(def icomplete-forward-completions h/icomplete-forward-completions)
+
+;; LSP Client / Eglot (#129)
+(def eglot-server-programs h/eglot-server-programs)
+(def eglot-ensure h/eglot-ensure)
+(def eglot-eldoc-function h/eglot-eldoc-function)
+(def eglot-completion-at-point h/eglot-completion-at-point)
+(def eglot-diagnostics h/eglot-diagnostics)
+(def eglot-code-actions h/eglot-code-actions)
+
+;; Font Lock & Code Intelligence (#130)
+(def font-lock-keywords h/font-lock-keywords)
+(def font-lock-add-keywords h/font-lock-add-keywords)
+(def face-attribute h/face-attribute)
+(def which-function h/which-function)
+
 ;; Macros - with-test-buffer is imported via :require-macros from lexicon.semantic.helpers

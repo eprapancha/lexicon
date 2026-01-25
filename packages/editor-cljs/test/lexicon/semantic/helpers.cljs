@@ -1414,6 +1414,169 @@
   (get-in @rfdb/app-db [:buffers buffer-id :name]))
 
 ;; =============================================================================
+;; Grep & Highlighting (#125)
+;; =============================================================================
+
+(defn grep
+  "Run grep command (stub for tests)."
+  [command]
+  nil)
+
+(defn grep-find
+  "Run grep with find (stub for tests)."
+  [command]
+  nil)
+
+(defn hi-lock-mode
+  "Enable hi-lock highlighting mode (stub for tests)."
+  []
+  nil)
+
+(defn highlight-regexp
+  "Highlight REGEXP in buffer (stub for tests)."
+  [regexp]
+  nil)
+
+;; =============================================================================
+;; Remote Files / TRAMP (#126)
+;; =============================================================================
+
+(defn tramp-dissect-file-name
+  "Parse TRAMP file name into components (stub for tests).
+  Returns map with :method :user :host :localname or nil."
+  [filename]
+  (when (and filename (re-find #"^/[^:]+:" filename))
+    ;; Very basic parsing for stubs
+    (when-let [[_ method user host localname]
+               (re-matches #"^/([^:]+):([^@]*)@?([^:]+):(.*)$" filename)]
+      {:method method
+       :user (when (seq user) user)
+       :host host
+       :localname localname})))
+
+(defn tramp-tramp-file-p
+  "Check if FILENAME is a TRAMP remote path (stub for tests)."
+  [filename]
+  (boolean (and filename (re-find #"^/[^:]+:[^:]+:" filename))))
+
+(defn tramp-methods
+  "Get list of available TRAMP methods (stub for tests)."
+  []
+  ["ssh" "scp" "rsync" "sudo"])
+
+;; =============================================================================
+;; Terminal Emulation (#127)
+;; =============================================================================
+
+(defn term
+  "Start terminal process (stub for tests)."
+  [program]
+  nil)
+
+(defn term-line-mode
+  "Switch to line mode in term (stub for tests)."
+  []
+  nil)
+
+(defn term-char-mode
+  "Switch to char mode in term (stub for tests)."
+  []
+  nil)
+
+(defn comint-send-input
+  "Send input to comint process (stub for tests)."
+  []
+  nil)
+
+(defn comint-previous-input
+  "Navigate to previous input in history (stub for tests)."
+  [n]
+  nil)
+
+(defn ansi-color-apply
+  "Apply ANSI color codes to string (stub for tests)."
+  [string]
+  ;; Strip ANSI codes for stub
+  (clojure.string/replace string #"\u001b\[[0-9;]*m" ""))
+
+;; =============================================================================
+;; Incremental Completion (#128)
+;; =============================================================================
+
+(defn icomplete-completions
+  "Get current icomplete candidates (stub for tests)."
+  []
+  nil)
+
+(defn icomplete-forward-completions
+  "Cycle forward through icomplete candidates (stub for tests)."
+  []
+  nil)
+
+;; =============================================================================
+;; LSP Client / Eglot (#129)
+;; =============================================================================
+
+(defn eglot-server-programs
+  "Get eglot server programs configuration (stub for tests)."
+  []
+  nil)
+
+(defn eglot-ensure
+  "Ensure eglot is connected for current buffer (stub for tests)."
+  []
+  false)
+
+(defn eglot-eldoc-function
+  "Get eglot documentation at point (stub for tests)."
+  []
+  nil)
+
+(defn eglot-completion-at-point
+  "Get eglot completions at point (stub for tests)."
+  []
+  nil)
+
+(defn eglot-diagnostics
+  "Get eglot diagnostics for current buffer (stub for tests)."
+  []
+  nil)
+
+(defn eglot-code-actions
+  "Get available code actions at point (stub for tests)."
+  []
+  nil)
+
+;; =============================================================================
+;; Font Lock & Code Intelligence (#130)
+;; =============================================================================
+
+(defn font-lock-keywords
+  "Get font-lock-keywords for current mode (stub for tests)."
+  []
+  nil)
+
+(defn font-lock-add-keywords
+  "Add keywords to font-lock for MODE (stub for tests)."
+  [mode keywords]
+  nil)
+
+(defn face-attribute
+  "Get ATTRIBUTE of FACE (stub for tests)."
+  [face attribute]
+  ;; Return basic values for standard faces
+  (case face
+    font-lock-keyword-face (when (= attribute :foreground) "#7F0055")
+    font-lock-string-face (when (= attribute :foreground) "#2A00FF")
+    font-lock-comment-face (when (= attribute :foreground) "#3F7F5F")
+    nil))
+
+(defn which-function
+  "Return name of function at point (stub for tests)."
+  []
+  nil)
+
+;; =============================================================================
 ;; Macros for with-test-buffer
 ;; =============================================================================
 ;; Macro with-test-buffer is defined in helpers.clj (required via :require-macros)
