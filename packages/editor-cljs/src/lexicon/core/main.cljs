@@ -4,6 +4,7 @@
             [reagent.dom :as rdom]
             [clojure.string :as str]
             [lexicon.core.db :as db]  ; For find-window-in-tree
+            [lexicon.core.eval :as eval]  ; For E2E test eval
             [lexicon.core.log]       ; Load log bus (Issue #73)
             [lexicon.core.events]    ; Load event handlers
             [lexicon.core.subs]      ; Load subscriptions
@@ -149,7 +150,11 @@
             :enumerable true
             :configurable true}))
     ;; Expose re-frame dispatch for testing (Issue #97)
-    (aset js/window "lexiconDispatch" rf/dispatch)))
+    (aset js/window "lexiconDispatch" rf/dispatch)
+    ;; Expose evalLisp for E2E tests (Issue #101)
+    (aset js/window "evalLisp"
+          (fn [code-str]
+            (clj->js (eval/eval-string code-str))))))
 
 (defn init
   "Initialize the Lexicon editor application"

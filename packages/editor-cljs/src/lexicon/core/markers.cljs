@@ -12,12 +12,17 @@
   - :custom - User-defined markers
 
   Marker metadata structure:
-  {:id           marker-id
-   :buffer-id    buffer-id
-   :kind         :point | :mark | :overlay-start | :overlay-end | :custom
-   :wasm-id      wasm-marker-id  ; ID in the WASM engine
-   :created-at   timestamp
-   :metadata     {...}}           ; Optional user metadata"
+  {:id              marker-id
+   :buffer-id       buffer-id
+   :kind            :point | :mark | :overlay-start | :overlay-end | :custom
+   :wasm-id         wasm-marker-id  ; ID in the WASM engine
+   :insertion-type  nil | true      ; nil=stay before inserted text, true=advance past
+   :created-at      timestamp
+   :metadata        {...}}          ; Optional user metadata
+
+  Insertion Type (Emacs semantics):
+  - nil (default): Marker stays BEFORE text inserted at its position
+  - true: Marker advances PAST text inserted at its position"
   (:require [re-frame.core :as rf]))
 
 ;; =============================================================================
@@ -29,26 +34,30 @@
 
   Options:
   - :kind - Marker type (:point, :mark, :overlay-start, :overlay-end, :custom)
+  - :insertion-type - nil (stay before inserted text) or true (advance past)
   - :metadata - Optional metadata map
 
   Returns marker ID (integer)."
   ([buffer-id position]
    (create-marker! buffer-id position {}))
-  ([buffer-id position {:keys [kind metadata] :or {kind :custom metadata {}}}]
-   (rf/dispatch [:markers/create buffer-id position kind metadata])))
+  ([buffer-id position {:keys [kind insertion-type metadata]
+                        :or {kind :custom insertion-type nil metadata {}}}]
+   (rf/dispatch [:markers/create buffer-id position kind insertion-type metadata])))
 
 (rf/reg-event-fx
   :markers/create
-  (fn [{:keys [db]} [_ buffer-id position kind metadata]]
-    (let [wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+  (fn [{:keys [db]} [_ buffer-id position kind insertion-type metadata]]
+    (let [^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
           marker-id (get-in db [:markers :next-id] 0)
-          wasm-marker-id (.createMarker wasm-instance position)]
+          ;; WASM returns BigInt (u64), convert to JS Number for ClojureScript
+          wasm-marker-id (js/Number (.createMarker wasm-instance position))]
 
       (if (>= wasm-marker-id 0)
         (let [marker {:id marker-id
                       :buffer-id buffer-id
                       :kind kind
                       :wasm-id wasm-marker-id
+                      :insertion-type insertion-type
                       :created-at (js/Date.now)
                       :metadata metadata}]
           {:db (-> db
@@ -76,11 +85,12 @@
   (fn [{:keys [db]} [_ marker-id]]
     (let [marker (get-in db [:markers :table marker-id])
           buffer-id (:buffer-id marker)
-          wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+          ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
           wasm-marker-id (:wasm-id marker)]
 
       (when wasm-instance
-        (.deleteMarker wasm-instance wasm-marker-id))
+        ;; Convert to BigInt for WASM
+        (.deleteMarker wasm-instance (js/BigInt wasm-marker-id)))
 
       {:db (-> db
                (update-in [:markers :table] dissoc marker-id)
@@ -95,10 +105,10 @@
   (fn [db [_ marker-id]]
     (let [marker (get-in db [:markers :table marker-id])
           buffer-id (:buffer-id marker)
-          wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+          ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
           wasm-marker-id (:wasm-id marker)]
       (when wasm-instance
-        (let [pos (.getMarkerPosition wasm-instance wasm-marker-id)]
+        (let [pos (js/Number (.getMarkerPosition wasm-instance (js/BigInt wasm-marker-id)))]
           (when (>= pos 0)
             pos))))))
 
@@ -134,10 +144,10 @@
   (fn [{:keys [db]} [_ marker-id new-position]]
     (let [marker (get-in db [:markers :table marker-id])
           buffer-id (:buffer-id marker)
-          wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+          ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
           wasm-marker-id (:wasm-id marker)]
 
-      (if (and wasm-instance (.moveMarker wasm-instance wasm-marker-id new-position))
+      (if (and wasm-instance (.moveMarker wasm-instance (js/BigInt wasm-marker-id) new-position))
         {:db db}
         {:db db
          :fx [[:dispatch [:show-error (str "Failed to move marker " marker-id " to " new-position)]]]}))))
@@ -160,6 +170,33 @@
                  #(merge % updates)))))
 
 ;; =============================================================================
+;; Insertion Type
+;; =============================================================================
+
+(defn marker-insertion-type
+  "Get insertion-type of MARKER-ID.
+  Returns nil (stay before) or true (advance past inserted text)."
+  [db marker-id]
+  (get-in db [:markers :table marker-id :insertion-type]))
+
+(defn set-marker-insertion-type!
+  "Set insertion-type of MARKER-ID.
+  TYPE = nil: marker stays before text inserted at its position
+  TYPE = true: marker advances past text inserted at its position"
+  [marker-id insertion-type]
+  (rf/dispatch [:markers/set-insertion-type marker-id insertion-type]))
+
+(rf/reg-event-db
+  :markers/set-insertion-type
+  (fn [db [_ marker-id insertion-type]]
+    (assoc-in db [:markers :table marker-id :insertion-type] insertion-type)))
+
+(rf/reg-sub
+  :markers/insertion-type
+  (fn [db [_ marker-id]]
+    (marker-insertion-type db marker-id)))
+
+;; =============================================================================
 ;; Utility Functions
 ;; =============================================================================
 
@@ -178,6 +215,11 @@
   "Get number of markers in BUFFER-ID."
   [db buffer-id]
   (count (get-in db [:buffers buffer-id :markers] #{})))
+
+(defn marker-buffer
+  "Get buffer-id of MARKER-ID."
+  [db marker-id]
+  (get-in db [:markers :table marker-id :buffer-id]))
 
 ;; =============================================================================
 ;; Initialization
@@ -210,9 +252,10 @@
 (rf/reg-event-fx
   :markers/create-point
   (fn [{:keys [db]} [_ buffer-id position]]
-    (let [wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+    (let [^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
           marker-id (get-in db [:markers :next-id] 0)
-          wasm-marker-id (.createMarker wasm-instance position)]
+          ;; WASM returns BigInt (u64), convert to JS Number for ClojureScript
+          wasm-marker-id (js/Number (.createMarker wasm-instance position))]
 
       (if (>= wasm-marker-id 0)
         (let [marker {:id marker-id
@@ -240,10 +283,10 @@
   [db buffer-id]
   (if-let [marker-id (point-marker-id db buffer-id)]
     (let [marker (get-in db [:markers :table marker-id])
-          wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+          ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
           wasm-marker-id (:wasm-id marker)]
       (when wasm-instance
-        (let [pos (.getMarkerPosition wasm-instance wasm-marker-id)]
+        (let [pos (js/Number (.getMarkerPosition wasm-instance (js/BigInt wasm-marker-id)))]
           (if (>= pos 0)
             pos
             ;; Fallback to UI cursor position
@@ -284,9 +327,10 @@
 (rf/reg-event-fx
   :markers/create-mark
   (fn [{:keys [db]} [_ buffer-id position]]
-    (let [wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+    (let [^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
           marker-id (get-in db [:markers :next-id] 0)
-          wasm-marker-id (.createMarker wasm-instance position)]
+          ;; WASM returns BigInt (u64), convert to JS Number for ClojureScript
+          wasm-marker-id (js/Number (.createMarker wasm-instance position))]
 
       (if (>= wasm-marker-id 0)
         (let [marker {:id marker-id
@@ -316,10 +360,10 @@
   (when (get-in db [:buffers buffer-id :mark-active?])
     (if-let [marker-id (mark-marker-id db buffer-id)]
       (let [marker (get-in db [:markers :table marker-id])
-            wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+            ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
             wasm-marker-id (:wasm-id marker)]
         (when wasm-instance
-          (let [pos (.getMarkerPosition wasm-instance wasm-marker-id)]
+          (let [pos (js/Number (.getMarkerPosition wasm-instance (js/BigInt wasm-marker-id)))]
             (when (>= pos 0)
               pos))))
       ;; Fallback to old system
@@ -401,11 +445,12 @@
 (rf/reg-event-fx
   :markers/create-overlay-pair
   (fn [{:keys [db]} [_ buffer-id start-pos end-pos metadata]]
-    (let [wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+    (let [^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
           start-marker-id (get-in db [:markers :next-id] 0)
           end-marker-id (inc start-marker-id)
-          start-wasm-id (.createMarker wasm-instance start-pos)
-          end-wasm-id (.createMarker wasm-instance end-pos)]
+          ;; WASM returns BigInt, convert to Number
+          start-wasm-id (js/Number (.createMarker wasm-instance start-pos))
+          end-wasm-id (js/Number (.createMarker wasm-instance end-pos))]
 
       (if (and (>= start-wasm-id 0) (>= end-wasm-id 0))
         (let [start-marker {:id start-marker-id
@@ -427,7 +472,7 @@
                    (update-in [:buffers buffer-id :markers] (fnil conj #{}) start-marker-id end-marker-id))
            :fx [[:dispatch [:markers/overlay-pair-created buffer-id start-marker-id end-marker-id]]]})
         {:db db
-         :fx [[:dispatch [:show-error (str "Failed to create overlay markers for buffer " buffer-id)]]]})))
+         :fx [[:dispatch [:show-error (str "Failed to create overlay markers for buffer " buffer-id)]]]}))))
 
 (rf/reg-event-db
   :markers/overlay-pair-created
@@ -451,12 +496,12 @@
     (let [start-marker (get-in db [:markers :table start-marker-id])
           end-marker (get-in db [:markers :table end-marker-id])
           buffer-id (:buffer-id start-marker)
-          wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+          ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
           start-wasm-id (:wasm-id start-marker)
           end-wasm-id (:wasm-id end-marker)]
       (when (and wasm-instance start-marker end-marker)
-        (let [start-pos (.getMarkerPosition wasm-instance start-wasm-id)
-              end-pos (.getMarkerPosition wasm-instance end-wasm-id)]
+        (let [start-pos (js/Number (.getMarkerPosition wasm-instance (js/BigInt start-wasm-id)))
+              end-pos (js/Number (.getMarkerPosition wasm-instance (js/BigInt end-wasm-id)))]
           (when (and (>= start-pos 0) (>= end-pos 0))
             [start-pos end-pos]))))))
 

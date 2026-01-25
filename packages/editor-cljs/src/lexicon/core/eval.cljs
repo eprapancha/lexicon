@@ -18,7 +18,8 @@
             [lexicon.core.db :as db]
             [lexicon.core.api.message :as msg]
             [lexicon.core.api.buffer :as buf]
-            [lexicon.core.minibuffer :as minibuffer]))
+            [lexicon.core.minibuffer :as minibuffer]
+            [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
 ;; SCI Context Configuration
@@ -62,7 +63,7 @@
     (rf/dispatch-sync [:register-command cmd-keyword command-def])
     cmd-keyword))
 
-(defonce sci-context
+(def sci-context
   ;; SCI evaluation context with allowed namespaces.
   ;;
   ;; Security:
@@ -73,7 +74,8 @@
   (sci/init {:namespaces {'lexicon.core lexicon-api-namespace
                           'lexicon.api.buffer lexicon-api-namespace
                           'lexicon.api.message {'message msg/message}
-                          'user (merge lexicon-api-namespace
+                          ;; Use full lisp.cljs API as user namespace (includes markers)
+                          'user (merge lisp/sci-namespace
                                        {'defcommand defcommand-impl})}
              :classes {'js {'Math js/Math         ; Allow Math for arithmetic
                             'Date js/Date          ; Allow Date for timestamps

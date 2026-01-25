@@ -689,70 +689,64 @@
   :window-2)
 
 ;; =============================================================================
-;; Marker helpers (stubs for tests)
+;; Marker helpers - Uses API (Issue #101)
 ;; =============================================================================
 
 (defn make-marker
-  "Create a new marker (stub for tests)."
-  []
-  (atom {:position nil :buffer nil}))
+  "Create a new marker at optional POSITION.
+  Returns marker ID (integer)."
+  ([] (lisp/make-marker))
+  ([position] (lisp/make-marker position))
+  ([position insertion-type] (lisp/make-marker position insertion-type)))
 
 (defn marker-position
-  "Get marker position (stub for tests)."
-  [marker]
-  (:position @marker))
+  "Get marker position."
+  [marker-id]
+  (lisp/marker-position marker-id))
 
 (defn marker-buffer
-  "Get marker buffer (stub for tests)."
-  [marker]
-  (:buffer @marker))
+  "Get marker buffer."
+  [marker-id]
+  (lisp/marker-buffer marker-id))
 
 (defn set-marker
-  "Set marker position (stub for tests)."
-  [marker pos]
-  (swap! marker assoc :position pos)
-  marker)
+  "Set marker position."
+  ([marker-id pos] (lisp/set-marker marker-id pos))
+  ([marker-id pos buffer-id] (lisp/set-marker marker-id pos buffer-id)))
 
 (defn move-marker
-  "Move marker to new position (stub for tests)."
-  [marker pos]
-  (swap! marker assoc :position pos)
-  marker)
+  "Move marker to new position."
+  [marker-id pos]
+  (lisp/move-marker marker-id pos))
 
 (defn copy-marker
-  "Copy a marker (stub for tests)."
-  ([marker]
-   (atom @marker))
-  ([marker insertion-type]
-   (atom (assoc @marker :insertion-type insertion-type))))
+  "Copy a marker."
+  ([marker-id] (lisp/copy-marker marker-id))
+  ([marker-id insertion-type] (lisp/copy-marker marker-id insertion-type)))
 
 (defn marker-insertion-type
-  "Get marker insertion type (stub for tests).
-  Returns t if marker advances on insertion at its position, nil otherwise."
-  [marker]
-  (:insertion-type @marker))
+  "Get marker insertion type.
+  Returns true if marker advances on insertion at its position, nil otherwise."
+  [marker-id]
+  (lisp/marker-insertion-type marker-id))
 
 (defn set-marker-insertion-type
-  "Set marker insertion type (stub for tests).
-  TYPE = t: marker advances when text inserted at its position
+  "Set marker insertion type.
+  TYPE = true: marker advances when text inserted at its position
   TYPE = nil: marker stays before inserted text"
-  [marker type]
-  (swap! marker assoc :insertion-type type)
-  type)
+  [marker-id type]
+  (lisp/set-marker-insertion-type marker-id type))
 
 (defn markerp
-  "Check if object is a marker (stub for tests)."
+  "Check if object is a marker."
   [obj]
-  (and (instance? Atom obj)
-       (map? @obj)
-       (contains? @obj :position)))
+  (lisp/markerp obj))
 
 (defn insert-before-markers
-  "Insert text, keeping all markers before the insertion (stub for tests).
+  "Insert text, keeping all markers before the insertion.
   Unlike regular insert, all markers at insertion point stay before the text."
   [text]
-  ;; Stub - just calls regular insert for now
-  (insert text))
+  (lisp/insert-before-markers text))
 
 (defn buffer-string
   "Get entire buffer contents as string (stub for tests)."

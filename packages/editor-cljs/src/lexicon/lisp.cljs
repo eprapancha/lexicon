@@ -19,7 +19,8 @@
             [clojure.string :as str]
             [lexicon.core.api.buffer :as buf]
             [lexicon.core.api.message :as msg]
-            [lexicon.core.db :as db]))
+            [lexicon.core.db :as db]
+            [lexicon.core.markers :as markers]))
 
 ;; Forward declarations for functions used before definition
 (declare goto-char line-beginning-position line-end-position current-buffer)
@@ -1012,6 +1013,225 @@
     (insert content)))
 
 ;; =============================================================================
+;; Markers (Issue #101)
+;; =============================================================================
+
+(defn make-marker
+  "Create a new marker at POSITION in current buffer.
+
+  If POSITION is nil, creates a marker not pointing anywhere.
+  Optional INSERTION-TYPE controls behavior when text is inserted at marker:
+  - nil (default): marker stays before inserted text
+  - true: marker advances past inserted text
+
+  Usage: (make-marker)
+         (make-marker 0)
+         (make-marker 100 t)
+  Returns: Marker ID (integer)"
+  ([] (make-marker nil nil))
+  ([position] (make-marker position nil))
+  ([position insertion-type]
+   (let [buffer-id (current-buffer)]
+     (if (nil? position)
+       ;; Create marker not pointing anywhere
+       (let [marker-id (get-in @rfdb/app-db [:markers :next-id] 0)]
+         (swap! rfdb/app-db
+                (fn [db]
+                  (-> db
+                      (assoc-in [:markers :table marker-id]
+                                {:id marker-id
+                                 :buffer-id nil
+                                 :kind :custom
+                                 :wasm-id nil
+                                 :insertion-type insertion-type
+                                 :created-at (js/Date.now)
+                                 :metadata {}})
+                      (update-in [:markers :next-id] inc))))
+         marker-id)
+       ;; Create marker at position using re-frame dispatch
+       (do
+         (rf/dispatch-sync [:markers/create buffer-id position :custom insertion-type {}])
+         ;; Get the created marker ID (it's next-id - 1 after creation)
+         (dec (get-in @rfdb/app-db [:markers :next-id] 1)))))))
+
+(defn marker-position
+  "Return position of MARKER, or nil if marker points nowhere.
+
+  Usage: (marker-position marker)
+  Returns: Integer position or nil"
+  [marker-id]
+  ;; Access db directly (subscriptions don't work in SCI context)
+  (let [db @rfdb/app-db
+        marker (get-in db [:markers :table marker-id])
+        buffer-id (:buffer-id marker)
+        wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+        wasm-marker-id (:wasm-id marker)]
+    (when (and wasm-instance (number? wasm-marker-id))
+      ;; WASM expects BigInt for marker ID, returns BigInt (i64), convert to JS Number
+      (let [pos (js/Number (.getMarkerPosition ^js wasm-instance (js/BigInt wasm-marker-id)))]
+        (when (>= pos 0)
+          pos)))))
+
+(defn marker-buffer
+  "Return buffer that MARKER points into, or nil if none.
+
+  Usage: (marker-buffer marker)
+  Returns: Buffer ID or nil"
+  [marker-id]
+  (get-in @rfdb/app-db [:markers :table marker-id :buffer-id]))
+
+(defn set-marker
+  "Set MARKER to point to POSITION in BUFFER.
+
+  If POSITION is nil, unset the marker (it points nowhere).
+  If BUFFER is nil, uses current buffer.
+
+  Usage: (set-marker marker position)
+         (set-marker marker position buffer-id)
+  Returns: marker-id"
+  ([marker-id position] (set-marker marker-id position nil))
+  ([marker-id position buffer-id]
+   (let [db @rfdb/app-db
+         marker (get-in db [:markers :table marker-id])
+         target-buffer-id (or buffer-id (current-buffer))]
+     (if (nil? position)
+       ;; Unset marker
+       (do
+         (when-let [old-wasm-id (:wasm-id marker)]
+           (when-let [wasm-instance (get-in db [:buffers (:buffer-id marker) :wasm-instance])]
+             (.deleteMarker ^js wasm-instance (js/BigInt old-wasm-id))))
+         (swap! rfdb/app-db
+                (fn [db]
+                  (-> db
+                      (assoc-in [:markers :table marker-id :buffer-id] nil)
+                      (assoc-in [:markers :table marker-id :wasm-id] nil)
+                      (update-in [:buffers (:buffer-id marker) :markers] disj marker-id))))
+         marker-id)
+       ;; Set marker to position
+       (let [wasm-instance (get-in db [:buffers target-buffer-id :wasm-instance])]
+         (when wasm-instance
+           ;; Delete old WASM marker if exists
+           (when-let [old-wasm-id (:wasm-id marker)]
+             (when-let [old-wasm (get-in db [:buffers (:buffer-id marker) :wasm-instance])]
+               (.deleteMarker ^js old-wasm (js/BigInt old-wasm-id))))
+           ;; Create new WASM marker (WASM returns BigInt, convert to Number)
+           (let [new-wasm-id (js/Number (.createMarker ^js wasm-instance position))]
+             (when (>= new-wasm-id 0)
+               (swap! rfdb/app-db
+                      (fn [db]
+                        (-> db
+                            (assoc-in [:markers :table marker-id :buffer-id] target-buffer-id)
+                            (assoc-in [:markers :table marker-id :wasm-id] new-wasm-id)
+                            (update-in [:buffers (:buffer-id marker) :markers] disj marker-id)
+                            (update-in [:buffers target-buffer-id :markers] (fnil conj #{}) marker-id)))))))
+         marker-id)))))
+
+(defn move-marker
+  "Move MARKER to POSITION in its current buffer.
+
+  Unlike set-marker, does not change which buffer marker is in.
+
+  Usage: (move-marker marker position)
+  Returns: marker-id"
+  [marker-id position]
+  (let [db @rfdb/app-db
+        marker (get-in db [:markers :table marker-id])
+        buffer-id (:buffer-id marker)
+        wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+        wasm-marker-id (:wasm-id marker)]
+    (when (and wasm-instance wasm-marker-id)
+      (.moveMarker ^js wasm-instance (js/BigInt wasm-marker-id) position))
+    marker-id))
+
+(defn copy-marker
+  "Create a copy of MARKER.
+
+  Optional INSERTION-TYPE overrides the original marker's insertion type.
+  If not provided, preserves the original marker's insertion type.
+  If explicitly provided (even nil), uses the provided value.
+
+  Usage: (copy-marker marker)
+         (copy-marker marker t)
+         (copy-marker marker nil)
+  Returns: New marker ID"
+  ([marker-id]
+   ;; No override - use original's insertion-type
+   (let [db @rfdb/app-db
+         marker (get-in db [:markers :table marker-id])
+         position (marker-position marker-id)
+         type (:insertion-type marker)]
+     (if position
+       (make-marker position type)
+       (make-marker nil type))))
+  ([marker-id insertion-type]
+   ;; Explicit override - use provided value (even if nil)
+   (let [position (marker-position marker-id)]
+     (if position
+       (make-marker position insertion-type)
+       (make-marker nil insertion-type)))))
+
+(defn marker-insertion-type
+  "Return insertion type of MARKER.
+
+  Returns nil if marker stays before inserted text,
+  true if marker advances past inserted text.
+
+  Usage: (marker-insertion-type marker)
+  Returns: nil or true"
+  [marker-id]
+  (get-in @rfdb/app-db [:markers :table marker-id :insertion-type]))
+
+(defn set-marker-insertion-type
+  "Set insertion type of MARKER.
+
+  TYPE = nil: marker stays before text inserted at its position
+  TYPE = true: marker advances past text inserted at its position
+
+  Usage: (set-marker-insertion-type marker t)
+  Returns: type"
+  [marker-id type]
+  (swap! rfdb/app-db assoc-in [:markers :table marker-id :insertion-type] type)
+  type)
+
+(defn markerp
+  "Return true if OBJECT is a marker.
+
+  Usage: (markerp obj)
+  Returns: Boolean"
+  [obj]
+  (and (integer? obj)
+       (some? (get-in @rfdb/app-db [:markers :table obj]))))
+
+(defn insert-before-markers
+  "Insert TEXT at point, keeping all markers after the insertion.
+
+  Unlike regular insert, markers at insertion point stay after the text.
+  This is the opposite of normal insertion behavior.
+
+  Usage: (insert-before-markers \"text\")
+  Returns: nil"
+  [text]
+  ;; For proper semantics, we need to:
+  ;; 1. Find all markers at current position
+  ;; 2. Remember their positions
+  ;; 3. Insert text
+  ;; 4. Move markers with insertion-type=nil back to original position
+  (let [pos (point)
+        buffer-id (current-buffer)
+        db @rfdb/app-db
+        marker-ids (get-in db [:buffers buffer-id :markers] #{})
+        markers-at-point (filter (fn [mid]
+                                   (= pos (marker-position mid)))
+                                 marker-ids)]
+    ;; Insert the text
+    (insert text)
+    ;; Move markers with insertion-type=nil back
+    (doseq [mid markers-at-point]
+      (when-not (marker-insertion-type mid)
+        (move-marker mid pos)))
+    nil))
+
+;; =============================================================================
 ;; Export for SCI
 ;; =============================================================================
 
@@ -1105,4 +1325,15 @@
    'rename-buffer rename-buffer
    'other-buffer other-buffer
    'buffer-enable-undo buffer-enable-undo
-   'buffer-disable-undo buffer-disable-undo})
+   'buffer-disable-undo buffer-disable-undo
+   ;; Phase 6.6: Markers (Issue #101)
+   'make-marker make-marker
+   'marker-position marker-position
+   'marker-buffer marker-buffer
+   'set-marker set-marker
+   'move-marker move-marker
+   'copy-marker copy-marker
+   'marker-insertion-type marker-insertion-type
+   'set-marker-insertion-type set-marker-insertion-type
+   'markerp markerp
+   'insert-before-markers insert-before-markers})
