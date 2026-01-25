@@ -272,7 +272,8 @@
          (if (and is-read-only? (not (dyn/inhibit-read-only?)))
            (do
              (println "🚫 Buffer is read-only, rejecting operation:" (:op operation))
-             (rf/dispatch [:echo/message "Buffer is read-only"])
+             ;; Use message function to both show in echo area AND log to *Messages*
+             (message "Buffer is read-only")
              ;; Remove transaction from queue without processing
              (swap! re-frame.db/app-db update :transaction-queue rest)
              ;; Continue processing queue in case there are other operations

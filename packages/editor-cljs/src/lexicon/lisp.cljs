@@ -21,6 +21,9 @@
             [lexicon.core.api.message :as msg]
             [lexicon.core.db :as db]))
 
+;; Forward declarations for functions used before definition
+(declare goto-char line-beginning-position line-end-position)
+
 ;; =============================================================================
 ;; Buffer Query Functions (Read-Only)
 ;; =============================================================================
@@ -96,6 +99,72 @@
   Returns: Integer position"
   []
   (buf/line-end-position @rfdb/app-db))
+
+(defn current-line
+  "Return current line number (0-indexed).
+
+  Usage: (current-line)
+  Returns: Integer line number"
+  []
+  (let [db @rfdb/app-db
+        active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+        cursor-pos (:cursor-position active-window)]
+    (or (:line cursor-pos) 0)))
+
+(defn line-count
+  "Return total number of lines in buffer.
+
+  Usage: (line-count)
+  Returns: Integer"
+  []
+  (let [text (buffer-string)]
+    (count (str/split text #"\n" -1))))
+
+(defn forward-line
+  "Move N lines forward (or backward if N is negative).
+
+  Moves point to beginning of target line.
+  Returns count of lines that could NOT be moved (0 if successful).
+
+  Usage: (forward-line 1)  ; move down one line
+         (forward-line -1) ; move up one line
+  Returns: Integer (0 if moved all lines, positive if hit buffer boundary)"
+  ([] (forward-line 1))
+  ([n]
+   (let [current (current-line)
+         total (line-count)
+         target (+ current n)
+         ;; Clamp to valid range
+         clamped (max 0 (min (dec total) target))
+         ;; Calculate how many lines we couldn't move
+         shortfall (abs (- target clamped))]
+     ;; Move to beginning of target line
+     (let [db @rfdb/app-db
+           active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+           buffer-id (:buffer-id active-window)
+           buffer (get-in db [:buffers buffer-id])
+           new-pos (buf/line-col-to-point buffer clamped 0)]
+       (when new-pos
+         (rf/dispatch-sync [:cursor/set-position {:line clamped :column 0}])))
+     shortfall)))
+
+(defn beginning-of-line
+  "Move point to beginning of current line.
+
+  Usage: (beginning-of-line)
+  Returns: nil"
+  []
+  (goto-char (line-beginning-position))
+  nil)
+
+(defn end-of-line
+  "Move point to end of current line.
+
+  Usage: (end-of-line)
+  Returns: nil"
+  []
+  (goto-char (line-end-position))
+  nil)
 
 (defn get-buffer
   "Get buffer by name.
@@ -790,6 +859,12 @@
    'goto-char goto-char
    'line-beginning-position line-beginning-position
    'line-end-position line-end-position
+   ;; Line navigation
+   'current-line current-line
+   'line-count line-count
+   'forward-line forward-line
+   'beginning-of-line beginning-of-line
+   'end-of-line end-of-line
    ;; Buffer content
    'buffer-string buffer-string
    'buffer-substring buffer-substring
