@@ -20,7 +20,8 @@
             [lexicon.core.api.buffer :as buf]
             [lexicon.core.api.message :as msg]
             [lexicon.core.db :as db]
-            [lexicon.core.markers :as markers]))
+            [lexicon.core.markers :as markers]
+            [lexicon.core.advanced-undo :as advanced-undo]))
 
 ;; Forward declarations for functions used before definition
 (declare goto-char line-beginning-position line-end-position current-buffer)
@@ -427,28 +428,58 @@
   Usage: (insert \"hello\")
   Returns: nil (side effect only)"
   [text]
-  (let [db @rfdb/app-db
-        active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-        buffer-id (:buffer-id active-window)
-        buffer (get-in db [:buffers buffer-id])
-        wasm-instance (:wasm-instance buffer)
-        pos (or (buf/point db) 0)
-        text-str (str text)]
-    ;; Insert directly into WASM buffer
-    (when wasm-instance
-      (.insert ^js wasm-instance pos text-str)
-      ;; Update cache and point position
-      (let [new-text (.getText ^js wasm-instance)
-            lines (clojure.string/split new-text #"\n" -1)
-            line-count (count lines)
-            new-pos (+ pos (count text-str))]
-        (swap! rfdb/app-db
-               (fn [current-db]
-                 (-> current-db
-                     (assoc-in [:buffers buffer-id :cache :text] new-text)
-                     (assoc-in [:buffers buffer-id :cache :line-count] line-count)
-                     (assoc-in [:buffers buffer-id :point] new-pos)
-                     (assoc-in [:ui :cursor-position] new-pos))))))
+  (let [text-str (str text)]
+    (when (pos? (count text-str))
+      (let [db @rfdb/app-db
+            active-window-id (:active-window-id db)
+            active-window (db/find-window-in-tree (:window-tree db) active-window-id)
+            buffer-id (:buffer-id active-window)
+            buffer (get-in db [:buffers buffer-id])
+            wasm-instance (:wasm-instance buffer)
+            ;; Read position from current db state
+            pos (or (buf/point db) 0)
+            recording-enabled? (get-in db [:undo :recording-enabled?] true)
+            undo-enabled? (get-in db [:buffers buffer-id :undo-enabled?] true)]
+        ;; Insert directly into WASM buffer
+        (when wasm-instance
+          (.insert ^js wasm-instance pos text-str)
+          ;; Update cache, point position, and undo stack
+          (let [new-text (.getText ^js wasm-instance)
+                lines (clojure.string/split new-text #"\n" -1)
+                line-count (count lines)
+                new-pos (+ pos (count text-str))
+                ;; Calculate line/col for window cursor
+                new-line-col (buf/point-to-line-col {:wasm-instance wasm-instance} new-pos)]
+            (swap! rfdb/app-db
+                   (fn [current-db]
+                     (let [;; Update window-tree cursor position
+                           window-tree (:window-tree current-db)
+                           new-window-tree (db/update-window-in-tree window-tree active-window-id
+                                                                      #(assoc % :cursor-position new-line-col))
+                           db-with-cache (-> current-db
+                                             (assoc :window-tree new-window-tree)
+                                             (assoc-in [:buffers buffer-id :cache :text] new-text)
+                                             (assoc-in [:buffers buffer-id :cache :line-count] line-count)
+                                             (assoc-in [:buffers buffer-id :point] new-pos)
+                                             (assoc-in [:ui :cursor-position] new-pos)
+                                             (assoc-in [:buffers buffer-id :is-modified?] true))]
+                       ;; Record undo entry if enabled
+                       (if (and recording-enabled? undo-enabled?)
+                         (let [;; Record point position for restoration
+                               point-marker {:type :marker
+                                             :marker-id :point
+                                             :old-pos pos
+                                             :new-pos new-pos}
+                               undo-entry {:type :edit
+                                           :op :insert
+                                           :position pos
+                                           :text text-str}
+                               stack (get-in db-with-cache [:buffers buffer-id :undo-stack] [])]
+                           (-> db-with-cache
+                               (assoc-in [:buffers buffer-id :undo-stack] (conj stack point-marker undo-entry))
+                               ;; Clear redo stack on new edit
+                               (assoc-in [:buffers buffer-id :redo-stack] [])))
+                         db-with-cache))))))))
     nil))
 
 (defn delete-region
@@ -457,9 +488,74 @@
   Usage: (delete-region start end)
   Returns: nil (side effect only)"
   [start end]
-  ;; TODO: Implement :edit/delete-region event
-  ;; For now, we don't have a delete operation - would need to add to WASM API
-  (js/console.warn "delete-region not yet implemented")
+  (let [db @rfdb/app-db
+        active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+        buffer-id (:buffer-id active-window)
+        buffer (get-in db [:buffers buffer-id])
+        wasm-instance (:wasm-instance buffer)
+        ;; Ensure start <= end
+        actual-start (min start end)
+        actual-end (max start end)
+        length (- actual-end actual-start)
+        recording-enabled? (get-in db [:undo :recording-enabled?] true)
+        undo-enabled? (get-in db [:buffers buffer-id :undo-enabled?] true)
+        ;; Capture text before deletion for undo
+        deleted-text (when (and wasm-instance (pos? length))
+                       (let [current-text (.getText ^js wasm-instance)]
+                         (subs current-text actual-start actual-end)))]
+    (when (and wasm-instance (pos? length))
+      (.delete ^js wasm-instance actual-start length)
+      ;; Update cache
+      (let [new-text (.getText ^js wasm-instance)
+            lines (clojure.string/split new-text #"\n" -1)
+            line-count (count lines)
+            ;; Calculate line/col for window cursor
+            new-line-col (buf/point-to-line-col {:wasm-instance wasm-instance} actual-start)
+            active-window-id (:active-window-id db)]
+        (swap! rfdb/app-db
+               (fn [current-db]
+                 (let [;; Update window-tree cursor position
+                       window-tree (:window-tree current-db)
+                       new-window-tree (db/update-window-in-tree window-tree active-window-id
+                                                                  #(assoc % :cursor-position new-line-col))
+                       db-with-cache (-> current-db
+                                         (assoc :window-tree new-window-tree)
+                                         (assoc-in [:buffers buffer-id :cache :text] new-text)
+                                         (assoc-in [:buffers buffer-id :cache :line-count] line-count)
+                                         (assoc-in [:buffers buffer-id :point] actual-start)
+                                         (assoc-in [:ui :cursor-position] actual-start)
+                                         (assoc-in [:buffers buffer-id :is-modified?] true))]
+                   ;; Record undo entry if enabled
+                   (if (and recording-enabled? undo-enabled? deleted-text)
+                     (let [;; Get original point before deletion
+                           old-point (get-in current-db [:buffers buffer-id :point] 0)
+                           ;; Record point position for restoration
+                           point-marker {:type :marker
+                                         :marker-id :point
+                                         :old-pos old-point
+                                         :new-pos actual-start}
+                           undo-entry {:type :edit
+                                       :op :delete-range
+                                       :start actual-start
+                                       :length length
+                                       :text deleted-text}
+                           stack (get-in db-with-cache [:buffers buffer-id :undo-stack] [])]
+                       (-> db-with-cache
+                           (assoc-in [:buffers buffer-id :undo-stack] (conj stack point-marker undo-entry))
+                           ;; Clear redo stack on new edit
+                           (assoc-in [:buffers buffer-id :redo-stack] [])))
+                     db-with-cache))))))
+    nil))
+
+(defn erase-buffer
+  "Delete entire contents of current buffer.
+
+  Usage: (erase-buffer)
+  Returns: nil (side effect only)"
+  []
+  (let [size (buffer-size)]
+    (when (pos? size)
+      (delete-region 0 size)))
   nil)
 
 (defn goto-char
@@ -469,11 +565,20 @@
   Returns: nil (side effect only)"
   [pos]
   (let [db @rfdb/app-db
-        active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+        active-window-id (:active-window-id db)
+        active-window (db/find-window-in-tree (:window-tree db) active-window-id)
         buffer-id (:buffer-id active-window)
         active-buffer (get (:buffers db) buffer-id)
         line-col (buf/point-to-line-col active-buffer pos)]
-    (rf/dispatch-sync [:cursor/set-position line-col])
+    ;; Update window-tree cursor position directly (dispatch-sync doesn't work for nested calls)
+    (swap! rfdb/app-db
+           (fn [current-db]
+             (let [new-tree (db/update-window-in-tree (:window-tree current-db) active-window-id
+                                                       #(assoc % :cursor-position line-col))]
+               (-> current-db
+                   (assoc :window-tree new-tree)
+                   (assoc-in [:buffers buffer-id :point] pos)
+                   (assoc-in [:ui :cursor-position] pos)))))
     nil))
 
 ;; =============================================================================
@@ -665,6 +770,29 @@
     (rf/dispatch-sync [:edit/undo buffer-id])
     nil))
 
+(defn undo-boundary
+  "Mark a boundary in the undo history.
+
+  Edits between boundaries are undone as a single unit.
+  Called automatically at command boundaries.
+
+  Usage: (undo-boundary)
+  Returns: nil"
+  []
+  (let [buffer-id (current-buffer)]
+    (advanced-undo/undo-boundary! buffer-id)
+    nil))
+
+(defn redo
+  "Redo the last undone change in current buffer.
+
+  Usage: (redo)
+  Returns: nil (side effect only)"
+  []
+  (let [buffer-id (current-buffer)]
+    (advanced-undo/redo! buffer-id)
+    nil))
+
 ;; =============================================================================
 ;; Window Management
 ;; =============================================================================
@@ -774,6 +902,31 @@
   (let [buffer-id (current-buffer)]
     (swap! rfdb/app-db assoc-in [:buffers buffer-id :is-read-only?] read-only?)
     nil))
+
+(defn buffer-modified-p
+  "Return non-nil if current buffer has been modified since last save.
+
+  Usage: (buffer-modified-p)
+  Returns: Boolean"
+  []
+  (let [db @rfdb/app-db
+        buffer-id (current-buffer)
+        buffer (get-in db [:buffers buffer-id])]
+    (get buffer :is-modified? false)))
+
+(defn set-buffer-modified-p
+  "Set the modified flag for current buffer.
+
+  If FLAG is nil, mark buffer as unmodified.
+  If FLAG is non-nil, mark buffer as modified.
+
+  Usage: (set-buffer-modified-p nil)  ; mark as unmodified
+         (set-buffer-modified-p t)    ; mark as modified
+  Returns: FLAG"
+  [flag]
+  (let [buffer-id (current-buffer)]
+    (swap! rfdb/app-db assoc-in [:buffers buffer-id :is-modified?] (boolean flag))
+    flag))
 
 ;; =============================================================================
 ;; File Operations
@@ -1257,6 +1410,7 @@
    'buffer-substring buffer-substring
    'insert insert
    'delete-region delete-region
+   'erase-buffer erase-buffer
    ;; Search
    'search-forward search-forward
    'search-backward search-backward
@@ -1279,6 +1433,8 @@
    'exchange-point-and-mark exchange-point-and-mark
    ;; Undo
    'undo undo
+   'undo-boundary undo-boundary
+   'redo redo
    ;; Windows
    'split-window-horizontally split-window-horizontally
    'delete-other-windows delete-other-windows
@@ -1294,6 +1450,8 @@
    'minor-mode-enabled? minor-mode-enabled?
    ;; Buffer properties
    'set-buffer-read-only set-buffer-read-only
+   'buffer-modified-p buffer-modified-p
+   'set-buffer-modified-p set-buffer-modified-p
    ;; Minibuffer
    'read-string read-string
    ;; Keymaps

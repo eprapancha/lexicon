@@ -890,7 +890,17 @@
                nil)))
 
          ;; Update db with new undo/redo stacks AND restore point
-         (let [new-db (-> db
+         ;; Also sync cursor position directly (no async dispatch)
+         (let [point-pos (when marker-entry (:old-pos marker-entry))
+               text (when wasm-instance (.getText ^js wasm-instance))
+               line-col (when (and text point-pos) (linear-pos-to-line-col text point-pos))
+               active-window-id (:active-window-id db)
+               window-tree (:window-tree db)
+               new-window-tree (if line-col
+                                 (db/update-window-in-tree window-tree active-window-id
+                                                           #(assoc % :cursor-position line-col))
+                                 window-tree)
+               new-db (-> db
                           (assoc-in [:buffers buffer-id :undo-stack]
                                     (subvec undo-stack 0 boundary-index))
                           (update-in [:buffers buffer-id :redo-stack]
@@ -898,7 +908,12 @@
                                        (conj (or redo []) {:entries entries :boundary-index boundary-index})))
                           ;; Restore point from marker if present
                           (cond-> marker-entry
-                            (assoc-in [:buffers buffer-id :point] (:old-pos marker-entry))))]
+                            (assoc-in [:buffers buffer-id :point] (:old-pos marker-entry)))
+                          ;; Sync cursor position to window tree
+                          (assoc :window-tree new-window-tree)
+                          ;; Update UI cursor position
+                          (cond-> point-pos
+                            (assoc-in [:ui :cursor-position] point-pos)))]
            {:db new-db}))
        {:db db}))))
 

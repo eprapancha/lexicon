@@ -56,7 +56,7 @@
   Boundaries mark logical breaks in undo history.
   Undo command undoes all edits back to previous boundary."
   [buffer-id]
-  (rf/dispatch [:undo/boundary buffer-id]))
+  (rf/dispatch-sync [:undo/boundary buffer-id]))
 
 (rf/reg-event-db
   :undo/boundary
@@ -243,7 +243,7 @@
 (defn redo!
   "Redo the last undone command in BUFFER-ID."
   [buffer-id]
-  (rf/dispatch [:undo/redo buffer-id]))
+  (rf/dispatch-sync [:undo/redo buffer-id]))
 
 (rf/reg-event-fx
   :undo/redo
