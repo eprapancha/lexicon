@@ -1,7 +1,7 @@
 (ns lexicon.test-setup
   "Test setup - loads event handlers and initializes WASM for tests"
-  (:require [lexicon.events]   ; Register event handlers
-            [lexicon.subs]     ; Register subscriptions
+  (:require [lexicon.core.events]   ; Register event handlers
+            [lexicon.core.subs]     ; Register subscriptions
             [cljs.test :refer [use-fixtures async]]
             [re-frame.core :as rf]))
 

@@ -12,14 +12,14 @@
   (:require [cljs.test :refer [use-fixtures async] :as cljs.test]
             [re-frame.core :as rf]
             [re-frame.db :as rfdb]
-            [lexicon.db :as db]
+            [lexicon.core.db :as db]
             [lexicon.test-setup :as setup]
-            [lexicon.api.test :as api]
-            [lexicon.dynamic :as dyn]
-            [lexicon.effects]
-            [lexicon.effects.log])
-  (:require-macros [lexicon.macros :refer [save-excursion save-current-buffer with-current-buffer]]
-                   [lexicon.dynamic :refer [with-inhibit-read-only without-undo]]
+            [lexicon.core.api.test :as api]
+            [lexicon.core.dynamic :as dyn]
+            [lexicon.core.effects]
+            [lexicon.core.effects.log])
+  (:require-macros [lexicon.core.macros :refer [save-excursion save-current-buffer with-current-buffer]]
+                   [lexicon.core.dynamic :refer [with-inhibit-read-only without-undo]]
                    [lexicon.semantic.helpers :refer [with-test-buffer]]))
 
 ;; =============================================================================

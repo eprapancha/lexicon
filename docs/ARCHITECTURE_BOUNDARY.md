@@ -1,14 +1,13 @@
 # Lexicon Architecture: Core vs Packages Boundary
 
-## The Problem
+## The Problem (Solved)
 
-Currently, "packages" like Dired are implemented as re-frame event handlers directly in
-the core codebase. This means:
+Previously, packages and core were in the same namespace (`lexicon.*`), making it
+too easy to violate the boundary. Now we have physical separation:
 
-1. **No real separation** - Packages have full access to app-db, all events, WASM internals
-2. **No isolation** - Packages can't be loaded/unloaded dynamically
-3. **Testing is meaningless** - "Semantic tests" don't test the real API because packages bypass it
-4. **Cheating is easy** - We can always reach into internals instead of fixing primitives
+- `lexicon.core.*` - INTERNAL (packages must NEVER import)
+- `lexicon.lisp` - PUBLIC API (the ONLY thing packages can import)
+- `lexicon.<package>` - Packages (e.g., `lexicon.dired`)
 
 ## How Emacs Does It
 
@@ -25,7 +24,7 @@ the core codebase. This means:
 └─────────────────────────────────────┘
 ```
 
-## What Lexicon Should Be
+## What Lexicon Is
 
 ```
 ┌─────────────────────────────────────┐
@@ -35,50 +34,81 @@ the core codebase. This means:
 │  lexicon.lisp (Public API)          │  ← THE BOUNDARY
 │  - All Emacs primitives exposed     │
 ├─────────────────────────────────────┤
-│  Core (ClojureScript/re-frame)      │  ← Packages can't touch this
-│  - events/, WASM, rendering         │
+│  lexicon.core.* (Internal)          │  ← Packages can't touch this
+│  - events/, WASM, rendering         │     (enforced by lint script)
 └─────────────────────────────────────┘
 ```
 
-## Directory Structure (Current)
+## Directory Structure
 
 ```
 packages/editor-cljs/src/lexicon/
 ├── dired.cljs              # PACKAGE - uses ONLY lexicon.lisp
 ├── lisp.cljs               # PUBLIC API - the boundary
-├── package_loader.cljs     # Loads packages (correct dependency direction)
-├── core.cljs               # Entry point, imports package_loader
-├── events.cljs             # Core events (NEVER imports packages)
-├── events/                 # Core event handlers
-│   ├── buffer.cljs
-│   ├── edit.cljs
-│   ├── window.cljs
-│   ├── keymap.cljs
-│   ├── mode.cljs
-│   ├── isearch.cljs        # Core feature using lexicon.lisp primitives
-│   ├── hooks.cljs
-│   ├── text_properties.cljs
-│   └── command.cljs
-└── ...
+│
+└── core/                   # INTERNAL - packages must NEVER import from here
+    ├── main.cljs           # Entry point
+    ├── package_loader.cljs # Loads packages (correct dependency direction)
+    ├── events.cljs         # Core events
+    ├── db.cljs             # State schema
+    ├── subs.cljs           # Subscriptions
+    ├── events/             # Event handlers
+    │   ├── buffer.cljs
+    │   ├── edit.cljs
+    │   ├── window.cljs
+    │   ├── keymap.cljs
+    │   ├── mode.cljs
+    │   ├── isearch.cljs
+    │   ├── hooks.cljs
+    │   ├── text_properties.cljs
+    │   └── command.cljs
+    ├── api/                # Internal API helpers
+    ├── ui/                 # UI components
+    ├── modes/              # Core modes
+    └── ...
 ```
 
 ## Dependency Direction (CRITICAL)
 
 ```
-lexicon.core
+lexicon.core.main
     ↓
-lexicon.package_loader    ← packages loaded HERE (not in events.cljs!)
+lexicon.core.package-loader  ← packages loaded HERE
     ↓
-lexicon.dired             ← package at top-level
+lexicon.dired                ← package at top-level
     ↓
-lexicon.lisp              ← PUBLIC API (only thing packages can use)
+lexicon.lisp                 ← PUBLIC API (only thing packages can use)
 ```
 
 **Rule: Core NEVER imports packages. Package loading happens through package_loader.cljs**
 
-## What IS Core
+## Enforcement
 
-These belong in `events/` as re-frame handlers:
+### Lint Script
+
+Run `scripts/lint-architecture.sh` to check for violations:
+
+```bash
+./scripts/lint-architecture.sh
+```
+
+This script:
+- Finds all package files (*.cljs at src/lexicon/, except lisp.cljs)
+- Fails if any import from `lexicon.core.*`
+- Fails if any import from `re-frame.*`
+- Fails if any access `re-frame.db` directly
+
+### CI Integration
+
+Add to your CI pipeline:
+```yaml
+- name: Check architecture boundary
+  run: ./packages/editor-cljs/scripts/lint-architecture.sh
+```
+
+## What IS Core (lexicon.core.*)
+
+These belong in `core/` as re-frame handlers:
 
 1. **Primitives** - Gap buffer operations, cursor movement, text manipulation
 2. **Buffer System** - Create, switch, kill buffers
@@ -90,7 +120,7 @@ These belong in `events/` as re-frame handlers:
 8. **Hooks** - Hook system for extensibility
 9. **Text Properties** - Property attachment to text ranges
 10. **Undo System** - Undo/redo infrastructure
-11. **Isearch** - Incremental search (uses lisp primitives for buffer access)
+11. **Isearch** - Incremental search (core feature, uses primitives internally)
 
 ## What IS NOT Core (Packages)
 
@@ -113,8 +143,8 @@ These are implemented using ONLY `lexicon.lisp` API:
 1. **Namespace**: `lexicon.<name>` (top-level, e.g., `lexicon.dired`)
 2. **Imports**: ONLY `[lexicon.lisp :as lisp]`
 3. **Registration**: Use `lisp/define-command` to register commands
-4. **Loading**: Added to `package_loader.cljs` (not events.cljs!)
-5. **Auto-register**: Packages call their registration function on load
+4. **Loading**: Added to `core/package_loader.cljs`
+5. **No re-frame**: Packages must not import re-frame or access state directly
 
 ## Example Package Structure
 
@@ -132,9 +162,6 @@ These are implemented using ONLY `lexicon.lisp` API:
 (defn register-dired-package! []
   (lisp/define-command 'dired dired "Open directory in Dired"
     {:interactive [{:type :async :prompt "Directory: "}]}))
-
-;; Auto-register on load
-(register-dired-package!)
 ```
 
 ## Implementation Status
@@ -145,8 +172,10 @@ These are implemented using ONLY `lexicon.lisp` API:
 - [x] Added filesystem primitives to `lexicon.lisp`
 - [x] Refactored isearch to use `lexicon.lisp` primitives
 - [x] Established correct dependency direction via `package_loader.cljs`
+- [x] **Moved all core code to `lexicon.core.*` namespace**
+- [x] **Created lint script to enforce boundary**
 
 ### Future
-- [ ] Lint rule: packages can only import `lexicon.lisp`
+- [ ] Add lint script to CI pipeline
 - [ ] Move more features to packages as appropriate
 - [ ] Add more primitives to `lexicon.lisp` as needed

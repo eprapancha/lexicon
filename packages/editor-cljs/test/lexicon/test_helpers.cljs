@@ -4,8 +4,8 @@
   This allows tests to use (require [lexicon.test-helpers :as helpers])
   regardless of whether they're in the semantic/ subdirectory or not."
   (:require [lexicon.semantic.helpers :as h])
-  (:require-macros [lexicon.macros :refer [save-excursion save-current-buffer with-current-buffer]]
-                   [lexicon.dynamic :refer [with-inhibit-read-only without-undo]]
+  (:require-macros [lexicon.core.macros :refer [save-excursion save-current-buffer with-current-buffer]]
+                   [lexicon.core.dynamic :refer [with-inhibit-read-only without-undo]]
                    [lexicon.semantic.helpers :refer [with-test-buffer]]))
 
 ;; Re-export all public functions from semantic.helpers

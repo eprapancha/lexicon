@@ -4,8 +4,8 @@
   These events are simplified versions that bypass normal editor workflows
   to allow direct manipulation of buffers for testing purposes."
   (:require [re-frame.core :as rf]
-            [lexicon.db :as db]
-            [lexicon.events :as events]
+            [lexicon.core.db :as db]
+            [lexicon.core.events :as events]
             [clojure.string]))
 
 ;; Buffer manipulation events for tests

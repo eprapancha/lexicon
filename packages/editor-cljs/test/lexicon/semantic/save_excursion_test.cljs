@@ -9,7 +9,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [lexicon.test-helpers :as helpers])
   (:require-macros [lexicon.semantic.helpers :refer [with-test-buffer]]
-                   [lexicon.macros :refer [save-excursion save-current-buffer]]))
+                   [lexicon.core.macros :refer [save-excursion save-current-buffer]]))
 
 ;; Emacs-style t for true
 (def t true)

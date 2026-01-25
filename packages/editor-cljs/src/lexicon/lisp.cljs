@@ -17,9 +17,9 @@
   (:require [re-frame.core :as rf]
             [re-frame.db :as rfdb]
             [clojure.string :as str]
-            [lexicon.api.buffer :as buf]
-            [lexicon.api.message :as msg]
-            [lexicon.db :as db]))
+            [lexicon.core.api.buffer :as buf]
+            [lexicon.core.api.message :as msg]
+            [lexicon.core.db :as db]))
 
 ;; =============================================================================
 ;; Buffer Query Functions (Read-Only)

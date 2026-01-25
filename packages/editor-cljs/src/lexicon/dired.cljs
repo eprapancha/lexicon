@@ -108,20 +108,24 @@
   Usage: (register-dired-package!)
   Returns: nil"
   []
+  (println "🗂️ Dired: Registering commands...")
   ;; Register the main dired command with interactive prompt
   (lisp/define-command
     'dired
     dired
     "Open directory in Dired mode"
     {:interactive [{:type :async :prompt "Dired (directory): "}]})
+  (println "🗂️ Dired: Registered 'dired' command")
 
   ;; Register refresh command
   (lisp/define-command
     'dired-refresh
     dired-refresh
     "Refresh current Dired buffer")
+  (println "🗂️ Dired: Registered 'dired-refresh' command")
 
-  (lisp/message "Dired package loaded"))
+  (lisp/message "Dired package loaded")
+  (println "🗂️ Dired: Package registration complete"))
 
-;; Auto-register on load
-(register-dired-package!)
+;; NOTE: Registration is deferred - called by package_loader after db init
+;; (register-dired-package!) is called via :packages/register-all event

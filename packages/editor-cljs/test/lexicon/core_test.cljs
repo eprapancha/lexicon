@@ -5,10 +5,10 @@
   (:require [cljs.test :refer [deftest is testing run-tests use-fixtures async]]
             [re-frame.core :as rf]
             [re-frame.db :as rfdb]
-            [lexicon.db :as db]
+            [lexicon.core.db :as db]
             [lexicon.test-setup :as setup]  ; MUST load first - initializes WASM
-            [lexicon.events]    ; Register re-frame event handlers
-            [lexicon.subs]      ; Register re-frame subscriptions
+            [lexicon.core.events]    ; Register re-frame event handlers
+            [lexicon.core.subs]      ; Register re-frame subscriptions
             [lexicon.test-events]))    ; Register test-specific event handlers
 
 ;; Wait for WASM before running tests

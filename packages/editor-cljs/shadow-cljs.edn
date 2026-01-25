@@ -7,7 +7,7 @@
  {:app {:target :browser
         :output-dir "resources/public/js"
         :asset-path "./js"
-        :modules {:main {:init-fn lexicon.core/main}}
+        :modules {:main {:init-fn lexicon.core.main/main}}
         :devtools {:http-root "resources/public"
                    :http-port 8080}
         :compiler-options {:optimizations :simple
