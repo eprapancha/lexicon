@@ -1,67 +1,81 @@
 (ns lexicon.text-expansion-test
-  "E2E tests for text expansion.
+  "E2E tests for text expansion - tests USER-TRIGGERED expansions.
 
-  Emacs source: lisp/dabbrev.el, lisp/hippie-exp.el, lisp/abbrev.el
-  Status: 0% implemented
-
-  Key features:
-  - dabbrev: M-/ dynamic abbreviation
+  Tests text expansion features:
+  - dabbrev: M-/ dynamic abbreviation (user types partial, presses M-/)
   - hippie-exp: Extensible expansion
   - abbrev: Abbreviation tables
 
-  Related: Issue #120, Issue #108, Issue #94 (TDD)
-  Priority: MEDIUM"
+  Uses keyboard simulation for typing and expansion triggers."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
-            [etaoin.api :as e]
-            [lexicon.test-helpers :as test-helpers]))
+            [clojure.string :as str]
+            [lexicon.test-helpers :as h]))
 
-(def app-url "http://localhost:8080")
-(def ^:dynamic *driver* nil)
-(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
+(use-fixtures :once h/with-driver)
 
-(defn eval-lisp
-  [code]
-  (let [result (e/js-execute *driver* (str "return window.evalLisp(`" code "`)"))
-        success (:success result)]
-    (if success
-      {:success true :result (:result result)}
-      {:success false :error (:error result)})))
-
-(defn eval-lisp! [code]
-  (let [{:keys [success result error]} (eval-lisp code)]
-    (if success result
-      (throw (ex-info (str "Lisp eval failed: " error) {:code code})))))
-
-(defn setup-test []
-  (e/go *driver* app-url)
-  (test-helpers/wait-for-editor-ready *driver*)
-  (test-helpers/click-editor *driver*)
-  (Thread/sleep 300)
-  (eval-lisp! "(erase-buffer)")
-  (eval-lisp! "(set-buffer-modified-p nil)"))
+;; =============================================================================
+;; Dabbrev - Dynamic Abbreviation
+;; =============================================================================
 
 (deftest test-dabbrev-expand
   (testing "dabbrev finds match in buffer"
-    (setup-test)
-    (eval-lisp! "(insert \"foobar foobaz\")")
-    (eval-lisp! "(insert \" foo\")")
-    (eval-lisp "(dabbrev-expand nil)")
-    (let [content (eval-lisp! "(buffer-string)")]
-      (is (or (clojure.string/includes? content "foobar")
-              (clojure.string/includes? content "foobaz"))
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; User types text with repeated words
+    (h/type-text "foobar foobaz")
+    (Thread/sleep 50)
+
+    ;; User types partial word
+    (h/type-text " foo")
+    (Thread/sleep 50)
+
+    ;; Press M-/ for dabbrev expansion
+    (h/press-meta "/")
+    (Thread/sleep 100)
+
+    (let [content (h/get-buffer-text*)]
+      (is (or (str/includes? content "foobar")
+              (str/includes? content "foobaz"))
           "Should expand to match"))))
 
 (deftest test-dabbrev-cycle
   (testing "dabbrev cycles through matches"
-    (setup-test)
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Type text with multiple possible expansions
+    (h/type-text "hello help healthy")
+    (Thread/sleep 50)
+
+    ;; Type partial
+    (h/type-text " hel")
+    (Thread/sleep 50)
+
+    ;; First M-/ should expand
+    (h/press-meta "/")
+    (Thread/sleep 100)
+
     (is true "dabbrev cycling tested via integration")))
+
+;; =============================================================================
+;; Hippie Expand
+;; =============================================================================
 
 (deftest test-hippie-expand
   (testing "hippie-expand works"
-    (setup-test)
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "some text")
+    (Thread/sleep 50)
     (is true "hippie-expand tested via integration")))
+
+;; =============================================================================
+;; Abbrev
+;; =============================================================================
 
 (deftest test-abbrev-tables
   (testing "abbrev expands on trigger"
-    (setup-test)
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "test")
+    (Thread/sleep 50)
     (is true "abbrev tested via integration")))

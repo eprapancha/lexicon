@@ -4,151 +4,79 @@
   Tests critical invariant: Point (cursor) is buffer-local"
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [etaoin.api :as e]
-            [lexicon.test-helpers :as test-helpers]))
+            [lexicon.test-helpers :as h]))
 
-;; Test configuration
-(def app-url "http://localhost:8080")
-(def test-timeout 10000)
-
-;; Browser driver
-(def ^:dynamic *driver* nil)
-
-;; Setup/teardown
-(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
-
-;; Helper functions
-(defn wait-for-editor-ready []
-  (e/wait-visible *driver* {:css ".editor-wrapper"} {:timeout (/ test-timeout 1000)}))
-
-(defn click-editor []
-  (e/click *driver* {:css ".editor-wrapper"}))
-
-(defn type-text [text]
-  (doseq [ch text]
-    (e/fill *driver* {:css ".hidden-input"} (str ch))
-    (Thread/sleep 10)))
-
-(defn press-ctrl-key [key]
-  (let [key-code (str "Key" (clojure.string/upper-case key))
-        script (str "
-    const input = document.querySelector('.hidden-input');
-    input.focus();
-    const event = new KeyboardEvent('keydown', {
-      key: '" key "',
-      code: '" key-code "',
-      ctrlKey: true,
-      bubbles: true
-    });
-    input.dispatchEvent(event);
-  ")]
-    (e/js-execute *driver* script))
-  (Thread/sleep 10))
-
-(defn press-key [key-name]
-  (let [script (str "
-    const input = document.querySelector('.hidden-input');
-    input.focus();
-    const event = new KeyboardEvent('keydown', {
-      key: '" key-name "',
-      code: '" key-name "',
-      bubbles: true
-    });
-    input.dispatchEvent(event);
-  ")]
-    (e/js-execute *driver* script))
-  (Thread/sleep 10))
-
-(defn press-minibuffer-enter []
-  (let [script "
-    const input = document.querySelector('.minibuffer-input');
-    if (input) {
-      input.focus();
-      const event = new KeyboardEvent('keydown', {
-        key: 'Enter',
-        code: 'Enter',
-        bubbles: true
-      });
-      input.dispatchEvent(event);
-    }
-  "]
-    (e/js-execute *driver* script))
-  (Thread/sleep 10))
+(use-fixtures :once h/with-driver)
 
 (deftest test-point-is-buffer-local
   (testing "Emacs invariant: Cursor position preserved per-buffer"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
 
     ;; Type text in scratch buffer
-    (type-text "hello world")
+    (h/type-text "hello world")
     (Thread/sleep 50)
 
     ;; Move cursor to beginning (C-a)
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 50)
 
     ;; Move forward a few characters (C-f C-f C-f)
     (dotimes [_ 3]
-      (press-ctrl-key "f")
+      (h/press-ctrl "f")
       (Thread/sleep 20))
 
     ;; Type marker at current position
-    (type-text "X")
+    (h/type-text "X")
     (Thread/sleep 50)
 
     ;; Should have "helXlo world"
-    (let [text-a (e/get-element-text *driver* {:css ".editable-area"})]
+    (let [text-a (h/get-buffer-text*)]
       (is (.contains text-a "helXlo")
           "Cursor should be at position 3"))
 
     ;; Switch to new buffer (C-x b)
-    (press-ctrl-key "x")
-    (Thread/sleep 20)
-    (press-key "b")
+    (h/press-ctrl-x "b")
     (Thread/sleep 100)
 
-    (e/fill *driver* {:css ".minibuffer-input"} "buffer-b")
+    (h/type-in-minibuffer "buffer-b")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
     ;; Type in new buffer
-    (type-text "xyz")
+    (h/type-text "xyz")
     (Thread/sleep 50)
 
     ;; Move to beginning and forward once
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 20)
-    (press-ctrl-key "f")
+    (h/press-ctrl "f")
     (Thread/sleep 20)
 
     ;; Type marker
-    (type-text "Y")
+    (h/type-text "Y")
     (Thread/sleep 50)
 
     ;; Should have "xYyz"
-    (let [text-b (e/get-element-text *driver* {:css ".editable-area"})]
+    (let [text-b (h/get-buffer-text*)]
       (is (.contains text-b "xYyz")
           "Cursor in buffer B should be at position 1"))
 
     ;; Switch back to scratch (C-x b)
-    (press-ctrl-key "x")
-    (Thread/sleep 20)
-    (press-key "b")
+    (h/press-ctrl-x "b")
     (Thread/sleep 100)
 
-    (e/fill *driver* {:css ".minibuffer-input"} "*scratch*")
+    (h/type-in-minibuffer "*scratch*")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
     ;; Cursor position in scratch should be preserved
     ;; Type another character - it should insert at saved position
-    (type-text "Z")
+    (h/type-text "Z")
     (Thread/sleep 50)
 
-    (let [text-a-final (e/get-element-text *driver* {:css ".editable-area"})]
+    (let [text-a-final (h/get-buffer-text*)]
       ;; Cursor should still be around where we left it in buffer A
       ;; Z should be inserted right after X, showing cursor position was preserved
       (is (or (.contains text-a-final "helXZ")

@@ -167,3 +167,471 @@
   (wait-for-editor-ready driver)
   (click-editor driver)
   (Thread/sleep 200))
+
+;; =============================================================================
+;; Internal Driver Management (for simplified test API)
+;; =============================================================================
+
+(def ^:dynamic *driver*
+  "Internal WebDriver instance for simplified API.
+  Test files using with-driver fixture don't need their own *driver*."
+  nil)
+
+(def default-app-url "http://localhost:8080")
+
+(defn with-driver
+  "Simplified E2E test fixture. Manages driver internally.
+
+   Usage in test file:
+     (use-fixtures :once h/with-driver)
+
+   No *driver* var needed in test files."
+  [f]
+  (let [driver (start-driver)
+        original-report (deref #'clojure.test/report)]
+    (try
+      (binding [*driver* driver
+                *test-failed?* false
+                clojure.test/report (report-with-messages driver original-report)]
+        (f))
+      (finally
+        (stop-driver driver)))))
+
+;; =============================================================================
+;; Simplified Helpers (use internal *driver*)
+;; =============================================================================
+
+(defn get-buffer-text*
+  "Get buffer text using internal driver."
+  []
+  (get-buffer-text *driver*))
+
+(defn get-point*
+  "Get point using internal driver."
+  []
+  (get-point *driver*))
+
+(defn setup-test*
+  "Standard test setup using internal driver."
+  []
+  (e/go *driver* default-app-url)
+  (wait-for-editor-ready *driver*)
+  (click-editor *driver*)
+  (Thread/sleep 200))
+
+(defn clear-buffer
+  "Clear buffer for a fresh test."
+  []
+  (e/js-execute *driver* "window.evalLisp('(erase-buffer)')")
+  (e/js-execute *driver* "window.evalLisp('(set-buffer-modified-p nil)')"))
+
+;; =============================================================================
+;; Keyboard Simulation (exact JS dispatch from basic_editing_test.clj)
+;; =============================================================================
+
+(defn type-text
+  "Type text character by character."
+  [text]
+  (doseq [ch text]
+    (e/fill *driver* {:css ".hidden-input"} (str ch))
+    (Thread/sleep 10)))
+
+(defn press-key
+  "Press a special key (Enter, Backspace, ArrowLeft, etc.)"
+  [key-name]
+  (let [script (str "
+    const input = document.querySelector('.hidden-input');
+    input.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: '" key-name "',
+      code: '" key-name "',
+      bubbles: true
+    });
+    input.dispatchEvent(event);
+  ")]
+    (e/js-execute *driver* script))
+  (Thread/sleep 10))
+
+(defn press-ctrl
+  "Press Ctrl+key combination (e.g., 'f' for C-f)"
+  [key]
+  (let [key-code (str "Key" (str/upper-case key))
+        script (str "
+    const input = document.querySelector('.hidden-input');
+    input.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: '" key "',
+      code: '" key-code "',
+      ctrlKey: true,
+      bubbles: true
+    });
+    input.dispatchEvent(event);
+  ")]
+    (e/js-execute *driver* script))
+  (Thread/sleep 10))
+
+(defn press-meta
+  "Press Meta/Alt+key combination (e.g., 'f' for M-f)"
+  [key]
+  (let [key-code (str "Key" (str/upper-case key))
+        script (str "
+    const input = document.querySelector('.hidden-input');
+    input.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: '" key "',
+      code: '" key-code "',
+      altKey: true,
+      bubbles: true
+    });
+    input.dispatchEvent(event);
+  ")]
+    (e/js-execute *driver* script))
+  (Thread/sleep 10))
+
+(defn press-shift
+  "Press Shift+key for selection"
+  [key]
+  (let [key-name (if (keyword? key) (name key) key)
+        key-code (case key-name
+                   "right" "ArrowRight"
+                   "left" "ArrowLeft"
+                   "up" "ArrowUp"
+                   "down" "ArrowDown"
+                   (str "Key" (str/upper-case key-name)))
+        actual-key (case key-name
+                     "right" "ArrowRight"
+                     "left" "ArrowLeft"
+                     "up" "ArrowUp"
+                     "down" "ArrowDown"
+                     key-name)
+        script (str "
+    const input = document.querySelector('.hidden-input');
+    input.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: '" actual-key "',
+      code: '" key-code "',
+      shiftKey: true,
+      bubbles: true
+    });
+    input.dispatchEvent(event);
+  ")]
+    (e/js-execute *driver* script))
+  (Thread/sleep 10))
+
+(defn press-ctrl-x
+  "Press C-x prefix followed by another key (e.g., C-x C-s, C-x 2)"
+  [key]
+  (press-ctrl "x")
+  (Thread/sleep 50)
+  (if (= (count key) 1)
+    ;; Single char like "2", "3", "o"
+    (let [script (str "
+      const input = document.querySelector('.hidden-input');
+      input.focus();
+      const event = new KeyboardEvent('keydown', {
+        key: '" key "',
+        code: 'Key" (str/upper-case key) "',
+        bubbles: true
+      });
+      input.dispatchEvent(event);
+    ")]
+      (e/js-execute *driver* script)
+      (Thread/sleep 10))
+    ;; Special key like "Enter"
+    (press-key key)))
+
+(defn press-minibuffer-enter
+  "Press Enter in the minibuffer"
+  []
+  (let [script "
+    const input = document.querySelector('.minibuffer-input');
+    if (input) {
+      input.focus();
+      const event = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        bubbles: true
+      });
+      input.dispatchEvent(event);
+    }
+  "]
+    (e/js-execute *driver* script))
+  (Thread/sleep 10))
+
+(defn get-echo-area-text
+  "Get text from the echo area"
+  []
+  (try
+    (e/get-element-text *driver* {:css ".echo-area"})
+    (catch Exception _ "")))
+
+(defn type-in-minibuffer
+  "Type text into the minibuffer input"
+  [text]
+  (e/fill *driver* {:css ".minibuffer-input"} text)
+  (Thread/sleep 100))
+
+(defn get-minibuffer-text
+  "Get text from the minibuffer prompt"
+  []
+  (try
+    (e/get-element-text *driver* {:css ".minibuffer-prompt"})
+    (catch Exception _ "")))
+
+(defn minibuffer-visible?
+  "Check if minibuffer input is visible"
+  []
+  (try
+    (e/visible? *driver* {:css ".minibuffer-input"})
+    (catch Exception _ false)))
+
+(defn set-mark
+  "Set mark with C-SPC"
+  []
+  (let [script "
+    const input = document.querySelector('.hidden-input');
+    input.focus();
+    const event = new KeyboardEvent('keydown', {
+      key: ' ',
+      code: 'Space',
+      ctrlKey: true,
+      bubbles: true
+    });
+    input.dispatchEvent(event);
+  "]
+    (e/js-execute *driver* script))
+  (Thread/sleep 20))
+
+(defn dispatch-command
+  "Execute a command directly via re-frame dispatch (workaround for blocked browser shortcuts like C-w)"
+  [command-name]
+  (let [cmd-name (if (keyword? command-name) (name command-name) command-name)
+        script (str "
+    if (window.lexiconDispatch) {
+      const cmd = cljs.core.PersistentVector.fromArray([
+        cljs.core.keyword('execute-command'),
+        cljs.core.keyword('" cmd-name "')
+      ], true);
+      window.lexiconDispatch(cmd);
+    } else {
+      console.error('lexiconDispatch not found on window');
+    }
+  ")]
+    (e/js-execute *driver* script))
+  (Thread/sleep 100))
+
+(defn execute-command
+  "Execute a command via M-x (e.g., 'line-number-mode')"
+  [command-name]
+  (press-meta "x")
+  (Thread/sleep 100)
+  (type-in-minibuffer command-name)
+  (press-minibuffer-enter)
+  (Thread/sleep 200))
+
+(defn get-cursor-position
+  "Get current cursor position as {:row N :col N}"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state) return null;
+    const point = state.point;
+    const buffer = state.buffer;
+    let row = 0;
+    let col = 0;
+    let pos = 0;
+    const lines = buffer.split('\\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (pos + lines[i].length >= point) {
+        row = i;
+        col = point - pos;
+        break;
+      }
+      pos += lines[i].length + 1;
+    }
+    return {row: row, col: col};
+  "]
+    (e/js-execute *driver* script)))
+
+;; =============================================================================
+;; Buffer Predicates (for state verification)
+;; =============================================================================
+
+(defn bobp*
+  "Beginning of buffer predicate - true if point is at position 0"
+  []
+  (= 0 (get-point*)))
+
+(defn eobp*
+  "End of buffer predicate - true if point is at buffer end"
+  []
+  (let [point (get-point*)
+        buffer (get-buffer-text*)]
+    (= point (count buffer))))
+
+(defn bolp*
+  "Beginning of line predicate - true if point is at line start"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state) return true;
+    const point = state.point;
+    const buffer = state.buffer;
+    return point === 0 || buffer[point - 1] === '\\n';
+  "]
+    (e/js-execute *driver* script)))
+
+(defn eolp*
+  "End of line predicate - true if point is at line end"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state) return true;
+    const point = state.point;
+    const buffer = state.buffer;
+    return point >= buffer.length || buffer[point] === '\\n';
+  "]
+    (e/js-execute *driver* script)))
+
+(defn char-after*
+  "Get character after point, or nil if at buffer end"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state) return null;
+    const point = state.point;
+    const buffer = state.buffer;
+    return point < buffer.length ? buffer[point] : null;
+  "]
+    (e/js-execute *driver* script)))
+
+(defn char-before*
+  "Get character before point, or nil if at buffer start"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state) return null;
+    const point = state.point;
+    const buffer = state.buffer;
+    return point > 0 ? buffer[point - 1] : null;
+  "]
+    (e/js-execute *driver* script)))
+
+(defn line-beginning-position*
+  "Get position of current line start"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state) return 0;
+    const point = state.point;
+    const buffer = state.buffer;
+    let pos = point;
+    while (pos > 0 && buffer[pos - 1] !== '\\n') {
+      pos--;
+    }
+    return pos;
+  "]
+    (e/js-execute *driver* script)))
+
+(defn line-end-position*
+  "Get position of current line end"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state) return 0;
+    const point = state.point;
+    const buffer = state.buffer;
+    let pos = point;
+    while (pos < buffer.length && buffer[pos] !== '\\n') {
+      pos++;
+    }
+    return pos;
+  "]
+    (e/js-execute *driver* script)))
+
+(defn buffer-substring*
+  "Get substring from buffer between start and end positions"
+  [start end]
+  (let [script (str "
+    const state = window.editorState;
+    if (!state) return '';
+    return state.buffer.substring(" start ", " end ");
+  ")]
+    (e/js-execute *driver* script)))
+
+(defn region-beginning*
+  "Get region start position (mark or point, whichever is smaller)"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state) return 0;
+    const mark = state.mark;
+    const point = state.point;
+    if (mark === null || mark === undefined) return point;
+    return Math.min(mark, point);
+  "]
+    (e/js-execute *driver* script)))
+
+(defn region-end*
+  "Get region end position (mark or point, whichever is larger)"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state) return 0;
+    const mark = state.mark;
+    const point = state.point;
+    if (mark === null || mark === undefined) return point;
+    return Math.max(mark, point);
+  "]
+    (e/js-execute *driver* script)))
+
+;; =============================================================================
+;; Window Helpers (for state verification)
+;; =============================================================================
+
+(defn get-window-count*
+  "Get number of windows"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state || !state.windowList) return 1;
+    return state.windowList.length;
+  "]
+    (e/js-execute *driver* script)))
+
+(defn get-selected-window-id*
+  "Get ID of currently selected window"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state) return null;
+    return state.selectedWindow || null;
+  "]
+    (e/js-execute *driver* script)))
+
+(defn press-ctrl-x
+  "Press C-x followed by another key (Emacs prefix command)"
+  [key]
+  (press-ctrl "x")
+  (Thread/sleep 50)
+  (press-key key))
+
+(defn get-current-kill*
+  "Get the most recent kill from kill ring"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state || !state.killRing || state.killRing.length === 0) return null;
+    return state.killRing[0];
+  "]
+    (e/js-execute *driver* script)))
+
+(defn get-kill-ring-length*
+  "Get the number of entries in kill ring"
+  []
+  (let [script "
+    const state = window.editorState;
+    if (!state || !state.killRing) return 0;
+    return state.killRing.length;
+  "]
+    (e/js-execute *driver* script)))

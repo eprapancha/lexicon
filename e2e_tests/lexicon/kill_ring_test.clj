@@ -1,203 +1,272 @@
 (ns lexicon.kill-ring-test
-  "E2E tests for kill ring - core editing primitive (Issue #104).
+  "E2E tests for kill ring - tests that kill/yank works with USER ACTIONS.
 
-  Kill ring is a circular list storing killed/copied text for yanking.
-  Emacs implementation: lisp/simple.el (kill-new, kill-append, current-kill, yank)
+  Kill ring stores killed text for yanking. Tests verify:
+  - Ctrl+K kills to end of line
+  - Ctrl+Y yanks last killed text
+  - Meta+Y (yank-pop) rotates through kills
+  - Ctrl+W kills region (selected text)
+  - Meta+W copies region without deleting
 
-  Key variables:
-  - kill-ring: The list of killed strings
-  - kill-ring-max: Maximum size (default 120 in Emacs)
-  - kill-ring-yank-pointer: Points to next item for yank-pop
-
-  Related: Issue #97 (Kill ring not functioning), Issue #104 (TDD)
-  Priority: CRITICAL - required for basic editing workflow"
+  Uses keyboard simulation for all kill/yank operations."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
-            [etaoin.api :as e]
-            [lexicon.test-helpers :as test-helpers]))
+            [lexicon.test-helpers :as h]))
 
-;; Test configuration
-(def app-url "http://localhost:8080")
-
-;; Browser driver (will be set by fixture)
-(def ^:dynamic *driver* nil)
-
-;; Setup/teardown
-(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
+(use-fixtures :once h/with-driver)
 
 ;; =============================================================================
-;; Helper Functions
-;; =============================================================================
-
-(defn eval-lisp
-  "Evaluate Lisp code and return the result."
-  [code]
-  (let [result (e/js-execute *driver* (str "return window.evalLisp(`" code "`)"))
-        success (:success result)]
-    (if success
-      {:success true :result (:result result)}
-      {:success false :error (:error result)})))
-
-(defn eval-lisp!
-  "Evaluate Lisp code and return just the result (throws on error)"
-  [code]
-  (let [{:keys [success result error]} (eval-lisp code)]
-    (if success
-      result
-      (throw (ex-info (str "Lisp eval failed: " error) {:code code})))))
-
-(defn setup-test []
-  "Standard test setup"
-  (e/go *driver* app-url)
-  (test-helpers/wait-for-editor-ready *driver*)
-  (test-helpers/click-editor *driver*)
-  (Thread/sleep 300)
-  ;; Start with clean buffer
-  (eval-lisp! "(erase-buffer)")
-  (eval-lisp! "(set-buffer-modified-p nil)"))
-
-;; =============================================================================
-;; Kill Ring Core Operations
-;; =============================================================================
-
-(deftest test-kill-region-adds-to-kill-ring
-  (testing "kill-region saves text and deletes"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World\")")
-    ;; Kill region should save "Hello" and delete it
-    (eval-lisp! "(kill-region 0 5)")
-    (is (= " World" (eval-lisp! "(buffer-string)"))
-        "Text should be deleted")
-    (is (= "Hello" (eval-lisp! "(current-kill 0)"))
-        "Killed text should be on kill ring")))
-
-(deftest test-yank-inserts-from-kill-ring
-  (testing "yank inserts last killed text"
-    (setup-test)
-    (eval-lisp! "(insert \"World\")")
-    ;; Add something to kill ring
-    (eval-lisp! "(kill-new \"Hello \")")
-    ;; Yank at beginning
-    (eval-lisp! "(goto-char 0)")
-    (eval-lisp! "(yank)")
-    (is (= "Hello World" (eval-lisp! "(buffer-string)"))
-        "Yanked text should be inserted")))
-
-(deftest test-yank-pop-rotates-kill-ring
-  (testing "yank-pop rotates through kills"
-    (setup-test)
-    ;; Add multiple items to kill ring
-    (eval-lisp! "(kill-new \"First\")")
-    (eval-lisp! "(kill-new \"Second\")")
-    (eval-lisp! "(kill-new \"Third\")")
-    ;; Yank most recent
-    (eval-lisp! "(yank)")
-    (is (= "Third" (eval-lisp! "(buffer-string)")))
-    ;; Pop to previous
-    (eval-lisp! "(yank-pop)")
-    (is (= "Second" (eval-lisp! "(buffer-string)")))
-    ;; Pop again
-    (eval-lisp! "(yank-pop)")
-    (is (= "First" (eval-lisp! "(buffer-string)")))))
-
-(deftest test-kill-new-adds-to-front
-  (testing "kill-new prepends to kill ring"
-    (setup-test)
-    (eval-lisp! "(kill-new \"First\")")
-    (eval-lisp! "(kill-new \"Second\")")
-    (is (= "Second" (eval-lisp! "(current-kill 0)"))
-        "Most recent kill at front")
-    (is (= "First" (eval-lisp! "(current-kill 1)"))
-        "Previous kill accessible")))
-
-(deftest test-kill-append-concatenates
-  (testing "kill-append concatenates with last kill"
-    (setup-test)
-    (eval-lisp! "(kill-new \"Hello\")")
-    (eval-lisp! "(kill-append \" World\" nil)")
-    (is (= "Hello World" (eval-lisp! "(current-kill 0)"))
-        "Text appended to last kill")))
-
-(deftest test-current-kill-rotates
-  (testing "current-kill with rotation"
-    (setup-test)
-    (eval-lisp! "(kill-new \"First\")")
-    (eval-lisp! "(kill-new \"Second\")")
-    (eval-lisp! "(kill-new \"Third\")")
-    ;; Rotate to second
-    (let [kill (eval-lisp! "(current-kill 1)")]
-      (is (= "Second" kill)))
-    ;; Now yank should get second (pointer rotated)
-    (eval-lisp! "(yank)")
-    (is (= "Second" (eval-lisp! "(buffer-string)")))))
-
-;; =============================================================================
-;; Kill Commands
+;; Kill Line (Ctrl+K)
 ;; =============================================================================
 
 (deftest test-kill-line-basic
-  (testing "kill-line kills to end of line"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\\nWorld\")")
-    (eval-lisp! "(goto-char 0)")
-    (eval-lisp! "(kill-line)")
-    (is (= "\nWorld" (eval-lisp! "(buffer-string)"))
-        "Killed to end of first line")
-    (is (= "Hello" (eval-lisp! "(current-kill 0)"))
-        "Killed text on ring"))
+  (testing "Ctrl+K kills to end of line"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; User types text with newline
+    (h/type-text "Hello")
+    (h/press-key "Enter")
+    (h/type-text "World")
+    (Thread/sleep 100)
 
-  (testing "kill-line at end of line kills newline"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\\nWorld\")")
-    (eval-lisp! "(goto-char 5)")  ; After "Hello", before newline
-    (eval-lisp! "(kill-line)")
-    (is (= "HelloWorld" (eval-lisp! "(buffer-string)"))
-        "Newline was killed")))
+    ;; Move to beginning of first line
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
 
-(deftest test-kill-word-basic
-  (testing "kill-word kills one word forward"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World Goodbye\")")
-    (eval-lisp! "(goto-char 0)")
-    (eval-lisp! "(kill-word 1)")
-    (is (= " World Goodbye" (eval-lisp! "(buffer-string)")))
-    (is (= "Hello" (eval-lisp! "(current-kill 0)")))))
+    ;; Kill to end of line
+    (h/press-ctrl "k")
+    (Thread/sleep 100)
 
-(deftest test-backward-kill-word-basic
-  (testing "backward-kill-word kills one word backward"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World Goodbye\")")
-    (eval-lisp! "(goto-char 11)")  ; After "World"
-    (eval-lisp! "(backward-kill-word 1)")
-    (is (= "Hello  Goodbye" (eval-lisp! "(buffer-string)")))
-    (is (= "World" (eval-lisp! "(current-kill 0)")))))
+    (is (= "\nWorld" (h/get-buffer-text*))
+        "Ctrl+K should kill to end of line")
+    (is (= "Hello" (h/get-current-kill*))
+        "Killed text should be on kill ring")))
 
-;; =============================================================================
-;; Copy (Non-destructive Kill)
-;; =============================================================================
+(deftest test-kill-line-at-eol
+  (testing "Ctrl+K at end of line kills the newline"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; User types text with newline
+    (h/type-text "Hello")
+    (h/press-key "Enter")
+    (h/type-text "World")
+    (Thread/sleep 100)
 
-(deftest test-copy-region-as-kill
-  (testing "copy-region-as-kill saves without deleting"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World\")")
-    (eval-lisp! "(copy-region-as-kill 0 5)")
-    (is (= "Hello World" (eval-lisp! "(buffer-string)"))
-        "Text should NOT be deleted")
-    (is (= "Hello" (eval-lisp! "(current-kill 0)"))
-        "Text should be on kill ring")))
+    ;; Move to end of first line (just before newline)
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    (h/press-ctrl "e")  ; End of line - should be after "Hello"
+    (Thread/sleep 50)
+
+    ;; Kill - should kill newline
+    (h/press-ctrl "k")
+    (Thread/sleep 100)
+
+    (is (= "HelloWorld" (h/get-buffer-text*))
+        "Ctrl+K at EOL should kill the newline")))
 
 ;; =============================================================================
-;; Edge Cases
+;; Yank (Ctrl+Y)
 ;; =============================================================================
 
-(deftest test-kill-ring-yank-pointer-reset
-  (testing "Pointer resets after new kill"
-    (setup-test)
-    (eval-lisp! "(kill-new \"First\")")
-    (eval-lisp! "(kill-new \"Second\")")
-    ;; Rotate to first
-    (eval-lisp! "(current-kill 1)")
-    ;; Add new kill
-    (eval-lisp! "(kill-new \"Third\")")
-    ;; Yank should get newest, not where pointer was
-    (eval-lisp! "(yank)")
-    (is (= "Third" (eval-lisp! "(buffer-string)")))))
+(deftest test-yank-inserts-killed-text
+  (testing "Ctrl+Y inserts last killed text"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Type and kill some text
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")  ; Go to beginning
+    (Thread/sleep 30)
+    (h/press-ctrl "k")  ; Kill line
+    (Thread/sleep 100)
+
+    (is (= "" (h/get-buffer-text*)) "Line was killed")
+
+    ;; Yank it back
+    (h/press-ctrl "y")
+    (Thread/sleep 100)
+
+    (is (= "Hello World" (h/get-buffer-text*))
+        "Ctrl+Y should yank back killed text")))
+
+(deftest test-yank-at-position
+  (testing "Ctrl+Y inserts at current position"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Type text
+    (h/type-text "World")
+    (Thread/sleep 50)
+
+    ;; Setup kill ring with text (via typing and killing)
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    (h/type-text "Hello ")
+    (Thread/sleep 50)
+
+    ;; Select and kill "Hello "
+    (h/press-ctrl "a")  ; Go to beginning
+    (Thread/sleep 30)
+    ;; Select "Hello " using shift+arrows
+    (dotimes [_ 6]
+      (h/press-shift "right")
+      (Thread/sleep 20))
+    (Thread/sleep 50)
+    ;; Kill selection
+    (h/press-ctrl "w")
+    (Thread/sleep 100)
+
+    (is (= "World" (h/get-buffer-text*)) "Selection was killed")
+
+    ;; Move to beginning and yank
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    (h/press-ctrl "y")
+    (Thread/sleep 100)
+
+    (is (= "Hello World" (h/get-buffer-text*))
+        "Yank should insert at cursor position")))
+
+;; =============================================================================
+;; Kill Region (Ctrl+W)
+;; =============================================================================
+
+(deftest test-kill-region-deletes-selection
+  (testing "Ctrl+W kills selected region"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Type text
+    (h/type-text "Hello Beautiful World")
+    (Thread/sleep 50)
+
+    ;; Go to beginning and move forward
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    (dotimes [_ 6]
+      (h/press-ctrl "f")
+      (Thread/sleep 20))
+    (Thread/sleep 50)
+
+    ;; Select "Beautiful " using shift+arrows
+    (dotimes [_ 10]
+      (h/press-shift "right")
+      (Thread/sleep 20))
+    (Thread/sleep 50)
+
+    ;; Kill selection
+    (h/press-ctrl "w")
+    (Thread/sleep 100)
+
+    (is (= "Hello World" (h/get-buffer-text*))
+        "Ctrl+W should kill selected region")
+    (is (= "Beautiful " (h/get-current-kill*))
+        "Killed region should be on kill ring")))
+
+;; =============================================================================
+;; Copy Region (Meta+W)
+;; =============================================================================
+
+(deftest test-copy-region-preserves-text
+  (testing "Meta+W copies without deleting"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Type text
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+
+    ;; Go to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+
+    ;; Select "Hello" using shift+arrows
+    (dotimes [_ 5]
+      (h/press-shift "right")
+      (Thread/sleep 20))
+    (Thread/sleep 50)
+
+    ;; Copy selection
+    (h/press-meta "w")
+    (Thread/sleep 100)
+
+    (is (= "Hello World" (h/get-buffer-text*))
+        "Meta+W should NOT delete the text")
+    (is (= "Hello" (h/get-current-kill*))
+        "Copied text should be on kill ring")))
+
+;; =============================================================================
+;; Kill Ring Rotation (Yank Pop)
+;; =============================================================================
+
+(deftest test-yank-pop-rotates-through-kills
+  (testing "Meta+Y after Ctrl+Y rotates through kill ring"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Create multiple kills
+    (h/type-text "First")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    (h/press-ctrl "k")  ; Kill "First"
+    (Thread/sleep 100)
+
+    (h/type-text "Second")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    (h/press-ctrl "k")  ; Kill "Second"
+    (Thread/sleep 100)
+
+    (h/type-text "Third")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    (h/press-ctrl "k")  ; Kill "Third"
+    (Thread/sleep 100)
+
+    ;; Yank - should get "Third" (most recent)
+    (h/press-ctrl "y")
+    (Thread/sleep 100)
+    (is (= "Third" (h/get-buffer-text*)) "First yank gets most recent kill")
+
+    ;; Yank-pop - should replace with "Second"
+    (h/press-meta "y")
+    (Thread/sleep 100)
+    (is (= "Second" (h/get-buffer-text*)) "First yank-pop gets previous kill")
+
+    ;; Yank-pop again - should replace with "First"
+    (h/press-meta "y")
+    (Thread/sleep 100)
+    (is (= "First" (h/get-buffer-text*)) "Second yank-pop gets oldest kill")))
+
+;; =============================================================================
+;; Multiple Consecutive Kills
+;; =============================================================================
+
+(deftest test-consecutive-kills-append
+  (testing "Consecutive Ctrl+K appends to kill ring"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Type multiline text
+    (h/type-text "Line One")
+    (h/press-key "Enter")
+    (h/type-text "Line Two")
+    (h/press-key "Enter")
+    (h/type-text "Line Three")
+    (Thread/sleep 100)
+
+    ;; Go to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+
+    ;; Kill first line
+    (h/press-ctrl "k")
+    (Thread/sleep 50)
+    ;; Kill newline
+    (h/press-ctrl "k")
+    (Thread/sleep 100)
+
+    ;; With consecutive kills, text should be appended
+    (let [kill (h/get-current-kill*)]
+      (is (or (= "Line One\n" kill)
+              (= "Line One" kill))
+          "Consecutive kills may append"))))

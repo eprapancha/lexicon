@@ -7,318 +7,178 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
             [etaoin.api :as e]
-            [lexicon.test-helpers :as test-helpers]))
+            [lexicon.test-helpers :as h]))
 
-;; Test configuration
-(def app-url "http://localhost:8080")
-(def test-timeout 10000) ;; 10 seconds
-
-;; Browser driver (will be set by fixture)
-(def ^:dynamic *driver* nil)
-
-;; Setup/teardown - use common fixture with automatic *Messages* printing
-(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
-
-;; Helper functions
-(defn wait-for-editor-ready []
-  "Wait for editor to be ready by checking for .editor-wrapper"
-  (e/wait-visible *driver* {:css ".editor-wrapper"} {:timeout (/ test-timeout 1000)}))
-
-(defn click-editor []
-  "Click the editor to focus it"
-  (e/click *driver* {:css ".editor-wrapper"}))
-
-(defn get-editor-text []
-  "Get text content from the editable area"
-  (e/get-element-text *driver* {:css ".editable-area"}))
-
-(defn type-text
-  "Type text with delay between characters"
-  [text]
-  (doseq [ch text]
-    (e/fill *driver* {:css ".hidden-input"} (str ch))
-    (Thread/sleep 10)))
-
-(defn press-key
-  "Press a special key (Enter, Backspace, ArrowLeft, etc.)"
-  [key-name]
-  (let [script (str "
-    const input = document.querySelector('.hidden-input');
-    input.focus();
-    const event = new KeyboardEvent('keydown', {
-      key: '" key-name "',
-      code: '" key-name "',
-      bubbles: true
-    });
-    input.dispatchEvent(event);
-  ")]
-    (e/js-execute *driver* script))
-  (Thread/sleep 10))
-
-(defn press-minibuffer-enter
-  "Press Enter in the minibuffer"
-  []
-  (let [script "
-    const input = document.querySelector('.minibuffer-input');
-    if (input) {
-      input.focus();
-      const event = new KeyboardEvent('keydown', {
-        key: 'Enter',
-        code: 'Enter',
-        bubbles: true
-      });
-      input.dispatchEvent(event);
-    }
-  "]
-    (e/js-execute *driver* script))
-  (Thread/sleep 10))
-
-(defn press-ctrl-key
-  "Press Ctrl+key combination (e.g., 'f' for C-f)"
-  [key]
-  (let [key-code (str "Key" (str/upper-case key))
-        script (str "
-    const input = document.querySelector('.hidden-input');
-    input.focus();
-    const event = new KeyboardEvent('keydown', {
-      key: '" key "',
-      code: '" key-code "',
-      ctrlKey: true,
-      bubbles: true
-    });
-    input.dispatchEvent(event);
-  ")]
-    (e/js-execute *driver* script))
-  (Thread/sleep 10))
-
-(defn press-meta-key
-  "Press Meta/Alt+key combination (e.g., 'f' for M-f)"
-  [key]
-  (let [key-code (str "Key" (str/upper-case key))
-        script (str "
-    const input = document.querySelector('.hidden-input');
-    input.focus();
-    const event = new KeyboardEvent('keydown', {
-      key: '" key "',
-      code: '" key-code "',
-      altKey: true,
-      bubbles: true
-    });
-    input.dispatchEvent(event);
-  ")]
-    (e/js-execute *driver* script))
-  (Thread/sleep 10))
-
-(defn get-cursor-position
-  "Get current cursor position as {:row N :col N}"
-  []
-  (let [script "
-    const state = window.editorState;
-    if (!state) return null;
-    const point = state.point;
-    const buffer = state.buffer;
-    let row = 0;
-    let col = 0;
-    let pos = 0;
-    const lines = buffer.split('\\n');
-    for (let i = 0; i < lines.length; i++) {
-      if (pos + lines[i].length >= point) {
-        row = i;
-        col = point - pos;
-        break;
-      }
-      pos += lines[i].length + 1; // +1 for newline
-    }
-    return {row: row, col: col};
-  "
-        result (e/js-execute *driver* script)]
-    result))
-
-(defn get-echo-area-text
-  "Get text from the echo area"
-  []
-  (try
-    (e/get-element-text *driver* {:css ".echo-area"})
-    (catch Exception _ "")))
+;; Use shared fixture - driver managed internally by test-helpers
+(use-fixtures :once h/with-driver)
 
 ;; Tests
 (deftest test-p0-01-basic-text-input
   (testing "P0-01: Basic text input"
     ;; Go to app
-    (e/go *driver* app-url)
-
-    ;; Wait for editor to be ready
-    (wait-for-editor-ready)
-
-    ;; Focus the editor
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type a sentence
     (let [sentence "The quick brown fox jumps over the lazy dog."]
-      (type-text sentence)
+      (h/type-text sentence)
 
       ;; Wait for updates to propagate
       (Thread/sleep 20)
 
       ;; Verify text appears in the buffer
-      (let [editor-text (get-editor-text)]
+      (let [editor-text (h/get-buffer-text*)]
         (is (.contains editor-text sentence)
             (str "Editor should contain: " sentence ", but got: " editor-text))))))
 
 (deftest test-p0-02-enter-creates-newline
   (testing "P0-02: Enter/Return key creates newline"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type first line
-    (type-text "line 1")
+    (h/type-text "line 1")
 
     ;; Press Enter
-    (press-key "Enter")
+    (h/press-key "Enter")
     (Thread/sleep 10)
 
     ;; Type second line
-    (type-text "line 2")
+    (h/type-text "line 2")
     (Thread/sleep 20)
 
     ;; Verify both lines are present
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "line 1"))
       (is (.contains editor-text "line 2")))))
 
 (deftest test-p0-03-backspace-deletes
   (testing "P0-03: Backspace deletes character"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text
-    (type-text "abcde")
+    (h/type-text "abcde")
     (Thread/sleep 10)
 
     ;; Press Backspace twice
-    (press-key "Backspace")
+    (h/press-key "Backspace")
     (Thread/sleep 10)
-    (press-key "Backspace")
+    (h/press-key "Backspace")
     (Thread/sleep 20)
 
     ;; Verify text is now "abc"
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "abc"))
       (is (not (.contains editor-text "de"))))))
 
 (deftest test-regression-typing-after-backspace-all
   (testing "REGRESSION: Typing works after backspacing entire buffer"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Step 1: Type initial text
-    (type-text "abcd")
+    (h/type-text "abcd")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "abcd")))
 
     ;; Step 2: Backspace everything
-    (press-key "Backspace")
+    (h/press-key "Backspace")
     (Thread/sleep 10)
-    (press-key "Backspace")
+    (h/press-key "Backspace")
     (Thread/sleep 10)
-    (press-key "Backspace")
+    (h/press-key "Backspace")
     (Thread/sleep 10)
-    (press-key "Backspace")
+    (h/press-key "Backspace")
     (Thread/sleep 20)
 
     ;; Step 3: Try to type again - this should work
-    (type-text "line 1")
+    (h/type-text "line 1")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "line 1")))))
 
 (deftest test-p0-04-delete-key
   (testing "P0-04: Delete key deletes character forward"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text
-    (type-text "abcde")
+    (h/type-text "abcde")
     (Thread/sleep 10)
 
     ;; Move cursor to between 'b' and 'c' using left arrow
-    (press-key "ArrowLeft")
+    (h/press-key "ArrowLeft")
     (Thread/sleep 30)
-    (press-key "ArrowLeft")
+    (h/press-key "ArrowLeft")
     (Thread/sleep 30)
-    (press-key "ArrowLeft")
+    (h/press-key "ArrowLeft")
     (Thread/sleep 10)
 
     ;; Press Delete twice
-    (press-key "Delete")
+    (h/press-key "Delete")
     (Thread/sleep 10)
-    (press-key "Delete")
+    (h/press-key "Delete")
     (Thread/sleep 20)
 
     ;; Should be "abe"
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "abe")))))
 
 (deftest test-p0-05-arrow-navigation
   (testing "P0-05: Arrow key navigation"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type two lines
-    (type-text "line 1")
+    (h/type-text "line 1")
     (Thread/sleep 10)
-    (press-key "Enter")
+    (h/press-key "Enter")
     (Thread/sleep 10)
-    (type-text "line 2")
+    (h/type-text "line 2")
     (Thread/sleep 10)
 
     ;; Test Up Arrow - should move to line 1
-    (press-key "ArrowUp")
+    (h/press-key "ArrowUp")
     (Thread/sleep 10)
 
     ;; Type something - should appear on line 1
-    (type-text "X")
+    (h/type-text "X")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (or (.contains editor-text "line 1X")
               (re-find #"line 1.*X" editor-text))))))
 
 (deftest test-p0-06-mouse-click-positioning
   (testing "P0-06: Mouse click positioning"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type several lines
-    (type-text "First line")
+    (h/type-text "First line")
     (Thread/sleep 10)
-    (press-key "Enter")
+    (h/press-key "Enter")
     (Thread/sleep 10)
-    (type-text "Second line")
+    (h/type-text "Second line")
     (Thread/sleep 10)
-    (press-key "Enter")
+    (h/press-key "Enter")
     (Thread/sleep 10)
-    (type-text "Third line")
+    (h/type-text "Third line")
     (Thread/sleep 20)
 
     ;; Click somewhere in the middle
-    (e/click *driver* {:css ".editable-area"})
+    (e/click h/*driver* {:css ".editable-area"})
     (Thread/sleep 10)
 
     ;; Type a character - should insert at clicked position
-    (type-text "X")
+    (h/type-text "X")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "X")))))
 
 ;; ========================================
@@ -327,232 +187,226 @@
 
 (deftest test-p1-01-character-navigation
   (testing "P1-01: Character-wise navigation (C-f, C-b)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type "hello world"
-    (type-text "hello world")
+    (h/type-text "hello world")
     (Thread/sleep 10)
 
     ;; Move cursor to beginning
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 10)
 
     ;; Press C-f five times to move to space after "hello"
     (dotimes [_ 5]
-      (press-ctrl-key "f")
+      (h/press-ctrl "f")
       (Thread/sleep 30))
 
     ;; Verify position by typing a character
-    (type-text "X")
+    (h/type-text "X")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "helloX")
           "C-f should move cursor forward"))
 
     ;; Move to beginning again and test C-b
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 10)
 
     ;; Move to end
-    (press-ctrl-key "e")
+    (h/press-ctrl "e")
     (Thread/sleep 10)
 
     ;; Press C-b three times
     (dotimes [_ 3]
-      (press-ctrl-key "b")
+      (h/press-ctrl "b")
       (Thread/sleep 30))
 
     ;; Type character - should be before "rld"
-    (type-text "Y")
+    (h/type-text "Y")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "woYrld")
           (str "C-b should move cursor backward. Got: " editor-text)))))
 
 (deftest test-p1-02-line-navigation
   (testing "P1-02: Line-wise navigation (C-p, C-n)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type three lines
-    (type-text "line 1")
-    (press-key "Enter")
+    (h/type-text "line 1")
+    (h/press-key "Enter")
     (Thread/sleep 10)
-    (type-text "line 2")
-    (press-key "Enter")
+    (h/type-text "line 2")
+    (h/press-key "Enter")
     (Thread/sleep 10)
-    (type-text "line 3")
+    (h/type-text "line 3")
     (Thread/sleep 10)
 
     ;; Cursor should be at end of line 3
     ;; Press C-p to move to line 2
-    (press-ctrl-key "p")
+    (h/press-ctrl "p")
     (Thread/sleep 10)
 
     ;; Type character to verify on line 2
-    (type-text "X")
+    (h/type-text "X")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "line 2X")
           "C-p should move cursor up"))
 
     ;; Press C-n once to move back to line 3
-    (press-ctrl-key "n")
+    (h/press-ctrl "n")
     (Thread/sleep 10)
 
     ;; Type character to verify on line 3
-    (type-text "Y")
+    (h/type-text "Y")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "line 3")
           (str "C-n should move cursor down. Got: " editor-text)))))
 
 (deftest test-p1-03-beginning-end-of-line
   (testing "P1-03: Beginning/end of line (C-a, C-e)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text
-    (type-text "this is a test")
+    (h/type-text "this is a test")
     (Thread/sleep 10)
 
     ;; Move cursor to middle (using C-b)
     (dotimes [_ 5]
-      (press-ctrl-key "b")
+      (h/press-ctrl "b")
       (Thread/sleep 20))
 
     ;; Press C-a to go to beginning of line
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 10)
 
     ;; Type character to verify at beginning
-    (type-text "X")
+    (h/type-text "X")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "Xthis is a test")
           "C-a should move to beginning of line"))
 
     ;; Press C-e to go to end of line
-    (press-ctrl-key "e")
+    (h/press-ctrl "e")
     (Thread/sleep 10)
 
     ;; Type character to verify at end
-    (type-text "Y")
+    (h/type-text "Y")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "Xthis is a testY")
           "C-e should move to end of line"))))
 
 (deftest test-p1-04-word-navigation
   (testing "P1-04: Word-wise navigation (M-f, M-b)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text
-    (type-text "the quick brown fox")
+    (h/type-text "the quick brown fox")
     (Thread/sleep 10)
 
     ;; Move to beginning
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 10)
 
     ;; Press M-f once to move forward one word
-    (press-meta-key "f")
+    (h/press-meta "f")
     (Thread/sleep 10)
 
     ;; Type character to verify we moved forward
-    (type-text "X")
+    (h/type-text "X")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (or (.contains editor-text "theX")
               (.contains editor-text "the X"))
           (str "M-f should move forward by word. Got: " editor-text)))
 
     ;; Press M-b once to move back one word
-    (press-meta-key "b")
+    (h/press-meta "b")
     (Thread/sleep 10)
 
     ;; Type character to verify we moved backward
-    (type-text "Y")
+    (h/type-text "Y")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (or (.contains editor-text "Ythe")
               (.contains editor-text "Y the"))
           (str "M-b should move backward by word. Got: " editor-text)))))
 
 (deftest test-p1-05-beginning-end-of-buffer
   (testing "P1-05: Beginning/end of buffer (M-<, M->)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type multiple lines
-    (type-text "first line")
-    (press-key "Enter")
+    (h/type-text "first line")
+    (h/press-key "Enter")
     (Thread/sleep 10)
-    (type-text "second line")
-    (press-key "Enter")
+    (h/type-text "second line")
+    (h/press-key "Enter")
     (Thread/sleep 10)
-    (type-text "third line")
-    (press-key "Enter")
+    (h/type-text "third line")
+    (h/press-key "Enter")
     (Thread/sleep 10)
-    (type-text "fourth line")
+    (h/type-text "fourth line")
     (Thread/sleep 10)
 
     ;; Move to middle
-    (press-ctrl-key "p")
-    (press-ctrl-key "p")
+    (h/press-ctrl "p")
+    (h/press-ctrl "p")
     (Thread/sleep 10)
 
     ;; Press M-> to go to end of buffer
-    (press-meta-key ">")
+    (h/press-meta ">")
     (Thread/sleep 10)
 
     ;; Type character to verify at end
-    (type-text "X")
+    (h/type-text "X")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "fourth lineX")
           "M-> should move to end of buffer"))
 
     ;; Press M-< to go to beginning of buffer
-    (press-meta-key "<")
+    (h/press-meta "<")
     (Thread/sleep 10)
 
     ;; Type character to verify at beginning
-    (type-text "Y")
+    (h/type-text "Y")
     (Thread/sleep 20)
 
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "Yfirst line")
           "M-< should move to beginning of buffer"))))
 
 (deftest test-p1-06-set-mark
   (testing "P1-06: Setting the mark (C-SPC)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text
-    (type-text "select this text")
+    (h/type-text "select this text")
     (Thread/sleep 10)
 
     ;; Move to beginning
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 10)
 
     ;; Set mark with C-SPC (Ctrl+Space)
@@ -567,12 +421,12 @@
       });
       input.dispatchEvent(event);
     "]
-      (e/js-execute *driver* script))
+      (e/js-execute h/*driver* script))
     (Thread/sleep 20)
 
     ;; Move forward to select "select this"
     (dotimes [_ 11]
-      (press-ctrl-key "f")
+      (h/press-ctrl "f")
       (Thread/sleep 10))
     (Thread/sleep 20)
 
@@ -583,16 +437,15 @@
 
 (deftest ^:skip test-p1-07-kill-region
   (testing "P1-07: Kill region (C-w) - SKIPPED: Browser captures C-w (close tab)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text
-    (type-text "select this text")
+    (h/type-text "select this text")
     (Thread/sleep 10)
 
     ;; Move to beginning and set mark
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 10)
 
     ;; Set mark
@@ -606,17 +459,17 @@
       });
       input.dispatchEvent(event);
     "]
-      (e/js-execute *driver* script))
+      (e/js-execute h/*driver* script))
     (Thread/sleep 10)
 
     ;; Move forward to select "select this"
     (dotimes [_ 11]
-      (press-ctrl-key "f")
+      (h/press-ctrl "f")
       (Thread/sleep 10))
     (Thread/sleep 10)
 
     ;; Kill region with C-w
-    (press-ctrl-key "w")
+    (h/press-ctrl "w")
     (Thread/sleep 20)
 
     ;; NOTE: C-w is captured by browser (close tab) - cannot test in E2E
@@ -625,14 +478,13 @@
 
 (deftest test-p1-08-yank
   (testing "P1-08: Yank (C-y)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type and kill text
-    (type-text "select this text")
+    (h/type-text "select this text")
     (Thread/sleep 10)
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 10)
 
     ;; Set mark and select "select this"
@@ -646,43 +498,42 @@
       });
       input.dispatchEvent(event);
     "]
-      (e/js-execute *driver* script))
+      (e/js-execute h/*driver* script))
     (Thread/sleep 10)
 
     (dotimes [_ 11]
-      (press-ctrl-key "f")
+      (h/press-ctrl "f")
       (Thread/sleep 10))
     (Thread/sleep 10)
 
     ;; Kill it
-    (press-ctrl-key "w")
+    (h/press-ctrl "w")
     (Thread/sleep 20)
 
     ;; Move to end
-    (press-ctrl-key "e")
+    (h/press-ctrl "e")
     (Thread/sleep 10)
 
     ;; Yank it back
-    (press-ctrl-key "y")
+    (h/press-ctrl "y")
     (Thread/sleep 20)
 
     ;; Verify yanked text appears
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "select this")
           (str "Yanked text should appear. Got: " editor-text)))))
 
 (deftest test-p1-09-copy-region
   (testing "P1-09: Copy region (M-w)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text
-    (type-text "copy this")
+    (h/type-text "copy this")
     (Thread/sleep 10)
 
     ;; Move to beginning and set mark
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 10)
 
     ;; Set mark
@@ -696,58 +547,57 @@
       });
       input.dispatchEvent(event);
     "]
-      (e/js-execute *driver* script))
+      (e/js-execute h/*driver* script))
     (Thread/sleep 10)
 
     ;; Select all text
-    (press-ctrl-key "e")
+    (h/press-ctrl "e")
     (Thread/sleep 10)
 
     ;; Copy with M-w
-    (press-meta-key "w")
+    (h/press-meta "w")
     (Thread/sleep 20)
 
     ;; Verify original text still exists
-    (let [editor-text-before (get-editor-text)]
+    (let [editor-text-before (h/get-buffer-text*)]
       (is (.contains editor-text-before "copy this")
           "Original text should remain after copy"))
 
     ;; Add newline and yank
-    (press-key "Enter")
+    (h/press-key "Enter")
     (Thread/sleep 10)
-    (press-ctrl-key "y")
+    (h/press-ctrl "y")
     (Thread/sleep 20)
 
     ;; Verify copied text was yanked
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (or (re-find #"copy this.*copy this" (str/replace editor-text "\n" " "))
               (= 2 (count (re-seq #"copy this" editor-text))))
           (str "Copied text should appear twice. Got: " editor-text)))))
 
 (deftest test-p1-10-kill-line
   (testing "P1-10: Kill line (C-k)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text
-    (type-text "kill the rest of the line")
+    (h/type-text "kill the rest of the line")
     (Thread/sleep 10)
 
     ;; Move to before "the"
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 10)
     (dotimes [_ 5]
-      (press-ctrl-key "f")
+      (h/press-ctrl "f")
       (Thread/sleep 10))
     (Thread/sleep 10)
 
     ;; Kill rest of line with C-k
-    (press-ctrl-key "k")
+    (h/press-ctrl "k")
     (Thread/sleep 20)
 
     ;; Verify killed
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "kill ")
           (str "Should have 'kill ' remaining. Got: " editor-text))
       (is (not (.contains editor-text "the rest"))
@@ -755,20 +605,19 @@
 
 (deftest test-p1-11-undo
   (testing "P1-11: Undo (C-/)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type some text
-    (type-text "hello")
+    (h/type-text "hello")
     (Thread/sleep 10)
-    (press-key "Enter")
+    (h/press-key "Enter")
     (Thread/sleep 10)
-    (type-text "world")
+    (h/type-text "world")
     (Thread/sleep 20)
 
     ;; Verify initial state
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "hello")
           "Should have 'hello'")
       (is (.contains editor-text "world")
@@ -786,11 +635,11 @@
         });
         input.dispatchEvent(event);
       "]
-        (e/js-execute *driver* script))
+        (e/js-execute h/*driver* script))
       (Thread/sleep 20))
 
     ;; After undoing, should have less text
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (or (not (.contains editor-text "world"))
               (.contains editor-text "hel"))
           (str "Undo should remove some text. Got: " editor-text)))))
@@ -799,118 +648,115 @@
 
 (deftest test-p2-01-switch-to-buffer
   (testing "P2-01: Verify switch-to-buffer (C-x b)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text in *scratch*
-    (type-text "scratch buffer content")
+    (h/type-text "scratch buffer content")
     (Thread/sleep 20)
 
     ;; Press C-x b to switch buffer
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "b")
+    (h/press-key "b")
     (Thread/sleep 30)
 
     ;; Minibuffer should be active
-    (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
+    (let [minibuffer-visible (e/exists? h/*driver* {:css ".minibuffer"})]
       (is minibuffer-visible "Minibuffer should be visible"))
 
     ;; Type new buffer name and press Enter in minibuffer
-    (e/fill *driver* {:css ".minibuffer-input"} "test-buffer")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "test-buffer")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 200)  ; Wait for buffer switch and DOM update
 
     ;; New buffer should be created
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (or (empty? editor-text)
               (not (.contains editor-text "scratch buffer")))
           "New buffer should be empty or not contain scratch content"))))
 
 (deftest test-p2-02-buffer-state-preservation
   (testing "P2-02: Verify buffer state preservation"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type in scratch buffer
-    (type-text "original scratch")
+    (h/type-text "original scratch")
     (Thread/sleep 20)
 
     ;; Switch to test-buffer
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "b")
+    (h/press-key "b")
     (Thread/sleep 30)
-    (type-text "test-buffer")
-    (press-key "Enter")
+    (h/type-text "test-buffer")
+    (h/press-key "Enter")
     (Thread/sleep 30)
 
     ;; Type in test-buffer
-    (type-text "hello from test")
+    (h/type-text "hello from test")
     (Thread/sleep 20)
 
     ;; Switch back to *scratch*
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "b")
+    (h/press-key "b")
     (Thread/sleep 30)
-    (type-text "*scratch*")
-    (press-key "Enter")
+    (h/type-text "*scratch*")
+    (h/press-key "Enter")
     (Thread/sleep 30)
 
     ;; Verify scratch content preserved
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "original scratch")
           "Scratch buffer content should be preserved"))
 
     ;; Switch back to test-buffer
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "b")
+    (h/press-key "b")
     (Thread/sleep 30)
-    (type-text "test-buffer")
-    (press-key "Enter")
+    (h/type-text "test-buffer")
+    (h/press-key "Enter")
     (Thread/sleep 30)
 
     ;; Verify test-buffer content preserved
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "hello from test")
           "test-buffer content should be preserved"))))
 
 (deftest test-p2-03-list-buffers
   (testing "P2-03: Verify list-buffers (C-x C-b)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Create a couple of buffers first
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "b")
+    (h/press-key "b")
     (Thread/sleep 30)
-    (type-text "buffer1")
-    (press-key "Enter")
+    (h/type-text "buffer1")
+    (h/press-key "Enter")
     (Thread/sleep 30)
 
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "b")
+    (h/press-key "b")
     (Thread/sleep 30)
-    (type-text "buffer2")
-    (press-key "Enter")
+    (h/type-text "buffer2")
+    (h/press-key "Enter")
     (Thread/sleep 30)
 
     ;; Now list buffers with C-x C-b
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-ctrl-key "b")
+    (h/press-ctrl "b")
     (Thread/sleep 50)
 
     ;; Buffer list should appear
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (or (.contains editor-text "*Buffer List*")
               (.contains editor-text "buffer1")
               (.contains editor-text "buffer2"))
@@ -918,33 +764,31 @@
 
 (deftest test-p2-04-buffer-modified-indicator
   (testing "P2-04: Verify buffer modified indicator"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text to modify buffer
-    (type-text "modified content")
+    (h/type-text "modified content")
     (Thread/sleep 30)
 
     ;; Check status bar (mode line) for modified indicator (**)
-    (let [status-bar (e/get-element-text *driver* {:css ".status-bar"})]
+    (let [status-bar (e/get-element-text h/*driver* {:css ".status-bar"})]
       (is (.contains status-bar "**")
           (str "Status bar should show ** for modified buffer. Got: " status-bar)))))
 
 (deftest ^:skip test-p2-05-save-buffer
   (testing "P2-05: Verify save-buffer (C-x C-s) - SKIPPED: Browser file dialog"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type content
-    (type-text "content to save")
+    (h/type-text "content to save")
     (Thread/sleep 20)
 
     ;; Press C-x C-s
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-ctrl-key "s")
+    (h/press-ctrl "s")
     (Thread/sleep 30)
 
     ;; NOTE: Browser file save dialog cannot be automated in E2E tests
@@ -953,27 +797,26 @@
 
 (deftest test-p2-5-01-keyboard-quit
   (testing "P2.5-01: Verify keyboard-quit (C-g)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Open minibuffer with C-x b
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "b")
+    (h/press-key "b")
     (Thread/sleep 30)
 
     ;; Verify minibuffer is open
-    (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
+    (let [minibuffer-visible (e/exists? h/*driver* {:css ".minibuffer"})]
       (is minibuffer-visible "Minibuffer should be visible"))
 
     ;; Press C-g to quit
-    (press-ctrl-key "g")
+    (h/press-ctrl "g")
     (Thread/sleep 30)
 
     ;; Minibuffer should close or echo area should show quit message
     (let [echo-text (try
-                      (e/get-element-text *driver* {:css ".echo-area"})
+                      (e/get-element-text h/*driver* {:css ".echo-area"})
                       (catch Exception _ ""))]
       (is (or (.contains echo-text "Quit")
               (.contains echo-text "quit"))
@@ -981,31 +824,30 @@
 
 (deftest test-p2-5-02-universal-argument
   (testing "P2.5-02: Verify Universal Argument (C-u)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Press C-u and type 'a'
-    (press-ctrl-key "u")
+    (h/press-ctrl "u")
     (Thread/sleep 20)
-    (type-text "a")
+    (h/type-text "a")
     (Thread/sleep 30)
 
     ;; Should have 4 a's
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "aaaa")
           (str "C-u should insert 4 a's. Got: " editor-text)))
 
     ;; Press C-u C-u and type 'b'
-    (press-ctrl-key "u")
+    (h/press-ctrl "u")
     (Thread/sleep 10)
-    (press-ctrl-key "u")
+    (h/press-ctrl "u")
     (Thread/sleep 20)
-    (type-text "b")
+    (h/type-text "b")
     (Thread/sleep 30)
 
     ;; Should have 16 b's
-    (let [editor-text (get-editor-text)
+    (let [editor-text (h/get-buffer-text*)
           b-count (count (re-seq #"b" editor-text))]
       (is (= b-count 16)
           (str "C-u C-u should insert 16 b's. Got: " b-count " b's")))))
@@ -1014,99 +856,95 @@
 
 (deftest test-p3-01-horizontal-split
   (testing "P3-01: Verify horizontal split (C-x 2)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Press C-x 2 to split horizontally
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "2")
+    (h/press-key "2")
     (Thread/sleep 50)
 
     ;; Check for multiple windows
-    (let [windows (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows (e/query-all h/*driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           (str "Should have at least 2 windows. Got: " (count windows))))))
 
 (deftest test-p3-02-vertical-split
   (testing "P3-02: Verify vertical split (C-x 3)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Press C-x 3 to split vertically
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "3")
+    (h/press-key "3")
     (Thread/sleep 50)
 
     ;; Check for multiple windows
-    (let [windows (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows (e/query-all h/*driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           (str "Should have at least 2 windows. Got: " (count windows))))))
 
 (deftest test-p3-03-window-cycling
   (testing "P3-03: Verify window cycling (C-x o)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Split horizontally
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "2")
+    (h/press-key "2")
     (Thread/sleep 50)
 
     ;; Press C-x o to cycle windows
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "o")
+    (h/press-key "o")
     (Thread/sleep 50)
 
     ;; Check that windows exist (cycling doesn't change count)
-    (let [windows (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows (e/query-all h/*driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           "Windows should still exist after cycling"))
 
     ;; Cycle again
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "o")
+    (h/press-key "o")
     (Thread/sleep 50)
 
-    (let [windows (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows (e/query-all h/*driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           "Windows should still exist after cycling twice"))))
 
 (deftest test-p3-04-independent-window-state
   (testing "P3-04: Verify independent window state"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Split horizontally
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "2")
+    (h/press-key "2")
     (Thread/sleep 50)
 
     ;; Type in current window
-    (type-text "bottom window")
+    (h/type-text "bottom window")
     (Thread/sleep 20)
 
     ;; Cycle to other window
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "o")
+    (h/press-key "o")
     (Thread/sleep 50)
 
     ;; Type in top window
-    (type-text "top window")
+    (h/type-text "top window")
     (Thread/sleep 20)
 
     ;; Content should be shared (same buffer) but windows should maintain position
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "bottom window")
           "Content should include bottom window text")
       (is (.contains editor-text "top window")
@@ -1114,65 +952,63 @@
 
 (deftest test-p3-05-delete-other-windows
   (testing "P3-05: Verify delete-other-windows (C-x 1)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Create multiple splits
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "2")
+    (h/press-key "2")
     (Thread/sleep 50)
 
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "3")
+    (h/press-key "3")
     (Thread/sleep 50)
 
     ;; Verify multiple windows exist
-    (let [windows-before (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows-before (e/query-all h/*driver* {:css ".window-pane"})]
       (is (>= (count windows-before) 2)
           "Should have multiple windows before C-x 1"))
 
     ;; Press C-x 1 to delete other windows
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "1")
+    (h/press-key "1")
     (Thread/sleep 50)
 
     ;; Should have only one window now
-    (let [windows-after (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows-after (e/query-all h/*driver* {:css ".window-pane"})]
       (is (= (count windows-after) 1)
           (str "Should have 1 window after C-x 1. Got: " (count windows-after))))))
 
 (deftest test-p3-06-click-to-activate-window
   (testing "P3-06: Verify click-to-activate window"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Split horizontally
-    (press-ctrl-key "x")
+    (h/press-ctrl "x")
     (Thread/sleep 10)
-    (press-key "2")
+    (h/press-key "2")
     (Thread/sleep 50)
 
     ;; Get all windows
-    (let [windows (e/query-all *driver* {:css ".window-pane"})]
+    (let [windows (e/query-all h/*driver* {:css ".window-pane"})]
       (is (>= (count windows) 2)
           "Should have at least 2 windows")
 
       ;; Click on the first window
       (when (>= (count windows) 2)
-        (e/click *driver* {:css ".window-pane"})  ; Click first matching window
+        (e/click h/*driver* {:css ".window-pane"})  ; Click first matching window
         (Thread/sleep 30)
 
         ;; Type text
-        (type-text "clicked")
+        (h/type-text "clicked")
         (Thread/sleep 20)
 
         ;; Verify text appears
-        (let [editor-text (get-editor-text)]
+        (let [editor-text (h/get-buffer-text*)]
           (is (.contains editor-text "clicked")
               "Text should appear after clicking window"))))))
 
@@ -1180,27 +1016,26 @@
 
 (deftest test-p4-01-execute-extended-command
   (testing "P4-01: Verify execute-extended-command (M-x)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Press M-x
-    (press-meta-key "x")
+    (h/press-meta "x")
     (Thread/sleep 50)
 
     ;; Minibuffer should be active with M-x prompt
-    (let [minibuffer-visible (e/exists? *driver* {:css ".minibuffer"})]
+    (let [minibuffer-visible (e/exists? h/*driver* {:css ".minibuffer"})]
       (is minibuffer-visible "Minibuffer should be visible for M-x"))
 
     ;; Type command in minibuffer and press Enter
-    (e/fill *driver* {:css ".minibuffer-input"} "text-mode")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "text-mode")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
     ;; Mode line should show Text mode or command should execute
     (let [status-bar (try
-                      (e/get-element-text *driver* {:css ".status-bar"})
+                      (e/get-element-text h/*driver* {:css ".status-bar"})
                       (catch Exception _ ""))]
       (is (or (.contains status-bar "Text")
               (.contains status-bar "text"))
@@ -1208,30 +1043,29 @@
 
 (deftest test-p4-02-describe-key
   (testing "P4-02: Verify describe-key (C-h k)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Press C-h k
-    (press-ctrl-key "h")
+    (h/press-ctrl "h")
     (Thread/sleep 10)
-    (press-key "k")
+    (h/press-key "k")
     (Thread/sleep 50)
 
     ;; Echo area should prompt for key
     (let [echo-text (try
-                      (e/get-element-text *driver* {:css ".echo-area"})
+                      (e/get-element-text h/*driver* {:css ".echo-area"})
                       (catch Exception _ ""))]
       (is (or (.contains echo-text "Describe key")
               (.contains echo-text "key"))
           "Should prompt for key description"))
 
     ;; Press C-f
-    (press-ctrl-key "f")
+    (h/press-ctrl "f")
     (Thread/sleep 50)
 
     ;; Help buffer should appear
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (or (.contains editor-text "*Help*")
               (.contains editor-text "forward-char")
               (.contains editor-text "C-f"))
@@ -1239,18 +1073,17 @@
 
 (deftest test-p4-03-describe-bindings
   (testing "P4-03: Verify describe-bindings (C-h b)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Press C-h b
-    (press-ctrl-key "h")
+    (h/press-ctrl "h")
     (Thread/sleep 10)
-    (press-key "b")
+    (h/press-key "b")
     (Thread/sleep 100)
 
     ;; Help buffer with bindings should appear
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (or (.contains editor-text "*Help*")
               (.contains editor-text "bindings")
               (.contains editor-text "C-f")
@@ -1259,32 +1092,31 @@
 
 (deftest test-p5-01-minor-mode-toggling
   (testing "P5-01: Verify minor mode toggling"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Press M-x line-number-mode
-    (press-meta-key "x")
+    (h/press-meta "x")
     (Thread/sleep 50)
-    (type-text "line-number-mode")
+    (h/type-text "line-number-mode")
     (Thread/sleep 20)
-    (press-key "Enter")
+    (h/press-key "Enter")
     (Thread/sleep 50)
 
     ;; Check mode line for changes
     (let [status-bar-1 (try
-                        (e/get-element-text *driver* {:css ".status-bar"})
+                        (e/get-element-text h/*driver* {:css ".status-bar"})
                         (catch Exception _ ""))]
       ;; Toggle again
-      (press-meta-key "x")
+      (h/press-meta "x")
       (Thread/sleep 50)
-      (type-text "line-number-mode")
+      (h/type-text "line-number-mode")
       (Thread/sleep 20)
-      (press-key "Enter")
+      (h/press-key "Enter")
       (Thread/sleep 50)
 
       (let [status-bar-2 (try
-                          (e/get-element-text *driver* {:css ".status-bar"})
+                          (e/get-element-text h/*driver* {:css ".status-bar"})
                           (catch Exception _ ""))]
         ;; Mode line should have changed (at least one toggle happened)
         (is (or (not= status-bar-1 status-bar-2)
@@ -1293,20 +1125,19 @@
 
 (deftest test-p6a-01-package-list
   (testing "P6A-01: Verify package system listing"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Press M-x package-list
-    (press-meta-key "x")
+    (h/press-meta "x")
     (Thread/sleep 50)
-    (type-text "package-list")
+    (h/type-text "package-list")
     (Thread/sleep 20)
-    (press-key "Enter")
+    (h/press-key "Enter")
     (Thread/sleep 100)
 
     ;; Package list buffer should appear
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (or (.contains editor-text "*Packages*")
               (.contains editor-text "package")
               (.contains editor-text "evil"))
@@ -1314,28 +1145,27 @@
 
 (deftest test-p6b-01-theme-loading
   (testing "P6B-01: Verify theme loading"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Press M-x load-theme
-    (press-meta-key "x")
+    (h/press-meta "x")
     (Thread/sleep 50)
-    (type-text "load-theme")
+    (h/type-text "load-theme")
     (Thread/sleep 20)
-    (press-key "Enter")
+    (h/press-key "Enter")
     (Thread/sleep 50)
 
     ;; Type theme name
-    (type-text "lexicon-base-dark")
+    (h/type-text "lexicon-base-dark")
     (Thread/sleep 20)
-    (press-key "Enter")
+    (h/press-key "Enter")
     (Thread/sleep 100)
 
     ;; Check that some styling changed (hard to verify visually in E2E)
     ;; We'll just verify the command executed without error
     (let [echo-text (try
-                      (e/get-element-text *driver* {:css ".echo-area"})
+                      (e/get-element-text h/*driver* {:css ".echo-area"})
                       (catch Exception _ ""))]
       (is (or (.contains echo-text "theme")
               (.contains echo-text "Loaded")
@@ -1344,27 +1174,26 @@
 
 (deftest test-p6b-02-font-size-change
   (testing "P6B-02: Verify dynamic font size change"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Press M-x set-font-size
-    (press-meta-key "x")
+    (h/press-meta "x")
     (Thread/sleep 50)
-    (type-text "set-font-size")
+    (h/type-text "set-font-size")
     (Thread/sleep 20)
-    (press-key "Enter")
+    (h/press-key "Enter")
     (Thread/sleep 50)
 
     ;; Type font size
-    (type-text "20")
+    (h/type-text "20")
     (Thread/sleep 20)
-    (press-key "Enter")
+    (h/press-key "Enter")
     (Thread/sleep 50)
 
     ;; Verify command executed (hard to verify size in E2E)
     (let [echo-text (try
-                      (e/get-element-text *driver* {:css ".echo-area"})
+                      (e/get-element-text h/*driver* {:css ".echo-area"})
                       (catch Exception _ ""))]
       (is (or (.contains echo-text "font")
               (.contains echo-text "size")
@@ -1373,33 +1202,31 @@
 
 (deftest test-p6b-03-status-bar-formatting
   (testing "P6B-03: Verify Mode Line Formatting"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Check initial mode line
-    (let [status-bar (e/get-element-text *driver* {:css ".status-bar"})]
+    (let [status-bar (e/get-element-text h/*driver* {:css ".status-bar"})]
       (is (or (.contains status-bar "*scratch*")
               (.contains status-bar "scratch"))
           "Mode line should show buffer name"))
 
     ;; Type to modify buffer
-    (type-text "modify")
+    (h/type-text "modify")
     (Thread/sleep 30)
 
     ;; Check for modified indicator
-    (let [status-bar (e/get-element-text *driver* {:css ".status-bar"})]
+    (let [status-bar (e/get-element-text h/*driver* {:css ".status-bar"})]
       (is (.contains status-bar "**")
           "Mode line should show ** for modified buffer"))))
 
 (deftest ^:skip test-p6d-01-thing-at-point
   (testing "P6D-01: Verify thing-at-point (conceptual) - SKIPPED: Requires custom command"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type URL
-    (type-text "https://example.com")
+    (h/type-text "https://example.com")
     (Thread/sleep 20)
 
     ;; NOTE: This test requires a custom command to be implemented
@@ -1409,303 +1236,296 @@
 
 (deftest test-p7-8-01-query-replace-basic-yes
   (testing "P7.8-01: Query-replace with 'y' (replace and continue)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text with multiple occurrences
-    (type-text "foo bar foo baz foo")
+    (h/type-text "foo bar foo baz foo")
     (Thread/sleep 20)
 
     ;; Go to beginning
-    (press-meta-key "<")
+    (h/press-meta "<")
     (Thread/sleep 20)
 
     ;; Start query-replace with M-%
-    (press-meta-key "%")
+    (h/press-meta "%")
     (Thread/sleep 50)
 
     ;; Type search string
-    (e/fill *driver* {:css ".minibuffer-input"} "foo")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "foo")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 50)
 
     ;; Type replacement string
-    (e/fill *driver* {:css ".minibuffer-input"} "FOO")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "FOO")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
     ;; Press 'y' to replace first occurrence
-    (press-key "y")
+    (h/press-key "y")
     (Thread/sleep 100)
 
     ;; Press 'y' to replace second occurrence
-    (press-key "y")
+    (h/press-key "y")
     (Thread/sleep 100)
 
     ;; Press 'q' to quit
-    (press-key "q")
+    (h/press-key "q")
     (Thread/sleep 100)
 
     ;; Verify replacements
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "FOO bar FOO baz foo")
           (str "Should have replaced first two 'foo' with 'FOO', got: " editor-text)))))
 
 (deftest test-p7-8-01a-query-replace-cursor-and-region
   (testing "P7.8-01a: Query-replace cursor movement and region highlighting (Issue #64)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text with multiple occurrences: "foo bar foo baz foo"
     ;; Positions: foo(0-3) bar(4-7) foo(8-11) baz(12-15) foo(16-19)
-    (type-text "foo bar foo baz foo")
+    (h/type-text "foo bar foo baz foo")
     (Thread/sleep 20)
 
     ;; Go to beginning
-    (press-meta-key "<")
+    (h/press-meta "<")
     (Thread/sleep 20)
 
     ;; Start query-replace with M-%
-    (press-meta-key "%")
+    (h/press-meta "%")
     (Thread/sleep 50)
 
     ;; Type search string
-    (e/fill *driver* {:css ".minibuffer-input"} "foo")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "foo")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 50)
 
     ;; Type replacement string
-    (e/fill *driver* {:css ".minibuffer-input"} "FOO")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "FOO")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
     ;; ASSERTION 1: After starting query-replace, first match should be highlighted
     ;; Cursor should be at position 3 (end of first "foo"), mark at position 0 (start)
-    (let [cursor-pos (get-cursor-position)
-          editor-text (get-editor-text)]
+    (let [cursor-pos (h/get-cursor-position)
+          editor-text (h/get-buffer-text*)]
       (is (= 3 (:col cursor-pos))
           (str "Cursor should be at end of first 'foo' (col 3), got: " cursor-pos))
       (is (= 0 (:row cursor-pos))
           (str "Cursor should be on first line, got: " cursor-pos)))
 
     ;; Press 'y' to replace first occurrence
-    (press-key "y")
+    (h/press-key "y")
     (Thread/sleep 100)
 
     ;; ASSERTION 2: After first 'y', cursor should move to end of second match
     ;; Text is now "FOO bar foo baz foo"
     ;; Second "foo" is at positions 8-11, cursor should be at col 11
-    (let [cursor-pos (get-cursor-position)
-          editor-text (get-editor-text)]
+    (let [cursor-pos (h/get-cursor-position)
+          editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "FOO bar foo")
           (str "First 'foo' should be replaced, got: " editor-text))
       (is (= 11 (:col cursor-pos))
           (str "Cursor should be at end of second 'foo' (col 11), got: " cursor-pos)))
 
     ;; Press 'y' to replace second occurrence
-    (press-key "y")
+    (h/press-key "y")
     (Thread/sleep 100)
 
     ;; ASSERTION 3: After second 'y', cursor should move to end of third match
     ;; Text is now "FOO bar FOO baz foo"
     ;; Third "foo" is at positions 16-19, cursor should be at col 19
-    (let [cursor-pos (get-cursor-position)
-          editor-text (get-editor-text)]
+    (let [cursor-pos (h/get-cursor-position)
+          editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "FOO bar FOO baz foo")
           (str "Second 'foo' should be replaced, got: " editor-text))
       (is (= 19 (:col cursor-pos))
           (str "Cursor should be at end of third 'foo' (col 19), got: " cursor-pos)))
 
     ;; Press 'q' to quit
-    (press-key "q")
+    (h/press-key "q")
     (Thread/sleep 100)
 
     ;; ASSERTION 4: After quitting, verify final text
     ;; Region should be cleared (we can't easily test mark=nil in E2E, but cursor should remain)
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "FOO bar FOO baz foo")
           (str "Should have replaced first two 'foo' with 'FOO', got: " editor-text)))))
 
 (deftest test-p7-8-02-query-replace-skip
   (testing "P7.8-02: Query-replace with 'n' (skip and continue)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text
-    (type-text "apple orange apple banana apple")
+    (h/type-text "apple orange apple banana apple")
     (Thread/sleep 20)
 
     ;; Go to beginning
-    (press-meta-key "<")
+    (h/press-meta "<")
     (Thread/sleep 20)
 
     ;; Start query-replace
-    (press-meta-key "%")
+    (h/press-meta "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "apple")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "apple")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "APPLE")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "APPLE")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
     ;; Skip first (n), replace second (y), quit (q)
-    (press-key "n")
+    (h/press-key "n")
     (Thread/sleep 100)
-    (press-key "y")
+    (h/press-key "y")
     (Thread/sleep 100)
-    (press-key "q")
+    (h/press-key "q")
     (Thread/sleep 100)
 
     ;; Verify: first skipped, second replaced, third untouched
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "apple orange APPLE banana apple")
           (str "Should have skipped first, replaced second, got: " editor-text)))))
 
 (deftest test-p7-8-03-query-replace-all
   (testing "P7.8-03: Query-replace with '!' (replace all remaining)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text with many occurrences
-    (type-text "test test test test test")
+    (h/type-text "test test test test test")
     (Thread/sleep 20)
 
     ;; Go to beginning
-    (press-meta-key "<")
+    (h/press-meta "<")
     (Thread/sleep 20)
 
     ;; Start query-replace
-    (press-meta-key "%")
+    (h/press-meta "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "test")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "test")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "TEST")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "TEST")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
     ;; Skip first, then replace all remaining with '!'
-    (press-key "n")
+    (h/press-key "n")
     (Thread/sleep 100)
-    (press-key "!")
+    (h/press-key "!")
     (Thread/sleep 200)
 
     ;; Verify: first skipped, rest replaced
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "test TEST TEST TEST TEST")
           (str "Should have skipped first then replaced all remaining, got: " editor-text)))))
 
 (deftest test-p7-8-04-query-replace-quit
   (testing "P7.8-04: Query-replace with 'q' (quit)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text
-    (type-text "one two one two one")
+    (h/type-text "one two one two one")
     (Thread/sleep 20)
 
     ;; Go to beginning
-    (press-meta-key "<")
+    (h/press-meta "<")
     (Thread/sleep 20)
 
     ;; Start query-replace
-    (press-meta-key "%")
+    (h/press-meta "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "one")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "one")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "ONE")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "ONE")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
     ;; Replace first, then quit
-    (press-key "y")
+    (h/press-key "y")
     (Thread/sleep 100)
-    (press-key "q")
+    (h/press-key "q")
     (Thread/sleep 100)
 
     ;; Verify: only first replaced
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "ONE two one two one")
           (str "Should have replaced only first occurrence, got: " editor-text)))))
 
 (deftest test-p7-8-05-query-replace-dot
   (testing "P7.8-05: Query-replace with '.' (replace and quit)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text
-    (type-text "cat dog cat dog cat")
+    (h/type-text "cat dog cat dog cat")
     (Thread/sleep 20)
 
     ;; Go to beginning
-    (press-meta-key "<")
+    (h/press-meta "<")
     (Thread/sleep 20)
 
     ;; Start query-replace
-    (press-meta-key "%")
+    (h/press-meta "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "cat")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "cat")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "CAT")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "CAT")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
     ;; Skip first, replace second and quit with '.'
-    (press-key "n")
+    (h/press-key "n")
     (Thread/sleep 100)
-    (press-key ".")
+    (h/press-key ".")
     (Thread/sleep 100)
 
     ;; Verify: first skipped, second replaced, quit
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "cat dog CAT dog cat")
           (str "Should have skipped first, replaced second and quit, got: " editor-text)))))
 
 (deftest test-p7-8-06-query-replace-no-matches
   (testing "P7.8-06: Query-replace with no matches"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
+    (h/clear-buffer)
 
     ;; Type text
-    (type-text "hello world")
+    (h/type-text "hello world")
     (Thread/sleep 20)
 
     ;; Start query-replace for nonexistent string
-    (press-meta-key "%")
+    (h/press-meta "%")
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "xyz")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "xyz")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill *driver* {:css ".minibuffer-input"} "ABC")
+    (e/fill h/*driver* {:css ".minibuffer-input"} "ABC")
     (Thread/sleep 20)
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
     ;; Text should be unchanged
-    (let [editor-text (get-editor-text)]
+    (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "hello world")
           (str "Text should be unchanged when no matches, got: " editor-text)))))
 

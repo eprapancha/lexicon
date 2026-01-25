@@ -13,103 +13,18 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
             [etaoin.api :as e]
-            [lexicon.test-helpers :as test-helpers :refer [print-messages-buffer]]))
+            [lexicon.test-helpers :as h]))
 
-;; Test configuration
-(def app-url "http://localhost:8080")
-(def test-timeout 10000) ;; 10 seconds
+(use-fixtures :once h/with-driver)
 
-;; Browser driver (will be set by fixture)
-(def ^:dynamic *driver* nil)
-
-;; Setup/teardown - use common fixture with automatic *Messages* printing
-(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
-
-;; Helper functions
-(defn wait-for-editor-ready []
-  "Wait for editor to be ready by checking for .editor-wrapper"
-  (e/wait-visible *driver* {:css ".editor-wrapper"} {:timeout (/ test-timeout 1000)}))
-
-(defn click-editor []
-  "Click the editor to focus it"
-  (e/click *driver* {:css ".editor-wrapper"}))
-
-(defn get-editor-text []
-  "Get text content from the editable area"
-  (e/get-element-text *driver* {:css ".editable-area"}))
-
-(defn type-text
-  "Type text with delay between characters"
-  [text]
-  (doseq [ch text]
-    (e/fill *driver* {:css ".hidden-input"} (str ch))
-    (Thread/sleep 10)))
-
-(defn type-in-minibuffer
-  "Type text into minibuffer input"
-  [text]
-  (e/fill *driver* {:css ".minibuffer-input"} text)
-  (Thread/sleep 50))
-
-(defn press-alt-key
-  "Press Alt+key combination (M-x)"
-  [key]
-  (let [script (str "
-    const input = document.querySelector('.hidden-input');
-    input.focus();
-    const event = new KeyboardEvent('keydown', {
-      key: '" key "',
-      altKey: true,
-      bubbles: true
-    });
-    input.dispatchEvent(event);
-  ")]
-    (e/js-execute *driver* script))
-  (Thread/sleep 50))
-
-(defn press-ctrl-key
-  "Press Ctrl+key combination"
-  [key]
-  (let [key-code (str "Key" (str/upper-case key))
-        script (str "
-    const input = document.querySelector('.hidden-input');
-    input.focus();
-    const event = new KeyboardEvent('keydown', {
-      key: '" key "',
-      code: '" key-code "',
-      ctrlKey: true,
-      bubbles: true
-    });
-    input.dispatchEvent(event);
-  ")]
-    (e/js-execute *driver* script))
-  (Thread/sleep 50))
-
-(defn press-key
-  "Press a non-modifier key"
-  [key]
-  (e/fill *driver* {:css ".hidden-input"} key)
-  (Thread/sleep 50))
-
-(defn press-enter []
-  "Press Enter key in minibuffer"
-  (let [script "
-    const input = document.querySelector('.minibuffer-input');
-    if (input) {
-      input.focus();
-      const event = new KeyboardEvent('keydown', {
-        key: 'Enter',
-        code: 'Enter',
-        keyCode: 13,
-        which: 13,
-        bubbles: true,
-        cancelable: true
-      });
-      input.dispatchEvent(event);
-    }
-  "]
-    (e/js-execute *driver* script))
-  (Thread/sleep 200))
+;; Helper functions (test-specific)
+(defn get-minibuffer-depth []
+  "Get current minibuffer depth from window.editorState"
+  (e/js-execute h/*driver* "
+    const state = window.editorState;
+    if (!state || !state.minibufferStack) return 0;
+    return state.minibufferStack.length;
+  "))
 
 (defn press-escape []
   "Press Escape key - tries minibuffer first, then hidden-input"
@@ -130,36 +45,13 @@
       input.dispatchEvent(event);
     }
   "]
-    (e/js-execute *driver* script))
+    (e/js-execute h/*driver* script))
   (Thread/sleep 100))
-
-(defn get-minibuffer-depth []
-  "Get current minibuffer depth from window.editorState"
-  (e/js-execute *driver* "
-    const state = window.editorState;
-    if (!state || !state.minibufferStack) return 0;
-    return state.minibufferStack.length;
-  "))
-
-(defn get-minibuffer-prompt []
-  "Get current minibuffer prompt"
-  (try
-    (e/get-element-text *driver* {:css ".minibuffer-prompt"})
-    (catch Exception e
-      nil)))
-
-(defn minibuffer-visible? []
-  "Check if minibuffer is visible"
-  (e/exists? *driver* {:css ".minibuffer-input"}))
-
-(defn wait-for-minibuffer []
-  "Wait for minibuffer to be visible"
-  (e/wait-visible *driver* {:css ".minibuffer-input"} {:timeout 2}))
 
 (defn get-mode-line-text []
   "Get mode-line text"
   (try
-    (e/get-element-text *driver* {:css ".mode-line"})
+    (e/get-element-text h/*driver* {:css ".mode-line"})
     (catch Exception e
       "")))
 
@@ -169,39 +61,37 @@
 
 (deftest test-issue-72-query-replace-regexp
   (testing "Issue #72: M-x query-replace-regexp activates minibuffer without timeout"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
 
     ;; Type some text to replace
-    (type-text "hello world hello")
+    (h/type-text "hello world hello")
     (Thread/sleep 100)
 
     ;; Move to beginning
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 50)
 
     ;; Execute M-x
-    (press-alt-key "x")
+    (h/press-meta "x")
     (Thread/sleep 100)
 
     ;; Verify M-x minibuffer appeared
     (is (= 1 (get-minibuffer-depth)) "M-x should activate minibuffer (depth 1)")
-    (is (minibuffer-visible?) "Minibuffer should be visible")
+    (is (h/minibuffer-visible?) "Minibuffer should be visible")
 
     ;; Type query-replace-regexp into minibuffer
-    (type-in-minibuffer "query-replace-regexp")
+    (h/type-in-minibuffer "query-replace-regexp")
     (Thread/sleep 100)
-    (press-enter)
+    (h/press-minibuffer-enter)
 
     ;; Wait for command's minibuffer to appear (should replace M-x's frame)
     (Thread/sleep 200)
 
     ;; Verify minibuffer is still active and prompt changed
     (is (= 1 (get-minibuffer-depth)) "Depth should remain 1 (replaced frame)")
-    (is (minibuffer-visible?) "Minibuffer should still be visible")
+    (is (h/minibuffer-visible?) "Minibuffer should still be visible")
 
-    (let [prompt (get-minibuffer-prompt)]
+    (let [prompt (h/get-minibuffer-text)]
       (is (str/includes? (str/lower-case (or prompt "")) "query replace regexp")
           (str "Prompt should mention query-replace-regexp, but got: " prompt)))))
 
@@ -211,30 +101,28 @@
 
 (deftest test-mx-replace-string-transition
   (testing "M-x replace-string transitions by replacing frame (depth stays 1)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
 
     ;; Type text
-    (type-text "foo bar foo")
+    (h/type-text "foo bar foo")
     (Thread/sleep 100)
-    (press-ctrl-key "a")
+    (h/press-ctrl "a")
     (Thread/sleep 50)
 
     ;; M-x
-    (press-alt-key "x")
+    (h/press-meta "x")
     (Thread/sleep 100)
     (is (= 1 (get-minibuffer-depth)) "M-x should set depth to 1")
 
     ;; Type replace-string into minibuffer
-    (type-in-minibuffer "replace-string")
-    (press-enter)
+    (h/type-in-minibuffer "replace-string")
+    (h/press-minibuffer-enter)
     (Thread/sleep 200)
 
     ;; Depth should still be 1 (frame replaced)
     (is (= 1 (get-minibuffer-depth)) "Depth should remain 1 after frame replacement")
 
-    (let [prompt (get-minibuffer-prompt)]
+    (let [prompt (h/get-minibuffer-text)]
       (is (str/includes? (str/lower-case (or prompt "")) "replace string")
           (str "Prompt should change to replace-string, but got: " prompt)))))
 
@@ -244,33 +132,27 @@
 
 (deftest test-minibuffer-depth-inactive
   (testing "Minibuffer depth is 0 when inactive"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
 
     ;; Initially depth should be 0
     (is (= 0 (get-minibuffer-depth)) "Depth should be 0 when inactive")))
 
 (deftest test-minibuffer-depth-active
   (testing "Minibuffer depth is 1 when M-x is active"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
 
     ;; Activate M-x
-    (press-alt-key "x")
+    (h/press-meta "x")
     (Thread/sleep 100)
 
     (is (= 1 (get-minibuffer-depth)) "Depth should be 1 when M-x is active")))
 
 (deftest test-minibuffer-cancel-restores-depth
   (testing "Canceling minibuffer restores depth to 0"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
 
     ;; Activate M-x
-    (press-alt-key "x")
+    (h/press-meta "x")
     (Thread/sleep 100)
     (is (= 1 (get-minibuffer-depth)) "Depth should be 1")
 
@@ -286,17 +168,15 @@
 
 (deftest test-recursive-minibuffer-blocked-by-default
   (testing "Recursive minibuffer is blocked when enable-recursive-minibuffers is false (default)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
 
     ;; Activate M-x
-    (press-alt-key "x")
+    (h/press-meta "x")
     (Thread/sleep 100)
     (is (= 1 (get-minibuffer-depth)) "Depth should be 1")
 
     ;; Try to activate another M-x (should be blocked)
-    (press-alt-key "x")
+    (h/press-meta "x")
     (Thread/sleep 100)
 
     ;; Depth should still be 1 (not nested)
@@ -308,9 +188,7 @@
 
 (deftest test-mode-line-no-depth-indicator-when-inactive
   (testing "Mode-line has no depth indicator when minibuffer is inactive"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
 
     (let [mode-line (get-mode-line-text)]
       (is (not (str/includes? mode-line "[2]")) "Should not show [2] when depth is 0")
@@ -318,12 +196,10 @@
 
 (deftest test-mode-line-no-depth-indicator-at-depth-1
   (testing "Mode-line has no depth indicator when depth is 1 (only shows when > 1)"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
 
     ;; Activate M-x (depth 1)
-    (press-alt-key "x")
+    (h/press-meta "x")
     (Thread/sleep 100)
 
     (let [mode-line (get-mode-line-text)]

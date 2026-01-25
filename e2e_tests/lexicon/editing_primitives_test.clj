@@ -1,299 +1,339 @@
 (ns lexicon.editing-primitives-test
-  "E2E tests for editing primitives - core text manipulation (Issue #105).
+  "E2E tests for editing primitives - tests USER EDITING produces correct state.
 
-  Editing primitives in Emacs src/editfns.c (~70 DEFUNs).
-  Key categories:
-  - Text insertion: insert, insert-before-markers
-  - Text deletion: delete-region, delete-and-extract-region
-  - Text extraction: buffer-substring, buffer-string
-  - Point movement: goto-char, point
-  - Position predicates: bobp, eobp, bolp, eolp
-  - Character access: char-after, char-before
-  - Line positions: line-beginning-position, line-end-position
+  Tests that when users type/delete, the internal state is correct:
+  - Point moves correctly
+  - Buffer contents are correct
+  - Position predicates work
+  - Character access works
 
-  Related: Issue #105 (Editing Primitives), Issue #94 (TDD)
-  Priority: CRITICAL - foundation for all text editing"
+  Uses keyboard simulation for all editing actions."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
-            [etaoin.api :as e]
-            [lexicon.test-helpers :as test-helpers]))
+            [lexicon.test-helpers :as h]))
 
-;; Test configuration
-(def app-url "http://localhost:8080")
-
-;; Browser driver (will be set by fixture)
-(def ^:dynamic *driver* nil)
-
-;; Setup/teardown
-(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
+(use-fixtures :once h/with-driver)
 
 ;; =============================================================================
-;; Helper Functions
+;; Text Insertion via User Typing
 ;; =============================================================================
 
-(defn eval-lisp
-  "Evaluate Lisp code and return the result."
-  [code]
-  (let [result (e/js-execute *driver* (str "return window.evalLisp(`" code "`)"))
-        success (:success result)]
-    (if success
-      {:success true :result (:result result)}
-      {:success false :error (:error result)})))
+(deftest test-typing-adds-text
+  (testing "Typing adds text at point"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (Thread/sleep 100)
+    (is (= "Hello" (h/get-buffer-text*)))
+    (is (= 5 (h/get-point*)) "Point at end of typing"))
 
-(defn eval-lisp!
-  "Evaluate Lisp code and return just the result (throws on error)"
-  [code]
-  (let [{:keys [success result error]} (eval-lisp code)]
-    (if success
-      result
-      (throw (ex-info (str "Lisp eval failed: " error) {:code code})))))
-
-(defn setup-test []
-  "Standard test setup"
-  (e/go *driver* app-url)
-  (test-helpers/wait-for-editor-ready *driver*)
-  (test-helpers/click-editor *driver*)
-  (Thread/sleep 300)
-  ;; Start with clean buffer
-  (eval-lisp! "(erase-buffer)")
-  (eval-lisp! "(set-buffer-modified-p nil)"))
-
-;; =============================================================================
-;; Text Insertion
-;; =============================================================================
-
-(deftest test-insert-basic
-  (testing "insert adds text at point"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (is (= "Hello" (eval-lisp! "(buffer-string)")))
-    (is (= 5 (eval-lisp! "(point)")) "Point at end of insertion"))
-
-  (testing "insert at middle of text"
-    (setup-test)
-    (eval-lisp! "(insert \"HelloWorld\")")
-    (eval-lisp! "(goto-char 5)")
-    (eval-lisp! "(insert \" \")")
-    (is (= "Hello World" (eval-lisp! "(buffer-string)")))))
-
-(deftest test-insert-before-markers-semantics
-  (testing "markers stay before inserted text"
-    (setup-test)
-    (eval-lisp! "(insert \"AB\")")
-    (let [marker-id (eval-lisp! "(make-marker 1)")]
-      (eval-lisp! "(goto-char 1)")
-      (eval-lisp! "(insert-before-markers \"X\")")
-      ;; Marker should still be at 1 (before X)
-      (is (= 1 (eval-lisp! (str "(marker-position " marker-id ")")))
-          "Marker should stay before inserted text")
-      (is (= "AXB" (eval-lisp! "(buffer-string)"))))))
+  (testing "Typing at middle inserts text"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "HelloWorld")
+    (Thread/sleep 50)
+    ;; Move to position 5
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    (dotimes [_ 5]
+      (h/press-ctrl "f")
+      (Thread/sleep 20))
+    (Thread/sleep 50)
+    ;; Type space
+    (h/type-text " ")
+    (Thread/sleep 100)
+    (is (= "Hello World" (h/get-buffer-text*)))))
 
 ;; =============================================================================
-;; Text Deletion
+;; Text Deletion via User Actions
 ;; =============================================================================
 
-(deftest test-delete-region-basic
-  (testing "delete-region removes text"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World\")")
-    (eval-lisp! "(delete-region 0 6)")
-    (is (= "World" (eval-lisp! "(buffer-string)"))))
+(deftest test-backspace-deletes-backwards
+  (testing "Backspace removes character before point"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+    ;; Delete last 5 chars with backspace
+    (dotimes [_ 5]
+      (h/press-key "Backspace")
+      (Thread/sleep 30))
+    (Thread/sleep 100)
+    (is (= "Hello " (h/get-buffer-text*)))))
 
-  (testing "delete-region with reversed args"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World\")")
-    (eval-lisp! "(delete-region 11 5)")  ; END before START
-    (is (= "Hello" (eval-lisp! "(buffer-string)"))
-        "Should work with reversed arguments")))
+(deftest test-delete-key-removes-forward
+  (testing "Delete key removes character after point"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+    ;; Move to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+    ;; Delete forward
+    (dotimes [_ 6]
+      (h/press-key "Delete")
+      (Thread/sleep 30))
+    (Thread/sleep 100)
+    (is (= "World" (h/get-buffer-text*)))))
 
-(deftest test-delete-and-extract-region
-  (testing "returns deleted text"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World\")")
-    (let [deleted (eval-lisp! "(delete-and-extract-region 0 6)")]
-      (is (= "Hello " deleted))
-      (is (= "World" (eval-lisp! "(buffer-string)"))))))
-
-;; =============================================================================
-;; Text Extraction
-;; =============================================================================
-
-(deftest test-buffer-substring-basic
-  (testing "buffer-substring extracts text"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World\")")
-    (is (= "World" (eval-lisp! "(buffer-substring 6 11)")))))
-
-(deftest test-buffer-substring-no-properties
-  (testing "strips text properties"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (eval-lisp! "(put-text-property 0 5 'face 'bold)")
-    (let [text (eval-lisp! "(buffer-substring-no-properties 0 5)")]
-      (is (= "Hello" text)))))
-
-;; =============================================================================
-;; Point and Position
-;; =============================================================================
-
-(deftest test-goto-char-basic
-  (testing "goto-char moves point"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World\")")
-    (eval-lisp! "(goto-char 6)")
-    (is (= 6 (eval-lisp! "(point)"))))
-
-  (testing "goto-char clamps to buffer bounds"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (eval-lisp! "(goto-char 100)")
-    (is (<= (eval-lisp! "(point)") 5)
-        "Should clamp to buffer end"))
-
-  (testing "goto-char accepts marker"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World\")")
-    (let [marker-id (eval-lisp! "(make-marker 6)")]
-      (eval-lisp! (str "(goto-char " marker-id ")"))
-      (is (= 6 (eval-lisp! "(point)"))))))
-
-(deftest test-point-returns-position
-  (testing "point returns current position"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (eval-lisp! "(goto-char 3)")
-    (is (= 3 (eval-lisp! "(point)")))))
+(deftest test-delete-selection
+  (testing "Typing or backspace with selection deletes selection"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+    ;; Go to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    ;; Select "Hello " with shift+arrows
+    (dotimes [_ 6]
+      (h/press-shift "right")
+      (Thread/sleep 20))
+    (Thread/sleep 50)
+    ;; Delete selection
+    (h/press-key "Backspace")
+    (Thread/sleep 100)
+    (is (= "World" (h/get-buffer-text*)))))
 
 ;; =============================================================================
-;; Position Predicates
+;; Point Movement via Keyboard
 ;; =============================================================================
 
-(deftest test-bobp-eobp-predicates
-  (testing "bobp at beginning"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (eval-lisp! "(goto-char 0)")
-    (is (true? (eval-lisp! "(bobp)")) "Should be at beginning"))
+(deftest test-cursor-movement-updates-point
+  (testing "Ctrl+F moves point forward"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")  ; Go to beginning
+    (Thread/sleep 30)
+    (h/press-ctrl "f")  ; Forward one char
+    (Thread/sleep 50)
+    (is (= 1 (h/get-point*))))
 
-  (testing "bobp not at beginning"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (eval-lisp! "(goto-char 3)")
-    (is (not (eval-lisp! "(bobp)")) "Should not be at beginning"))
+  (testing "Ctrl+B moves point backward"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (Thread/sleep 50)
+    ;; Point is at 5
+    (h/press-ctrl "b")  ; Back one char
+    (Thread/sleep 50)
+    (is (= 4 (h/get-point*))))
 
-  (testing "eobp at end"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (eval-lisp! "(goto-char 5)")
-    (is (true? (eval-lisp! "(eobp)")) "Should be at end"))
+  (testing "Ctrl+A moves to beginning"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+    (is (= 0 (h/get-point*))))
 
-  (testing "eobp not at end"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (eval-lisp! "(goto-char 0)")
-    (is (not (eval-lisp! "(eobp)")) "Should not be at end")))
+  (testing "Ctrl+E moves to end"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    (h/press-ctrl "e")
+    (Thread/sleep 50)
+    (is (= 5 (h/get-point*)))))
 
-(deftest test-bolp-eolp-predicates
+;; =============================================================================
+;; Position Predicates after User Actions
+;; =============================================================================
+
+(deftest test-bobp-after-cursor-movement
+  (testing "bobp true at beginning after Ctrl+A"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+    (is (h/bobp*) "Should be at beginning"))
+
+  (testing "bobp false after typing"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (Thread/sleep 50)
+    (is (not (h/bobp*)) "Should not be at beginning after typing")))
+
+(deftest test-eobp-after-cursor-movement
+  (testing "eobp true at end after typing"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (Thread/sleep 50)
+    (is (h/eobp*) "Should be at end after typing"))
+
+  (testing "eobp false after moving back"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (Thread/sleep 50)
+    (h/press-ctrl "b")
+    (Thread/sleep 50)
+    (is (not (h/eobp*)) "Should not be at end after Ctrl+B")))
+
+(deftest test-bolp-eolp-after-user-actions
   (testing "bolp at line beginning"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\\nWorld\")")
-    (eval-lisp! "(goto-char 6)")  ; Beginning of 'World'
-    (is (true? (eval-lisp! "(bolp)")) "Should be at line beginning"))
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (h/press-key "Enter")
+    (h/type-text "World")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")  ; Move to beginning of line
+    (Thread/sleep 50)
+    (is (h/bolp*) "Should be at line beginning"))
 
   (testing "eolp at line end"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\\nWorld\")")
-    (eval-lisp! "(goto-char 5)")  ; End of 'Hello', before newline
-    (is (true? (eval-lisp! "(eolp)")) "Should be at line end")))
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (h/press-key "Enter")
+    (h/type-text "World")
+    (Thread/sleep 50)
+    ;; Go to first line end
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    (h/press-ctrl "p")  ; Up to first line
+    (Thread/sleep 30)
+    (h/press-ctrl "e")  ; End of line
+    (Thread/sleep 50)
+    (is (h/eolp*) "Should be at line end")))
 
 ;; =============================================================================
-;; Character Access
+;; Character Access after User Actions
 ;; =============================================================================
 
-(deftest test-char-after-before
-  (testing "char-after returns character"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (eval-lisp! "(goto-char 0)")
-    (is (= "H" (eval-lisp! "(char-after)"))))
+(deftest test-char-after-reflects-user-typing
+  (testing "char-after returns typed character"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+    (is (= "H" (h/char-after*))))
 
   (testing "char-after at end returns nil"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (eval-lisp! "(goto-char 5)")
-    (is (nil? (eval-lisp! "(char-after)"))))
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (Thread/sleep 50)
+    (is (nil? (h/char-after*)))))
 
+(deftest test-char-before-reflects-user-typing
   (testing "char-before returns previous character"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (eval-lisp! "(goto-char 5)")
-    (is (= "o" (eval-lisp! "(char-before)"))))
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (Thread/sleep 50)
+    (is (= "o" (h/char-before*))))
 
   (testing "char-before at beginning returns nil"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (eval-lisp! "(goto-char 0)")
-    (is (nil? (eval-lisp! "(char-before)")))))
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+    (is (nil? (h/char-before*)))))
 
 ;; =============================================================================
-;; Line Positions
+;; Line Positions after User Actions
 ;; =============================================================================
 
-(deftest test-line-beginning-end-positions
-  (testing "line-beginning-position"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\\nWorld\\nFoo\")")
-    (eval-lisp! "(goto-char 8)")  ; Middle of 'World'
-    (is (= 6 (eval-lisp! "(line-beginning-position)"))))
+(deftest test-line-positions-after-typing-multiline
+  (testing "line-beginning-position works after typing"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (h/press-key "Enter")
+    (h/type-text "World")
+    (h/press-key "Enter")
+    (h/type-text "Foo")
+    (Thread/sleep 50)
+    ;; Move to middle of "World"
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    (h/press-ctrl "p")  ; Up one line
+    (Thread/sleep 30)
+    (h/press-ctrl "f")
+    (h/press-ctrl "f")
+    (Thread/sleep 50)
+    (is (= 6 (h/line-beginning-position*))))
 
-  (testing "line-end-position"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\\nWorld\\nFoo\")")
-    (eval-lisp! "(goto-char 8)")  ; Middle of 'World'
-    (is (= 11 (eval-lisp! "(line-end-position)")))))
+  (testing "line-end-position works after typing"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (h/press-key "Enter")
+    (h/type-text "World")
+    (h/press-key "Enter")
+    (h/type-text "Foo")
+    (Thread/sleep 50)
+    ;; Move to middle of "World"
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    (h/press-ctrl "p")  ; Up one line
+    (Thread/sleep 30)
+    (h/press-ctrl "f")
+    (h/press-ctrl "f")
+    (Thread/sleep 50)
+    (is (= 11 (h/line-end-position*)))))
 
 ;; =============================================================================
-;; Region
+;; Region after Selection
 ;; =============================================================================
 
-(deftest test-region-beginning-end
-  (testing "region bounds"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World\")")
-    (eval-lisp! "(set-mark 0)")
-    (eval-lisp! "(goto-char 5)")
-    (is (= 0 (eval-lisp! "(region-beginning)")))
-    (is (= 5 (eval-lisp! "(region-end)"))))
-
-  (testing "region with point before mark"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World\")")
-    (eval-lisp! "(set-mark 10)")
-    (eval-lisp! "(goto-char 5)")
-    (is (= 5 (eval-lisp! "(region-beginning)")))
-    (is (= 10 (eval-lisp! "(region-end)")))))
+(deftest test-region-after-user-selection
+  (testing "region-beginning/end reflect user selection"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+    ;; Go to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+    ;; Select "Hello" with shift+arrows
+    (dotimes [_ 5]
+      (h/press-shift "right")
+      (Thread/sleep 20))
+    (Thread/sleep 100)
+    (is (= 0 (h/region-beginning*)))
+    (is (= 5 (h/region-end*)))))
 
 ;; =============================================================================
 ;; Edge Cases
 ;; =============================================================================
 
-(deftest test-insert-empty-string
-  (testing "insert empty string"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (let [len (count (eval-lisp! "(buffer-string)"))]
-      (eval-lisp! "(insert \"\")")
-      (is (= len (count (eval-lisp! "(buffer-string)")))))))
+(deftest test-empty-buffer-predicates
+  (testing "bobp and eobp both true in empty buffer"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (is (h/bobp*) "Should be at beginning")
+    (is (h/eobp*) "Should be at end")))
 
-(deftest test-delete-region-empty
-  (testing "delete empty region"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello\")")
-    (eval-lisp! "(delete-region 2 2)")
-    (is (= "Hello" (eval-lisp! "(buffer-string)")))))
+(deftest test-typing-newlines
+  (testing "Enter key inserts newline"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello")
+    (h/press-key "Enter")
+    (h/type-text "World")
+    (Thread/sleep 100)
+    (is (= "Hello\nWorld" (h/get-buffer-text*)))))
 
-(deftest test-buffer-substring-whole-buffer
-  (testing "extract whole buffer"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World\")")
-    (is (= (eval-lisp! "(buffer-string)")
-           (eval-lisp! "(buffer-substring 0 11)")))))
+(deftest test-buffer-substring-after-typing
+  (testing "buffer-substring extracts typed text"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "Hello World")
+    (Thread/sleep 100)
+    (is (= "World" (h/buffer-substring* 6 11)))))

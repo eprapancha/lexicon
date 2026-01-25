@@ -15,84 +15,33 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
             [etaoin.api :as e]
-            [lexicon.test-helpers :as test-helpers]))
+            [lexicon.test-helpers :as h]))
 
-;; Test configuration
-(def app-url "http://localhost:8080")
-(def test-timeout 10000)
-
-;; Browser driver
-(def ^:dynamic *driver* nil)
-
-;; Setup/teardown with automatic *Messages* printing
-(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
+(use-fixtures :once h/with-driver)
 
 ;;; =============================================================================
 ;;; Helper Functions (Pure E2E - No Internal State Access)
 ;;; =============================================================================
 
-(defn press-meta-key
-  "Press Meta/Alt+key combination (e.g., 'x' for M-x)"
-  [key]
-  (let [key-code (str "Key" (str/upper-case key))
-        script (str "
-    const input = document.querySelector('.hidden-input');
-    if (input) {
-      input.focus();
-      const event = new KeyboardEvent('keydown', {
-        key: '" key "',
-        code: '" key-code "',
-        altKey: true,
-        bubbles: true
-      });
-      input.dispatchEvent(event);
-    }
-  ")]
-    (e/js-execute *driver* script))
-  (Thread/sleep 50))
-
-(defn press-key
-  "Press a key in the editor"
-  [key-name]
-  (let [script (str "
-    const input = document.querySelector('.hidden-input');
-    if (input) {
-      input.focus();
-      const event = new KeyboardEvent('keydown', {
-        key: '" key-name "',
-        code: '" key-name "',
-        bubbles: true
-      });
-      input.dispatchEvent(event);
-    }
-  ")]
-    (e/js-execute *driver* script))
-  (Thread/sleep 50))
-
 (defn get-buffer-name
   "Get the current buffer name from the modeline"
   []
   (try
-    (e/get-element-text *driver* {:css ".buffer-info"})
+    (e/get-element-text h/*driver* {:css ".buffer-info"})
     (catch Exception _
       nil)))
-
-(defn get-editor-text
-  "Get visible editor text content"
-  []
-  (e/get-element-text *driver* {:css ".editable-area"}))
 
 (defn buffer-contains?
   "Check if the current buffer contains the given text"
   [text]
-  (str/includes? (get-editor-text) text))
+  (str/includes? (h/get-buffer-text*) text))
 
 (defn buffer-read-only?
   "Check if buffer is marked read-only in modeline.
   Read-only buffers show '%%' (unmodified) or '%*' (modified) in modeline."
   []
   (try
-    (let [modified-info (e/get-element-text *driver* {:css ".modified-info"})]
+    (let [modified-info (e/get-element-text h/*driver* {:css ".modified-info"})]
       (or (str/includes? modified-info "%%")
           (str/includes? modified-info "%*")))
     (catch Exception _
@@ -101,7 +50,7 @@
 (defn get-messages-buffer
   "Get *Messages* buffer contents"
   []
-  (e/js-execute *driver* "
+  (e/js-execute h/*driver* "
     const state = window.editorState;
     return state && state.messagesBuffer ? state.messagesBuffer : '';
   "))
@@ -123,47 +72,17 @@
             (Thread/sleep 100)
             (recur (inc attempts))))))))
 
-(defn wait-for-editor-ready
-  "Wait for the editor to be fully initialized"
-  []
-  (e/wait-visible *driver* {:css ".editable-area"} {:timeout 10})
-  (Thread/sleep 200))
-
-(defn wait-for-minibuffer
+(defn wait-for-minibuffer-ready
   "Wait for minibuffer input to be visible and ready"
   []
-  (e/wait-visible *driver* {:css ".minibuffer-input"} {:timeout 5})
+  (e/wait-visible h/*driver* {:css ".minibuffer-input"} {:timeout 5})
   (Thread/sleep 100))
 
 (defn fill-minibuffer
   "Fill minibuffer with text"
   [text]
-  (wait-for-minibuffer)
-  (e/fill *driver* {:css ".minibuffer-input"} text)
-  (Thread/sleep 50))
-
-(defn press-minibuffer-enter
-  "Press Enter in the minibuffer (dispatches on minibuffer-input, not hidden-input)"
-  []
-  (e/js-execute *driver* "
-    const input = document.querySelector('.minibuffer-input');
-    if (input) {
-      input.focus();
-      const event = new KeyboardEvent('keydown', {
-        key: 'Enter',
-        code: 'Enter',
-        bubbles: true
-      });
-      input.dispatchEvent(event);
-    }
-  ")
-  (Thread/sleep 100))
-
-(defn click-editor
-  "Click on the editor to ensure it has focus"
-  []
-  (e/click *driver* {:css ".editable-area"})
-  (Thread/sleep 50))
+  (wait-for-minibuffer-ready)
+  (h/type-in-minibuffer text))
 
 ;;; =============================================================================
 ;;; CRITICAL TESTS - Core Dired Functionality
@@ -184,22 +103,20 @@
   - No internal state inspection"
   (testing "Dired opens a directory and displays file listing"
     ;; Setup
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
 
     ;; M-x dired
-    (press-meta-key "x")
+    (h/press-meta "x")
     (Thread/sleep 200)
 
     ;; Type command name and confirm
     (fill-minibuffer "dired")
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 300)
 
     ;; Directory prompt - use root or current directory
     (fill-minibuffer "/")
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 500)
 
     ;; Assert: Dired buffer exists
@@ -225,29 +142,27 @@
   - Tests error handling infrastructure"
   (testing "Dired buffer rejects direct text editing"
     ;; Setup
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
 
     ;; Open dired
-    (press-meta-key "x")
+    (h/press-meta "x")
     (Thread/sleep 200)
     (fill-minibuffer "dired")
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 300)
     (fill-minibuffer "/")
-    (press-minibuffer-enter)
+    (h/press-minibuffer-enter)
     (Thread/sleep 500)
 
     ;; Get current buffer text
-    (let [before-text (get-editor-text)]
+    (let [before-text (h/get-buffer-text*)]
 
       ;; Try to type (should be rejected)
-      (e/fill *driver* {:css ".hidden-input"} "X")
+      (e/fill h/*driver* {:css ".hidden-input"} "X")
       (Thread/sleep 200)
 
       ;; Assert: No modification occurred
-      (is (= before-text (get-editor-text))
+      (is (= before-text (h/get-buffer-text*))
           "Buffer text should not change when read-only")
 
       ;; Assert: Read-only indicator visible
@@ -276,16 +191,14 @@
   NOTE: Requires filesystem provider with mock FS for testing"
   (testing "Deleting a file removes it from listing"
     ;; Setup
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
     ;; TODO: This test requires:
     ;; 1. Mock filesystem provider for e2e tests
     ;; 2. Ability to inject test files
     ;; 3. File deletion command implementation
     ;;
     ;; Test flow:
-    ;; 1. Setup mock FS with {\"a.txt\" \"\" \"b.txt\" \"\"}
+    ;; 1. Setup mock FS with {"a.txt" "" "b.txt" ""}
     ;; 2. Open dired /mock
     ;; 3. Navigate to a.txt line
     ;; 4. Press 'd' (mark for deletion)
@@ -317,9 +230,7 @@
   NOTE: Requires mark system implementation"
   (testing "File marks persist through buffer refresh"
     ;; Setup
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
     ;; TODO: This test requires:
     ;; 1. Mock FS with known files
     ;; 2. Mark command ('m') implementation
@@ -327,10 +238,10 @@
     ;; 4. Mark rendering in buffer
     ;;
     ;; Test flow:
-    ;; 1. Open dired with {\"a.txt\" \"\" \"b.txt\" \"\"}
+    ;; 1. Open dired with {"a.txt" "" "b.txt" ""}
     ;; 2. Navigate to a.txt
     ;; 3. Press 'm' (mark)
-    ;; 4. Assert line shows mark indicator (e.g., \"* a.txt\")
+    ;; 4. Assert line shows mark indicator (e.g., "* a.txt")
     ;; 5. Press 'g' (refresh)
     ;; 6. Assert a.txt still marked after refresh
     ;;
@@ -353,9 +264,7 @@
   NOTE: Requires refresh command and point tracking"
   (testing "Cursor stays on same file after refresh"
     ;; Setup
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
     ;; TODO: This test requires:
     ;; 1. Mock FS with multiple files
     ;; 2. Navigation commands (n/p or arrow keys)
@@ -363,7 +272,7 @@
     ;; 4. Way to query which file is at point
     ;;
     ;; Test flow:
-    ;; 1. Open dired with {\"a.txt\" \"\" \"b.txt\" \"\" \"c.txt\" \"\"}
+    ;; 1. Open dired with {"a.txt" "" "b.txt" "" "c.txt" ""}
     ;; 2. Navigate to b.txt (press 'n' or down arrow)
     ;; 3. Assert point is on b.txt line
     ;; 4. Press 'g' (refresh)
@@ -387,9 +296,7 @@
   NOTE: Requires sort command implementation"
   (testing "Sorting files by name does not modify filesystem"
     ;; Setup
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
+    (h/setup-test*)
 
     ;; TODO: This test requires:
     ;; 1. Mock FS with unsorted files
@@ -397,7 +304,7 @@
     ;; 3. Way to verify FS not modified
     ;;
     ;; Test flow:
-    ;; 1. Open dired with {\"b.txt\" \"\" \"a.txt\" \"\"}
+    ;; 1. Open dired with {"b.txt" "" "a.txt" ""}
     ;; 2. Assert initial order (b.txt before a.txt)
     ;; 3. Press 's' (sort)
     ;; 4. Assert new order (a.txt before b.txt)

@@ -1,10 +1,13 @@
 (ns lexicon.sci-integration-test
-  "E2E tests for SCI (Small Clojure Interpreter) integration.
+  "Integration tests for SCI (Small Clojure Interpreter) evaluation API.
 
-  SCI provides runtime evaluation for:
-  - Emacs Lisp API emulation (lexicon.lisp)
-  - External package sandboxing (core.packages.sci)
-  - Interactive eval (eval-string, eval-expression)
+  IMPORTANT: This file intentionally uses evalLisp because it tests the
+  Lisp evaluation system itself, not user-visible keyboard behavior.
+  These are API integration tests that verify:
+  - Lisp evaluation works correctly (eval-string)
+  - Buffer/editing APIs are exposed to Lisp (insert, buffer-string, etc.)
+  - Security constraints block dangerous access (js/eval, js/fetch)
+  - Dynamic variables work correctly
 
   Key components:
   - sci-context: SCI evaluation environment
@@ -15,25 +18,19 @@
   Priority: CRITICAL - foundation for Emacs Lisp compatibility"
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [etaoin.api :as e]
-            [lexicon.test-helpers :as test-helpers]))
+            [lexicon.test-helpers :as h]))
 
-;; Test configuration
-(def app-url "http://localhost:8080")
-
-;; Browser driver (will be set by fixture)
-(def ^:dynamic *driver* nil)
-
-;; Setup/teardown
-(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
+(use-fixtures :once h/with-driver)
 
 ;; =============================================================================
 ;; Helper Functions
+;; NOTE: We intentionally use evalLisp here to test the Lisp API
 ;; =============================================================================
 
 (defn eval-lisp
   "Evaluate Lisp code and return the result."
   [code]
-  (let [result (e/js-execute *driver* (str "return window.evalLisp(`" code "`)"))
+  (let [result (e/js-execute h/*driver* (str "return window.evalLisp(`" code "`)"))
         success (:success result)]
     (if success
       {:success true :result (:result result)}
@@ -49,11 +46,8 @@
 
 (defn setup-test []
   "Standard test setup"
-  (e/go *driver* app-url)
-  (test-helpers/wait-for-editor-ready *driver*)
-  (test-helpers/click-editor *driver*)
-  (Thread/sleep 300)
-  ;; Start with clean buffer
+  (h/setup-test*)
+  ;; Start with clean buffer - using Lisp API is intentional here
   (eval-lisp! "(erase-buffer)")
   (eval-lisp! "(set-buffer-modified-p nil)"))
 

@@ -1,112 +1,196 @@
 (ns lexicon.isearch-test
-  "E2E tests for incremental search (isearch).
+  "E2E tests for incremental search - tests USER search operations.
 
-  Emacs source: lisp/isearch.el (4,638 LOC)
-  Status: 70% implemented
-
-  Key features:
+  Tests search via keyboard:
   - C-s: Search forward incrementally
   - C-r: Search backward incrementally
-  - M-c: Toggle case sensitivity
-  - Wrapping search
+  - Type search string while in isearch mode
+  - Enter to exit isearch
 
-  Related: Issue #107 (Search & Replace), Issue #94 (TDD)
-  Priority: HIGH"
+  Uses keyboard simulation for all search operations."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
-            [etaoin.api :as e]
-            [lexicon.test-helpers :as test-helpers]))
+            [lexicon.test-helpers :as h]))
 
-(def app-url "http://localhost:8080")
-(def ^:dynamic *driver* nil)
-(use-fixtures :once (partial test-helpers/with-driver-and-messages #'*driver*))
-
-(defn eval-lisp
-  [code]
-  (let [result (e/js-execute *driver* (str "return window.evalLisp(`" code "`)"))
-        success (:success result)]
-    (if success
-      {:success true :result (:result result)}
-      {:success false :error (:error result)})))
-
-(defn eval-lisp! [code]
-  (let [{:keys [success result error]} (eval-lisp code)]
-    (if success result
-      (throw (ex-info (str "Lisp eval failed: " error) {:code code})))))
-
-(defn setup-test []
-  (e/go *driver* app-url)
-  (test-helpers/wait-for-editor-ready *driver*)
-  (test-helpers/click-editor *driver*)
-  (Thread/sleep 300)
-  (eval-lisp! "(erase-buffer)")
-  (eval-lisp! "(set-buffer-modified-p nil)"))
+(use-fixtures :once h/with-driver)
 
 ;; =============================================================================
-;; Basic Search
+;; Basic Forward Search via C-s
 ;; =============================================================================
 
-(deftest test-isearch-forward-basic
-  (testing "search forward finds match"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World Hello\")")
-    (eval-lisp! "(goto-char 0)")
-    (let [result (eval-lisp "(search-forward \"World\")")]
-      (is (or (not (:success result))
-              (number? (:result result)))
-          "Should find match")))
+(deftest test-isearch-forward-keyboard
+  (testing "C-s initiates forward search"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; User types text
+    (h/type-text "Hello World Hello")
+    (Thread/sleep 50)
 
-  (testing "repeated search finds next match"
-    (setup-test)
-    (eval-lisp! "(insert \"one two one three one\")")
-    (eval-lisp! "(goto-char 0)")
-    (eval-lisp! "(search-forward \"one\")")
-    (let [pos1 (eval-lisp! "(point)")]
-      (eval-lisp! "(search-forward \"one\")")
-      (let [pos2 (eval-lisp! "(point)")]
-        (is (> pos2 pos1) "Second match should be after first")))))
+    ;; Go to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
 
-(deftest test-isearch-backward-basic
-  (testing "search backward finds match"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World Hello\")")
-    (eval-lisp! "(goto-char 17)")
-    (let [result (eval-lisp "(search-backward \"Hello\")")]
-      (is (or (not (:success result))
-              (number? (:result result)))
-          "Should find last 'Hello'"))))
+    ;; Start isearch forward with C-s
+    (h/press-ctrl "s")
+    (Thread/sleep 100)
 
-(deftest test-isearch-wrapping
-  (testing "search wraps to beginning"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello World\")")
-    (eval-lisp! "(goto-char 11)")
-    ;; Search for something at the beginning
-    (let [result (eval-lisp "(search-forward \"Hello\" nil t)")]
-      (is (or (not (:success result))
-              (nil? (:result result))  ; didn't wrap
-              (number? (:result result)))
-          "Should handle wrap or return nil"))))
+    ;; Type search string
+    (h/type-text "World")
+    (Thread/sleep 100)
 
-(deftest test-isearch-case-toggle
-  (testing "case insensitive by default"
-    (setup-test)
-    (eval-lisp! "(insert \"Hello HELLO hello\")")
-    (eval-lisp! "(goto-char 0)")
-    (eval-lisp! "(setq case-fold-search t)")
-    (let [result (eval-lisp "(search-forward \"hello\")")]
-      (is (or (not (:success result))
-              (number? (:result result)))
-          "Should find match case-insensitively"))))
+    ;; Exit isearch with Enter
+    (h/press-key "Enter")
+    (Thread/sleep 100)
+
+    ;; Point should be after "World"
+    (let [pt (h/get-point*)]
+      (is (> pt 5) "Point should have moved to match"))))
+
+(deftest test-isearch-forward-repeated
+  (testing "Repeated C-s finds next match"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; User types text with repeated pattern
+    (h/type-text "one two one three one")
+    (Thread/sleep 50)
+
+    ;; Go to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+
+    ;; Start isearch
+    (h/press-ctrl "s")
+    (Thread/sleep 100)
+
+    ;; Search for "one"
+    (h/type-text "one")
+    (Thread/sleep 100)
+
+    (let [pt1 (h/get-point*)]
+      ;; Press C-s again to find next
+      (h/press-ctrl "s")
+      (Thread/sleep 100)
+
+      (let [pt2 (h/get-point*)]
+        ;; Exit isearch
+        (h/press-key "Enter")
+        (Thread/sleep 50)
+
+        (is (> pt2 pt1) "Repeated C-s should find next match")))))
 
 ;; =============================================================================
-;; Query Replace
+;; Backward Search via C-r
 ;; =============================================================================
 
-(deftest test-query-replace-basic
-  (testing "replace-string replaces all matches"
-    (setup-test)
-    (eval-lisp! "(insert \"foo bar foo baz foo\")")
-    (eval-lisp! "(goto-char 0)")
-    (eval-lisp! "(replace-string \"foo\" \"XXX\")")
-    (is (= "XXX bar XXX baz XXX" (eval-lisp! "(buffer-string)"))
-        "All matches replaced")))
+(deftest test-isearch-backward-keyboard
+  (testing "C-r initiates backward search"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; User types text
+    (h/type-text "Hello World Hello")
+    (Thread/sleep 50)
+
+    ;; Point is at end (17)
+
+    ;; Start isearch backward with C-r
+    (h/press-ctrl "r")
+    (Thread/sleep 100)
+
+    ;; Type search string
+    (h/type-text "Hello")
+    (Thread/sleep 100)
+
+    ;; Exit isearch
+    (h/press-key "Enter")
+    (Thread/sleep 100)
+
+    ;; Point should be at/before last "Hello" (position 12)
+    (let [pt (h/get-point*)]
+      (is (< pt 17) "Point should have moved backward"))))
+
+;; =============================================================================
+;; Search and Continue Editing
+;; =============================================================================
+
+(deftest test-search-then-type
+  (testing "User can type after search"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; User types text
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+
+    ;; Go to beginning and search
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+    (h/press-ctrl "s")
+    (Thread/sleep 100)
+    (h/type-text "World")
+    (Thread/sleep 100)
+    (h/press-key "Enter")
+    (Thread/sleep 100)
+
+    ;; Now type more text at the found position
+    (h/type-text "!")
+    (Thread/sleep 100)
+
+    (is (= "Hello World!" (h/get-buffer-text*))
+        "User should be able to type after search")))
+
+;; =============================================================================
+;; Cancel Search with C-g
+;; =============================================================================
+
+(deftest test-isearch-cancel
+  (testing "C-g cancels search and restores point"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; User types text
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+
+    ;; Go to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+    (let [original-pt (h/get-point*)]
+      ;; Start search
+      (h/press-ctrl "s")
+      (Thread/sleep 100)
+      (h/type-text "World")
+      (Thread/sleep 100)
+
+      ;; Cancel with C-g
+      (h/press-ctrl "g")
+      (Thread/sleep 100)
+
+      ;; Point should be restored
+      (is (= original-pt (h/get-point*))
+          "C-g should restore original point"))))
+
+;; =============================================================================
+;; Empty Search / No Match
+;; =============================================================================
+
+(deftest test-isearch-no-match
+  (testing "Search for non-existent string"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; User types text
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+    (let [original-pt (h/get-point*)]
+      ;; Search for something that doesn't exist
+      (h/press-ctrl "s")
+      (Thread/sleep 100)
+      (h/type-text "ZZZZZ")
+      (Thread/sleep 100)
+
+      ;; Exit/cancel
+      (h/press-key "Escape")
+      (Thread/sleep 100)
+
+      ;; Buffer should be unchanged
+      (is (= "Hello World" (h/get-buffer-text*))
+          "Buffer unchanged after failed search"))))
