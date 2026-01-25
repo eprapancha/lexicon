@@ -14,20 +14,29 @@
 
 ;; -- Position Conversion Helpers --
 
+(defn- split-lines
+  "Split text into lines, preserving empty lines.
+   Returns vector of line strings (without newlines)."
+  [text]
+  (if (empty? text)
+    [""]
+    (clojure.string/split text #"\n" -1)))
+
 (defn line-col-to-point
   "Convert {:line N :column M} to linear byte position.
    Uses buffer's WASM instance to calculate position."
   [buffer line col]
   (when-let [^js wasm (:wasm-instance buffer)]
     (try
-      ;; Sum of all line lengths before target line + column
-      ;; WASM getLineText returns text for each line
-      (let [lines-before (range 0 line)
+      (let [text (.getText wasm)
+            lines (split-lines text)
+            ;; Sum of all line lengths before target line + newlines
             chars-before (reduce (fn [acc line-num]
-                                   (let [line-text (.getLineText wasm line-num)]
-                                     (+ acc (count line-text) 1))) ; +1 for newline
+                                   (if (< line-num (count lines))
+                                     (+ acc (count (nth lines line-num)) 1) ; +1 for newline
+                                     acc))
                                  0
-                                 lines-before)]
+                                 (range 0 line))]
         (+ chars-before col))
       (catch js/Error e
         (js/console.error "Error converting line/col to point:" e)
@@ -39,12 +48,14 @@
   [buffer point]
   (when-let [^js wasm (:wasm-instance buffer)]
     (try
-      (let [total-lines (.getLineCount wasm)]
+      (let [text (.getText wasm)
+            lines (split-lines text)
+            total-lines (count lines)]
         (loop [line 0
                chars-seen 0]
           (if (>= line total-lines)
-            {:line (dec total-lines) :column 0}
-            (let [line-text (.getLineText wasm line)
+            {:line (max 0 (dec total-lines)) :column 0}
+            (let [line-text (nth lines line)
                   line-length (count line-text)
                   chars-after-line (+ chars-seen line-length 1)] ; +1 for newline
               (if (< point chars-after-line)
@@ -149,28 +160,10 @@
         active-buffer-id (:buffer-id active-window)
         active-buffer (get (:buffers db) active-buffer-id)]
     (when-let [^js wasm (:wasm-instance active-buffer)]
-      (let [start-pos (point-to-line-col active-buffer start)
-            end-pos (point-to-line-col active-buffer end)
-            start-line (:line start-pos)
-            end-line (:line end-pos)]
-        (if (= start-line end-line)
-          ;; Same line - extract substring
-          (let [line-text (.getLineText wasm start-line)]
-            (subs line-text (:column start-pos) (:column end-pos)))
-          ;; Multiple lines - concatenate
-          (let [lines (range start-line (inc end-line))
-                parts (map (fn [line-num]
-                            (cond
-                              (= line-num start-line)
-                              (subs (.getLineText wasm line-num) (:column start-pos))
-
-                              (= line-num end-line)
-                              (subs (.getLineText wasm line-num) 0 (:column end-pos))
-
-                              :else
-                              (.getLineText wasm line-num)))
-                          lines)]
-            (clojure.string/join "\n" parts)))))))
+      (let [text (.getText wasm)
+            actual-start (max 0 (min start end))
+            actual-end (min (count text) (max start end))]
+        (subs text actual-start actual-end)))))
 
 ;; -- Line Position Functions --
 
@@ -199,7 +192,9 @@
         cursor-pos (:cursor-position active-window)
         line (:line cursor-pos)]
     (when-let [^js wasm (:wasm-instance active-buffer)]
-      (let [line-text (.getLineText wasm line)]
+      (let [text (.getText wasm)
+            lines (split-lines text)
+            line-text (if (< line (count lines)) (nth lines line) "")]
         (line-col-to-point active-buffer line (count line-text))))))
 
 ;; -- Buffer Lookup --

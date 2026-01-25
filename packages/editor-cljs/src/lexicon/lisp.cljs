@@ -71,7 +71,16 @@
   Usage: (buffer-substring start end)
   Returns: String"
   [start end]
-  (buf/buffer-substring @rfdb/app-db start end))
+  (let [db @rfdb/app-db
+        active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+        buffer-id (:buffer-id active-window)
+        buffer (get-in db [:buffers buffer-id])
+        wasm-instance (:wasm-instance buffer)]
+    (when wasm-instance
+      (let [text (.getText ^js wasm-instance)
+            actual-start (max 0 (min start end))
+            actual-end (min (count text) (max start end))]
+        (subs text actual-start actual-end)))))
 
 (defn buffer-name
   "Return name of current buffer.
@@ -604,11 +613,214 @@
   Returns: nil (side effect only)"
   []
   (let [db @rfdb/app-db
-        active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-        buffer-id (:buffer-id active-window)
-        pos (buf/point db)]
-    (rf/dispatch-sync [:edit/yank buffer-id pos])
-    nil))
+        kill-ring (get db :kill-ring [])
+        yank-pointer (get db :kill-ring-yank-pointer 0)
+        text-to-yank (when (seq kill-ring) (nth kill-ring yank-pointer nil))]
+    (when text-to-yank
+      (let [pos (point)]
+        (insert text-to-yank)
+        ;; Track bounds for yank-pop
+        (swap! rfdb/app-db
+               (fn [current-db]
+                 (-> current-db
+                     (assoc :last-command :yank)
+                     (assoc :last-yank-bounds {:start pos :end (+ pos (count text-to-yank))})))))))
+  nil)
+
+(defn kill-new
+  "Add TEXT to front of kill ring.
+
+  Usage: (kill-new \"text\")
+  Returns: nil"
+  [text]
+  (when (and text (not (empty? (str text))))
+    (swap! rfdb/app-db
+           (fn [db]
+             (let [kill-ring (get db :kill-ring [])
+                   kill-ring-max (get db :kill-ring-max 120)
+                   new-ring (take kill-ring-max (cons (str text) kill-ring))]
+               (-> db
+                   (assoc :kill-ring (vec new-ring))
+                   (assoc :kill-ring-yank-pointer 0))))))
+  nil)
+
+(defn current-kill
+  "Return the N-th entry in the kill ring.
+
+  N=0 is the most recent, N=1 is the previous, etc.
+  Also rotates the yank pointer to that entry.
+
+  Usage: (current-kill 0)
+  Returns: String or nil"
+  [n]
+  (let [db @rfdb/app-db
+        kill-ring (get db :kill-ring [])
+        index (mod n (max 1 (count kill-ring)))]
+    (when (seq kill-ring)
+      ;; Update the yank pointer
+      (swap! rfdb/app-db assoc :kill-ring-yank-pointer index)
+      (nth kill-ring index nil))))
+
+(defn kill-append
+  "Append TEXT to most recent kill ring entry.
+
+  If BEFORE-P is non-nil, prepend instead of append.
+
+  Usage: (kill-append \" more\" nil)
+  Returns: nil"
+  [text before-p]
+  (when (and text (not (empty? (str text))))
+    (swap! rfdb/app-db
+           (fn [db]
+             (let [kill-ring (get db :kill-ring [])
+                   text-str (str text)]
+               (if (seq kill-ring)
+                 (let [first-kill (first kill-ring)
+                       new-kill (if before-p
+                                  (str text-str first-kill)
+                                  (str first-kill text-str))]
+                   (assoc db :kill-ring (vec (cons new-kill (rest kill-ring)))))
+                 ;; No existing kill, just add it
+                 (assoc db :kill-ring [text-str]))))))
+  nil)
+
+(defn copy-region-as-kill
+  "Save region text to kill ring without deleting.
+
+  Usage: (copy-region-as-kill start end)
+  Returns: nil"
+  [start end]
+  (let [text (buffer-substring start end)]
+    (when text
+      (kill-new text)))
+  nil)
+
+(defn yank-pop
+  "Replace just-yanked text with previous kill.
+
+  Only valid immediately after yank or yank-pop.
+
+  Usage: (yank-pop)
+  Returns: nil"
+  []
+  (let [db @rfdb/app-db
+        last-cmd (get db :last-command)
+        kill-ring (get db :kill-ring [])
+        yank-pointer (get db :kill-ring-yank-pointer 0)]
+    (when (and (#{:yank :yank-pop} last-cmd)
+               (> (count kill-ring) 1))
+      ;; Get previous yank boundaries from last-yank-bounds
+      (let [bounds (get db :last-yank-bounds)
+            start (:start bounds)
+            end (:end bounds)
+            next-index (mod (inc yank-pointer) (count kill-ring))
+            new-text (nth kill-ring next-index)]
+        (when (and start end new-text)
+          ;; Delete the yanked text
+          (delete-region start end)
+          ;; Insert new text
+          (goto-char start)
+          (insert new-text)
+          ;; Update state
+          (swap! rfdb/app-db
+                 (fn [current-db]
+                   (-> current-db
+                       (assoc :kill-ring-yank-pointer next-index)
+                       (assoc :last-command :yank-pop)
+                       (assoc :last-yank-bounds {:start start :end (+ start (count new-text))}))))))))
+  nil)
+
+(defn kill-line
+  "Kill to end of line, or kill newline if at end.
+
+  With ARG, kill that many lines.
+
+  Usage: (kill-line)
+  Returns: nil"
+  ([]
+   (kill-line 1))
+  ([arg]
+   (let [pos (point)
+         eol (line-end-position)]
+     (if (= pos eol)
+       ;; At end of line, kill the newline
+       (let [text (buffer-substring pos (+ pos 1))]
+         (when (= text "\n")
+           (kill-new "\n")
+           (delete-region pos (+ pos 1))))
+       ;; Kill to end of line
+       (let [text (buffer-substring pos eol)]
+         (when (and text (pos? (count text)))
+           (kill-new text)
+           (delete-region pos eol)))))
+   nil))
+
+(defn- whitespace?
+  "Check if character is whitespace (ClojureScript compatible)."
+  [ch]
+  (or (= ch \space) (= ch \tab) (= ch \newline) (= ch \return)))
+
+(defn kill-word
+  "Kill characters forward until word boundary.
+
+  With ARG, kill that many words.
+
+  Usage: (kill-word 1)
+  Returns: nil"
+  [arg]
+  ;; Simple implementation: kill from point to next whitespace/non-word
+  (let [pos (point)
+        text (buffer-string)
+        text-len (count text)]
+    (when (< pos text-len)
+      (let [;; Find end of word (skip non-space then skip space)
+            end-pos (loop [i pos
+                           in-word false]
+                      (if (>= i text-len)
+                        i
+                        (let [ch (nth text i)]
+                          (cond
+                            ;; Whitespace after word - done
+                            (and in-word (whitespace? ch)) i
+                            ;; Word char - mark we're in a word
+                            (not (whitespace? ch)) (recur (inc i) true)
+                            ;; Skip leading whitespace
+                            :else (recur (inc i) false)))))
+            killed-text (buffer-substring pos end-pos)]
+        (when (and killed-text (pos? (count killed-text)))
+          (kill-new killed-text)
+          (delete-region pos end-pos)))))
+  nil)
+
+(defn backward-kill-word
+  "Kill characters backward until word boundary.
+
+  With ARG, kill that many words.
+
+  Usage: (backward-kill-word 1)
+  Returns: nil"
+  [arg]
+  (let [pos (point)
+        text (buffer-string)]
+    (when (pos? pos)
+      (let [;; Find start of word going backward
+            start-pos (loop [i (dec pos)
+                             in-word false]
+                        (if (< i 0)
+                          0
+                          (let [ch (nth text i)]
+                            (cond
+                              ;; Whitespace after word - done
+                              (and in-word (whitespace? ch)) (inc i)
+                              ;; Word char - mark we're in a word
+                              (not (whitespace? ch)) (recur (dec i) true)
+                              ;; Skip trailing whitespace
+                              :else (recur (dec i) false)))))
+            killed-text (buffer-substring start-pos pos)]
+        (when (and killed-text (pos? (count killed-text)))
+          (kill-new killed-text)
+          (delete-region start-pos pos)))))
+  nil)
 
 ;; =============================================================================
 ;; Mark and Region
@@ -1427,6 +1639,14 @@
    ;; Kill ring
    'kill-region kill-region
    'yank yank
+   'kill-new kill-new
+   'current-kill current-kill
+   'kill-append kill-append
+   'copy-region-as-kill copy-region-as-kill
+   'yank-pop yank-pop
+   'kill-line kill-line
+   'kill-word kill-word
+   'backward-kill-word backward-kill-word
    ;; Mark
    'set-mark set-mark
    'mark mark
