@@ -1247,6 +1247,96 @@
       (into [] (.readdirSync fs directory)))
     (catch :default _ [])))
 
+;; =============================================================================
+;; Shell helpers (stubs for tests - Issue #112)
+;; =============================================================================
+
+(defn shell
+  "Start shell in buffer (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn shell-send-input
+  "Send INPUT to shell (stub for tests)."
+  [input]
+  ;; TODO: Implement via API
+  nil)
+
+(defn default-directory
+  "Get current default directory (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  "/")
+
+(defn shell-previous-input
+  "Recall previous shell input (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn shell-current-input
+  "Get current shell input (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  "")
+
+;; =============================================================================
+;; Version Control helpers (stubs for tests - Issue #113)
+;; =============================================================================
+
+(defn vc-backend
+  "Get VC backend for current file (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn vc-state
+  "Get VC state for current file (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn vc-diff
+  "Show diff for current file (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn vc-print-log
+  "Show version history (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+;; =============================================================================
+;; Outline/Folding helpers (stubs for tests - Issue #114)
+;; =============================================================================
+
+(defn outline-hide-subtree
+  "Hide subtree under current heading (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn outline-next-heading
+  "Move to next outline heading (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn hs-hide-block
+  "Hide code block at point (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn hs-toggle-hiding
+  "Toggle visibility of block at point (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
 (defn buffer-name-from-id
   "Get buffer name from ID (stub for tests)."
   [buffer-id]

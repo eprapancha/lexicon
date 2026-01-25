@@ -211,4 +211,23 @@
 (def buffer-file-name h/buffer-file-name)
 (def directory-files h/directory-files)
 
+;; Shell (Issue #112)
+(def shell h/shell)
+(def shell-send-input h/shell-send-input)
+(def default-directory h/default-directory)
+(def shell-previous-input h/shell-previous-input)
+(def shell-current-input h/shell-current-input)
+
+;; Version Control (Issue #113)
+(def vc-backend h/vc-backend)
+(def vc-state h/vc-state)
+(def vc-diff h/vc-diff)
+(def vc-print-log h/vc-print-log)
+
+;; Outline/Folding (Issue #114)
+(def outline-hide-subtree h/outline-hide-subtree)
+(def outline-next-heading h/outline-next-heading)
+(def hs-hide-block h/hs-hide-block)
+(def hs-toggle-hiding h/hs-toggle-hiding)
+
 ;; Macros - with-test-buffer is imported via :require-macros from lexicon.semantic.helpers
