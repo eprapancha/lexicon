@@ -190,25 +190,31 @@
 
     (defn lint-kondo!
       "Run clj-kondo static analysis on ClojureScript code.
-       Currently warn-only (doesn't fail build) - fix issues incrementally."
+       Currently warn-only (doesn't fail build) - fix issues incrementally.
+       Skips gracefully if clj-kondo is not installed."
       []
-      (print-step "🔍" "Running clj-kondo static analysis...")
-      (let [result (proc/shell {:dir "."
-                                :out :string
-                                :err :string
-                                :continue true}
-                               "clj-kondo --lint packages/editor-cljs/src --config .clj-kondo/config.edn")]
-        (println (:out result))
-        (when-not (empty? (:err result))
-          (println (:err result)))
-        (if (zero? (:exit result))
-          (do
-            (print-step "✅" "clj-kondo check passed")
-            true)
-          (do
-            ;; Warn only for now - too many false positives from re-frame patterns
-            (print-step "⚠️" "clj-kondo found issues (warn-only, not blocking)")
-            true)))))
+      (if-not (check-command "clj-kondo")
+        (do
+          (print-step "⚠️" "clj-kondo not installed - skipping static analysis")
+          true)
+        (do
+          (print-step "🔍" "Running clj-kondo static analysis...")
+          (let [result (proc/shell {:dir "."
+                                    :out :string
+                                    :err :string
+                                    :continue true}
+                                   "clj-kondo --lint packages/editor-cljs/src --config .clj-kondo/config.edn")]
+            (println (:out result))
+            (when-not (empty? (:err result))
+              (println (:err result)))
+            (if (zero? (:exit result))
+              (do
+                (print-step "✅" "clj-kondo check passed")
+                true)
+              (do
+                ;; Warn only for now - too many false positives from re-frame patterns
+                (print-step "⚠️" "clj-kondo found issues (warn-only, not blocking)")
+                true)))))))
 
   ;; Linting tasks
   lint:arch
