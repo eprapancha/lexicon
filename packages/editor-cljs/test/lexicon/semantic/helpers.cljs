@@ -17,7 +17,8 @@
             [lexicon.core.api.test :as api]
             [lexicon.core.dynamic :as dyn]
             [lexicon.core.effects]
-            [lexicon.core.effects.log])
+            [lexicon.core.effects.log]
+            [lexicon.lisp :as lisp])
   (:require-macros [lexicon.core.macros :refer [save-excursion save-current-buffer with-current-buffer]]
                    [lexicon.core.dynamic :refer [with-inhibit-read-only without-undo]]
                    [lexicon.semantic.helpers :refer [with-test-buffer]]))
@@ -582,12 +583,9 @@
 ;; =============================================================================
 
 (defn narrow-to-region
-  "Restrict editing to region [start, end).
-
-  NOT implemented yet."
+  "Restrict editing to region [start, end)."
   [start end]
-  ;; TODO: Implement
-  nil)
+  (lisp/narrow-to-region start end))
 
 ;; =============================================================================
 ;; Hooks - Uses API
@@ -865,88 +863,79 @@
   nil)
 
 (defn widen
-  "Remove narrowing restriction (stub for tests)."
+  "Remove narrowing restriction."
   []
-  ;; TODO: Implement via API
-  nil)
+  (lisp/widen))
 
 (defn save-restriction
-  "Execute body with saved narrowing state (stub for tests).
+  "Execute body with saved narrowing state.
   Takes a function to execute."
   [body-fn]
-  ;; TODO: Implement properly - for now just call the function
-  (body-fn))
+  (let [buffer-id (current-buffer)]
+    (rf/dispatch-sync [:buffer/push-restriction buffer-id])
+    (try
+      (body-fn)
+      (finally
+        (rf/dispatch-sync [:buffer/pop-restriction buffer-id])))))
 
 (defn set-buffer
-  "Make BUFFER-OR-NAME the current buffer (stub for tests).
+  "Make BUFFER-OR-NAME the current buffer.
   Does not display the buffer."
   [buffer-or-name]
-  ;; TODO: Implement via API
-  nil)
+  (lisp/set-buffer buffer-or-name))
 
 (defn rename-buffer
-  "Rename current buffer to NEWNAME (stub for tests)."
+  "Rename current buffer to NEWNAME."
   [newname]
-  ;; TODO: Implement via API
-  nil)
+  (lisp/rename-buffer newname))
 
 (defn other-buffer
-  "Return most recently used buffer other than current (stub for tests)."
+  "Return most recently used buffer other than current."
   []
-  ;; TODO: Implement via API
-  nil)
+  (lisp/other-buffer))
 
 (defn buffer-disable-undo
-  "Disable undo recording for current buffer (stub for tests)."
+  "Disable undo recording for current buffer."
   []
-  ;; TODO: Implement via API
-  nil)
+  (lisp/buffer-disable-undo))
 
 (defn buffer-enable-undo
-  "Enable undo recording for current buffer (stub for tests)."
+  "Enable undo recording for current buffer."
   []
-  ;; TODO: Implement via API
-  nil)
+  (lisp/buffer-enable-undo))
 
 (defn buffer-local-value
-  "Get value of VARIABLE in BUFFER (stub for tests)."
+  "Get value of VARIABLE in BUFFER."
   [variable buffer-id]
-  ;; TODO: Implement via API
-  nil)
+  (lisp/buffer-local-value variable buffer-id))
 
 (defn make-local-variable
-  "Make VARIABLE buffer-local (stub for tests)."
+  "Make VARIABLE buffer-local."
   [variable]
-  ;; TODO: Implement via API
-  nil)
+  (lisp/make-local-variable variable))
 
 (defn setq
-  "Set VARIABLE to VALUE (stub for tests).
+  "Set VARIABLE to VALUE.
   Named setq to avoid conflict with cljs.core/set."
   [variable value]
-  ;; TODO: Implement via API
-  nil)
+  (lisp/setq-local variable value))
 
 (defn kill-all-local-variables
-  "Kill all buffer-local variables (stub for tests)."
+  "Kill all buffer-local variables."
   []
-  ;; TODO: Implement via API
-  nil)
+  (lisp/kill-all-local-variables))
 
 (defn point-min
-  "Return minimum point in current buffer (stub for tests).
+  "Return minimum point in current buffer.
   With narrowing, returns beginning of narrowed region."
   []
-  ;; TODO: Implement via API
-  0)
+  (lisp/point-min))
 
 (defn point-max
-  "Return maximum point in current buffer (stub for tests).
+  "Return maximum point in current buffer.
   With narrowing, returns end of narrowed region."
   []
-  ;; TODO: Implement via API
-  (let [buf-id (current-buffer)]
-    (count (buffer-text buf-id))))
+  (lisp/point-max))
 
 ;; =============================================================================
 ;; Undo helpers (stubs for tests - Issue #103)

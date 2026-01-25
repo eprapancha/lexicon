@@ -65,7 +65,15 @@
                                                        ; {start-pos {end-pos {:face :highlight :read-only true}}}
                 :overlays {}                           ; Map of overlay-id to overlay data
                                                        ; {1 {:id 1 :start 10 :end 20 :face :highlight :priority 0}}
-                :next-overlay-id 1}}               ; Counter for generating overlay IDs
+                :next-overlay-id 1                ; Counter for generating overlay IDs
+                ;; Phase 6.6: Narrowing (BEGV/ZV) - Issue #100
+                :begv nil                              ; Start of accessible region (nil = no narrowing)
+                :zv nil                                ; End of accessible region (nil = no narrowing)
+                :narrowing-stack []                    ; Stack for save-restriction
+                :local-vars {}                         ; Buffer-local variables
+                :local-vars-set #{}                    ; Set of variables that ARE buffer-local here
+                :undo-enabled? true                    ; Can be disabled for scratch/special buffers
+                :last-accessed-time 0}}                ; MRU ordering
    ;; Window tree structure (binary tree of splits)
    :window-tree {:type :leaf
                  :id 1
@@ -274,6 +282,7 @@
    :help {:awaiting-key? false                      ; Waiting for key press for C-h k
           :callback nil}                            ; Callback event vector for key press
    :packages {}                                     ; Loaded packages (Phase 6)
+   :buffer-access-order []                          ; MRU buffer ordering for other-buffer (Phase 6.6 #100)
 
    ;; Phase 6B Week 2: Child Frames (Popups)
    :child-frames {}                                 ; Map of frame-id to frame data
@@ -343,19 +352,27 @@
    :point 0                                ; Linear point position (Emacs compatibility - Phase 6.6)
    :major-mode :fundamental-mode
    :local-vars {}                         ; Phase 6.5 Week 5-6: Buffer-local variables
+   :local-vars-set #{}                    ; Set of variables that ARE buffer-local here
    :minor-modes #{}
    :ast nil                               ; Parsed AST from Tree-sitter
    :language :text                        ; Language for syntax highlighting
    :diagnostics []
    :undo-stack []                         ; Stack of undo entries
    :undo-in-progress? false
+   :undo-enabled? true                    ; Can be disabled for scratch/special buffers
    :editor-version 0                      ; Increments on each edit
    :cache {:text ""                       ; Cached full text
            :line-count 1}
    ;; Phase 6B Week 2: Text Properties & Overlays
    :text-properties {}                    ; Map of position ranges to property maps
    :overlays {}                           ; Map of overlay-id to overlay data
-   :next-overlay-id 1})
+   :next-overlay-id 1
+   ;; Phase 6.6: Narrowing (BEGV/ZV) - Issue #100
+   :begv nil                              ; Start of accessible region (nil = no narrowing)
+   :zv nil                                ; End of accessible region (nil = no narrowing)
+   :narrowing-stack []                    ; Stack for save-restriction
+   ;; MRU ordering for other-buffer
+   :last-accessed-time 0})
 
 (defn create-buffer-with-content
   "Create a new buffer with initial content"

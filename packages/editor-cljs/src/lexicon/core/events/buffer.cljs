@@ -110,6 +110,139 @@
    See .CLAUDE.md Architecture Principles: State Management & Ownership"
    (assoc-in db [:buffers buffer-id :is-read-only?] read-only?)))
 
+;; -- Phase 6.6: Buffer Primitives (Issue #100) --
+
+(rf/reg-event-db
+ :buffer/set-current
+ (fn [db [_ buffer-id]]
+   "Make buffer-id current WITHOUT displaying it.
+
+   Unlike :switch-buffer which also updates the active window's display,
+   this event only changes which buffer is considered 'current' for
+   programmatic access. Used by set-buffer in Emacs Lisp.
+
+   Also updates buffer access time for MRU ordering (other-buffer)."
+   (-> db
+       (assoc-in [:buffers buffer-id :last-accessed-time] (js/Date.now))
+       (update :buffer-access-order
+               (fn [order]
+                 (vec (cons buffer-id (remove #(= % buffer-id) (or order [])))))))))
+
+(rf/reg-event-db
+ :buffer/narrow-to-region
+ (fn [db [_ buffer-id start end]]
+   "Restrict buffer view to [start, end).
+
+   Emacs narrowing semantics:
+   - BEGV (beginning of accessible region) set to start
+   - ZV (end of accessible region) set to end
+   - Point clamped to narrowed region
+   - All editing operations respect narrowing"
+   (let [begv (min start end)
+         zv (max start end)
+         current-point (get-in db [:buffers buffer-id :point] 0)
+         clamped-point (-> current-point (max begv) (min zv))]
+     (-> db
+         (assoc-in [:buffers buffer-id :begv] begv)
+         (assoc-in [:buffers buffer-id :zv] zv)
+         (assoc-in [:buffers buffer-id :point] clamped-point)))))
+
+(rf/reg-event-db
+ :buffer/widen
+ (fn [db [_ buffer-id]]
+   "Remove narrowing restriction from buffer.
+
+   Restores full buffer accessibility by clearing BEGV/ZV."
+   (-> db
+       (assoc-in [:buffers buffer-id :begv] nil)
+       (assoc-in [:buffers buffer-id :zv] nil))))
+
+(rf/reg-event-db
+ :buffer/push-restriction
+ (fn [db [_ buffer-id]]
+   "Push current narrowing state onto stack (for save-restriction).
+
+   Called at the start of save-restriction to preserve current BEGV/ZV."
+   (let [begv (get-in db [:buffers buffer-id :begv])
+         zv (get-in db [:buffers buffer-id :zv])]
+     (update-in db [:buffers buffer-id :narrowing-stack]
+                (fn [stack] (conj (or stack []) {:begv begv :zv zv}))))))
+
+(rf/reg-event-db
+ :buffer/pop-restriction
+ (fn [db [_ buffer-id]]
+   "Pop narrowing state from stack and restore it.
+
+   Called at the end of save-restriction to restore previous BEGV/ZV."
+   (let [stack (get-in db [:buffers buffer-id :narrowing-stack] [])
+         prev-state (peek stack)
+         new-stack (if (seq stack) (pop stack) [])]
+     (-> db
+         (assoc-in [:buffers buffer-id :narrowing-stack] new-stack)
+         (assoc-in [:buffers buffer-id :begv] (:begv prev-state))
+         (assoc-in [:buffers buffer-id :zv] (:zv prev-state))))))
+
+(rf/reg-event-db
+ :buffer/rename
+ (fn [db [_ buffer-id new-name]]
+   "Rename buffer to new-name.
+
+   If a buffer with new-name already exists, returns db unchanged.
+   Use rename-buffer with UNIQUE argument in Lisp to auto-generate unique name."
+   (let [existing (db/find-buffer-by-name (:buffers db) new-name)]
+     (if (and existing (not= (:id existing) buffer-id))
+       db ; Name collision - return unchanged
+       (assoc-in db [:buffers buffer-id :name] new-name)))))
+
+(rf/reg-event-db
+ :buffer/enable-undo
+ (fn [db [_ buffer-id]]
+   "Enable undo recording for buffer."
+   (assoc-in db [:buffers buffer-id :undo-enabled?] true)))
+
+(rf/reg-event-db
+ :buffer/disable-undo
+ (fn [db [_ buffer-id]]
+   "Disable undo recording for buffer and clear undo stack."
+   (-> db
+       (assoc-in [:buffers buffer-id :undo-enabled?] false)
+       (assoc-in [:buffers buffer-id :undo-stack] []))))
+
+(rf/reg-event-db
+ :buffer/make-local-variable
+ (fn [db [_ buffer-id variable]]
+   "Make VARIABLE buffer-local in BUFFER-ID.
+
+   Copies current global value as initial local value if not already set."
+   (let [global-value (get-in db [:global-vars variable])]
+     (-> db
+         (update-in [:buffers buffer-id :local-vars-set]
+                    (fn [s] (conj (or s #{}) variable)))
+         (update-in [:buffers buffer-id :local-vars variable]
+                    (fn [v] (if (nil? v) global-value v)))))))
+
+(rf/reg-event-db
+ :buffer/setq
+ (fn [db [_ buffer-id variable value]]
+   "Set VARIABLE to VALUE, respecting buffer-local bindings.
+
+   If VARIABLE is buffer-local in BUFFER-ID, sets the local value.
+   Otherwise sets the global value."
+   (let [is-local? (contains? (get-in db [:buffers buffer-id :local-vars-set]) variable)]
+     (if is-local?
+       (assoc-in db [:buffers buffer-id :local-vars variable] value)
+       (assoc-in db [:global-vars variable] value)))))
+
+(rf/reg-event-db
+ :buffer/kill-all-local-variables
+ (fn [db [_ buffer-id]]
+   "Kill all buffer-local variable bindings in BUFFER-ID.
+
+   Used by major mode switching to clear previous mode's locals."
+   (-> db
+       (assoc-in [:buffers buffer-id :local-vars] {})
+       (assoc-in [:buffers buffer-id :local-vars-set] #{}))))
+
 (rf/reg-event-fx
  :switch-buffer
  (fn [{:keys [db]} [_ buffer-id]]

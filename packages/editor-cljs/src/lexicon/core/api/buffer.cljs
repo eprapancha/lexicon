@@ -70,26 +70,37 @@
     (line-col-to-point active-buffer (:line cursor-pos) (:column cursor-pos))))
 
 (defn point-min
-  "Return the minimum valid buffer position.
-   In Emacs this is always 1, but we use 0-indexed positions.
+  "Return the minimum accessible buffer position.
 
-   Usage: (point-min)
-   Returns: 0"
-  []
-  0)
+   With narrowing active, returns BEGV (start of narrowed region).
+   Without narrowing, returns 0.
 
-(defn point-max
-  "Return the maximum valid buffer position (buffer length).
-
-   Usage: (point-max db)
-   Returns: Integer position (end of buffer)"
+   Usage: (point-min db)
+   Returns: Integer position"
   [db]
   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
         active-buffer-id (:buffer-id active-window)
-        active-buffer (get (:buffers db) active-buffer-id)]
-    (when-let [^js wasm (:wasm-instance active-buffer)]
-      ;; Use getText and count since getLength may not exist on all WASM instances
-      (count (.getText wasm)))))
+        begv (get-in db [:buffers active-buffer-id :begv])]
+    (or begv 0)))
+
+(defn point-max
+  "Return the maximum accessible buffer position.
+
+   With narrowing active, returns ZV (end of narrowed region).
+   Without narrowing, returns buffer length.
+
+   Usage: (point-max db)
+   Returns: Integer position (end of accessible region)"
+  [db]
+  (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+        active-buffer-id (:buffer-id active-window)
+        active-buffer (get (:buffers db) active-buffer-id)
+        zv (get-in db [:buffers active-buffer-id :zv])]
+    (if zv
+      zv
+      (when-let [^js wasm (:wasm-instance active-buffer)]
+        ;; Use getText and count since getLength may not exist on all WASM instances
+        (count (.getText wasm))))))
 
 (defn goto-char
   "Move cursor to linear position POS.
@@ -107,16 +118,26 @@
 ;; -- Buffer Content Access --
 
 (defn buffer-string
-  "Return the entire buffer contents as a string.
+  "Return the accessible buffer contents as a string.
+
+   With narrowing active, returns only the narrowed region (BEGV to ZV).
+   Without narrowing, returns the entire buffer.
 
    Usage: (buffer-string db)
    Returns: String"
   [db]
   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
         active-buffer-id (:buffer-id active-window)
-        active-buffer (get (:buffers db) active-buffer-id)]
+        active-buffer (get (:buffers db) active-buffer-id)
+        begv (get-in db [:buffers active-buffer-id :begv])
+        zv (get-in db [:buffers active-buffer-id :zv])]
     (when-let [^js wasm (:wasm-instance active-buffer)]
-      (.getText wasm))))
+      (let [full-text (.getText wasm)]
+        (if (or begv zv)
+          ;; Narrowing active - return narrowed region
+          (subs full-text (or begv 0) (or zv (count full-text)))
+          ;; No narrowing - return full buffer
+          full-text)))))
 
 (defn buffer-substring
   "Return text between START and END positions (linear offsets).

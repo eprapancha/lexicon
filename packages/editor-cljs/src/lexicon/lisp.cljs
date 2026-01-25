@@ -22,7 +22,7 @@
             [lexicon.core.db :as db]))
 
 ;; Forward declarations for functions used before definition
-(declare goto-char line-beginning-position line-end-position)
+(declare goto-char line-beginning-position line-end-position current-buffer)
 
 ;; =============================================================================
 ;; Buffer Query Functions (Read-Only)
@@ -37,12 +37,15 @@
   (or (buf/point @rfdb/app-db) 0))
 
 (defn point-min
-  "Return minimum valid buffer position (always 0).
+  "Return minimum accessible buffer position.
+
+  With narrowing active, returns start of narrowed region.
+  Without narrowing, returns 0.
 
   Usage: (point-min)
-  Returns: 0"
+  Returns: Integer position"
   []
-  (buf/point-min))
+  (buf/point-min @rfdb/app-db))
 
 (defn point-max
   "Return maximum valid buffer position (buffer length).
@@ -83,6 +86,170 @@
   Returns: Integer"
   []
   (buf/buffer-size @rfdb/app-db))
+
+;; -- Narrowing (Phase 6.6 - Issue #100) --
+
+(defn narrow-to-region
+  "Restrict editing to [START, END) region.
+
+  All buffer operations will only see the narrowed region.
+  Point-min returns START, point-max returns END.
+  Point is clamped to the narrowed region.
+
+  Usage: (narrow-to-region start end)
+  Returns: nil"
+  [start end]
+  (let [db @rfdb/app-db
+        buffer-id (current-buffer)]
+    (rf/dispatch-sync [:buffer/narrow-to-region buffer-id start end])
+    nil))
+
+(defn widen
+  "Remove narrowing restriction from current buffer.
+
+  Restores access to the entire buffer contents.
+
+  Usage: (widen)
+  Returns: nil"
+  []
+  (let [buffer-id (current-buffer)]
+    (rf/dispatch-sync [:buffer/widen buffer-id])
+    nil))
+
+(defn buffer-narrowed-p
+  "Return non-nil if buffer is narrowed.
+
+  Usage: (buffer-narrowed-p)
+  Returns: Boolean"
+  []
+  (let [db @rfdb/app-db
+        buffer-id (current-buffer)
+        begv (get-in db [:buffers buffer-id :begv])
+        zv (get-in db [:buffers buffer-id :zv])]
+    (or (some? begv) (some? zv))))
+
+;; -- Buffer-Local Variables (Phase 6.6 - Issue #100) --
+
+(defn make-local-variable
+  "Make VARIABLE buffer-local in current buffer.
+
+  The buffer-local value is initially the global value.
+
+  Usage: (make-local-variable 'my-var)
+  Returns: variable symbol"
+  [variable]
+  (let [buffer-id (current-buffer)]
+    (rf/dispatch-sync [:buffer/make-local-variable buffer-id variable])
+    variable))
+
+(defn buffer-local-value
+  "Return value of VARIABLE in BUFFER.
+
+  If VARIABLE is buffer-local in BUFFER, returns local value.
+  Otherwise returns global value.
+
+  Usage: (buffer-local-value 'my-var buffer-id)
+  Returns: value"
+  [variable buffer-id]
+  (let [db @rfdb/app-db
+        is-local? (contains? (get-in db [:buffers buffer-id :local-vars-set]) variable)]
+    (if is-local?
+      (get-in db [:buffers buffer-id :local-vars variable])
+      (get-in db [:global-vars variable]))))
+
+(defn setq-local
+  "Set VARIABLE to VALUE as buffer-local.
+
+  Makes VARIABLE buffer-local if not already, then sets its value.
+
+  Usage: (setq-local 'my-var value)
+  Returns: value"
+  [variable value]
+  (let [buffer-id (current-buffer)]
+    (rf/dispatch-sync [:buffer/make-local-variable buffer-id variable])
+    (rf/dispatch-sync [:buffer/setq buffer-id variable value])
+    value))
+
+(defn kill-all-local-variables
+  "Kill all buffer-local variable bindings.
+
+  Used by major mode switching to clear previous mode's configuration.
+
+  Usage: (kill-all-local-variables)
+  Returns: nil"
+  []
+  (let [buffer-id (current-buffer)]
+    (rf/dispatch-sync [:buffer/kill-all-local-variables buffer-id])
+    nil))
+
+;; -- Buffer Operations (Phase 6.6 - Issue #100) --
+
+(defn set-buffer
+  "Make BUFFER-ID the current buffer without displaying it.
+
+  Unlike switch-to-buffer, this does not change what's displayed
+  in any window. Used for programmatic buffer access.
+
+  Usage: (set-buffer buffer-id)
+  Returns: buffer-id"
+  [buffer-id]
+  (rf/dispatch-sync [:buffer/set-current buffer-id])
+  buffer-id)
+
+(defn rename-buffer
+  "Rename current buffer to NEW-NAME.
+
+  Returns nil if a buffer with NEW-NAME already exists.
+
+  Usage: (rename-buffer \"new-name\")
+  Returns: new-name or nil"
+  [new-name]
+  (let [db @rfdb/app-db
+        buffer-id (current-buffer)
+        existing (db/find-buffer-by-name (:buffers db) new-name)]
+    (if (and existing (not= (:id existing) buffer-id))
+      nil
+      (do
+        (rf/dispatch-sync [:buffer/rename buffer-id new-name])
+        new-name))))
+
+(defn other-buffer
+  "Return most recently used buffer other than current.
+
+  Returns buffer-id of the MRU buffer, or nil if none.
+
+  Usage: (other-buffer)
+  Returns: buffer-id or nil"
+  []
+  (let [db @rfdb/app-db
+        current-id (current-buffer)
+        access-order (get db :buffer-access-order [])
+        buffers (:buffers db)]
+    (->> access-order
+         (remove #(= % current-id))
+         (filter #(get buffers %))
+         (remove #(clojure.string/starts-with? (get-in buffers [% :name] "") " "))
+         first)))
+
+(defn buffer-enable-undo
+  "Enable undo recording for current buffer.
+
+  Usage: (buffer-enable-undo)
+  Returns: nil"
+  []
+  (let [buffer-id (current-buffer)]
+    (rf/dispatch-sync [:buffer/enable-undo buffer-id])
+    nil))
+
+(defn buffer-disable-undo
+  "Disable undo recording and clear undo history.
+
+  Usage: (buffer-disable-undo)
+  Returns: nil"
+  []
+  (let [buffer-id (current-buffer)]
+    (rf/dispatch-sync [:buffer/disable-undo buffer-id])
+    nil))
 
 (defn line-beginning-position
   "Return position at beginning of current line.
@@ -923,4 +1090,19 @@
    'file-attributes file-attributes
    'file-directory-p file-directory-p
    'file-exists-p file-exists-p
-   'insert-directory insert-directory})
+   'insert-directory insert-directory
+   ;; Phase 6.6: Narrowing (Issue #100)
+   'narrow-to-region narrow-to-region
+   'widen widen
+   'buffer-narrowed-p buffer-narrowed-p
+   ;; Phase 6.6: Buffer-local variables (Issue #100)
+   'make-local-variable make-local-variable
+   'buffer-local-value buffer-local-value
+   'setq-local setq-local
+   'kill-all-local-variables kill-all-local-variables
+   ;; Phase 6.6: Buffer operations (Issue #100)
+   'set-buffer set-buffer
+   'rename-buffer rename-buffer
+   'other-buffer other-buffer
+   'buffer-enable-undo buffer-enable-undo
+   'buffer-disable-undo buffer-disable-undo})
