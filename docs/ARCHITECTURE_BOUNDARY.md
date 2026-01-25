@@ -84,15 +84,15 @@ lexicon.lisp                 ← PUBLIC API (only thing packages can use)
 
 ## Enforcement
 
-### Lint Script
+### Babashka Task
 
-Run `scripts/lint-architecture.sh` to check for violations:
+Run `bb lint` to check for violations:
 
 ```bash
-./scripts/lint-architecture.sh
+bb lint
 ```
 
-This script:
+This task:
 - Finds all package files (*.cljs at src/lexicon/, except lisp.cljs)
 - Fails if any import from `lexicon.core.*`
 - Fails if any import from `re-frame.*`
@@ -102,8 +102,8 @@ This script:
 
 Add to your CI pipeline:
 ```yaml
-- name: Check architecture boundary
-  run: ./packages/editor-cljs/scripts/lint-architecture.sh
+- name: Run linters
+  run: bb lint
 ```
 
 ## What IS Core (lexicon.core.*)
@@ -173,9 +173,7 @@ These are implemented using ONLY `lexicon.lisp` API:
 - [x] Refactored isearch to use `lexicon.lisp` primitives
 - [x] Established correct dependency direction via `package_loader.cljs`
 - [x] **Moved all core code to `lexicon.core.*` namespace**
-- [x] **Created lint script to enforce boundary**
-
-### Future
-- [ ] Add lint script to CI pipeline
+- [x] **Created `bb lint` task to enforce boundary**
+- [x] **Added `bb lint` to CI pipeline**
 - [ ] Move more features to packages as appropriate
 - [ ] Add more primitives to `lexicon.lisp` as needed

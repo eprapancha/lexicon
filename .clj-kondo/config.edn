@@ -1,0 +1,25 @@
+{:linters
+ {;; Disable noisy linters for ClojureScript/re-frame patterns
+  :unresolved-symbol {:level :off}  ;; Too many false positives with re-frame
+  :unresolved-namespace {:level :off}  ;; CLJS namespaces not always resolved
+  :unused-namespace {:level :warning}
+  :refer-all {:level :warning}
+  :invalid-arity {:level :error}
+  :missing-else-branch {:level :warning}
+  :redundant-do {:level :warning}
+  :redundant-let {:level :warning}
+  :unused-binding {:level :warning}
+  :unused-private-var {:level :warning}
+  :misplaced-docstring {:level :off}  ;; Common in test helpers
+  :unused-value {:level :off}}  ;; Docstrings in let blocks
+
+ :lint-as
+ {;; re-frame macros
+  re-frame.core/reg-event-db clojure.core/defn
+  re-frame.core/reg-event-fx clojure.core/defn
+  re-frame.core/reg-sub clojure.core/defn
+  re-frame.core/reg-fx clojure.core/defn
+  re-frame.core/reg-cofx clojure.core/defn}
+
+ :output
+ {:progress true}}

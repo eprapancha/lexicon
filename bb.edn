@@ -118,7 +118,112 @@
             msg (if (= mode "release") "production" "development")]
         (print-step "🔨" (str "Building ClojureScript frontend (" msg ")..."))
         (run-cmd cmd :dir "packages/editor-cljs")
-        (print-step "✅" "ClojureScript build complete!"))))
+        (print-step "✅" "ClojureScript build complete!")))
+
+    (defn lint-architecture!
+      "Check that packages only import from lexicon.lisp, not core internals."
+      []
+      (print-step "🔍" "Checking architecture boundary...")
+      (let [src-dir "packages/editor-cljs/src/lexicon"
+            ;; Find all .cljs files at top level (packages), excluding lisp.cljs
+            package-files (->> (fs/list-dir src-dir)
+                               (filter (fn [f] (and (fs/regular-file? f)
+                                                    (str/ends-with? (str f) ".cljs")
+                                                    (not= (fs/file-name f) "lisp.cljs"))))
+                               (map str))
+            violations (atom 0)
+            ;; Regex patterns (can't use literals in EDN)
+            core-import-pat (re-pattern "\\[lexicon\\.core\\.")
+            reframe-import-pat (re-pattern "\\[re-frame\\.")
+            reframe-db-pat (re-pattern "re-frame\\.db")]
+
+        (doseq [file package-files]
+          (let [filename (fs/file-name file)
+                content (slurp file)]
+
+            ;; Check for imports from lexicon.core.*
+            (when (re-find core-import-pat content)
+              (print-step "❌" (str "VIOLATION: " filename " imports from lexicon.core.*"))
+              (println "   Packages must ONLY import from lexicon.lisp")
+              (doseq [line (str/split-lines content)]
+                (when (re-find core-import-pat line)
+                  (println (str "   " (str/trim line)))))
+              (swap! violations inc))
+
+            ;; Check for imports from re-frame.*
+            (when (re-find reframe-import-pat content)
+              (print-step "❌" (str "VIOLATION: " filename " imports from re-frame.*"))
+              (println "   Packages must ONLY import from lexicon.lisp")
+              (doseq [line (str/split-lines content)]
+                (when (re-find reframe-import-pat line)
+                  (println (str "   " (str/trim line)))))
+              (swap! violations inc))
+
+            ;; Check for direct re-frame.db access
+            (when (re-find reframe-db-pat content)
+              (print-step "❌" (str "VIOLATION: " filename " accesses re-frame.db directly"))
+              (println "   Packages must ONLY use lexicon.lisp functions")
+              (doseq [line (str/split-lines content)]
+                (when (re-find reframe-db-pat line)
+                  (println (str "   " (str/trim line)))))
+              (swap! violations inc))))
+
+        (if (zero? (deref violations))
+          (do
+            (print-step "✅" "Architecture boundary check passed")
+            true)
+          (do
+            (println "")
+            (print-step "❌" (str "Found " (deref violations) " architecture violation(s)"))
+            (println "")
+            (println "ARCHITECTURE RULE:")
+            (println "  Packages (src/lexicon/*.cljs except lisp.cljs) must ONLY import:")
+            (println "    [lexicon.lisp :as lisp]")
+            (println "")
+            (println "  They must NEVER import from:")
+            (println "    - lexicon.core.*")
+            (println "    - re-frame.*")
+            (println "    - re-frame.db")
+            (println "")
+            (println "See: docs/ARCHITECTURE_BOUNDARY.md")
+            (System/exit 1)))))
+
+    (defn lint-kondo!
+      "Run clj-kondo static analysis on ClojureScript code.
+       Currently warn-only (doesn't fail build) - fix issues incrementally."
+      []
+      (print-step "🔍" "Running clj-kondo static analysis...")
+      (let [result (proc/shell {:dir "."
+                                :out :string
+                                :err :string
+                                :continue true}
+                               "clj-kondo --lint packages/editor-cljs/src --config .clj-kondo/config.edn")]
+        (println (:out result))
+        (when-not (empty? (:err result))
+          (println (:err result)))
+        (if (zero? (:exit result))
+          (do
+            (print-step "✅" "clj-kondo check passed")
+            true)
+          (do
+            ;; Warn only for now - too many false positives from re-frame patterns
+            (print-step "⚠️" "clj-kondo found issues (warn-only, not blocking)")
+            true)))))
+
+  ;; Linting tasks
+  lint:arch
+  {:doc "Check architecture boundary (packages must only use lexicon.lisp API)"
+   :task (lint-architecture!)}
+
+  lint:kondo
+  {:doc "Run clj-kondo static analysis"
+   :task (lint-kondo!)}
+
+  lint
+  {:doc "Run all linters (architecture + clj-kondo)"
+   :task (do
+           (lint-architecture!)
+           (lint-kondo!))}
 
   ;; Individual build tasks
   build-wasm
