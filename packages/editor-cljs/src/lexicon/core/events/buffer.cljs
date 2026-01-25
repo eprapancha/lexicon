@@ -46,7 +46,10 @@
 (rf/reg-event-db
  :create-buffer
  (fn [db [_ name wasm-instance]]
-   "Create a new buffer with the given name and WASM instance"
+   "Create a new buffer with the given name and WASM instance.
+   Note: This event handler may not be called when buffer creation happens
+   from inside another event handler due to dispatch-sync limitations.
+   See lexicon.lisp/create-buffer which uses direct swap! instead."
    (let [buffer-id (db/next-buffer-id (:buffers db))
          new-buffer (db/create-buffer buffer-id name wasm-instance)]
      (assoc-in db [:buffers buffer-id] new-buffer))))
@@ -624,7 +627,7 @@
    "Replace buffer contents with file contents after revert"
    (let [buffer (get-in db [:buffers buffer-id])
          ^js wasm-instance (:wasm-instance buffer)
-         current-length (.getLength wasm-instance)]
+         current-length (count (.getText wasm-instance))]
      (println "✓ Reverted buffer from file:" name)
      ;; Replace the entire buffer text
      (.delete wasm-instance 0 current-length)

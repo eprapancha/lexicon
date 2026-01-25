@@ -184,14 +184,34 @@
 (defn insert
   "Insert TEXT at point.
 
+  NOTE: Uses direct WASM calls and swap! to update app-db because dispatch-sync
+  doesn't work when called from inside an event handler.
+
   Usage: (insert \"hello\")
   Returns: nil (side effect only)"
   [text]
   (let [db @rfdb/app-db
         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
         buffer-id (:buffer-id active-window)
-        pos (buf/point db)]
-    (rf/dispatch-sync [:buffer/insert buffer-id pos (str text)])
+        buffer (get-in db [:buffers buffer-id])
+        wasm-instance (:wasm-instance buffer)
+        pos (or (buf/point db) 0)
+        text-str (str text)]
+    ;; Insert directly into WASM buffer
+    (when wasm-instance
+      (.insert ^js wasm-instance pos text-str)
+      ;; Update cache and point position
+      (let [new-text (.getText ^js wasm-instance)
+            lines (clojure.string/split new-text #"\n" -1)
+            line-count (count lines)
+            new-pos (+ pos (count text-str))]
+        (swap! rfdb/app-db
+               (fn [current-db]
+                 (-> current-db
+                     (assoc-in [:buffers buffer-id :cache :text] new-text)
+                     (assoc-in [:buffers buffer-id :cache :line-count] line-count)
+                     (assoc-in [:buffers buffer-id :point] new-pos)
+                     (assoc-in [:ui :cursor-position] new-pos))))))
     nil))
 
 (defn delete-region
@@ -297,29 +317,55 @@
 (defn create-buffer
   "Create a new buffer with NAME.
 
+  NOTE: Uses direct swap! to update app-db because dispatch-sync doesn't work
+  when called from inside an event handler (see lexicon.core.api.message for same pattern).
+
   Usage: (create-buffer \"*scratch*\")
   Returns: Buffer ID"
   [name]
   (let [WasmGapBuffer (get-in @rfdb/app-db [:system :wasm-constructor])
         wasm-instance (when WasmGapBuffer (new WasmGapBuffer ""))]
     (when wasm-instance
-      (rf/dispatch-sync [:create-buffer name wasm-instance])
-      ;; Find the buffer by name and return its ID
-      (let [buffers (get-in @rfdb/app-db [:buffers])]
-        (->> buffers vals
-             (filter #(= name (:name %)))
-             first :id)))))
+      ;; Directly update db to avoid dispatch-sync issues when called from event handlers
+      ;; Same pattern as lexicon.core.api.message/message
+      (let [buffer-id (db/next-buffer-id (:buffers @rfdb/app-db))
+            new-buffer (db/create-buffer buffer-id name wasm-instance)]
+        (swap! rfdb/app-db assoc-in [:buffers buffer-id] new-buffer)
+        buffer-id))))
+
+(defn- update-window-buffer
+  "Update the buffer-id in the active window.
+  Helper for switch-to-buffer that mimics :window/show-buffer event."
+  [tree active-window-id buffer-id]
+  (cond
+    (nil? tree) nil
+    (and (= (:type tree) :leaf)
+         (= (:id tree) active-window-id))
+    (assoc tree :buffer-id buffer-id)
+    (= (:type tree) :split)
+    (assoc tree
+           :first (update-window-buffer (:first tree) active-window-id buffer-id)
+           :second (update-window-buffer (:second tree) active-window-id buffer-id))
+    :else tree))
 
 (defn switch-to-buffer
   "Switch to buffer NAME (create if doesn't exist).
+
+  NOTE: Uses direct swap! to update app-db because dispatch-sync doesn't work
+  when called from inside an event handler.
 
   Usage: (switch-to-buffer \"*scratch*\")
   Returns: nil (side effect only)"
   [name]
   (let [db @rfdb/app-db
-        buffer (buf/get-buffer db name)
-        buffer-id (or (:id buffer) (create-buffer name))]
-    (rf/dispatch-sync [:window/show-buffer buffer-id])
+        existing-buffer (buf/get-buffer db name)
+        buffer-id (or (:id existing-buffer) (create-buffer name))]
+    ;; Directly update window-tree to show buffer (same as :window/show-buffer)
+    (when buffer-id
+      (let [active-window-id (:active-window-id @rfdb/app-db)
+            window-tree (:window-tree @rfdb/app-db)
+            new-tree (update-window-buffer window-tree active-window-id buffer-id)]
+        (swap! rfdb/app-db assoc :window-tree new-tree)))
     nil))
 
 (defn current-buffer
@@ -482,11 +528,14 @@
 (defn set-buffer-read-only
   "Set read-only flag for current buffer.
 
+  NOTE: Uses direct swap! to update app-db because dispatch-sync doesn't work
+  when called from inside an event handler.
+
   Usage: (set-buffer-read-only t)
   Returns: nil (side effect only)"
   [read-only?]
   (let [buffer-id (current-buffer)]
-    (rf/dispatch-sync [:buffer/set-read-only buffer-id read-only?])
+    (swap! rfdb/app-db assoc-in [:buffers buffer-id :is-read-only?] read-only?)
     nil))
 
 ;; =============================================================================

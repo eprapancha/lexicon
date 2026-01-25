@@ -88,7 +88,8 @@
         active-buffer-id (:buffer-id active-window)
         active-buffer (get (:buffers db) active-buffer-id)]
     (when-let [^js wasm (:wasm-instance active-buffer)]
-      (.getLength wasm))))
+      ;; Use getText and count since getLength may not exist on all WASM instances
+      (count (.getText wasm)))))
 
 (defn goto-char
   "Move cursor to linear position POS.

@@ -952,7 +952,8 @@
           (:prompt minibuffer)]
 
          [:input.minibuffer-input
-          {:ref (fn [element]
+          {:id "minibuffer-input"
+           :ref (fn [element]
                   (when element
                     (reset! input-ref element)
                     (.focus element)))

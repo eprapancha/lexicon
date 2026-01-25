@@ -73,7 +73,7 @@
   "Get the current buffer name from the modeline"
   []
   (try
-    (e/get-element-text *driver* {:css ".modeline-buffer-name"})
+    (e/get-element-text *driver* {:css ".buffer-info"})
     (catch Exception _
       nil)))
 
@@ -88,12 +88,13 @@
   (str/includes? (get-editor-text) text))
 
 (defn buffer-read-only?
-  "Check if buffer is marked read-only in modeline"
+  "Check if buffer is marked read-only in modeline.
+  Read-only buffers show '%%' (unmodified) or '%*' (modified) in modeline."
   []
   (try
-    (let [modeline (e/get-element-text *driver* {:css ".modeline"})]
-      (or (str/includes? modeline "%%")
-          (str/includes? modeline "read-only")))
+    (let [modified-info (e/get-element-text *driver* {:css ".modified-info"})]
+      (or (str/includes? modified-info "%%")
+          (str/includes? modified-info "%*")))
     (catch Exception _
       false)))
 
@@ -128,6 +129,36 @@
   (e/wait-visible *driver* {:css ".editable-area"} {:timeout 10})
   (Thread/sleep 200))
 
+(defn wait-for-minibuffer
+  "Wait for minibuffer input to be visible and ready"
+  []
+  (e/wait-visible *driver* {:css ".minibuffer-input"} {:timeout 5})
+  (Thread/sleep 100))
+
+(defn fill-minibuffer
+  "Fill minibuffer with text"
+  [text]
+  (wait-for-minibuffer)
+  (e/fill *driver* {:css ".minibuffer-input"} text)
+  (Thread/sleep 50))
+
+(defn press-minibuffer-enter
+  "Press Enter in the minibuffer (dispatches on minibuffer-input, not hidden-input)"
+  []
+  (e/js-execute *driver* "
+    const input = document.querySelector('.minibuffer-input');
+    if (input) {
+      input.focus();
+      const event = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        bubbles: true
+      });
+      input.dispatchEvent(event);
+    }
+  ")
+  (Thread/sleep 100))
+
 (defn click-editor
   "Click on the editor to ensure it has focus"
   []
@@ -159,18 +190,16 @@
 
     ;; M-x dired
     (press-meta-key "x")
-    (Thread/sleep 100)
-
-    ;; Type command name
-    (e/fill *driver* {:css ".minibuffer-input"} "dired")
-    (Thread/sleep 100)
-    (press-key "Enter")
     (Thread/sleep 200)
 
+    ;; Type command name and confirm
+    (fill-minibuffer "dired")
+    (press-minibuffer-enter)
+    (Thread/sleep 300)
+
     ;; Directory prompt - use root or current directory
-    (e/fill *driver* {:css ".minibuffer-input"} "/")
-    (Thread/sleep 100)
-    (press-key "Enter")
+    (fill-minibuffer "/")
+    (press-minibuffer-enter)
     (Thread/sleep 500)
 
     ;; Assert: Dired buffer exists
@@ -202,14 +231,12 @@
 
     ;; Open dired
     (press-meta-key "x")
-    (Thread/sleep 100)
-    (e/fill *driver* {:css ".minibuffer-input"} "dired")
-    (Thread/sleep 100)
-    (press-key "Enter")
     (Thread/sleep 200)
-    (e/fill *driver* {:css ".minibuffer-input"} "/")
-    (Thread/sleep 100)
-    (press-key "Enter")
+    (fill-minibuffer "dired")
+    (press-minibuffer-enter)
+    (Thread/sleep 300)
+    (fill-minibuffer "/")
+    (press-minibuffer-enter)
     (Thread/sleep 500)
 
     ;; Get current buffer text
