@@ -24,7 +24,7 @@
             [lexicon.core.advanced-undo :as advanced-undo]))
 
 ;; Forward declarations for functions used before definition
-(declare goto-char line-beginning-position line-end-position current-buffer)
+(declare goto-char line-beginning-position line-end-position current-buffer mark delete-region)
 
 ;; =============================================================================
 ;; Buffer Query Functions (Read-Only)
@@ -81,6 +81,18 @@
             actual-start (max 0 (min start end))
             actual-end (min (count text) (max start end))]
         (subs text actual-start actual-end)))))
+
+(defn buffer-substring-no-properties
+  "Return text between START and END, excluding text properties.
+
+  In Emacs, this differs from buffer-substring which includes properties.
+  In our implementation, they are currently identical since we don't
+  attach properties to returned strings.
+
+  Usage: (buffer-substring-no-properties 0 10)
+  Returns: String"
+  [start end]
+  (buffer-substring start end))
 
 (defn buffer-name
   "Return name of current buffer.
@@ -354,6 +366,186 @@
     (:id buffer)))
 
 ;; =============================================================================
+;; Buffer Position Predicates
+;; =============================================================================
+
+(defn bobp
+  "Return true if point is at the beginning of the buffer.
+
+  With narrowing, returns true if point is at the beginning of the
+  accessible portion (point-min).
+
+  Usage: (bobp)
+  Returns: Boolean"
+  []
+  (= (point) (point-min)))
+
+(defn eobp
+  "Return true if point is at the end of the buffer.
+
+  With narrowing, returns true if point is at the end of the
+  accessible portion (point-max).
+
+  Usage: (eobp)
+  Returns: Boolean"
+  []
+  (= (point) (point-max)))
+
+(defn bolp
+  "Return true if point is at the beginning of a line.
+
+  Usage: (bolp)
+  Returns: Boolean"
+  []
+  (= (point) (line-beginning-position)))
+
+(defn eolp
+  "Return true if point is at the end of a line.
+
+  Usage: (eolp)
+  Returns: Boolean"
+  []
+  (= (point) (line-end-position)))
+
+;; =============================================================================
+;; Character Access Functions
+;; =============================================================================
+
+(defn char-after
+  "Return character at position POS (or point if nil).
+
+  Returns nil if POS is at or past the end of the buffer.
+
+  Usage: (char-after)
+         (char-after 10)
+  Returns: Character or nil"
+  ([] (char-after nil))
+  ([pos]
+   (let [position (or pos (point))
+         text (buffer-string)
+         max-pos (count text)]
+     (when (< position max-pos)
+       (nth text position)))))
+
+(defn char-before
+  "Return character before position POS (or point if nil).
+
+  Returns nil if POS is at or before the beginning of the buffer.
+
+  Usage: (char-before)
+         (char-before 10)
+  Returns: Character or nil"
+  ([] (char-before nil))
+  ([pos]
+   (let [position (or pos (point))]
+     (when (> position 0)
+       (let [text (buffer-string)]
+         (when (< (dec position) (count text))
+           (nth text (dec position))))))))
+
+;; =============================================================================
+;; Region Functions
+;; =============================================================================
+
+(defn region-beginning
+  "Return position of the beginning of the region.
+
+  The region is defined by point and mark.
+  Returns the smaller of the two values.
+
+  Usage: (region-beginning)
+  Returns: Integer position"
+  []
+  (let [p (point)
+        m (mark)]
+    (if m
+      (min p m)
+      p)))
+
+(defn region-end
+  "Return position of the end of the region.
+
+  The region is defined by point and mark.
+  Returns the larger of the two values.
+
+  Usage: (region-end)
+  Returns: Integer position"
+  []
+  (let [p (point)
+        m (mark)]
+    (if m
+      (max p m)
+      p)))
+
+(defn delete-and-extract-region
+  "Delete the region and return its contents.
+
+  Usage: (delete-and-extract-region start end)
+  Returns: String (the deleted text)"
+  [start end]
+  (let [text (buffer-substring start end)]
+    (delete-region start end)
+    text))
+
+;; =============================================================================
+;; Text Properties
+;; =============================================================================
+
+(defn put-text-property
+  "Set PROPERTY to VALUE for text from START to END.
+
+  Text properties are invisible metadata attached to text ranges.
+  Used for faces, invisibility, clickable regions, etc.
+
+  Usage: (put-text-property 0 5 'face 'bold)
+         (put-text-property 10 20 'invisible t)
+  Returns: nil"
+  [start end property value]
+  (let [buffer-id (current-buffer)]
+    (rf/dispatch-sync [:text-property/put buffer-id start end property value])
+    nil))
+
+(defn get-text-property
+  "Return value of PROPERTY at position POS.
+
+  Returns nil if the property is not set at that position.
+
+  Usage: (get-text-property 5 'face)
+  Returns: Property value or nil"
+  [pos property]
+  (let [db @rfdb/app-db
+        buffer-id (current-buffer)
+        props (get-in db [:buffers buffer-id :text-properties] {})]
+    ;; Find a range that contains pos and has the property
+    (some (fn [[start ranges]]
+            (when (<= start pos)
+              (some (fn [[end prop-map]]
+                      (when (and (> end pos)
+                                 (contains? prop-map property))
+                        (get prop-map property)))
+                    ranges)))
+          props)))
+
+(defn remove-text-properties
+  "Remove text properties from START to END.
+
+  If PROPERTIES is specified, removes only those properties.
+  Otherwise removes all properties from the range.
+
+  Usage: (remove-text-properties 0 10)
+         (remove-text-properties 0 10 '(face invisible))
+  Returns: nil"
+  ([start end]
+   (let [buffer-id (current-buffer)]
+     (rf/dispatch-sync [:text-property/remove buffer-id start end nil])
+     nil))
+  ([start end properties]
+   (let [buffer-id (current-buffer)]
+     (doseq [prop properties]
+       (rf/dispatch-sync [:text-property/remove buffer-id start end prop]))
+     nil)))
+
+;; =============================================================================
 ;; Search Functions
 ;; =============================================================================
 
@@ -567,28 +759,52 @@
       (delete-region 0 size)))
   nil)
 
+(defn- resolve-position
+  "Resolve POS to a numeric position.
+  If POS is a marker ID, returns its position.
+  Otherwise returns POS as-is."
+  [pos]
+  (let [db @rfdb/app-db
+        marker (get-in db [:markers :table pos])]
+    (if marker
+      ;; It's a marker - get its position from WASM
+      (let [buffer-id (:buffer-id marker)
+            wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+            wasm-marker-id (:wasm-id marker)]
+        (when (and wasm-instance (number? wasm-marker-id))
+          (let [marker-pos (js/Number (.getMarkerPosition ^js wasm-instance (js/BigInt wasm-marker-id)))]
+            (when (>= marker-pos 0)
+              marker-pos))))
+      ;; It's a plain number
+      pos)))
+
 (defn goto-char
   "Move cursor to position POS.
 
+  POS can be either an integer position or a marker.
+
   Usage: (goto-char 100)
+         (goto-char marker)
   Returns: nil (side effect only)"
   [pos]
-  (let [db @rfdb/app-db
-        active-window-id (:active-window-id db)
-        active-window (db/find-window-in-tree (:window-tree db) active-window-id)
-        buffer-id (:buffer-id active-window)
-        active-buffer (get (:buffers db) buffer-id)
-        line-col (buf/point-to-line-col active-buffer pos)]
-    ;; Update window-tree cursor position directly (dispatch-sync doesn't work for nested calls)
-    (swap! rfdb/app-db
-           (fn [current-db]
-             (let [new-tree (db/update-window-in-tree (:window-tree current-db) active-window-id
-                                                       #(assoc % :cursor-position line-col))]
-               (-> current-db
-                   (assoc :window-tree new-tree)
-                   (assoc-in [:buffers buffer-id :point] pos)
-                   (assoc-in [:ui :cursor-position] pos)))))
-    nil))
+  (let [actual-pos (resolve-position pos)]
+    (when actual-pos
+      (let [db @rfdb/app-db
+            active-window-id (:active-window-id db)
+            active-window (db/find-window-in-tree (:window-tree db) active-window-id)
+            buffer-id (:buffer-id active-window)
+            active-buffer (get (:buffers db) buffer-id)
+            line-col (buf/point-to-line-col active-buffer actual-pos)]
+        ;; Update window-tree cursor position directly (dispatch-sync doesn't work for nested calls)
+        (swap! rfdb/app-db
+               (fn [current-db]
+                 (let [new-tree (db/update-window-in-tree (:window-tree current-db) active-window-id
+                                                           #(assoc % :cursor-position line-col))]
+                   (-> current-db
+                       (assoc :window-tree new-tree)
+                       (assoc-in [:buffers buffer-id :point] actual-pos)
+                       (assoc-in [:ui :cursor-position] actual-pos))))))))
+  nil)
 
 ;; =============================================================================
 ;; Kill Ring Functions
@@ -834,11 +1050,9 @@
   [pos]
   (let [db @rfdb/app-db
         actual-pos (or pos (buf/point db))
-        active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-        buffer-id (:buffer-id active-window)
-        active-buffer (get (:buffers db) buffer-id)
-        line-col (buf/point-to-line-col active-buffer actual-pos)]
-    (rf/dispatch-sync [:mark/set line-col])
+        window-id (:active-window-id db)]
+    ;; Mark is stored as a linear position in the window
+    (rf/dispatch-sync [:window/set-mark window-id actual-pos])
     nil))
 
 (defn mark
@@ -848,12 +1062,9 @@
   Returns: Integer position or nil"
   []
   (let [db @rfdb/app-db
-        active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-        mark-pos (:mark-position active-window)]
-    (when mark-pos
-      (let [buffer-id (:buffer-id active-window)
-            active-buffer (get (:buffers db) buffer-id)]
-        (buf/line-col-to-point active-buffer (:line mark-pos) (:column mark-pos))))))
+        active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))]
+    ;; Mark is stored as a linear position
+    (:mark-position active-window)))
 
 (defn exchange-point-and-mark
   "Exchange point and mark.
@@ -1568,10 +1779,11 @@
        (some? (get-in @rfdb/app-db [:markers :table obj]))))
 
 (defn insert-before-markers
-  "Insert TEXT at point, keeping all markers after the insertion.
+  "Insert TEXT at point, keeping all markers at their original positions.
 
-  Unlike regular insert, markers at insertion point stay after the text.
-  This is the opposite of normal insertion behavior.
+  Unlike regular insert, markers at insertion point stay BEFORE the inserted
+  text (at their original position). This is the opposite of normal insertion
+  behavior where markers with insertion-type=t would advance.
 
   Usage: (insert-before-markers \"text\")
   Returns: nil"
@@ -1579,21 +1791,22 @@
   ;; For proper semantics, we need to:
   ;; 1. Find all markers at current position
   ;; 2. Remember their positions
-  ;; 3. Insert text
-  ;; 4. Move markers with insertion-type=nil back to original position
+  ;; 3. Insert text (WASM auto-advances markers)
+  ;; 4. Move ALL markers back to original position (override normal behavior)
   (let [pos (point)
         buffer-id (current-buffer)
         db @rfdb/app-db
         marker-ids (get-in db [:buffers buffer-id :markers] #{})
-        markers-at-point (filter (fn [mid]
-                                   (= pos (marker-position mid)))
-                                 marker-ids)]
-    ;; Insert the text
+        ;; Capture markers at the insertion point BEFORE insert
+        markers-at-point (vec (filter (fn [mid]
+                                        (= pos (marker-position mid)))
+                                      marker-ids))]
+    ;; Insert the text (this will auto-advance markers in WASM)
     (insert text)
-    ;; Move markers with insertion-type=nil back
+    ;; Move ALL markers at the insertion point back to their original position
+    ;; This overrides the normal WASM auto-advance behavior
     (doseq [mid markers-at-point]
-      (when-not (marker-insertion-type mid)
-        (move-marker mid pos)))
+      (move-marker mid pos))
     nil))
 
 ;; =============================================================================
@@ -1611,6 +1824,22 @@
    'goto-char goto-char
    'line-beginning-position line-beginning-position
    'line-end-position line-end-position
+   ;; Position predicates
+   'bobp bobp
+   'eobp eobp
+   'bolp bolp
+   'eolp eolp
+   ;; Character access
+   'char-after char-after
+   'char-before char-before
+   ;; Region
+   'region-beginning region-beginning
+   'region-end region-end
+   'delete-and-extract-region delete-and-extract-region
+   ;; Text properties
+   'put-text-property put-text-property
+   'get-text-property get-text-property
+   'remove-text-properties remove-text-properties
    ;; Line navigation
    'current-line current-line
    'line-count line-count
@@ -1620,6 +1849,7 @@
    ;; Buffer content
    'buffer-string buffer-string
    'buffer-substring buffer-substring
+   'buffer-substring-no-properties buffer-substring-no-properties
    'insert insert
    'delete-region delete-region
    'erase-buffer erase-buffer
