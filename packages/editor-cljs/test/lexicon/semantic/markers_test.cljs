@@ -443,3 +443,266 @@
         ;; Marker should be invalid
         (is (nil? (helpers/marker-position m))
             "Freed marker returns nil")))))
+
+;;; =============================================================================
+;;; Insertion Type Tests (Emacs marker-insertion-type)
+;;; =============================================================================
+
+(deftest ^:critical markers-insertion-type-nil
+  "CRITICAL: Marker with insertion-type nil stays BEFORE inserted text.
+
+  Emacs Semantics (from marker.c):
+  - (set-marker-insertion-type m nil)
+  - Insert at marker position
+  - Marker does NOT advance, text appears AFTER marker
+
+  Why this matters:
+  - save-excursion uses this to restore point correctly
+  - Region bounds need predictable behavior
+  - Undo position tracking
+
+  Implementation Note:
+  - WASM marker needs insertion_type field
+  - update_markers_on_insert must check insertion_type
+  - Default should be nil (don't advance)"
+  (testing "Marker with insertion-type=nil stays before insertion"
+    (with-test-buffer "*test*"
+      (helpers/insert "Hello")
+      (let [m (helpers/make-marker)]
+        (helpers/set-marker m 5)
+        (helpers/set-marker-insertion-type m nil)
+
+        ;; Insert at marker position
+        (helpers/goto-char 5)
+        (helpers/insert "XXX")
+
+        ;; Marker should NOT have moved
+        (is (= 5 (helpers/marker-position m))
+            "Marker with insertion-type=nil stays at 5")
+        (is (= "HelloXXX" (helpers/buffer-string))
+            "Text inserted after marker")))))
+
+(deftest ^:critical markers-insertion-type-t
+  "CRITICAL: Marker with insertion-type t advances PAST inserted text.
+
+  Emacs Semantics:
+  - (set-marker-insertion-type m t)
+  - Insert at marker position
+  - Marker advances, text appears BEFORE marker
+
+  Why this matters:
+  - Some markers need to track 'end of region'
+  - Process output markers should advance
+  - Overlay end markers typically use this"
+  (testing "Marker with insertion-type=t advances past insertion"
+    (with-test-buffer "*test*"
+      (helpers/insert "Hello")
+      (let [m (helpers/make-marker)]
+        (helpers/set-marker m 5)
+        (helpers/set-marker-insertion-type m true)
+
+        ;; Insert at marker position
+        (helpers/goto-char 5)
+        (helpers/insert "XXX")
+
+        ;; Marker should have advanced
+        (is (= 8 (helpers/marker-position m))
+            "Marker with insertion-type=t advances to 8")))))
+
+(deftest ^:high markers-insertion-type-query
+  "HIGH: Can query marker's insertion type.
+
+  Emacs API:
+  - (marker-insertion-type m) -> t or nil
+
+  Implementation Note:
+  - Store insertion_type in marker metadata
+  - Default is nil"
+  (testing "Query insertion type returns correct value"
+    (with-test-buffer "*test*"
+      (helpers/insert "Hello")
+      (let [m (helpers/make-marker)]
+        (helpers/set-marker m 5)
+
+        ;; Default should be nil
+        (is (nil? (helpers/marker-insertion-type m))
+            "Default insertion-type is nil")
+
+        ;; Set to t
+        (helpers/set-marker-insertion-type m true)
+        (is (true? (helpers/marker-insertion-type m))
+            "After setting to t, returns t")
+
+        ;; Set back to nil
+        (helpers/set-marker-insertion-type m nil)
+        (is (nil? (helpers/marker-insertion-type m))
+            "After setting to nil, returns nil")))))
+
+;;; =============================================================================
+;;; insert-before-markers Tests
+;;; =============================================================================
+
+(deftest ^:high insert-before-markers
+  "HIGH: insert-before-markers makes ALL markers stay before insertion.
+
+  Emacs Semantics:
+  - Ignores individual marker insertion-types
+  - All markers at insertion point do NOT advance
+  - Used for special cases like shell output
+
+  Why this matters:
+  - Shell/process output insertion
+  - Maintaining cursor stability during programmatic inserts"
+  (testing "insert-before-markers keeps all markers before insertion"
+    (with-test-buffer "*test*"
+      (helpers/insert "Hello")
+      (let [m1 (helpers/make-marker)
+            m2 (helpers/make-marker)]
+        ;; Set up markers with different insertion types
+        (helpers/set-marker m1 5)
+        (helpers/set-marker-insertion-type m1 nil)
+        (helpers/set-marker m2 5)
+        (helpers/set-marker-insertion-type m2 true)
+
+        ;; Use insert-before-markers
+        (helpers/goto-char 5)
+        (helpers/insert-before-markers "XXX")
+
+        ;; BOTH markers should stay at 5
+        (is (= 5 (helpers/marker-position m1))
+            "m1 (insertion-type=nil) stays at 5")
+        (is (= 5 (helpers/marker-position m2))
+            "m2 (insertion-type=t) also stays at 5 with insert-before-markers")))))
+
+;;; =============================================================================
+;;; Type Predicates
+;;; =============================================================================
+
+(deftest ^:medium markerp-predicate
+  "MEDIUM: markerp tests if object is a marker.
+
+  Emacs API:
+  - (markerp obj) -> t if marker, nil otherwise
+
+  Implementation Note:
+  - Check object type/metadata"
+  (testing "markerp identifies markers correctly"
+    (with-test-buffer "*test*"
+      (helpers/insert "Hello")
+      (let [m (helpers/make-marker)]
+        (helpers/set-marker m 5)
+
+        (is (helpers/markerp m) "Marker returns true")
+        (is (not (helpers/markerp 5)) "Number returns false")
+        (is (not (helpers/markerp "hello")) "String returns false")
+        (is (not (helpers/markerp nil)) "nil returns false")))))
+
+;;; =============================================================================
+;;; Copy Marker with Insertion Type
+;;; =============================================================================
+
+(deftest ^:high copy-marker-preserves-insertion-type
+  "HIGH: copy-marker can optionally set insertion type on copy.
+
+  Emacs API:
+  - (copy-marker m) - same insertion-type as original
+  - (copy-marker m t) - force insertion-type to t
+  - (copy-marker m nil) - force insertion-type to nil
+
+  Implementation Note:
+  - copy-marker takes optional TYPE argument"
+  (testing "copy-marker preserves insertion type by default"
+    (with-test-buffer "*test*"
+      (helpers/insert "Hello")
+      (let [m1 (helpers/make-marker)]
+        (helpers/set-marker m1 5)
+        (helpers/set-marker-insertion-type m1 true)
+
+        (let [m2 (helpers/copy-marker m1)]
+          (is (= 5 (helpers/marker-position m2)))
+          (is (true? (helpers/marker-insertion-type m2))
+              "Copy preserves insertion-type")))))
+
+  (testing "copy-marker can override insertion type"
+    (with-test-buffer "*test*"
+      (helpers/insert "Hello")
+      (let [m1 (helpers/make-marker)]
+        (helpers/set-marker m1 5)
+        (helpers/set-marker-insertion-type m1 true)
+
+        ;; Copy with explicit nil insertion-type
+        (let [m2 (helpers/copy-marker m1 nil)]
+          (is (= 5 (helpers/marker-position m2)))
+          (is (nil? (helpers/marker-insertion-type m2))
+              "Copy has overridden insertion-type"))))))
+
+;;; =============================================================================
+;;; Edge Cases from Emacs Source
+;;; =============================================================================
+
+(deftest ^:medium set-marker-with-marker-arg
+  "MEDIUM: set-marker can take another marker as POSITION argument.
+
+  Emacs API:
+  - (set-marker m1 m2) - m1 gets same position as m2
+  - Also inherits buffer if m2 is in different buffer
+
+  Implementation Note:
+  - Check if position arg is marker, extract its position/buffer"
+  (testing "set-marker with marker argument copies position"
+    (with-test-buffer "*test*"
+      (helpers/insert "Hello")
+      (let [m1 (helpers/make-marker)
+            m2 (helpers/make-marker)]
+        (helpers/set-marker m1 5)
+        (helpers/set-marker m2 m1)  ; Use m1 as position
+
+        (is (= 5 (helpers/marker-position m2))
+            "m2 copied position from m1")))))
+
+(deftest ^:medium marker-position-clamping
+  "MEDIUM: Marker positions are clamped to valid buffer range.
+
+  Emacs Behavior:
+  - Position < 0 becomes 0 (point-min)
+  - Position > buffer-length becomes buffer-length (point-max)
+
+  Implementation Note:
+  - set_marker_internal in marker.c uses clip_to_bounds"
+  (testing "Position clamped to buffer bounds"
+    (with-test-buffer "*test*"
+      (helpers/insert "Hello")  ; 5 chars
+      (let [m (helpers/make-marker)]
+        ;; Try to set beyond buffer end
+        (helpers/set-marker m 100)
+        (is (= 5 (helpers/marker-position m))
+            "Position clamped to buffer end")
+
+        ;; Try to set before buffer start (negative)
+        (helpers/set-marker m -10)
+        (is (= 0 (helpers/marker-position m))
+            "Position clamped to buffer start")))))
+
+(deftest ^:low marker-equality
+  "LOW: Marker equality semantics.
+
+  Emacs Behavior:
+  - (eq m1 m2) - false unless same object
+  - (= m1 m2) - true if same position and buffer
+  - (equal m1 m2) - same as =
+
+  Implementation Note:
+  - Markers are reference types with value equality on position"
+  (testing "Marker equality"
+    (with-test-buffer "*test*"
+      (helpers/insert "Hello")
+      (let [m1 (helpers/make-marker)
+            m2 (helpers/make-marker)]
+        (helpers/set-marker m1 5)
+        (helpers/set-marker m2 5)
+
+        ;; Same position, different objects
+        (is (not (identical? m1 m2))
+            "Different marker objects")
+        (is (= (helpers/marker-position m1) (helpers/marker-position m2))
+            "Same position")))))

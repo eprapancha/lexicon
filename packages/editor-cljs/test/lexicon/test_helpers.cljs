@@ -123,5 +123,10 @@
 (def set-marker h/set-marker)
 (def move-marker h/move-marker)
 (def copy-marker h/copy-marker)
+(def marker-insertion-type h/marker-insertion-type)
+(def set-marker-insertion-type h/set-marker-insertion-type)
+(def markerp h/markerp)
+(def insert-before-markers h/insert-before-markers)
+(def buffer-string h/buffer-string)
 
 ;; Macros - with-test-buffer is imported via :require-macros from lexicon.semantic.helpers

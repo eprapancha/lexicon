@@ -723,8 +723,45 @@
 
 (defn copy-marker
   "Copy a marker (stub for tests)."
+  ([marker]
+   (atom @marker))
+  ([marker insertion-type]
+   (atom (assoc @marker :insertion-type insertion-type))))
+
+(defn marker-insertion-type
+  "Get marker insertion type (stub for tests).
+  Returns t if marker advances on insertion at its position, nil otherwise."
   [marker]
-  (atom @marker))
+  (:insertion-type @marker))
+
+(defn set-marker-insertion-type
+  "Set marker insertion type (stub for tests).
+  TYPE = t: marker advances when text inserted at its position
+  TYPE = nil: marker stays before inserted text"
+  [marker type]
+  (swap! marker assoc :insertion-type type)
+  type)
+
+(defn markerp
+  "Check if object is a marker (stub for tests)."
+  [obj]
+  (and (instance? Atom obj)
+       (map? @obj)
+       (contains? @obj :position)))
+
+(defn insert-before-markers
+  "Insert text, keeping all markers before the insertion (stub for tests).
+  Unlike regular insert, all markers at insertion point stay before the text."
+  [text]
+  ;; Stub - just calls regular insert for now
+  (insert text))
+
+(defn buffer-string
+  "Get entire buffer contents as string (stub for tests)."
+  []
+  (let [buf-id (current-buffer)]
+    (when buf-id
+      (buffer-text buf-id))))
 
 ;; =============================================================================
 ;; Macros for with-test-buffer
