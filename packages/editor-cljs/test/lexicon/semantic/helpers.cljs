@@ -764,6 +764,495 @@
       (buffer-text buf-id))))
 
 ;; =============================================================================
+;; Kill Ring helpers (stubs for tests)
+;; =============================================================================
+
+(defn kill-new
+  "Add string to kill ring (stub for tests)."
+  [string]
+  ;; TODO: Implement via API
+  nil)
+
+(defn kill-append
+  "Append to last kill (stub for tests).
+  BEFORE-P means prepend instead."
+  [string before-p]
+  ;; TODO: Implement via API
+  nil)
+
+(defn current-kill
+  "Get Nth kill from ring (stub for tests)."
+  [n]
+  ;; TODO: Implement via API
+  nil)
+
+(defn kill-ring-length
+  "Get number of items in kill ring (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  0)
+
+(defn clear-kill-ring
+  "Clear the kill ring (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn yank-pop
+  "Replace last yank with previous kill (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn kill-line
+  "Kill to end of line (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn kill-word
+  "Kill word forward (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn backward-kill-word
+  "Kill word backward (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn copy-region-as-kill
+  "Copy region to kill ring without deleting (stub for tests)."
+  [start end]
+  ;; TODO: Implement via API
+  nil)
+
+;; =============================================================================
+;; Buffer Primitives (stubs for tests - Issue #100)
+;; =============================================================================
+
+(defn buffer-live-p
+  "Check if buffer is alive (stub for tests).
+  Returns true if buffer exists and hasn't been killed."
+  [buffer-id]
+  ;; TODO: Implement via API
+  (some? (get-in @rfdb/app-db [:buffers buffer-id])))
+
+(defn get-buffer-create
+  "Get or create buffer with NAME (stub for tests).
+  Returns existing buffer if found, creates new one otherwise."
+  [name]
+  ;; TODO: Implement via API
+  (if-let [buf (->> (get-in @rfdb/app-db [:buffers])
+                    vals
+                    (filter #(= name (:name %)))
+                    first)]
+    (:id buf)
+    (create-buffer name)))
+
+(defn buffer-modified-p
+  "Check if current buffer has been modified (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  (let [buf-id (current-buffer)]
+    (get-in @rfdb/app-db [:buffers buf-id :modified] false)))
+
+(defn set-buffer-modified-p
+  "Set buffer modification flag (stub for tests)."
+  [flag]
+  ;; TODO: Implement via API
+  nil)
+
+(defn widen
+  "Remove narrowing restriction (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn save-restriction
+  "Execute body with saved narrowing state (stub for tests).
+  Takes a function to execute."
+  [body-fn]
+  ;; TODO: Implement properly - for now just call the function
+  (body-fn))
+
+(defn set-buffer
+  "Make BUFFER-OR-NAME the current buffer (stub for tests).
+  Does not display the buffer."
+  [buffer-or-name]
+  ;; TODO: Implement via API
+  nil)
+
+(defn rename-buffer
+  "Rename current buffer to NEWNAME (stub for tests)."
+  [newname]
+  ;; TODO: Implement via API
+  nil)
+
+(defn other-buffer
+  "Return most recently used buffer other than current (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn buffer-disable-undo
+  "Disable undo recording for current buffer (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn buffer-enable-undo
+  "Enable undo recording for current buffer (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn buffer-local-value
+  "Get value of VARIABLE in BUFFER (stub for tests)."
+  [variable buffer-id]
+  ;; TODO: Implement via API
+  nil)
+
+(defn make-local-variable
+  "Make VARIABLE buffer-local (stub for tests)."
+  [variable]
+  ;; TODO: Implement via API
+  nil)
+
+(defn setq
+  "Set VARIABLE to VALUE (stub for tests).
+  Named setq to avoid conflict with cljs.core/set."
+  [variable value]
+  ;; TODO: Implement via API
+  nil)
+
+(defn kill-all-local-variables
+  "Kill all buffer-local variables (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn point-min
+  "Return minimum point in current buffer (stub for tests).
+  With narrowing, returns beginning of narrowed region."
+  []
+  ;; TODO: Implement via API
+  0)
+
+(defn point-max
+  "Return maximum point in current buffer (stub for tests).
+  With narrowing, returns end of narrowed region."
+  []
+  ;; TODO: Implement via API
+  (let [buf-id (current-buffer)]
+    (count (buffer-text buf-id))))
+
+;; =============================================================================
+;; Undo helpers (stubs for tests - Issue #103)
+;; =============================================================================
+
+(defn with-undo-group
+  "Execute body-fn with all edits grouped for atomic undo (stub for tests)."
+  [body-fn]
+  ;; TODO: Implement via API
+  (body-fn))
+
+(defn undo-history-length
+  "Get number of entries in undo history (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  0)
+
+(defn undo-in-region
+  "Undo changes within active region only (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn redo
+  "Redo last undone change (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+;; =============================================================================
+;; Editing Primitives (stubs for tests - Issue #105)
+;; =============================================================================
+
+(defn bobp
+  "Check if point is at beginning of buffer (stub for tests)."
+  []
+  (let [buf-id (current-buffer)]
+    (= 0 (point buf-id))))
+
+(defn eobp
+  "Check if point is at end of buffer (stub for tests)."
+  []
+  (let [buf-id (current-buffer)]
+    (= (point buf-id) (count (buffer-text buf-id)))))
+
+(defn char-after
+  "Get character after point (stub for tests).
+  Returns nil at end of buffer."
+  ([]
+   (let [buf-id (current-buffer)]
+     (char-after (point buf-id))))
+  ([pos]
+   (let [buf-id (current-buffer)
+         text (buffer-text buf-id)]
+     (when (< pos (count text))
+       (str (nth text pos))))))
+
+(defn char-before
+  "Get character before point (stub for tests).
+  Returns nil at beginning of buffer."
+  ([]
+   (let [buf-id (current-buffer)]
+     (char-before (point buf-id))))
+  ([pos]
+   (let [buf-id (current-buffer)
+         text (buffer-text buf-id)]
+     (when (> pos 0)
+       (str (nth text (dec pos)))))))
+
+(defn bolp
+  "Check if point is at beginning of line (stub for tests)."
+  []
+  ;; TODO: Implement properly
+  (or (bobp)
+      (= "\n" (char-before))))
+
+(defn eolp
+  "Check if point is at end of line (stub for tests)."
+  []
+  ;; TODO: Implement properly
+  (or (eobp)
+      (= "\n" (char-after))))
+
+(defn delete-and-extract-region
+  "Delete region and return deleted text (stub for tests)."
+  [start end]
+  (let [buf-id (current-buffer)
+        text (buffer-text buf-id)
+        start' (min start end)
+        end' (max start end)
+        deleted (subs text start' end')]
+    (delete-region start end)
+    deleted))
+
+(defn buffer-substring-no-properties
+  "Get buffer substring without text properties (stub for tests)."
+  [start end]
+  ;; TODO: Implement with actual property stripping
+  (let [buf-id (current-buffer)
+        text (buffer-text buf-id)]
+    (subs text (min start end) (max start end))))
+
+(defn region-beginning
+  "Return beginning of region (smaller of point and mark) (stub for tests)."
+  []
+  (let [buf-id (current-buffer)
+        pt (point buf-id)
+        mk (or (mark) pt)]
+    (min pt mk)))
+
+(defn region-end
+  "Return end of region (larger of point and mark) (stub for tests)."
+  []
+  (let [buf-id (current-buffer)
+        pt (point buf-id)
+        mk (or (mark) pt)]
+    (max pt mk)))
+
+(defn line-beginning-position
+  "Return position of beginning of current line (stub for tests)."
+  []
+  (let [buf-id (current-buffer)
+        text (buffer-text buf-id)
+        pos (point buf-id)]
+    (loop [p pos]
+      (cond
+        (<= p 0) 0
+        (= "\n" (str (nth text (dec p)))) p
+        :else (recur (dec p))))))
+
+(defn line-end-position
+  "Return position of end of current line (stub for tests)."
+  []
+  (let [buf-id (current-buffer)
+        text (buffer-text buf-id)
+        pos (point buf-id)
+        len (count text)]
+    (loop [p pos]
+      (cond
+        (>= p len) len
+        (= "\n" (str (nth text p))) p
+        :else (recur (inc p))))))
+
+(defn buffer-substring
+  "Get text between START and END (stub for tests)."
+  [start end]
+  (let [buf-id (current-buffer)
+        text (buffer-text buf-id)]
+    (subs text (min start end) (max start end))))
+
+;; =============================================================================
+;; SCI Integration helpers (stubs for tests - Issue #106)
+;; =============================================================================
+
+(defn set-prefix-arg
+  "Set the prefix argument for the next command (stub for tests)."
+  [arg]
+  ;; TODO: Implement via API
+  nil)
+
+(defn sci-namespace-keys
+  "Get list of symbols exposed in SCI namespace (stub for tests)."
+  []
+  ;; Return the known set from lexicon.lisp/sci-namespace
+  '#{point point-min point-max goto-char
+     buffer-string buffer-substring insert delete-region
+     buffer-name buffer-size current-buffer
+     message forward-line beginning-of-line end-of-line
+     search-forward search-backward
+     set-major-mode enable-minor-mode
+     kill-region yank set-mark mark})
+
+;; =============================================================================
+;; Isearch helpers (stubs for tests - Issue #107)
+;; =============================================================================
+
+(defn isearch-forward
+  "Start incremental search forward (stub for tests)."
+  [string]
+  ;; TODO: Implement via API
+  nil)
+
+(defn isearch-forward-repeat
+  "Continue incremental search forward (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn isearch-backward
+  "Start incremental search backward (stub for tests)."
+  [string]
+  ;; TODO: Implement via API
+  nil)
+
+(defn query-replace
+  "Query replace STRING with REPLACEMENT (stub for tests).
+  Mode can be :all, :first, or interactive."
+  [string replacement mode]
+  ;; TODO: Implement via API
+  nil)
+
+;; =============================================================================
+;; Minibuffer/Completion helpers (stubs for tests - Issue #108)
+;; =============================================================================
+
+(defn completion-metadata
+  "Get completion metadata for COMMAND (stub for tests)."
+  [command]
+  ;; TODO: Implement via API
+  {:category :command})
+
+(defn all-completions
+  "Get all completions for PREFIX from COLLECTION (stub for tests)."
+  [prefix collection]
+  (filter #(clojure.string/starts-with? % prefix) collection))
+
+;; =============================================================================
+;; Window helpers (stubs for tests - Issue #110)
+;; =============================================================================
+
+(defn split-window-vertically
+  "Split window top/bottom (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn delete-window
+  "Delete current window (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn window-count
+  "Get number of windows (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  1)
+
+(defn other-window
+  "Select next window (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn current-window-configuration
+  "Get current window configuration (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  {:windows []})
+
+;; =============================================================================
+;; File I/O helpers (stubs for tests - Issue #111)
+;; =============================================================================
+
+(defn find-file
+  "Open FILE in buffer (stub for tests)."
+  [file]
+  ;; TODO: Implement via API
+  1)
+
+(defn file-exists-p
+  "Check if FILE exists (stub for tests)."
+  [file]
+  ;; TODO: Implement via API - this is a real check
+  (try
+    (let [fs (js/require "fs")]
+      (.existsSync fs file))
+    (catch :default _ false)))
+
+(defn file-directory-p
+  "Check if FILE is a directory (stub for tests)."
+  [file]
+  ;; TODO: Implement via API - this is a real check
+  (try
+    (let [fs (js/require "fs")]
+      (and (.existsSync fs file)
+           (.isDirectory (.statSync fs file))))
+    (catch :default _ false)))
+
+(defn file-attributes
+  "Get FILE attributes (stub for tests)."
+  [file]
+  ;; TODO: Implement via API
+  {})
+
+(defn buffer-file-name
+  "Get filename associated with current buffer (stub for tests)."
+  []
+  ;; TODO: Implement via API
+  nil)
+
+(defn directory-files
+  "Get list of files in DIRECTORY (stub for tests)."
+  [directory]
+  ;; TODO: Implement via API
+  (try
+    (let [fs (js/require "fs")]
+      (into [] (.readdirSync fs directory)))
+    (catch :default _ [])))
+
+(defn buffer-name-from-id
+  "Get buffer name from ID (stub for tests)."
+  [buffer-id]
+  (get-in @rfdb/app-db [:buffers buffer-id :name]))
+
+;; =============================================================================
 ;; Macros for with-test-buffer
 ;; =============================================================================
 ;; Macro with-test-buffer is defined in helpers.clj (required via :require-macros)
