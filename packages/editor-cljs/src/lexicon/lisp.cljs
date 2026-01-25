@@ -27,6 +27,39 @@
 (declare goto-char line-beginning-position line-end-position current-buffer mark delete-region)
 
 ;; =============================================================================
+;; Global Variable Storage (for setq/symbol-value)
+;; =============================================================================
+
+;; Atom storing global Lisp variables set via setq
+(defonce global-vars
+  (atom {'*prefix-arg* nil
+         '*last-command* nil
+         '*this-command* nil}))
+
+(defn setq
+  "Set variable VAR to VALUE.
+
+  In our implementation, this stores the value in a global atom.
+  Multiple var/value pairs can be provided.
+
+  Usage: (setq x 5)
+         (setq x 5 y 10)
+  Returns: Last value set"
+  [& args]
+  (let [pairs (partition 2 args)]
+    (doseq [[var val] pairs]
+      (swap! global-vars assoc var val))
+    (second (last pairs))))
+
+(defn symbol-value
+  "Return the value of SYMBOL.
+
+  Usage: (symbol-value 'x)
+  Returns: Value or nil"
+  [sym]
+  (get @global-vars sym))
+
+;; =============================================================================
 ;; Buffer Query Functions (Read-Only)
 ;; =============================================================================
 
@@ -328,14 +361,14 @@
          clamped (max 0 (min (dec total) target))
          ;; Calculate how many lines we couldn't move
          shortfall (abs (- target clamped))]
-     ;; Move to beginning of target line
+     ;; Move to beginning of target line using goto-char for proper position sync
      (let [db @rfdb/app-db
            active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
            buffer-id (:buffer-id active-window)
            buffer (get-in db [:buffers buffer-id])
            new-pos (buf/line-col-to-point buffer clamped 0)]
        (when new-pos
-         (rf/dispatch-sync [:cursor/set-position {:line clamped :column 0}])))
+         (goto-char new-pos)))
      shortfall)))
 
 (defn beginning-of-line
@@ -1944,4 +1977,8 @@
    'marker-insertion-type marker-insertion-type
    'set-marker-insertion-type set-marker-insertion-type
    'markerp markerp
-   'insert-before-markers insert-before-markers})
+   'insert-before-markers insert-before-markers
+   ;; Global variables (#106)
+   'setq setq
+   'symbol-value symbol-value
+   '*prefix-arg* (fn [] (get @global-vars '*prefix-arg*))})
