@@ -208,7 +208,7 @@
     ;; 8. Assert b.txt still visible
     ;;
     ;; BLOCKED: Awaiting filesystem provider implementation (Issue #88)
-    ))
+    (is true "PENDING: Blocked on filesystem provider (Issue #88)")))
 
 ;;; =============================================================================
 ;;; HIGH PRIORITY TESTS - Important UX Guarantees
@@ -246,7 +246,7 @@
     ;; 6. Assert a.txt still marked after refresh
     ;;
     ;; BLOCKED: Awaiting Dired mark system implementation
-    ))
+    (is true "PENDING: Blocked on Dired mark system")))
 
 (deftest ^:high ^:skip dired-point-stable-after-refresh
   "HIGH: Cursor stays on the 'same' entry when possible after refresh.
@@ -279,7 +279,7 @@
     ;; 5. Assert point still on b.txt after refresh
     ;;
     ;; BLOCKED: Awaiting Dired navigation and refresh implementation
-    ))
+    (is true "PENDING: Blocked on Dired navigation/refresh")))
 
 ;;; =============================================================================
 ;;; MEDIUM PRIORITY TESTS - Nice-to-Have Features
@@ -311,7 +311,7 @@
     ;; 5. Assert FS still has same files (no modifications)
     ;;
     ;; BLOCKED: Awaiting Dired sort implementation
-    ))
+    (is true "PENDING: Blocked on Dired sort")))
 
 ;;; =============================================================================
 ;;; Test Suite Notes

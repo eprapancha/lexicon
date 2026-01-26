@@ -3,7 +3,8 @@
  :kaocha/color? true
  :kaocha/fail-fast? false
 
- :kaocha/plugins [:kaocha.plugin/junit-xml]
+ :kaocha/plugins [:kaocha.plugin/junit-xml
+                  :kaocha.plugin/filter]
 
  :kaocha.plugin.junit-xml/target-file "test-results/junit.xml"
 
