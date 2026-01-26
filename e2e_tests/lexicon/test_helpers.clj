@@ -402,24 +402,6 @@
     (e/js-execute *driver* script))
   (Thread/sleep 20))
 
-(defn dispatch-command
-  "Execute a command directly via re-frame dispatch (workaround for blocked browser shortcuts like C-w)"
-  [command-name]
-  (let [cmd-name (if (keyword? command-name) (name command-name) command-name)
-        script (str "
-    if (window.lexiconDispatch) {
-      const cmd = cljs.core.PersistentVector.fromArray([
-        cljs.core.keyword('execute-command'),
-        cljs.core.keyword('" cmd-name "')
-      ], true);
-      window.lexiconDispatch(cmd);
-    } else {
-      console.error('lexiconDispatch not found on window');
-    }
-  ")]
-    (e/js-execute *driver* script))
-  (Thread/sleep 100))
-
 (defn execute-command
   "Execute a command via M-x (e.g., 'line-number-mode')"
   [command-name]

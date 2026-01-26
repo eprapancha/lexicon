@@ -28,9 +28,8 @@
     (h/type-text "World")
     (Thread/sleep 100)
 
-    ;; Move to beginning of first line
-    (h/press-ctrl "a")
-    (Thread/sleep 50)
+    ;; Move to beginning of buffer via M-x
+    (h/execute-command "beginning-of-buffer")
 
     ;; Kill to end of line
     (h/press-ctrl "k")
@@ -52,8 +51,7 @@
     (Thread/sleep 100)
 
     ;; Move to end of first line (just before newline)
-    (h/press-ctrl "a")
-    (Thread/sleep 30)
+    (h/execute-command "beginning-of-buffer")
     (h/press-ctrl "e")  ; End of line - should be after "Hello"
     (Thread/sleep 50)
 
@@ -103,17 +101,18 @@
     (h/type-text "Hello ")
     (Thread/sleep 50)
 
-    ;; Select and kill "Hello "
+    ;; Select and kill "Hello " using mark+point
     (h/press-ctrl "a")  ; Go to beginning
     (Thread/sleep 30)
-    ;; Select "Hello " using shift+arrows
+    (h/set-mark)  ; C-SPC to set mark
+    (Thread/sleep 30)
+    ;; Move forward 6 chars to select "Hello "
     (dotimes [_ 6]
-      (h/press-shift "right")
+      (h/press-ctrl "f")
       (Thread/sleep 20))
     (Thread/sleep 50)
-    ;; Kill selection
-    (h/press-ctrl "w")
-    (Thread/sleep 100)
+    ;; Kill region via M-x (C-w is blocked by browser)
+    (h/execute-command "kill-region")
 
     (is (= "World" (h/get-buffer-text*)) "Selection was killed")
 
@@ -138,7 +137,7 @@
     (h/type-text "Hello Beautiful World")
     (Thread/sleep 50)
 
-    ;; Go to beginning and move forward
+    ;; Go to beginning and move forward to "Beautiful"
     (h/press-ctrl "a")
     (Thread/sleep 30)
     (dotimes [_ 6]
@@ -146,18 +145,19 @@
       (Thread/sleep 20))
     (Thread/sleep 50)
 
-    ;; Select "Beautiful " using shift+arrows
+    ;; Set mark and select "Beautiful " using mark+point
+    (h/set-mark)
+    (Thread/sleep 30)
     (dotimes [_ 10]
-      (h/press-shift "right")
+      (h/press-ctrl "f")
       (Thread/sleep 20))
     (Thread/sleep 50)
 
-    ;; Kill selection
-    (h/press-ctrl "w")
-    (Thread/sleep 100)
+    ;; Kill region via M-x (C-w is blocked by browser)
+    (h/execute-command "kill-region")
 
     (is (= "Hello World" (h/get-buffer-text*))
-        "Ctrl+W should kill selected region")
+        "kill-region should kill selected region")
     (is (= "Beautiful " (h/get-current-kill*))
         "Killed region should be on kill ring")))
 
@@ -173,17 +173,19 @@
     (h/type-text "Hello World")
     (Thread/sleep 50)
 
-    ;; Go to beginning
+    ;; Go to beginning and set mark
     (h/press-ctrl "a")
     (Thread/sleep 30)
+    (h/set-mark)
+    (Thread/sleep 30)
 
-    ;; Select "Hello" using shift+arrows
+    ;; Select "Hello" using mark+point
     (dotimes [_ 5]
-      (h/press-shift "right")
+      (h/press-ctrl "f")
       (Thread/sleep 20))
     (Thread/sleep 50)
 
-    ;; Copy selection
+    ;; Copy selection (M-w)
     (h/press-meta "w")
     (Thread/sleep 100)
 
@@ -254,9 +256,8 @@
     (h/type-text "Line Three")
     (Thread/sleep 100)
 
-    ;; Go to beginning
-    (h/press-ctrl "a")
-    (Thread/sleep 50)
+    ;; Go to beginning of buffer
+    (h/execute-command "beginning-of-buffer")
 
     ;; Kill first line
     (h/press-ctrl "k")

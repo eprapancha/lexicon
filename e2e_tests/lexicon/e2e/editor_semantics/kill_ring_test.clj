@@ -26,9 +26,8 @@
     (Thread/sleep 20)
     (h/press-ctrl "e")
     (Thread/sleep 20)
-    ;; C-w is blocked by browser (close tab shortcut), use direct command dispatch
-    (h/dispatch-command :kill-region)
-    (Thread/sleep 100)
+    ;; C-w is blocked by browser (close tab shortcut), use M-x
+    (h/execute-command "kill-region")
 
     ;; Buffer should be empty after kill
     (let [text-after-kill (h/get-buffer-text*)]
