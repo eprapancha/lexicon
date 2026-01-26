@@ -15,7 +15,7 @@
 ;; User-Visible Code Typing
 ;; =============================================================================
 
-(deftest ^:skip test-user-types-code-with-definitions
+(deftest test-user-types-code-with-definitions
   (testing "User can type code with function definitions"
     (h/setup-test*)
     (h/clear-buffer)

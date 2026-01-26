@@ -14,7 +14,7 @@
 ;; User-Visible Remote Path Typing
 ;; =============================================================================
 
-(deftest ^:skip test-user-types-remote-path
+(deftest test-user-types-remote-path
   (testing "User can type remote path format"
     (h/setup-test*)
     (h/clear-buffer)

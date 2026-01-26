@@ -14,7 +14,7 @@
 ;; User-Visible Code Typing for xref Context
 ;; =============================================================================
 
-(deftest ^:skip test-user-types-code-with-definitions
+(deftest test-user-types-code-with-definitions
   (testing "User can type code with definitions for xref"
     (h/setup-test*)
     (h/clear-buffer)

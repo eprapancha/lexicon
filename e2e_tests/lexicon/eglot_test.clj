@@ -13,7 +13,7 @@
 ;; User-Visible Code Typing
 ;; =============================================================================
 
-(deftest ^:skip test-user-types-code-for-lsp
+(deftest test-user-types-code-for-lsp
   (testing "User can type code that LSP would analyze"
     (h/setup-test*)
     (h/clear-buffer)
@@ -27,7 +27,7 @@
            (h/get-buffer-text*))
         "User can type code")))
 
-(deftest ^:skip test-user-types-partial-form
+(deftest test-user-types-partial-form
   (testing "User can type partial form (completion context)"
     (h/setup-test*)
     (h/clear-buffer)

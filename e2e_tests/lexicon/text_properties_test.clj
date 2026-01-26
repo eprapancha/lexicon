@@ -13,7 +13,7 @@
 ;; User-Visible Text Property Effects
 ;; =============================================================================
 
-(deftest ^:skip test-typing-works-normally
+(deftest test-typing-works-normally
   (testing "Basic text typing works as expected"
     (h/setup-test*)
     (h/clear-buffer)
@@ -24,7 +24,7 @@
     (is (= "Hello World" (h/get-buffer-text*))
         "User can type text normally")))
 
-(deftest ^:skip test-delete-and-retype
+(deftest test-delete-and-retype
   (testing "Text can be deleted and retyped"
     (h/setup-test*)
     (h/clear-buffer)
