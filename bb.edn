@@ -206,6 +206,25 @@
                          [(re-pattern "setup-eval") "uses setup-eval (should use keyboard simulation)"]
                          [(re-pattern "def \\^:dynamic \\*driver\\*") "defines own *driver* (use h/with-driver)"]
                          [(re-pattern "with-driver-and-messages") "uses old fixture (use h/with-driver)"]]
+            ;; Check for enabled placeholder tests (deftest without ^:skip that has (is true "PENDING))
+            check-placeholder-tests
+            (fn [content]
+              (let [;; Split content into deftest blocks
+                    blocks (str/split content (re-pattern "(?=\\(deftest )"))
+                    violations (atom [])
+                    skip-pattern (re-pattern "\\(deftest \\^:skip")
+                    pending-pattern (re-pattern "\\(is true \"PENDING")
+                    name-pattern (re-pattern "\\(deftest\\s+([a-zA-Z0-9_-]+)")]
+                (doseq [block blocks]
+                  (when (str/starts-with? (str/trim block) "(deftest ")
+                    ;; Check if this deftest does NOT have ^:skip
+                    (when-not (re-find skip-pattern block)
+                      ;; Check if it contains placeholder assertion
+                      (when (re-find pending-pattern block)
+                        ;; Extract test name
+                        (when-let [match (re-find name-pattern block)]
+                          (swap! violations conj (second match)))))))
+                (deref violations)))
             test-files (fs/glob "e2e_tests" "**/*.clj")
             violations (atom [])]
         (doseq [file test-files]
@@ -217,6 +236,10 @@
                 (doseq [[pat desc] bad-patterns]
                   (when (re-find pat content)
                     (swap! file-violations conj desc)))
+                ;; Check for enabled placeholder tests
+                (let [placeholder-tests (check-placeholder-tests content)]
+                  (doseq [test-name placeholder-tests]
+                    (swap! file-violations conj (str "test '" test-name "' has placeholder (is true \"PENDING...\") but no ^:skip"))))
                 (when (seq (deref file-violations))
                   (swap! violations conj {:file (str file)
                                          :issues (deref file-violations)}))))))
