@@ -62,34 +62,34 @@
 (deftest test-before-change-functions-on-typing
   (testing "before-change-functions fires when user types"
     ;; Hook registration and invocation is Lisp API
-    (is true "before-change-functions tested via unit tests")))
+    (is false "before-change-functions tested via unit tests")))
 
 (deftest test-after-change-functions-on-typing
   (testing "after-change-functions fires when user types"
     ;; Hook registration and invocation is Lisp API
-    (is true "after-change-functions tested via unit tests")))
+    (is false "after-change-functions tested via unit tests")))
 
 (deftest test-before-change-functions-on-backspace
   (testing "before-change-functions fires when user deletes with backspace"
     ;; Hook registration and invocation is Lisp API
-    (is true "before-change-functions on delete tested via unit tests")))
+    (is false "before-change-functions on delete tested via unit tests")))
 
 (deftest test-hook-receives-correct-positions
   (testing "after-change-functions receives correct beg/end positions"
     ;; Hook arguments are Lisp API
-    (is true "Hook positions tested via unit tests")))
+    (is false "Hook positions tested via unit tests")))
 
 (deftest test-add-hook-removes-duplicates
   (testing "add-hook does not add duplicate functions"
     ;; add-hook is Lisp API
-    (is true "add-hook deduplication tested via unit tests")))
+    (is false "add-hook deduplication tested via unit tests")))
 
 (deftest test-remove-hook
   (testing "remove-hook removes function from hook"
     ;; remove-hook is Lisp API
-    (is true "remove-hook tested via unit tests")))
+    (is false "remove-hook tested via unit tests")))
 
 (deftest test-run-hooks
   (testing "run-hooks executes all hook functions"
     ;; run-hooks is Lisp API
-    (is true "run-hooks tested via unit tests")))
+    (is false "run-hooks tested via unit tests")))

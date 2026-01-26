@@ -32,7 +32,7 @@
 (deftest test-eldoc-display
   (testing "eldoc displays function signature"
     ;; eldoc-documentation-function is a Lisp function
-    (is true "eldoc tested via unit tests")))
+    (is false "eldoc tested via unit tests")))
 
 ;; =============================================================================
 ;; Apropos - Placeholders for Unit Tests
@@ -41,7 +41,7 @@
 (deftest test-apropos-search
   (testing "apropos-command finds matches"
     ;; apropos-command is a Lisp function
-    (is true "apropos tested via unit tests")))
+    (is false "apropos tested via unit tests")))
 
 ;; =============================================================================
 ;; Describe Functions - Placeholders for Unit Tests
@@ -50,9 +50,9 @@
 (deftest test-describe-function
   (testing "describe-function creates help buffer"
     ;; describe-function is a Lisp function
-    (is true "describe-function tested via unit tests")))
+    (is false "describe-function tested via unit tests")))
 
 (deftest test-describe-key
   (testing "describe-key shows command for key"
     ;; describe-key is a Lisp function
-    (is true "describe-key tested via unit tests")))
+    (is false "describe-key tested via unit tests")))

@@ -26,7 +26,7 @@
     (Thread/sleep 200)
 
     ;; Should attempt to show diff
-    (is true "VC diff accessed via keyboard")))
+    (is false "VC diff accessed via keyboard")))
 
 (deftest test-user-opens-vc-log
   (testing "User can open VC log via keyboard"
@@ -40,7 +40,7 @@
     (Thread/sleep 200)
 
     ;; Should attempt to show log
-    (is true "VC log accessed via keyboard")))
+    (is false "VC log accessed via keyboard")))
 
 ;; =============================================================================
 ;; VC State Detection - Placeholders for Unit Tests
@@ -49,7 +49,7 @@
 (deftest test-vc-detects-git-repo
   (testing "vc-backend detects Git"
     ;; vc-backend is a Lisp function
-    (is true "vc-backend tested via unit tests")))
+    (is false "vc-backend tested via unit tests")))
 
 ;; =============================================================================
 ;; VC Commands - Placeholders for Unit Tests
@@ -58,17 +58,17 @@
 (deftest test-vc-next-action
   (testing "vc-next-action on modified file"
     ;; vc-next-action is a Lisp function
-    (is true "vc-next-action tested via unit tests")))
+    (is false "vc-next-action tested via unit tests")))
 
 (deftest test-vc-diff
   (testing "vc-diff shows changes"
     ;; vc-diff is a Lisp function
-    (is true "vc-diff tested via unit tests")))
+    (is false "vc-diff tested via unit tests")))
 
 (deftest test-vc-print-log
   (testing "vc-print-log shows history"
     ;; vc-print-log is a Lisp function
-    (is true "vc-print-log tested via unit tests")))
+    (is false "vc-print-log tested via unit tests")))
 
 ;; =============================================================================
 ;; Modeline Indicator - Placeholders for Unit Tests
@@ -77,7 +77,7 @@
 (deftest test-vc-modeline-indicator
   (testing "modeline shows VC info"
     ;; vc-mode-line is a Lisp feature
-    (is true "vc modeline tested via unit tests")))
+    (is false "vc modeline tested via unit tests")))
 
 ;; =============================================================================
 ;; Git-Specific - Placeholders for Unit Tests
@@ -86,9 +86,9 @@
 (deftest test-vc-git-stash
   (testing "stash operations available"
     ;; vc-git-stash is a Lisp function
-    (is true "stash tested via unit tests")))
+    (is false "stash tested via unit tests")))
 
 (deftest test-vc-git-branch
   (testing "branch operations available"
     ;; vc-git-branch is a Lisp function
-    (is true "branch tested via unit tests")))
+    (is false "branch tested via unit tests")))

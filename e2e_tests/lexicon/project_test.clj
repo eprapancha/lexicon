@@ -35,7 +35,7 @@
 (deftest test-project-root-detection
   (testing "git repo detected as project"
     ;; project-root is a Lisp function
-    (is true "project-root tested via unit tests")))
+    (is false "project-root tested via unit tests")))
 
 ;; =============================================================================
 ;; Project Find File - Placeholders for Unit Tests
@@ -44,7 +44,7 @@
 (deftest test-project-find-file
   (testing "project-find-file lists project files"
     ;; project-find-file is a Lisp function
-    (is true "project-find-file tested via unit tests")))
+    (is false "project-find-file tested via unit tests")))
 
 ;; =============================================================================
 ;; Xref - Placeholders for Unit Tests
@@ -53,9 +53,9 @@
 (deftest test-xref-find-definitions
   (testing "xref finds definition"
     ;; xref-find-definitions is a Lisp function
-    (is true "xref-find-definitions tested via unit tests")))
+    (is false "xref-find-definitions tested via unit tests")))
 
 (deftest test-xref-find-references
   (testing "xref finds references"
     ;; xref-find-references is a Lisp function
-    (is true "xref-find-references tested via unit tests")))
+    (is false "xref-find-references tested via unit tests")))

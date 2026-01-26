@@ -36,12 +36,12 @@
 (deftest test-compile-command
   (testing "compile creates compilation buffer"
     ;; compile is a Lisp function
-    (is true "compile tested via unit tests")))
+    (is false "compile tested via unit tests")))
 
 (deftest test-next-error-navigation
   (testing "next-error jumps to error location"
     ;; next-error is a Lisp function
-    (is true "next-error tested via unit tests")))
+    (is false "next-error tested via unit tests")))
 
 ;; =============================================================================
 ;; Flymake - Placeholders for Unit Tests
@@ -50,7 +50,7 @@
 (deftest test-flymake-diagnostics
   (testing "flymake highlights errors"
     ;; flymake is a Lisp function
-    (is true "flymake tested via unit tests")))
+    (is false "flymake tested via unit tests")))
 
 ;; =============================================================================
 ;; Imenu - Placeholders for Unit Tests
@@ -59,4 +59,4 @@
 (deftest test-imenu-index
   (testing "imenu lists definitions"
     ;; imenu is a Lisp function
-    (is true "imenu tested via unit tests")))
+    (is false "imenu tested via unit tests")))

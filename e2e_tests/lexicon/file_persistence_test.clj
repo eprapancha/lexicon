@@ -37,7 +37,7 @@
 (deftest test-recentf-tracking
   (testing "file added to recent list"
     ;; recentf is a Lisp feature
-    (is true "recentf tested via unit tests")))
+    (is false "recentf tested via unit tests")))
 
 ;; =============================================================================
 ;; Saveplace - Placeholders for Unit Tests
@@ -46,7 +46,7 @@
 (deftest test-saveplace-restore
   (testing "position saved and restored"
     ;; saveplace is a Lisp feature
-    (is true "saveplace tested via unit tests")))
+    (is false "saveplace tested via unit tests")))
 
 ;; =============================================================================
 ;; Auto-Revert - Placeholders for Unit Tests
@@ -55,4 +55,4 @@
 (deftest test-auto-revert-on-change
   (testing "auto-revert detects change"
     ;; auto-revert is a Lisp feature
-    (is true "auto-revert tested via unit tests")))
+    (is false "auto-revert tested via unit tests")))

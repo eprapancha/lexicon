@@ -34,12 +34,12 @@
 (deftest test-tramp-file-name-parsing
   (testing "tramp-dissect-file-name parses components"
     ;; tramp-dissect-file-name is a Lisp function
-    (is true "tramp parsing tested via unit tests")))
+    (is false "tramp parsing tested via unit tests")))
 
 (deftest test-tramp-file-detection
   (testing "tramp-tramp-file-p detects remote paths"
     ;; tramp-tramp-file-p is a Lisp function
-    (is true "tramp detection tested via unit tests")))
+    (is false "tramp detection tested via unit tests")))
 
 ;; =============================================================================
 ;; Tramp Connection Methods - Placeholders for Unit Tests
@@ -48,7 +48,7 @@
 (deftest test-tramp-connection-methods
   (testing "tramp-methods contains ssh, scp, sudo"
     ;; tramp-methods is a Lisp variable
-    (is true "tramp methods tested via unit tests")))
+    (is false "tramp methods tested via unit tests")))
 
 ;; =============================================================================
 ;; Tramp Remote Operations - Placeholders for Unit Tests
@@ -57,4 +57,4 @@
 (deftest test-tramp-remote-file-operations
   (testing "file operations work on tramp paths"
     ;; tramp file operations are Lisp features
-    (is true "tramp file ops tested via unit tests")))
+    (is false "tramp file ops tested via unit tests")))

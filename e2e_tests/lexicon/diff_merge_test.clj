@@ -37,12 +37,12 @@
 (deftest test-diff-mode-display
   (testing "diff hunks highlighted"
     ;; diff-mode is a Lisp function
-    (is true "diff-mode tested via unit tests")))
+    (is false "diff-mode tested via unit tests")))
 
 (deftest test-diff-navigation
   (testing "diff-hunk-next moves to next"
     ;; diff-hunk-next is a Lisp function
-    (is true "diff navigation tested via unit tests")))
+    (is false "diff navigation tested via unit tests")))
 
 ;; =============================================================================
 ;; Ediff - Placeholders for Unit Tests
@@ -51,7 +51,7 @@
 (deftest test-ediff-visual
   (testing "ediff-buffers works"
     ;; ediff is a Lisp function
-    (is true "ediff tested via unit tests")))
+    (is false "ediff tested via unit tests")))
 
 ;; =============================================================================
 ;; Smerge - Placeholders for Unit Tests
@@ -60,4 +60,4 @@
 (deftest test-smerge-resolve
   (testing "smerge-keep-mine works"
     ;; smerge is a Lisp function
-    (is true "smerge tested via unit tests")))
+    (is false "smerge tested via unit tests")))

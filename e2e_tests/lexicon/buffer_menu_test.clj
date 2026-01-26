@@ -25,7 +25,7 @@
 
     ;; Should show some kind of buffer interface
     ;; The exact behavior depends on implementation
-    (is true "Buffer list opened via keyboard")))
+    (is false "Buffer list opened via keyboard")))
 
 ;; =============================================================================
 ;; List Buffers - Placeholders for Unit Tests
@@ -34,7 +34,7 @@
 (deftest test-list-buffers-shows-all
   (testing "list-buffers creates buffer list"
     ;; list-buffers is a Lisp function
-    (is true "list-buffers tested via unit tests")))
+    (is false "list-buffers tested via unit tests")))
 
 ;; =============================================================================
 ;; Ibuffer - Placeholders for Unit Tests
@@ -43,7 +43,7 @@
 (deftest test-ibuffer-filtering
   (testing "ibuffer filter by mode"
     ;; ibuffer is a Lisp function
-    (is true "ibuffer tested via unit tests")))
+    (is false "ibuffer tested via unit tests")))
 
 ;; =============================================================================
 ;; Uniquify - Placeholders for Unit Tests
@@ -52,4 +52,4 @@
 (deftest test-uniquify-buffer-names
   (testing "same-name files get unique names"
     ;; uniquify is a Lisp feature
-    (is true "uniquify tested via unit tests")))
+    (is false "uniquify tested via unit tests")))

@@ -46,7 +46,7 @@
 (deftest test-show-paren-mode
   (testing "show-paren-mode highlights matching parens"
     ;; show-paren-mode is a Lisp function
-    (is true "show-paren-mode tested via unit tests")))
+    (is false "show-paren-mode tested via unit tests")))
 
 ;; =============================================================================
 ;; Hl-Line Mode - Placeholders for Unit Tests
@@ -55,7 +55,7 @@
 (deftest test-hl-line-mode
   (testing "hl-line-mode highlights current line"
     ;; hl-line-mode is a Lisp function
-    (is true "hl-line-mode tested via unit tests")))
+    (is false "hl-line-mode tested via unit tests")))
 
 ;; =============================================================================
 ;; Whitespace Mode - Placeholders for Unit Tests
@@ -64,7 +64,7 @@
 (deftest test-whitespace-mode
   (testing "whitespace-mode shows spaces/tabs"
     ;; whitespace-mode is a Lisp function
-    (is true "whitespace-mode tested via unit tests")))
+    (is false "whitespace-mode tested via unit tests")))
 
 ;; =============================================================================
 ;; Line Numbers - Placeholders for Unit Tests
@@ -73,4 +73,4 @@
 (deftest test-line-numbers
   (testing "display-line-numbers-mode works"
     ;; display-line-numbers-mode is a Lisp function
-    (is true "display-line-numbers-mode tested via unit tests")))
+    (is false "display-line-numbers-mode tested via unit tests")))

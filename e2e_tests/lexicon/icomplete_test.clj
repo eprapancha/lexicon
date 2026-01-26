@@ -67,19 +67,19 @@
 (deftest test-icomplete-mode-activation
   (testing "icomplete-mode can be enabled"
     ;; icomplete-mode is a Lisp function
-    (is true "icomplete-mode tested via unit tests")))
+    (is false "icomplete-mode tested via unit tests")))
 
 (deftest test-icomplete-candidate-display
   (testing "icomplete shows completions in minibuffer"
     ;; icomplete-completions is a Lisp function
-    (is true "icomplete-completions tested via unit tests")))
+    (is false "icomplete-completions tested via unit tests")))
 
 (deftest test-icomplete-cycling
   (testing "icomplete-forward-completions cycles"
     ;; icomplete-forward-completions is a Lisp function
-    (is true "icomplete cycling tested via unit tests")))
+    (is false "icomplete cycling tested via unit tests")))
 
 (deftest test-icomplete-fido-mode
   (testing "icomplete-fido-mode enables flex matching"
     ;; fido-mode is a Lisp function
-    (is true "fido-mode tested via unit tests")))
+    (is false "fido-mode tested via unit tests")))

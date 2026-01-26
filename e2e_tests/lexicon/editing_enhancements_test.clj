@@ -49,10 +49,8 @@
 
     ;; Should now have "Hi World" instead of "HelloHi World"
     (let [text (h/get-buffer-text*)]
-      (is (or (= "Hi World" text)
-              ;; Mode might not be fully implemented
-              true)
-          "delete-selection-mode tested via integration"))))
+      (is (= "Hi World" text)
+          "delete-selection-mode should replace selection"))))
 
 ;; =============================================================================
 ;; Rectangle Operations
@@ -71,7 +69,7 @@
     (Thread/sleep 50)
 
     ;; Rectangle operations are complex - test placeholder
-    (is true "rectangle tested via integration")))
+    (is false "rectangle tested via integration")))
 
 ;; =============================================================================
 ;; Keyboard Macros
@@ -98,7 +96,7 @@
     (Thread/sleep 100)
 
     ;; Macro functionality placeholder
-    (is true "kmacro tested via integration")))
+    (is false "kmacro tested via integration")))
 
 ;; =============================================================================
 ;; Electric Pair Mode
@@ -118,7 +116,5 @@
 
     ;; Should have "()" in buffer
     (let [text (h/get-buffer-text*)]
-      (is (or (= "()" text)
-              ;; Mode might not be fully implemented
-              true)
-          "electric-pair inserts closing bracket"))))
+      (is (= "()" text)
+          "electric-pair should insert closing bracket"))))

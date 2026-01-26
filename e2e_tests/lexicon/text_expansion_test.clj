@@ -54,7 +54,7 @@
     (h/press-meta "/")
     (Thread/sleep 100)
 
-    (is true "dabbrev cycling tested via integration")))
+    (is false "dabbrev cycling tested via integration")))
 
 ;; =============================================================================
 ;; Hippie Expand
@@ -66,7 +66,7 @@
     (h/clear-buffer)
     (h/type-text "some text")
     (Thread/sleep 50)
-    (is true "hippie-expand tested via integration")))
+    (is false "hippie-expand tested via integration")))
 
 ;; =============================================================================
 ;; Abbrev
@@ -78,4 +78,4 @@
     (h/clear-buffer)
     (h/type-text "test")
     (Thread/sleep 50)
-    (is true "abbrev tested via integration")))
+    (is false "abbrev tested via integration")))

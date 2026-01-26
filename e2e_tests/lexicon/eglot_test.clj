@@ -45,7 +45,7 @@
 (deftest test-eglot-server-configuration
   (testing "eglot-server-programs is configurable"
     ;; eglot-server-programs is a Lisp variable
-    (is true "eglot-server-programs tested via unit tests")))
+    (is false "eglot-server-programs tested via unit tests")))
 
 ;; =============================================================================
 ;; Connection Lifecycle - Placeholders for Unit Tests
@@ -54,7 +54,7 @@
 (deftest test-eglot-connection-lifecycle
   (testing "eglot can manage connections"
     ;; eglot-ensure is a Lisp function
-    (is true "eglot connection tested via unit tests")))
+    (is false "eglot connection tested via unit tests")))
 
 ;; =============================================================================
 ;; Hover Documentation - Placeholders for Unit Tests
@@ -63,7 +63,7 @@
 (deftest test-eglot-hover-documentation
   (testing "eglot provides eldoc documentation"
     ;; eglot-eldoc-function is a Lisp function
-    (is true "eglot eldoc tested via unit tests")))
+    (is false "eglot eldoc tested via unit tests")))
 
 ;; =============================================================================
 ;; Completion - Placeholders for Unit Tests
@@ -72,7 +72,7 @@
 (deftest test-eglot-completion
   (testing "eglot provides completion candidates"
     ;; eglot-completion-at-point is a Lisp function
-    (is true "eglot completion tested via unit tests")))
+    (is false "eglot completion tested via unit tests")))
 
 ;; =============================================================================
 ;; Diagnostics - Placeholders for Unit Tests
@@ -81,7 +81,7 @@
 (deftest test-eglot-diagnostics
   (testing "eglot reports diagnostics"
     ;; eglot-diagnostics is a Lisp function
-    (is true "eglot diagnostics tested via unit tests")))
+    (is false "eglot diagnostics tested via unit tests")))
 
 ;; =============================================================================
 ;; Code Actions - Placeholders for Unit Tests
@@ -90,4 +90,4 @@
 (deftest test-eglot-code-actions
   (testing "eglot-code-actions returns actions"
     ;; eglot-code-actions is a Lisp function
-    (is true "eglot code actions tested via unit tests")))
+    (is false "eglot code actions tested via unit tests")))

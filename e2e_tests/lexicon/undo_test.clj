@@ -187,7 +187,7 @@
   (testing "buffer-disable-undo stops recording - placeholder"
     ;; This tests internal API behavior
     ;; E2E tests cannot toggle undo recording via keyboard
-    (is true "Undo disable tested via unit tests")))
+    (is false "Undo disable tested via unit tests")))
 
 ;; =============================================================================
 ;; Edge Cases
@@ -209,7 +209,7 @@
   (testing "Markers adjusted during undo - placeholder"
     ;; Marker manipulation requires internal API
     ;; E2E tests verify user-visible behavior
-    (is true "Marker preservation tested via unit tests")))
+    (is false "Marker preservation tested via unit tests")))
 
 ;; =============================================================================
 ;; Kill and Yank with Undo

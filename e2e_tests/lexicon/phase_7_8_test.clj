@@ -233,7 +233,7 @@
 
     ;; Command should execute (may prompt or save automatically)
     ;; In browser context, this typically shows a save dialog or message
-    (is true "save-some-buffers command should execute")))
+    (is false "save-some-buffers command should execute")))
 
 (deftest test-p7-8-find-alternate-file
   (testing "P7.8 Batch 2: find-alternate-file (C-x C-v)"
@@ -276,7 +276,7 @@
     (Thread/sleep 100)
 
     ;; Command should execute (may prompt for confirmation)
-    (is true "revert-buffer command should execute")))
+    (is false "revert-buffer command should execute")))
 
 ;; =============================================================================
 ;; Batch 3: Replace Commands (2 commands)
@@ -560,7 +560,7 @@
 
     ;; Cursor should be at or near first "hello"
     ;; Hard to verify exact position in E2E, but command should work
-    (is true "Isearch forward should execute")))
+    (is false "Isearch forward should execute")))
 
 (deftest test-p7-8-isearch-backward
   (testing "P7.8 Batch 5: isearch-backward (C-r)"
@@ -591,7 +591,7 @@
     (Thread/sleep 50)
 
     ;; Cursor should be at or near last "hello"
-    (is true "Isearch backward should execute")))
+    (is false "Isearch backward should execute")))
 
 ;; =============================================================================
 ;; Integration Tests - Testing command combinations

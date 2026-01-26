@@ -44,7 +44,7 @@
 
     ;; Should show minibuffer for file name (no file associated)
     ;; or complete if already associated
-    (is true "Save keyboard shortcut processed")))
+    (is false "Save keyboard shortcut processed")))
 
 ;; =============================================================================
 ;; File Opening - Placeholders for Unit Tests
@@ -53,17 +53,17 @@
 (deftest test-find-file-opens-buffer
   (testing "find-file creates buffer"
     ;; find-file is a Lisp function
-    (is true "find-file tested via unit tests")))
+    (is false "find-file tested via unit tests")))
 
 (deftest test-save-buffer-writes-file
   (testing "save-buffer writes content"
     ;; save-buffer is a Lisp function
-    (is true "save-buffer tested via unit tests")))
+    (is false "save-buffer tested via unit tests")))
 
 (deftest test-revert-buffer-reloads
   (testing "revert-buffer restores content"
     ;; revert-buffer is a Lisp function
-    (is true "revert-buffer tested via unit tests")))
+    (is false "revert-buffer tested via unit tests")))
 
 ;; =============================================================================
 ;; File Predicates - Placeholders for Unit Tests
@@ -72,12 +72,12 @@
 (deftest test-file-exists-p-checks
   (testing "file-exists-p checks file existence"
     ;; file-exists-p is a Lisp function
-    (is true "file-exists-p tested via unit tests")))
+    (is false "file-exists-p tested via unit tests")))
 
 (deftest test-file-directory-p-checks
   (testing "file-directory-p checks if path is directory"
     ;; file-directory-p is a Lisp function
-    (is true "file-directory-p tested via unit tests")))
+    (is false "file-directory-p tested via unit tests")))
 
 ;; =============================================================================
 ;; File Attributes - Placeholders for Unit Tests
@@ -86,7 +86,7 @@
 (deftest test-file-attributes-returns-info
   (testing "file-attributes returns file info"
     ;; file-attributes is a Lisp function
-    (is true "file-attributes tested via unit tests")))
+    (is false "file-attributes tested via unit tests")))
 
 ;; =============================================================================
 ;; Directory Operations - Placeholders for Unit Tests
@@ -95,7 +95,7 @@
 (deftest test-directory-files-lists-contents
   (testing "directory-files returns list"
     ;; directory-files is a Lisp function
-    (is true "directory-files tested via unit tests")))
+    (is false "directory-files tested via unit tests")))
 
 ;; =============================================================================
 ;; Buffer-File Association - Placeholders for Unit Tests
@@ -104,4 +104,4 @@
 (deftest test-buffer-file-name-tracking
   (testing "buffer-file-name returns association"
     ;; buffer-file-name is a Lisp function
-    (is true "buffer-file-name tested via unit tests")))
+    (is false "buffer-file-name tested via unit tests")))

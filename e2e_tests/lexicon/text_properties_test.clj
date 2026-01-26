@@ -55,60 +55,60 @@
 (deftest test-text-property-on-typed-text
   (testing "Properties can be set on user-typed text"
     ;; put-text-property and get-text-property are Lisp functions
-    (is true "Text property setting tested via unit tests")))
+    (is false "Text property setting tested via unit tests")))
 
 (deftest test-text-property-invisible
   (testing "Invisible property hides text from display"
     ;; Invisible property is set via Lisp API
-    (is true "Invisible property tested via unit tests")))
+    (is false "Invisible property tested via unit tests")))
 
 (deftest test-text-properties-adjust-on-keyboard-insert
   (testing "Property range shifts when user types before it"
     ;; Property adjustment requires Lisp API to verify
-    (is true "Property adjustment tested via unit tests")))
+    (is false "Property adjustment tested via unit tests")))
 
 (deftest test-text-properties-expand-on-keyboard-insert-within
   (testing "Property expands when user types within propertied range"
     ;; Property expansion requires Lisp API to verify
-    (is true "Property expansion tested via unit tests")))
+    (is false "Property expansion tested via unit tests")))
 
 (deftest test-text-properties-shrink-on-keyboard-delete
   (testing "Property range shrinks when user deletes from it"
     ;; Property shrinking requires Lisp API to verify
-    (is true "Property shrinking tested via unit tests")))
+    (is false "Property shrinking tested via unit tests")))
 
 (deftest test-text-property-mouse-face
   (testing "Mouse-face property on typed text"
     ;; Mouse-face is a Lisp property
-    (is true "Mouse-face property tested via unit tests")))
+    (is false "Mouse-face property tested via unit tests")))
 
 (deftest test-text-property-help-echo
   (testing "Help-echo property on typed text"
     ;; Help-echo is a Lisp property
-    (is true "Help-echo property tested via unit tests")))
+    (is false "Help-echo property tested via unit tests")))
 
 (deftest test-text-properties-multiple
   (testing "Multiple properties coexist on typed text"
     ;; Multiple properties require Lisp API
-    (is true "Multiple properties tested via unit tests")))
+    (is false "Multiple properties tested via unit tests")))
 
 (deftest test-text-properties-at
   (testing "Get all properties at once"
     ;; text-properties-at is a Lisp function
-    (is true "text-properties-at tested via unit tests")))
+    (is false "text-properties-at tested via unit tests")))
 
 (deftest test-text-properties-persist-across-undo
   (testing "Properties restored on undo"
     ;; Property restoration requires Lisp API to verify
     ;; User-visible undo is tested in undo_test.clj
-    (is true "Property persistence with undo tested via unit tests")))
+    (is false "Property persistence with undo tested via unit tests")))
 
 (deftest test-remove-text-properties
   (testing "remove-text-properties clears specific property"
     ;; remove-text-properties is a Lisp function
-    (is true "remove-text-properties tested via unit tests")))
+    (is false "remove-text-properties tested via unit tests")))
 
 (deftest test-add-text-properties
   (testing "add-text-properties adds without removing"
     ;; add-text-properties is a Lisp function
-    (is true "add-text-properties tested via unit tests")))
+    (is false "add-text-properties tested via unit tests")))

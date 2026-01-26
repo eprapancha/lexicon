@@ -31,7 +31,7 @@
     (Thread/sleep 200)
 
     ;; Should have opened something (may fail if shell not implemented)
-    (is true "Shell opened via M-x")))
+    (is false "Shell opened via M-x")))
 
 ;; =============================================================================
 ;; Shell Buffer - Placeholders for Unit Tests
@@ -40,17 +40,17 @@
 (deftest test-shell-opens-buffer
   (testing "shell command creates buffer"
     ;; shell is a Lisp function
-    (is true "shell tested via unit tests")))
+    (is false "shell tested via unit tests")))
 
 (deftest test-shell-executes-commands
   (testing "command output appears"
     ;; shell command execution is a Lisp feature
-    (is true "shell execution tested via unit tests")))
+    (is false "shell execution tested via unit tests")))
 
 (deftest test-shell-directory-tracking
   (testing "directory tracking works"
     ;; directory tracking is a Lisp feature
-    (is true "directory tracking tested via unit tests")))
+    (is false "directory tracking tested via unit tests")))
 
 ;; =============================================================================
 ;; Shell Mode - Placeholders for Unit Tests
@@ -59,9 +59,9 @@
 (deftest test-shell-mode-keybindings
   (testing "shell mode bindings exist"
     ;; shell-mode is a Lisp feature
-    (is true "shell mode tested via unit tests")))
+    (is false "shell mode tested via unit tests")))
 
 (deftest test-shell-input-history
   (testing "history navigation works"
     ;; comint history is a Lisp feature
-    (is true "history tested via unit tests")))
+    (is false "history tested via unit tests")))

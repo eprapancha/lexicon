@@ -48,12 +48,12 @@
 (deftest test-grep-command
   (testing "grep creates grep buffer"
     ;; grep is a Lisp function
-    (is true "grep tested via unit tests")))
+    (is false "grep tested via unit tests")))
 
 (deftest test-grep-find-project
   (testing "grep-find searches recursively"
     ;; grep-find is a Lisp function
-    (is true "grep-find tested via unit tests")))
+    (is false "grep-find tested via unit tests")))
 
 ;; =============================================================================
 ;; Hi-Lock Mode - Placeholders for Unit Tests
@@ -62,12 +62,12 @@
 (deftest test-hi-lock-mode
   (testing "hi-lock-mode can be enabled"
     ;; hi-lock-mode is a Lisp function
-    (is true "hi-lock-mode tested via unit tests")))
+    (is false "hi-lock-mode tested via unit tests")))
 
 (deftest test-highlight-regexp
   (testing "highlight-regexp highlights matches"
     ;; highlight-regexp is a Lisp function
-    (is true "highlight-regexp tested via unit tests")))
+    (is false "highlight-regexp tested via unit tests")))
 
 ;; =============================================================================
 ;; Occur - Placeholders for Unit Tests
@@ -76,4 +76,4 @@
 (deftest test-occur
   (testing "occur creates occur buffer"
     ;; occur is a Lisp function
-    (is true "occur tested via unit tests")))
+    (is false "occur tested via unit tests")))

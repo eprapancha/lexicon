@@ -65,12 +65,12 @@
 (deftest test-buffer-live-p-basics
   (testing "buffer-live-p checks if buffer object is alive"
     ;; buffer-live-p is a Lisp function
-    (is true "buffer-live-p tested via unit tests")))
+    (is false "buffer-live-p tested via unit tests")))
 
 (deftest test-get-buffer-create-basics
   (testing "get-buffer-create returns existing or creates new buffer"
     ;; get-buffer-create is a Lisp function
-    (is true "get-buffer-create tested via unit tests")))
+    (is false "get-buffer-create tested via unit tests")))
 
 ;; =============================================================================
 ;; Buffer Modification State - Placeholders for Unit Tests
@@ -79,12 +79,12 @@
 (deftest test-buffer-modified-p-api
   (testing "buffer-modified-p returns modification state"
     ;; buffer-modified-p is a Lisp function
-    (is true "buffer-modified-p tested via unit tests")))
+    (is false "buffer-modified-p tested via unit tests")))
 
 (deftest test-set-buffer-modified-p-basics
   (testing "set-buffer-modified-p explicitly sets modification flag"
     ;; set-buffer-modified-p is a Lisp function
-    (is true "set-buffer-modified-p tested via unit tests")))
+    (is false "set-buffer-modified-p tested via unit tests")))
 
 ;; =============================================================================
 ;; Narrowing - Placeholders for Unit Tests
@@ -93,17 +93,17 @@
 (deftest test-narrowing-affects-point-bounds
   (testing "narrow-to-region restricts visible portion of buffer"
     ;; narrow-to-region is a Lisp function
-    (is true "narrow-to-region tested via unit tests")))
+    (is false "narrow-to-region tested via unit tests")))
 
 (deftest test-narrowing-restricts-user-movement
   (testing "User cursor movement respects narrowing"
     ;; Narrowing is a Lisp API feature
-    (is true "narrowing movement tested via unit tests")))
+    (is false "narrowing movement tested via unit tests")))
 
 (deftest test-save-restriction-preserves-narrowing
   (testing "save-restriction macro preserves narrowing state"
     ;; save-restriction is a Lisp macro
-    (is true "save-restriction tested via unit tests")))
+    (is false "save-restriction tested via unit tests")))
 
 ;; =============================================================================
 ;; Buffer Switching - Placeholders for Unit Tests
@@ -112,7 +112,7 @@
 (deftest test-set-buffer-switches-context
   (testing "set-buffer makes buffer current for buffer-local operations"
     ;; set-buffer is a Lisp function
-    (is true "set-buffer tested via unit tests")))
+    (is false "set-buffer tested via unit tests")))
 
 ;; =============================================================================
 ;; Other Buffer Functions - Placeholders for Unit Tests
@@ -121,17 +121,17 @@
 (deftest test-rename-buffer-changes-name
   (testing "rename-buffer changes buffer's name"
     ;; rename-buffer is a Lisp function
-    (is true "rename-buffer tested via unit tests")))
+    (is false "rename-buffer tested via unit tests")))
 
 (deftest test-other-buffer-returns-alternative
   (testing "other-buffer returns most recently used different buffer"
     ;; other-buffer is a Lisp function
-    (is true "other-buffer tested via unit tests")))
+    (is false "other-buffer tested via unit tests")))
 
 (deftest test-erase-buffer-clears-user-content
   (testing "erase-buffer deletes all content"
     ;; erase-buffer is a Lisp function
-    (is true "erase-buffer tested via unit tests")))
+    (is false "erase-buffer tested via unit tests")))
 
 ;; =============================================================================
 ;; Buffer-Local Variables - Placeholders for Unit Tests
@@ -140,9 +140,9 @@
 (deftest test-buffer-local-value-basics
   (testing "buffer-local-value gets variable value in specific buffer"
     ;; buffer-local-value is a Lisp function
-    (is true "buffer-local-value tested via unit tests")))
+    (is false "buffer-local-value tested via unit tests")))
 
 (deftest test-kill-all-local-variables-clears-locals
   (testing "kill-all-local-variables resets buffer to default state"
     ;; kill-all-local-variables is a Lisp function
-    (is true "kill-all-local-variables tested via unit tests")))
+    (is false "kill-all-local-variables tested via unit tests")))

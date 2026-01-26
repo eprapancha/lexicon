@@ -433,7 +433,7 @@
     ;; Check if region exists by trying to verify mark was set
     ;; We can't easily check visual highlighting, so we'll verify
     ;; that kill-region works in the next test
-    (is true "Mark set - verified in subsequent kill-region test")))
+    (is false "Mark set - verified in subsequent kill-region test")))
 
 (deftest ^:skip test-p1-07-kill-region
   (testing "P1-07: Kill region (C-w) - SKIPPED: Browser captures C-w (close tab)"
@@ -474,7 +474,7 @@
 
     ;; NOTE: C-w is captured by browser (close tab) - cannot test in E2E
     ;; This must be verified manually or in native desktop tests
-    (is true "Test skipped - C-w intercepted by browser")))
+    (is false "Test skipped - C-w intercepted by browser")))
 
 (deftest test-p1-08-yank
   (testing "P1-08: Yank (C-y)"
@@ -793,7 +793,7 @@
 
     ;; NOTE: Browser file save dialog cannot be automated in E2E tests
     ;; This must be tested manually
-    (is true "Test skipped - browser file dialog requires manual testing")))
+    (is false "Test skipped - browser file dialog requires manual testing")))
 
 (deftest test-p2-5-01-keyboard-quit
   (testing "P2.5-01: Verify keyboard-quit (C-g)"
@@ -1230,7 +1230,7 @@
     (Thread/sleep 20)
 
     ;; NOTE: This test requires a custom command to be implemented
-    (is true "Test skipped - requires custom thing-at-point command")))
+    (is false "Test skipped - requires custom thing-at-point command")))
 
 ;;; Phase 7.8: Query Replace Tests
 
@@ -1538,7 +1538,7 @@
 (deftest test-p6-5-01-test-suite
   (testing "P6.5-01: Verify Test Suite"
     ;; This is a meta-test - if we're running, tests are working
-    (is true "Test suite is functional")))
+    (is false "Test suite is functional")))
 
 ;; Run tests
 (defn -main []

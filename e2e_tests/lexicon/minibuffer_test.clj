@@ -73,12 +73,12 @@
   (testing "completion table can be called - placeholder for unit test"
     ;; Note: This tests internal API behavior which should be unit tested
     ;; E2E tests focus on user-visible completion behavior
-    (is true "Completion table functionality tested via unit tests")))
+    (is false "Completion table functionality tested via unit tests")))
 
 (deftest test-completion-metadata-accessible
   (testing "metadata includes category - placeholder for unit test"
     ;; Note: This tests internal API behavior which should be unit tested
-    (is true "Completion metadata tested via unit tests")))
+    (is false "Completion metadata tested via unit tests")))
 
 ;; =============================================================================
 ;; Candidate Enumeration
@@ -87,7 +87,7 @@
 (deftest test-candidates-can-be-enumerated
   (testing "all-completions returns candidates - placeholder for unit test"
     ;; Note: This tests internal API behavior which should be unit tested
-    (is true "Candidate enumeration tested via unit tests")))
+    (is false "Candidate enumeration tested via unit tests")))
 
 ;; =============================================================================
 ;; Read Functions (require interactive minibuffer)
@@ -96,12 +96,12 @@
 (deftest test-read-string-basic
   (testing "read-string returns input"
     ;; read-string requires interactive input - tested via commands that use it
-    (is true "Read-string tested via interactive commands")))
+    (is false "Read-string tested via interactive commands")))
 
 (deftest test-completing-read-basic
   (testing "completing-read offers completion"
     ;; completing-read requires interactive input - tested via M-x behavior
-    (is true "completing-read tested via M-x interaction")))
+    (is false "completing-read tested via M-x interaction")))
 
 ;; =============================================================================
 ;; Minibuffer Cancel Behavior

@@ -34,17 +34,17 @@
 (deftest test-outline-mode-with-typed-headings
   (testing "outline headings identified in user-typed content"
     ;; outline-minor-mode is a Lisp function
-    (is true "outline-minor-mode tested via unit tests")))
+    (is false "outline-minor-mode tested via unit tests")))
 
 (deftest test-outline-heading-collapse
   (testing "user-typed heading can be collapsed"
     ;; outline-hide-subtree is a Lisp function
-    (is true "outline-hide-subtree tested via unit tests")))
+    (is false "outline-hide-subtree tested via unit tests")))
 
 (deftest test-outline-navigation-in-typed-content
   (testing "navigate between user-typed headings"
     ;; outline-next-heading is a Lisp function
-    (is true "outline-next-heading tested via unit tests")))
+    (is false "outline-next-heading tested via unit tests")))
 
 ;; =============================================================================
 ;; Hideshow (Code Folding) with User-Typed Code
@@ -69,17 +69,17 @@
 (deftest test-hs-minor-mode-with-typed-code
   (testing "hs-minor-mode with user-typed code block"
     ;; hs-minor-mode is a Lisp function
-    (is true "hs-minor-mode tested via unit tests")))
+    (is false "hs-minor-mode tested via unit tests")))
 
 (deftest test-hs-hide-block-on-typed-code
   (testing "code block can be hidden"
     ;; hs-hide-block is a Lisp function
-    (is true "hs-hide-block tested via unit tests")))
+    (is false "hs-hide-block tested via unit tests")))
 
 (deftest test-hs-toggle-hiding-on-typed-code
   (testing "toggle hiding on user-typed code"
     ;; hs-toggle-hiding is a Lisp function
-    (is true "hs-toggle-hiding tested via unit tests")))
+    (is false "hs-toggle-hiding tested via unit tests")))
 
 ;; =============================================================================
 ;; Integration with Text Properties - Placeholders
@@ -88,4 +88,4 @@
 (deftest test-folding-uses-invisible-property-on-typed-content
   (testing "hidden user-typed text has invisible property"
     ;; invisible property is set via Lisp API
-    (is true "Invisible property tested via unit tests")))
+    (is false "Invisible property tested via unit tests")))

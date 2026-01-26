@@ -84,49 +84,49 @@
   (testing "Point restored after keyboard movement in save-excursion body"
     ;; save-excursion is a Lisp macro that cannot be invoked via keyboard
     ;; This behavior is tested via unit tests
-    (is true "save-excursion point restoration tested via unit tests")))
+    (is false "save-excursion point restoration tested via unit tests")))
 
 (deftest test-save-excursion-restores-point-multiple-moves
   (testing "Point restored even with multiple moves"
     ;; Lisp API test
-    (is true "save-excursion with multiple moves tested via unit tests")))
+    (is false "save-excursion with multiple moves tested via unit tests")))
 
 (deftest test-save-excursion-restores-on-error
   (testing "Point restored even when body errors"
     ;; Lisp API error handling test
-    (is true "save-excursion error handling tested via unit tests")))
+    (is false "save-excursion error handling tested via unit tests")))
 
 (deftest test-save-excursion-restores-mark
   (testing "Mark restored after body"
     ;; Lisp API test
-    (is true "save-excursion mark restoration tested via unit tests")))
+    (is false "save-excursion mark restoration tested via unit tests")))
 
 (deftest test-save-excursion-return-value
   (testing "Return value from body"
     ;; Lisp API test
-    (is true "save-excursion return value tested via unit tests")))
+    (is false "save-excursion return value tested via unit tests")))
 
 (deftest test-save-excursion-nested
   (testing "Nested save-excursion"
     ;; Lisp API test
-    (is true "Nested save-excursion tested via unit tests")))
+    (is false "Nested save-excursion tested via unit tests")))
 
 (deftest test-save-excursion-in-read-only-buffer
   (testing "Navigate in read-only buffer"
     ;; Lisp API test
-    (is true "save-excursion in read-only tested via unit tests")))
+    (is false "save-excursion in read-only tested via unit tests")))
 
 (deftest test-save-excursion-with-narrowing
   (testing "save-excursion with narrowing"
     ;; Lisp API test
-    (is true "save-excursion with narrowing tested via unit tests")))
+    (is false "save-excursion with narrowing tested via unit tests")))
 
 (deftest test-save-excursion-look-ahead-pattern
   (testing "Look ahead pattern - cursor doesn't move"
     ;; Lisp API pattern test
-    (is true "Look-ahead pattern tested via unit tests")))
+    (is false "Look-ahead pattern tested via unit tests")))
 
 (deftest test-save-excursion-scan-buffer-pattern
   (testing "Scan buffer pattern"
     ;; Lisp API pattern test
-    (is true "Scan buffer pattern tested via unit tests")))
+    (is false "Scan buffer pattern tested via unit tests")))

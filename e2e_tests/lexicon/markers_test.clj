@@ -85,34 +85,34 @@
   (testing "Marker moves when user types BEFORE marker position"
     ;; Marker creation and position checking requires Lisp API
     ;; E2E tests verify user-visible behavior, not marker internals
-    (is true "Marker movement tested via unit tests")))
+    (is false "Marker movement tested via unit tests")))
 
 (deftest test-marker-stays-on-insert-after
   (testing "Marker stays when user types AFTER marker position"
     ;; Marker creation and position checking requires Lisp API
-    (is true "Marker position tested via unit tests")))
+    (is false "Marker position tested via unit tests")))
 
 (deftest test-marker-moves-on-delete-before
   (testing "Marker moves when user deletes BEFORE marker position"
     ;; Marker behavior with deletion requires Lisp API
-    (is true "Marker deletion behavior tested via unit tests")))
+    (is false "Marker deletion behavior tested via unit tests")))
 
 (deftest test-marker-insertion-type-nil
   (testing "Marker with insertion-type nil stays before inserted text"
     ;; Insertion type is a Lisp API concept
-    (is true "Marker insertion-type tested via unit tests")))
+    (is false "Marker insertion-type tested via unit tests")))
 
 (deftest test-marker-insertion-type-t
   (testing "Marker with insertion-type t advances past inserted text"
     ;; Insertion type is a Lisp API concept
-    (is true "Marker insertion-type tested via unit tests")))
+    (is false "Marker insertion-type tested via unit tests")))
 
 (deftest test-markerp
   (testing "markerp identifies markers"
     ;; This is a pure Lisp predicate
-    (is true "markerp tested via unit tests")))
+    (is false "markerp tested via unit tests")))
 
 (deftest test-copy-marker
   (testing "copy-marker creates independent copy"
     ;; This is a pure Lisp function
-    (is true "copy-marker tested via unit tests")))
+    (is false "copy-marker tested via unit tests")))

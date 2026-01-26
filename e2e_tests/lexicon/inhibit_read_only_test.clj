@@ -131,27 +131,27 @@
 (deftest test-inhibit-read-only-allows-lisp-insert
   (testing "Programmatic insert succeeds with inhibit-read-only"
     ;; inhibit-read-only is a Lisp API feature
-    (is true "inhibit-read-only tested via unit tests")))
+    (is false "inhibit-read-only tested via unit tests")))
 
 (deftest test-inhibit-read-only-allows-lisp-delete
   (testing "Programmatic delete succeeds with inhibit-read-only"
     ;; Lisp API feature
-    (is true "inhibit-read-only delete tested via unit tests")))
+    (is false "inhibit-read-only delete tested via unit tests")))
 
 (deftest test-protection-restored-after-inhibit-scope
   (testing "Protection restored after inhibit scope"
     ;; Lisp API scope behavior
-    (is true "inhibit-read-only scope tested via unit tests")))
+    (is false "inhibit-read-only scope tested via unit tests")))
 
 (deftest test-nested-inhibit-read-only
   (testing "Nested inhibit scopes work"
     ;; Lisp API nesting behavior
-    (is true "Nested inhibit-read-only tested via unit tests")))
+    (is false "Nested inhibit-read-only tested via unit tests")))
 
 (deftest test-inhibit-with-errors
   (testing "Protection restored despite error"
     ;; Lisp API error handling
-    (is true "inhibit-read-only error handling tested via unit tests")))
+    (is false "inhibit-read-only error handling tested via unit tests")))
 
 ;; =============================================================================
 ;; Mode Patterns - Placeholders for Unit Tests
@@ -160,12 +160,12 @@
 (deftest test-dired-refresh-pattern
   (testing "Dired refresh pattern - update read-only buffer"
     ;; Dired uses inhibit-read-only internally
-    (is true "Dired refresh pattern tested via unit tests")))
+    (is false "Dired refresh pattern tested via unit tests")))
 
 (deftest test-help-buffer-pattern
   (testing "Help buffer pattern - link insertion"
     ;; Help buffer uses inhibit-read-only internally
-    (is true "Help buffer pattern tested via unit tests")))
+    (is false "Help buffer pattern tested via unit tests")))
 
 ;; =============================================================================
 ;; Query and Toggle

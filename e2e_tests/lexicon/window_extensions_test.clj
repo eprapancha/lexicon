@@ -57,7 +57,7 @@
 (deftest test-windmove-navigation
   (testing "windmove-right moves to right window"
     ;; windmove is a Lisp function
-    (is true "windmove tested via unit tests")))
+    (is false "windmove tested via unit tests")))
 
 ;; =============================================================================
 ;; Winner Mode - Placeholders for Unit Tests
@@ -66,7 +66,7 @@
 (deftest test-winner-mode-undo
   (testing "winner-undo restores window configuration"
     ;; winner-mode is a Lisp function
-    (is true "winner-mode tested via unit tests")))
+    (is false "winner-mode tested via unit tests")))
 
 ;; =============================================================================
 ;; Tab Bar - Placeholders for Unit Tests
@@ -75,4 +75,4 @@
 (deftest test-tab-bar-basics
   (testing "tab-bar-new-tab creates tab"
     ;; tab-bar is a Lisp function
-    (is true "tab-bar tested via unit tests")))
+    (is false "tab-bar tested via unit tests")))

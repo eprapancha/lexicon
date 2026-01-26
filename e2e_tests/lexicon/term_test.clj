@@ -30,7 +30,7 @@
     (h/press-ctrl "g")
     (Thread/sleep 100)
 
-    (is true "Term accessed via M-x")))
+    (is false "Term accessed via M-x")))
 
 ;; =============================================================================
 ;; Term Mode - Placeholders for Unit Tests
@@ -39,12 +39,12 @@
 (deftest test-term-mode-creation
   (testing "term creates terminal buffer"
     ;; term is a Lisp function
-    (is true "term tested via unit tests")))
+    (is false "term tested via unit tests")))
 
 (deftest test-term-mode-switching
   (testing "term-char-mode and term-line-mode"
     ;; term-line-mode, term-char-mode are Lisp functions
-    (is true "term mode switching tested via unit tests")))
+    (is false "term mode switching tested via unit tests")))
 
 ;; =============================================================================
 ;; Comint - Placeholders for Unit Tests
@@ -53,12 +53,12 @@
 (deftest test-comint-input-handling
   (testing "comint-send-input sends to process"
     ;; comint-send-input is a Lisp function
-    (is true "comint input tested via unit tests")))
+    (is false "comint input tested via unit tests")))
 
 (deftest test-comint-history-navigation
   (testing "comint-previous-input navigates history"
     ;; comint-previous-input is a Lisp function
-    (is true "comint history tested via unit tests")))
+    (is false "comint history tested via unit tests")))
 
 ;; =============================================================================
 ;; ANSI Color - Placeholders for Unit Tests
@@ -67,4 +67,4 @@
 (deftest test-ansi-color-parsing
   (testing "ansi-color-apply processes escapes"
     ;; ansi-color-apply is a Lisp function
-    (is true "ansi color tested via unit tests")))
+    (is false "ansi color tested via unit tests")))
