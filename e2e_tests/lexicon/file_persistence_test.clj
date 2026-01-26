@@ -14,7 +14,7 @@
 ;; User-Visible Cursor Position Behavior
 ;; =============================================================================
 
-(deftest ^:skip test-user-cursor-position-remembered
+(deftest test-user-cursor-position-remembered
   (testing "User cursor position is remembered in buffer"
     (h/setup-test*)
     (h/clear-buffer)

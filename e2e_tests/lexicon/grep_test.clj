@@ -13,7 +13,7 @@
 ;; User-Visible Content Typing
 ;; =============================================================================
 
-(deftest ^:skip test-user-types-searchable-content
+(deftest test-user-types-searchable-content
   (testing "User can type content with repeated patterns"
     (h/setup-test*)
     (h/clear-buffer)
@@ -25,7 +25,7 @@
            (h/get-buffer-text*))
         "User can type content with patterns")))
 
-(deftest ^:skip test-user-types-multiline-content
+(deftest test-user-types-multiline-content
   (testing "User can type multi-line content for occur"
     (h/setup-test*)
     (h/clear-buffer)

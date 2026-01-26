@@ -14,7 +14,7 @@
 ;; User-Visible Diff Content Typing
 ;; =============================================================================
 
-(deftest ^:skip test-user-types-diff-format
+(deftest test-user-types-diff-format
   (testing "User can type diff-formatted content"
     (h/setup-test*)
     (h/clear-buffer)

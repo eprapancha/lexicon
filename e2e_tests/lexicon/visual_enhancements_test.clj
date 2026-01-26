@@ -13,7 +13,7 @@
 ;; User-Visible Typing with Parentheses
 ;; =============================================================================
 
-(deftest ^:skip test-user-types-parenthesized-code
+(deftest test-user-types-parenthesized-code
   (testing "User can type parenthesized expressions"
     (h/setup-test*)
     (h/clear-buffer)
@@ -25,7 +25,7 @@
            (h/get-buffer-text*))
         "User can type balanced parens")))
 
-(deftest ^:skip test-user-types-with-whitespace
+(deftest test-user-types-with-whitespace
   (testing "User can type text with whitespace"
     (h/setup-test*)
     (h/clear-buffer)

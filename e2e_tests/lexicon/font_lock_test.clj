@@ -13,7 +13,7 @@
 ;; User-Visible Code Typing
 ;; =============================================================================
 
-(deftest ^:skip test-user-types-highlightable-code
+(deftest test-user-types-highlightable-code
   (testing "User can type code that would be syntax highlighted"
     (h/setup-test*)
     (h/clear-buffer)
@@ -27,7 +27,7 @@
            (h/get-buffer-text*))
         "User can type code structure")))
 
-(deftest ^:skip test-user-types-keywords
+(deftest test-user-types-keywords
   (testing "User can type code with keywords"
     (h/setup-test*)
     (h/clear-buffer)

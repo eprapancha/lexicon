@@ -727,7 +727,7 @@
       (is (.contains editor-text "hello from test")
           "test-buffer content should be preserved"))))
 
-(deftest ^:skip test-p2-03-list-buffers
+(deftest test-p2-03-list-buffers
   (testing "P2-03: Verify list-buffers (C-x C-b)"
     (h/setup-test*)
     (h/clear-buffer)
@@ -762,7 +762,7 @@
               (.contains editor-text "buffer2"))
           (str "Buffer list should appear. Got: " editor-text)))))
 
-(deftest ^:skip test-p2-04-buffer-modified-indicator
+(deftest test-p2-04-buffer-modified-indicator
   (testing "P2-04: Verify buffer modified indicator"
     (h/setup-test*)
     (h/clear-buffer)

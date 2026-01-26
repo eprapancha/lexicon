@@ -14,7 +14,7 @@
 ;; Buffer Modification - USER TYPING
 ;; =============================================================================
 
-(deftest ^:skip test-buffer-modified-on-user-typing
+(deftest test-buffer-modified-on-user-typing
   (testing "Buffer becomes modified when user types"
     (h/setup-test*)
     (h/clear-buffer)
@@ -42,7 +42,7 @@
     (is (= "" (h/get-buffer-text*))
         "Undo should remove user-typed text")))
 
-(deftest ^:skip test-user-cursor-movement
+(deftest test-user-cursor-movement
   (testing "User can move cursor"
     (h/setup-test*)
     (h/clear-buffer)

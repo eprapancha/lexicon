@@ -15,7 +15,7 @@
 ;; user actions that trigger behavior relying on hooks
 ;; =============================================================================
 
-(deftest ^:skip test-typing-updates-buffer
+(deftest test-typing-updates-buffer
   (testing "User typing updates buffer (relies on change hooks internally)"
     (h/setup-test*)
     (h/clear-buffer)
@@ -26,7 +26,7 @@
     (is (= "Hello" (h/get-buffer-text*))
         "User typing works (hooks process changes)")))
 
-(deftest ^:skip test-deletion-updates-buffer
+(deftest test-deletion-updates-buffer
   (testing "User deletion updates buffer (relies on change hooks internally)"
     (h/setup-test*)
     (h/clear-buffer)

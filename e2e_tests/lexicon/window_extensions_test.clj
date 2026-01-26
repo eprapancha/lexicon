@@ -15,7 +15,7 @@
 ;; User-Visible Window Manipulation
 ;; =============================================================================
 
-(deftest ^:skip test-user-splits-window
+(deftest test-user-splits-window
   (testing "User can split window with keyboard"
     (h/setup-test*)
     (h/clear-buffer)
@@ -30,7 +30,7 @@
     (h/press-ctrl-x "1")
     (Thread/sleep 100)))
 
-(deftest ^:skip test-user-switches-windows
+(deftest test-user-switches-windows
   (testing "User can switch between windows"
     (h/setup-test*)
     (h/clear-buffer)

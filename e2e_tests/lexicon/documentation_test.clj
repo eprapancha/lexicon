@@ -13,7 +13,7 @@
 ;; User-Visible Typing in Code Context
 ;; =============================================================================
 
-(deftest ^:skip test-user-types-function-call
+(deftest test-user-types-function-call
   (testing "User can type function call (eldoc context)"
     (h/setup-test*)
     (h/clear-buffer)
