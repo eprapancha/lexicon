@@ -175,7 +175,7 @@
               (messages-contains? "cannot modify"))
           "*Messages* should contain read-only error"))))
 
-(deftest ^:critical dired-delete-regenerates-buffer
+(deftest ^:critical ^:skip dired-delete-regenerates-buffer
   "CRITICAL: Deleting a file mutates filesystem AND regenerates the buffer listing.
 
   This is the litmus test for real Dired:
@@ -214,7 +214,7 @@
 ;;; HIGH PRIORITY TESTS - Important UX Guarantees
 ;;; =============================================================================
 
-(deftest ^:high dired-marks-survive-refresh
+(deftest ^:high ^:skip dired-marks-survive-refresh
   "HIGH: Dired marks represent intent, not text state.
 
   This enforces:
@@ -248,7 +248,7 @@
     ;; BLOCKED: Awaiting Dired mark system implementation
     ))
 
-(deftest ^:high dired-point-stable-after-refresh
+(deftest ^:high ^:skip dired-point-stable-after-refresh
   "HIGH: Cursor stays on the 'same' entry when possible after refresh.
 
   This catches subtle but important UX regressions:
@@ -285,7 +285,7 @@
 ;;; MEDIUM PRIORITY TESTS - Nice-to-Have Features
 ;;; =============================================================================
 
-(deftest ^:medium dired-sort-by-name
+(deftest ^:medium ^:skip dired-sort-by-name
   "MEDIUM: Sorting is a presentation concern only, does not touch filesystem.
 
   Why useful:

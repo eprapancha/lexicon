@@ -99,7 +99,11 @@
    - buffer: current buffer text
    - prefixArg: current prefix argument (Phase 6.5)
    - minibufferStack: minibuffer stack for depth tracking (Phase 6.5 Week 3-4)
-   - messagesBuffer: *Messages* buffer text (Issue #84)"
+   - messagesBuffer: *Messages* buffer text (Issue #84)
+   - windowList: array of window IDs (for window count tests)
+   - selectedWindow: currently active window ID
+   - killRing: array of kill ring entries
+   - mark: current mark position in active window (nil if not set)"
   []
   (when goog.DEBUG  ; Only in development mode
     (let [get-state (fn []
@@ -128,12 +132,24 @@
                             messages-wasm (:wasm-instance messages-buffer)
                             messages-text (when messages-wasm
                                            (try (.getText messages-wasm)
-                                                (catch :default _ "")))]
+                                                (catch :default _ "")))
+                            ;; Expose window list for E2E tests (Tier 2 fix)
+                            all-windows (when window-tree
+                                          (db/get-all-leaf-windows window-tree))
+                            window-ids (mapv :id all-windows)
+                            ;; Expose kill ring for E2E tests (Tier 2 fix)
+                            kill-ring (:kill-ring app-db)
+                            ;; Expose mark position from active window (Tier 2 fix)
+                            mark-position (:mark-position active-window)]
                         #js {:point cursor-pos
                              :buffer (or buffer-text "")
                              :prefixArg prefix-arg-js
                              :minibufferStack minibuffer-stack-js
-                             :messagesBuffer (or messages-text "")}))]
+                             :messagesBuffer (or messages-text "")
+                             :windowList (clj->js window-ids)
+                             :selectedWindow active-window-id
+                             :killRing (clj->js kill-ring)
+                             :mark mark-position}))]
       ;; Expose as a getter function so it always returns fresh state
       (aset js/window "editorState"
             (js/Object.defineProperty
