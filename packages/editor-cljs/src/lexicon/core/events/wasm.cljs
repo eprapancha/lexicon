@@ -290,14 +290,16 @@
              ;; Process the operation based on its type (using Gap Buffer API)
              (case (:op operation)
              :insert
-             (let [text (:text operation)]
-               (println "🔧 INSERT - text:" (pr-str text) "position:" current-cursor)
+             (let [text (:text operation)
+                   ;; Use explicit position if provided (e.g., from yank), otherwise current cursor
+                   insert-pos (or (:position operation) current-cursor)]
+               (println "🔧 INSERT - text:" (pr-str text) "position:" insert-pos)
                (try
                  ;; Use gap buffer's direct insert API
-                 (.insert ^js wasm-instance current-cursor text)
+                 (.insert ^js wasm-instance insert-pos text)
                  (rf/dispatch [:editor/transaction-success
                               {:operation operation
-                               :new-cursor (+ current-cursor (count text))}])
+                               :new-cursor (+ insert-pos (count text))}])
                  (catch js/Error error
                    (println "❌ Insert error:" error)
                    (rf/dispatch [:editor/transaction-failure
@@ -433,7 +435,9 @@
                          {:op       (:op operation)
                           :position final-cursor
                           :text     (:text operation)}]]
-             [:dispatch [:lsp/on-buffer-changed active-buffer-id]]]})
+             [:dispatch [:lsp/on-buffer-changed active-buffer-id]]
+             ;; Ensure hidden input stays focused after DOM updates
+             [:focus-editor true]]})
      (catch js/Error error
        (println "❌ Error processing transaction success:" error)
        ;; Clear in-flight flag and continue processing

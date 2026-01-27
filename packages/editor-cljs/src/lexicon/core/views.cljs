@@ -764,49 +764,68 @@
 (defn editor-wrapper
   "Main editor wrapper with hidden textarea + custom DOM architecture"
   []
-  (let [hidden-input-ref (atom nil)
-        window-tree @(rf/subscribe [:window-tree])
-        active-window-id @(rf/subscribe [:active-window-id])]
+  ;; Use r/with-let to preserve the atom across re-renders
+  (r/with-let [hidden-input-ref (atom nil)]
+    (let [window-tree @(rf/subscribe [:window-tree])
+          active-window-id @(rf/subscribe [:active-window-id])]
 
-    [:div.editor-wrapper
-     {:tabIndex 0
-      :on-click (fn [_]
-                  ;; Focus the hidden input when wrapper is clicked
-                  (when-let [hidden-input @hidden-input-ref]
-                    (.focus hidden-input)))
-      :style {:position "sticky"
-              :top "0"
-              :width "100%"
-              :height "calc(100vh - 24px)"
-              :outline "none"}}
+      [:div.editor-wrapper
+       {:tabIndex 0
+        :on-click (fn [_]
+                    ;; Focus the hidden input when wrapper is clicked
+                    (when-let [hidden-input @hidden-input-ref]
+                      (.focus hidden-input)))
+        :style {:position "sticky"
+                :top "0"
+                :width "100%"
+                :height "calc(100vh - 24px)"
+                :outline "none"}}
 
-     ;; Hidden input handler - captures all keyboard input (shared by all windows)
-     [hidden-input-handler hidden-input-ref]
+       ;; Hidden input handler - captures all keyboard input (shared by all windows)
+       [hidden-input-handler hidden-input-ref]
 
-     ;; Recursive window tree rendering
-     [:div.editor-content
-      {:on-click (fn [e] (when-let [hidden-input @hidden-input-ref] (.focus hidden-input)) (.stopPropagation e))
-       :style {:display "flex"
-               :flex-direction "row"
-               :width "100%"
-               :height "100%"
-               :min-height "100%"}}
-      (render-window-tree window-tree active-window-id hidden-input-ref)]]))
+       ;; Recursive window tree rendering
+       [:div.editor-content
+        {:on-click (fn [e] (when-let [hidden-input @hidden-input-ref] (.focus hidden-input)) (.stopPropagation e))
+         :style {:display "flex"
+                 :flex-direction "row"
+                 :width "100%"
+                 :height "100%"
+                 :min-height "100%"}}
+        (render-window-tree window-tree active-window-id hidden-input-ref)]])))
 
-;; Add document-level listener once to intercept browser shortcuts
+;; Add document-level listener to capture ALL keyboard input
+;; This ensures input is captured even if hidden-input briefly loses focus
 (defonce ^:private keydown-listener-installed?
   (do
-    (println "🔒 Installing document-level keydown listener to block browser shortcuts")
     (.addEventListener js/document "keydown"
                        (fn [e]
                          (let [ctrl? (.-ctrlKey e)
-                               key (.-key e)]
+                               key (.-key e)
+                               target (.-target e)
+                               target-tag (when target (.-tagName target))
+                               ;; Check if we're in an input field that should receive normal input
+                               in-form-field? (and target-tag
+                                                   (or (= target-tag "INPUT")
+                                                       (= target-tag "SELECT")))]
+                           ;; Block dangerous browser shortcuts
                            (when (and ctrl? (or (= key "w") (= key "t") (= key "n")))
-                             (println "🚫 Blocking browser shortcut: C-" key)
                              (.preventDefault e)
-                             (.stopPropagation e))))
+                             (.stopPropagation e))
+
+                           ;; If not in a form field, route to editor's keydown handler
+                           ;; This catches input even when hidden-input loses focus
+                           (when (and (not in-form-field?)
+                                      ;; Don't double-handle if already on hidden-input
+                                      (not (and target-tag
+                                                (= target-tag "TEXTAREA")
+                                                (.contains (.-classList target) "hidden-input"))))
+                             ;; Refocus hidden input and handle the key
+                             (when-let [hidden-input (js/document.querySelector ".hidden-input")]
+                               (.focus hidden-input))
+                             ;; Handle the keydown event directly
+                             (handle-keydown e))))
                        #js {:capture true})
-    (println "✓ Document-level listener installed")
     true))
 
 (defn editor-view

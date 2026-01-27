@@ -205,25 +205,25 @@
 
     ;; Create multiple kills
     (h/type-text "First")
-    (Thread/sleep 50)
-    (h/press-ctrl "a")
-    (Thread/sleep 30)
-    (h/press-ctrl "k")  ; Kill "First"
     (Thread/sleep 100)
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+    (h/press-ctrl "k")  ; Kill "First"
+    (Thread/sleep 200)
 
     (h/type-text "Second")
-    (Thread/sleep 50)
-    (h/press-ctrl "a")
-    (Thread/sleep 30)
-    (h/press-ctrl "k")  ; Kill "Second"
     (Thread/sleep 100)
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+    (h/press-ctrl "k")  ; Kill "Second"
+    (Thread/sleep 200)
 
     (h/type-text "Third")
-    (Thread/sleep 50)
-    (h/press-ctrl "a")
-    (Thread/sleep 30)
-    (h/press-ctrl "k")  ; Kill "Third"
     (Thread/sleep 100)
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+    (h/press-ctrl "k")  ; Kill "Third"
+    (Thread/sleep 200)
 
     ;; Yank - should get "Third" (most recent)
     (h/press-ctrl "y")

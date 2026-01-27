@@ -230,11 +230,26 @@
 ;; =============================================================================
 
 (defn type-text
-  "Type text character by character."
+  "Type text by sending keys to the hidden-input.
+   Carefully manages focus and state to ensure all characters are delivered."
   [text]
+  ;; Ensure app is ready after previous operations
+  (Thread/sleep 50)
+  ;; Focus and clear the hidden-input
+  (e/js-execute *driver* "
+    const input = document.querySelector('.hidden-input');
+    input.focus();
+    input.value = '';
+    input.selectionStart = 0;
+    input.selectionEnd = 0;
+  ")
+  (Thread/sleep 50)
+  ;; Type each character with focus refresh
   (doseq [ch text]
-    (e/fill *driver* {:css ".hidden-input"} (str ch))
-    (Thread/sleep 10)))
+    (e/js-execute *driver* "document.querySelector('.hidden-input').focus()")
+    (Thread/sleep 10)
+    (e/fill-active *driver* (str ch))
+    (Thread/sleep 20)))
 
 (defn press-key
   "Press a special key (Enter, Backspace, ArrowLeft, etc.)"

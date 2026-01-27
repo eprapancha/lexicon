@@ -338,6 +338,11 @@
 
 ;; -- Editing Commands --
 
+(defn kill-command?
+  "Check if a command is a kill command that should append to kill ring"
+  [cmd]
+  (contains? #{:kill-line :kill-word :backward-kill-word :kill-region :edit/kill-region} cmd))
+
 (rf/reg-event-fx
  :kill-word
  (fn [{:keys [db]} [_]]
@@ -353,8 +358,16 @@
          (if (> length 0)
            (let [killed-text (.getRange wasm-instance current-pos end-pos)
                  kill-ring (:kill-ring db)
-                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))]
-             {:db (assoc db :kill-ring updated-kill-ring)
+                 last-command (:last-command db)
+                 ;; Consecutive kill commands should append to the previous kill
+                 should-append? (and (seq kill-ring) (kill-command? last-command))
+                 updated-kill-ring (if should-append?
+                                    (cons (str (first kill-ring) killed-text)
+                                          (rest kill-ring))
+                                    (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring)))]
+             {:db (-> db
+                      (assoc :kill-ring updated-kill-ring)
+                      (assoc :last-command :kill-word))
               :fx [[:dispatch [:editor/queue-transaction
                               {:op :delete-range :start current-pos :length length}]]]})
            {:db db}))
@@ -375,8 +388,17 @@
          (if (> length 0)
            (let [killed-text (.getRange wasm-instance start-pos current-pos)
                  kill-ring (:kill-ring db)
-                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))]
-             {:db (assoc db :kill-ring updated-kill-ring)
+                 last-command (:last-command db)
+                 ;; Consecutive kill commands should append to the previous kill
+                 ;; Note: For backward kills, we prepend instead of append
+                 should-append? (and (seq kill-ring) (kill-command? last-command))
+                 updated-kill-ring (if should-append?
+                                    (cons (str killed-text (first kill-ring))
+                                          (rest kill-ring))
+                                    (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring)))]
+             {:db (-> db
+                      (assoc :kill-ring updated-kill-ring)
+                      (assoc :last-command :backward-kill-word))
               :fx [[:dispatch [:editor/queue-transaction
                               {:op :delete-range :start start-pos :length length}]]]})
            {:db db}))
@@ -407,8 +429,18 @@
          (if (> length 0)
            (let [killed-text (.getRange wasm-instance kill-start kill-end)
                  kill-ring (:kill-ring db)
-                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))]
-             {:db (assoc db :kill-ring updated-kill-ring)
+                 last-command (:last-command db)
+                 ;; Consecutive kill commands should append to the previous kill
+                 should-append? (and (seq kill-ring) (kill-command? last-command))
+                 updated-kill-ring (if should-append?
+                                    ;; Append to most recent kill entry
+                                    (cons (str (first kill-ring) killed-text)
+                                          (rest kill-ring))
+                                    ;; Push new kill entry
+                                    (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring)))]
+             {:db (-> db
+                      (assoc :kill-ring updated-kill-ring)
+                      (assoc :last-command :kill-line))
               :fx [[:dispatch [:editor/queue-transaction
                               {:op :delete-range :start kill-start :length length}]]]})
            {:db db}))
@@ -530,8 +562,16 @@
          (if (> length 0)
            (let [killed-text (.getRange ^js wasm-instance start end)
                  kill-ring (:kill-ring db)
-                 updated-kill-ring (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring))]
-             {:db (assoc db :kill-ring updated-kill-ring)
+                 last-command (:last-command db)
+                 ;; Consecutive kill commands should append to the previous kill
+                 should-append? (and (seq kill-ring) (kill-command? last-command))
+                 updated-kill-ring (if should-append?
+                                    (cons (str (first kill-ring) killed-text)
+                                          (rest kill-ring))
+                                    (take const/KILL_RING_MAX_SIZE (cons killed-text kill-ring)))]
+             {:db (-> db
+                      (assoc :kill-ring updated-kill-ring)
+                      (assoc :last-command :kill-region))
               :fx [[:dispatch [:deactivate-mark]]
                    [:dispatch [:editor/queue-transaction
                               {:op :delete-range :start start :length length}]]]})
@@ -555,15 +595,17 @@
 
      (if (and wasm-instance (seq kill-ring))
        (let [text-to-yank (first kill-ring)
-             yank-length (count text-to-yank)]
-         (println "✓ Yanking" yank-length "chars at position" cursor-pos)
+             yank-length (count text-to-yank)
+             ;; Use explicit position to ensure yank-pop has correct bounds
+             insert-pos (or cursor-pos 0)]
+         (println "✓ Yanking" yank-length "chars at position" insert-pos)
          {:db (-> db
-                  (assoc :last-yank {:position cursor-pos
+                  (assoc :last-yank {:position insert-pos
                                      :length yank-length
                                      :kill-ring-index 0})
                   (assoc :last-command :yank))
           :fx [[:dispatch [:editor/queue-transaction
-                           {:op :insert :text text-to-yank}]]]})
+                           {:op :insert :text text-to-yank :position insert-pos}]]]})
        {:db db}))))
 
 (rf/reg-event-fx

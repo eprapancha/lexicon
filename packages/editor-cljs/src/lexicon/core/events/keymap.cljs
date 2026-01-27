@@ -160,7 +160,8 @@
                [:dispatch [:clear-prefix-key-state]]]})
 
        ;; Check if this might be a prefix for a multi-key sequence
-       ;; by seeing if any keybinding starts with this sequence
+       ;; by seeing if any keybinding starts with this sequence FOLLOWED BY A SPACE
+       ;; This ensures single keys like "S" don't match "S-Insert" (which is a shifted key, not a sequence)
        (let [keymaps (:keymaps db)
              transient-keymap (:transient-keymap db)
              all-bindings (concat
@@ -170,10 +171,13 @@
                            (mapcat #(collect-all-bindings-from-keymap keymaps [:minor %])
                                    (get-active-minor-modes db))
                            (collect-all-bindings-from-keymap keymaps [:major (get-active-major-mode db)])
-                           (collect-all-bindings-from-keymap keymaps [:global]))]
+                           (collect-all-bindings-from-keymap keymaps [:global]))
+             ;; For multi-key sequences like "C-x C-f", check if any binding starts with
+             ;; the full-sequence followed by a space. This prevents "S" from matching "S-Insert".
+             prefix-with-space (str full-sequence " ")]
          (some (fn [[key-str _cmd]]
                  (and (string? key-str)
-                      (.startsWith key-str full-sequence)))
+                      (.startsWith key-str prefix-with-space)))
                all-bindings))
        {:fx [[:dispatch [:set-prefix-key-state full-sequence]]]}
 
@@ -188,7 +192,8 @@
                               "TAB" "\t"
                               key-str)]
          ;; (println "✍️ Inserting special key:" key-str "as:" (pr-str text-to-insert))
-         {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
+         {:db (assoc db :last-command :self-insert-command)  ; Break consecutive kill chain
+          :fx [[:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
                [:dispatch [:clear-prefix-key-state]]]})
 
        ;; No binding found - check if it's a printable character for insertion (Emacs mode - always insert)
@@ -206,7 +211,8 @@
                            1)
              text-to-insert (apply str (repeat repeat-count key-str))]
          ;; (println "✍️ Inserting character:" key-str "×" repeat-count "=" text-to-insert)
-         {:fx [[:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
+         {:db (assoc db :last-command :self-insert-command)  ; Break consecutive kill chain
+          :fx [[:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
                [:dispatch [:clear-prefix-key-state]]
                ;; Phase 6.5: Clear prefix-arg after self-insert
                (when prefix-arg
