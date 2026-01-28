@@ -147,6 +147,97 @@
   "(defmacro let* [bindings & body]
      `(let ~bindings ~@body))")
 
+;; Define progn as alias for do (Emacs compatibility)
+(sci/eval-string* sci-context
+  "(defmacro progn [& body]
+     `(do ~@body))")
+
+;; =============================================================================
+;; Emacs Error Handling: condition-case, signal, error
+;; =============================================================================
+
+;; Define signal function - raises an error with Emacs-style error data
+;; Error data is a vector: [error-symbol message & extra-data]
+(sci/eval-string* sci-context
+  "(defn signal
+     \"Signal an error. ERROR-SYMBOL is a symbol identifying the error type.
+      DATA is additional error information (typically a string message).
+
+      Example: (signal 'file-error \\\"File not found\\\")\"
+     [error-symbol & data]
+     (throw (ex-info (str error-symbol \": \" (first data))
+                     {:error-symbol error-symbol
+                      :error-data (vec (cons error-symbol data))})))")
+
+;; Define error function - convenience wrapper for signal with 'error symbol
+(sci/eval-string* sci-context
+  "(defn error
+     \"Signal an error with symbol 'error and formatted message.
+
+      Example: (error \\\"Something went wrong\\\")\"
+     [& args]
+     (signal 'error (apply str args)))")
+
+;; Define condition-case macro - Emacs-style exception handling
+;; Syntax: (condition-case var bodyform (error-sym handler...) ...)
+(sci/eval-string* sci-context
+  "(defmacro condition-case
+     \"Handle errors in BODYFORM with handlers for specific error types.
+
+      VAR is bound to error data [error-symbol message ...] in handlers.
+      Use nil for VAR if you don't need the error data.
+
+      Each handler is (ERROR-SYMBOL HANDLER-FORMS...) where ERROR-SYMBOL
+      matches the first element of error data. Use 'error to catch all errors.
+
+      Example:
+        (condition-case err
+            (risky-operation)
+          (file-error (message \\\"File error: %s\\\" (second err)))
+          (error (message \\\"Error: %s\\\" (second err))))\"
+     [var bodyform & handlers]
+     (let [e-sym (gensym \"e\")
+           data-sym (gensym \"data\")
+           err-type-sym (gensym \"err-type\")]
+       `(try
+          ~bodyform
+          (catch :default ~e-sym
+            (let [~data-sym (or (:error-data (ex-data ~e-sym))
+                                ['~'error (ex-message ~e-sym)])
+                  ~err-type-sym (first ~data-sym)
+                  ~@(when var [var data-sym])]
+              (cond
+                ~@(mapcat
+                    (fn [handler]
+                      (let [error-type (first handler)
+                            handler-body (rest handler)]
+                        [(if (= error-type 'error)
+                           true  ; 'error matches all errors
+                           `(= ~err-type-sym '~error-type))
+                         `(do ~@handler-body)]))
+                    handlers)
+                :else (throw ~e-sym)))))))")
+
+;; Define unwind-protect macro - guarantees cleanup forms run
+(sci/eval-string* sci-context
+  "(defmacro unwind-protect
+     \"Execute BODYFORM, guaranteeing CLEANUP-FORMS will run afterward.
+
+      CLEANUP-FORMS run whether BODYFORM completes normally, throws an error,
+      or exits via non-local jump. Similar to try/finally.
+
+      Example:
+        (unwind-protect
+            (progn
+              (lock-resource)
+              (use-resource))
+          (unlock-resource))\"
+     [bodyform & cleanup-forms]
+     `(try
+        ~bodyform
+        (finally
+          ~@cleanup-forms)))")
+
 ;; =============================================================================
 ;; Core Evaluation Functions
 ;; =============================================================================
