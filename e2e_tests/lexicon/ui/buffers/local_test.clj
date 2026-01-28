@@ -44,29 +44,33 @@
   (testing "Modes infrastructure loaded without errors"
     (h/setup-test*)
 
-    ;; Check that lexicon.modes namespace is available
+    ;; Check that lexicon.core.modes namespace is available
     (let [result (e/js-execute h/*driver* "
       try {
-        return typeof lexicon !== 'undefined' && typeof lexicon.modes !== 'undefined';
+        return typeof lexicon !== 'undefined' &&
+               typeof lexicon.core !== 'undefined' &&
+               typeof lexicon.core.modes !== 'undefined';
       } catch (e) {
         return false;
       }
     ")]
-      (is (true? result) "lexicon.modes namespace should be loaded"))))
+      (is (true? result) "lexicon.core.modes namespace should be loaded"))))
 
 (deftest test-variables-namespace-loaded
   (testing "Variables infrastructure loaded without errors"
     (h/setup-test*)
 
-    ;; Check that lexicon.variables namespace is available
+    ;; Check that lexicon.core.variables namespace is available
     (let [result (e/js-execute h/*driver* "
       try {
-        return typeof lexicon !== 'undefined' && typeof lexicon.variables !== 'undefined';
+        return typeof lexicon !== 'undefined' &&
+               typeof lexicon.core !== 'undefined' &&
+               typeof lexicon.core.variables !== 'undefined';
       } catch (e) {
         return false;
       }
     ")]
-      (is (true? result) "lexicon.variables namespace should be loaded"))))
+      (is (true? result) "lexicon.core.variables namespace should be loaded"))))
 
 (deftest test-system-stability
   (testing "System remains stable with new infrastructure"
