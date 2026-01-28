@@ -1,36 +1,18 @@
 # Lexicon Development Guide
 
-**Last Updated:** 2026-01-13
-
----
-
-## Setup
-
-### Prerequisites
-
-- Nix (for reproducible environment)
-- Firefox (for E2E tests)
-
-### First Time Setup
+## Quick Start
 
 ```bash
-# Clone repository
-git clone https://github.com/eprapancha/lexicon.git
+# Clone and enter nix shell
+git clone https://github.com/anthropics/lexicon.git
 cd lexicon
-
-# Enter nix shell (installs all dependencies)
 nix-shell
 
 # Build WASM
-cd packages/lexicon-engine/wasm
-wasm-pack build --target web
+cd packages/lexicon-engine/wasm && wasm-pack build --target web && cd ../../..
 
-# Install npm dependencies
-cd ../../../packages/editor-cljs
-npm install
-
-# Start development server
-cd ../..
+# Install deps and start dev server
+cd packages/editor-cljs && npm install && cd ../..
 bb dev
 ```
 
@@ -38,42 +20,32 @@ Visit http://localhost:8080
 
 ---
 
-## Daily Workflow
+## Build System
 
-### Development
+### Babashka Tasks
 
-```bash
-# Start dev server (hot reload enabled)
-bb dev
+| Command | Description |
+|---------|-------------|
+| `bb dev` | Start dev server (hot reload) |
+| `bb build` | Full production build |
+| `bb test` | Run all tests |
+| `bb test:e2e` | E2E tests only |
+| `bb test:e2e "namespace"` | Run specific test namespace |
+| `bb clean` | Clean build artifacts |
+| `bb lint` | Run all linters |
+| `bb ci-test` | Simulate CI locally |
 
-# Make changes, save files
-# Browser auto-reloads
-```
+### Prerequisites
 
-### Before Commit
+- Node.js >= 16
+- Java >= 17
+- Babashka >= 1.3.0
+- Rust + wasm-pack
+- Firefox (for E2E tests)
 
-```bash
-# Run tests
-cargo test              # Rust tests
-bb test:e2e             # E2E tests (requires app at :8080)
+**NixOS users:** `nix-shell` provides everything.
 
-# Ensure clean build
-npx shadow-cljs compile app  # Check for warnings
-```
-
-### Commit
-
-```bash
-git add -A
-git commit -m "feat(scope): concise description
-
-- Detailed bullet points
-- Reference issue if applicable
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
-```
+**Others:** Install tools via your package manager.
 
 ---
 
@@ -81,209 +53,107 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 ### Test Structure
 
-**Rust Unit Tests:**
-- Location: `packages/lexicon-engine/core/src/*.rs`
-- Run: `cargo test`
-- 44 tests covering gap buffer operations
-
-**E2E Tests:**
-- Location: `e2e_tests/lexicon/*.clj`
-- Run: `bb test:e2e`
-- Requires Firefox and app running at :8080
+```
+e2e_tests/lexicon/
+├── ui/           # Keyboard/UI tests (simulate user actions)
+│   ├── editing/  # Core editing (undo, kill-ring, etc.)
+│   ├── search/   # Search & replace
+│   ├── buffers/  # Buffer management
+│   └── ...
+├── lisp/         # Lisp API tests (use evalLisp)
+│   ├── buffer_test.clj
+│   ├── editing_test.clj
+│   └── ...
+└── test_helpers.clj
+```
 
 ### Running Tests
 
 ```bash
 # All tests
-bb test
-
-# Just Rust
-cargo test
-
-# Just E2E
 bb test:e2e
 
-# Watch mode (future)
-bb test:unit:watch
+# Specific namespace
+bb test:e2e "ui.editing.undo-test"
+bb test:e2e "lisp.buffer-test"
+
+# Rust tests
+cargo test
 ```
 
 ### Writing Tests
 
-**E2E Test Example:**
+**UI tests** simulate keyboard actions:
 ```clojure
-(deftest test-basic-typing
-  (testing "Can type text"
-    (e/go *driver* app-url)
-    (wait-for-editor-ready)
-    (click-editor)
-    (type-text "Hello World")
-    (is (.contains (get-editor-text) "Hello World"))))
+(deftest test-undo
+  (testing "C-/ undoes insert"
+    (h/setup-test*)
+    (h/type-text "hello")
+    (h/press-ctrl "/")
+    (is (= "" (h/get-buffer-text*)))))
 ```
 
-**Test Requirements:**
-- ✅ Add tests for new features
-- ✅ Add regression tests for bugs
-- ✅ All tests must pass before commit
-
----
-
-## Critical Rules
-
-### NEVER Do
-
-- ❌ Run compilation/dev servers yourself (user has watch running)
-- ❌ Commit code that doesn't compile cleanly
-- ❌ Ignore compilation warnings (zero tolerance)
-- ❌ Violate state ownership (dispatch to owners)
-- ❌ Create GitHub labels without documenting first
-- ❌ Run tests in background where output is hidden
-
-### ALWAYS Do
-
-- ✅ Check GitHub issues FIRST before starting work
-- ✅ Study Emacs source before implementing features
-- ✅ Dispatch events to state owners (never mutate directly)
-- ✅ Commit after each green test run (atomic commits)
-- ✅ Reference issue numbers in commits
-- ✅ Fix ALL warnings before commit
-
----
-
-## Debugging
-
-### Git for Regressions
-
-```bash
-# View recent changes
-git diff HEAD~5
-
-# Find breaking commit
-git bisect start
-git bisect bad                    # Current is broken
-git bisect good <known-good>      # Last working
-# Test each checkout
-git bisect good/bad
-git bisect reset
-
-# File history
-git log -p -- path/to/file.cljs
-git blame path/to/file.cljs
-```
-
-### Browser DevTools
-
-- Console for ClojureScript errors
-- re-frame-10x for state inspection (if enabled)
-- Network tab for WASM loading issues
-
-### Rust Debugging
-
-```bash
-# Run with output
-cargo test -- --nocapture
-
-# Specific test
-cargo test test_marker_creation -- --nocapture
+**Lisp tests** test API directly:
+```clojure
+(deftest test-save-excursion
+  (testing "Point restored"
+    (lisp/setup-test)
+    (lisp/eval-lisp! "(goto-char 5)")
+    (lisp/eval-lisp! "(save-excursion (goto-char 0))")
+    (is (= 5 (lisp/eval-lisp! "(point)")))))
 ```
 
 ---
 
 ## Code Standards
 
-### File Size
-
+### File Organization
 - Max ~500 lines per namespace
-- Split when exceeded
-- Keep functions focused
+- Use descriptive names: `lexicon.events.buffer` not `lexicon.helpers`
 
-### Naming
+### Commit Messages
+```
+feat(scope): concise description
 
-**Namespaces:**
-```clojure
-lexicon.events.buffer    ; Good: domain-specific
-lexicon.helpers          ; Bad: too vague
+- Details if needed
+- Reference issues: Fixes #123
+
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
-**Functions:**
-```clojure
-(defn insert-at-point [text] ...)  ; Good: descriptive
-(defn do-thing [x] ...)            ; Bad: vague
-```
-
-### Documentation
-
-```clojure
-(defn complex-function
-  "Brief description.
-  
-  Args:
-    arg1 - Description
-    arg2 - Description
-  
-  Returns:
-    Description"
-  [arg1 arg2]
-  ...)
-```
-
-### Code Style
-
-```clojure
-;; ✅ Use threading macros
-(-> db
-    (assoc :foo bar)
-    (update :baz inc))
-
-;; ✅ Destructure
-(defn handler [{:keys [db]} [_ arg1 arg2]]
-  ...)
-
-;; ✅ Meaningful names
-(let [active-buffer-id (:active-buffer-id db)]
-  ...)
-
-;; ❌ Deep nesting
-(if x
-  (if y
-    (if z
-      ...)))
-```
+### Before Committing
+1. All tests pass: `bb test:e2e`
+2. No warnings: `npx shadow-cljs compile app`
+3. Lint passes: `bb lint`
 
 ---
 
-## Build System
+## Deployment
 
-### Babashka Tasks
+### GitHub Pages (Automatic)
+Push to `main` → GitHub Actions builds and deploys.
 
+### Manual Build
 ```bash
-bb dev              # Start dev server
-bb build            # Production build
-bb test             # All tests
-bb clean            # Clean artifacts
-bb ci-test          # Simulate CI
+bb build
+# Output in packages/editor-cljs/resources/public/
 ```
 
-### Build Files
-
-- `bb.edn` - Babashka task definitions
-- `packages/editor-cljs/shadow-cljs.edn` - ClojureScript build
-- `packages/lexicon-engine/wasm/Cargo.toml` - Rust dependencies
+### Hosting Requirements
+- MIME type: `.wasm` → `application/wasm`
+- HTTPS required for WASM/Workers
 
 ---
 
 ## Troubleshooting
 
 ### WASM fails to compile
-
 ```bash
 cd packages/lexicon-engine/wasm
-cargo clean
-cargo build
-wasm-pack build --target web
+cargo clean && wasm-pack build --target web
 ```
 
 ### ClojureScript fails to compile
-
 ```bash
 cd packages/editor-cljs
 rm -rf .shadow-cljs resources/public/js
@@ -291,125 +161,46 @@ npx shadow-cljs compile app
 ```
 
 ### E2E tests fail
+1. App running at http://localhost:8080?
+2. Firefox installed?
+3. Check specific error in test output
 
-1. Ensure app running at http://localhost:8080
-2. Ensure Firefox installed
-3. Check test logs for specific failures
+---
 
-### Rust tests fail
+## Key Paths
 
+```
+packages/editor-cljs/src/lexicon/  # ClojureScript source
+packages/lexicon-engine/wasm/      # Rust WASM
+e2e_tests/                         # E2E tests
+docs/                              # Documentation
+```
+
+---
+
+## CI Testing
+
+### Quick Local Test
 ```bash
-cd packages/lexicon-engine/wasm
-cargo test -- --nocapture
-# Look for assertion failures
+bb ci-test  # ~2-5 min, uses local env
 ```
 
----
-
-## GitHub Workflow
-
-### Labels
-
-**Required (every issue):**
-- ONE priority: `priority-critical/high/medium/low`
-- ONE type: `bug`, `enhancement`, `refactor`, `test`, `documentation`
-
-**Optional:**
-- Phase: `phase-6.5`, `phase-7`, etc.
-- Component: `component-minibuffer`, `component-commands`, etc.
-- Status: `status-blocked`, `status-in-progress`
-
-**Label Creation:**
-1. Update `.CLAUDE.md` FIRST
-2. Get maintainer approval
-3. Create in GitHub
-4. Document why needed
-
-### Issue Workflow
-
+### Full GitHub Simulation
 ```bash
-# List open issues
-gh issue list
-
-# View specific issue
-gh issue view 76
-
-# Create issue
-gh issue create --title "..." --body "..."
-
-# Comment on issue
-gh issue comment 76 --body "..."
-
-# Close issue
-gh issue close 76 --comment "Completed in #PR"
+bb install-act  # One-time setup
+bb act-ci       # Runs actual workflow in Docker
 ```
+
+**Workflow:** `bb ci-test` for iteration → `bb act-ci` before push.
 
 ---
 
-## Performance
+## Rules
 
-### Profiling
+1. **GitHub first** - Check issues before starting work
+2. **Emacs fidelity** - Study Emacs source before implementing
+3. **Test first** - Write tests before implementing
+4. **Zero warnings** - Fix all before commit
+5. **Atomic commits** - Commit after each green test
 
-```javascript
-// Browser console
-console.time("operation");
-// ... code to measure
-console.timeEnd("operation");
-```
-
-### Optimization
-
-- Profile BEFORE optimizing
-- Gap buffer in Rust for speed
-- Minimize re-renders (React.memo)
-- Lazy load packages
-- Cache expensive computations
-
----
-
-## Quick Reference
-
-### Key Commands
-
-```bash
-bb dev                   # Dev server
-bb test                  # All tests
-cargo test               # Rust tests
-bb test:e2e              # E2E tests
-git diff HEAD~3          # Recent changes
-git bisect               # Find breaking commit
-```
-
-### Important Paths
-
-```
-packages/editor-cljs/src/lexicon/     # ClojureScript
-packages/lexicon-engine/wasm/         # Rust WASM
-e2e_tests/                            # E2E tests
-docs/                                 # Documentation
-```
-
-### Emacs Source Reference
-
-```
-/tmp/emacs-source/lisp/simple.el      # universal-argument
-/tmp/emacs-source/src/callint.c       # Interactive specs
-/tmp/emacs-source/lisp/minibuffer.el  # Completion
-/tmp/emacs-source/src/buffer.c        # Buffer-local vars
-```
-
----
-
-## Remember
-
-1. ✅ **GitHub first** - Check issues before starting
-2. ✅ **Emacs fidelity** - Study source code first
-3. ✅ **State ownership** - Dispatch, never mutate
-4. ✅ **Test first** - Write tests before implementing
-5. ✅ **Commit frequently** - After each green test
-6. ✅ **Zero warnings** - Fix all before commit
-7. ✅ **Zero regressions** - All tests must pass
-
----
-
-**For architecture details, see ARCHITECTURE.md. For project plan, see ROADMAP.md.**
+See also: [ARCHITECTURE.md](./ARCHITECTURE.md), [CONTRIBUTING.md](../CONTRIBUTING.md)
