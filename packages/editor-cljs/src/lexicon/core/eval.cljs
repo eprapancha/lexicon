@@ -180,6 +180,7 @@
 
 ;; Define condition-case macro - Emacs-style exception handling
 ;; Syntax: (condition-case var bodyform (error-sym handler...) ...)
+;; NOTE: Non-local exits (throw*) propagate through - they're not errors
 (sci/eval-string* sci-context
   "(defmacro condition-case
      \"Handle errors in BODYFORM with handlers for specific error types.
@@ -189,6 +190,8 @@
 
       Each handler is (ERROR-SYMBOL HANDLER-FORMS...) where ERROR-SYMBOL
       matches the first element of error data. Use 'error to catch all errors.
+
+      NOTE: Non-local exits via throw* are NOT caught - they propagate through.
 
       Example:
         (condition-case err
@@ -202,21 +205,24 @@
        `(try
           ~bodyform
           (catch :default ~e-sym
-            (let [~data-sym (or (:error-data (ex-data ~e-sym))
-                                ['~'error (ex-message ~e-sym)])
-                  ~err-type-sym (first ~data-sym)
-                  ~@(when var [var data-sym])]
-              (cond
-                ~@(mapcat
-                    (fn [handler]
-                      (let [error-type (first handler)
-                            handler-body (rest handler)]
-                        [(if (= error-type 'error)
-                           true  ; 'error matches all errors
-                           `(= ~err-type-sym '~error-type))
-                         `(do ~@handler-body)]))
-                    handlers)
-                :else (throw ~e-sym)))))))")
+            ;; Let non-local exits propagate through - they're not errors
+            (if (:lexicon/non-local-exit (ex-data ~e-sym))
+              (throw ~e-sym)
+              (let [~data-sym (or (:error-data (ex-data ~e-sym))
+                                  ['~'error (ex-message ~e-sym)])
+                    ~err-type-sym (first ~data-sym)
+                    ~@(when var [var data-sym])]
+                (cond
+                  ~@(mapcat
+                      (fn [handler]
+                        (let [error-type (first handler)
+                              handler-body (rest handler)]
+                          [(if (= error-type 'error)
+                             true  ; 'error matches all errors
+                             `(= ~err-type-sym '~error-type))
+                           `(do ~@handler-body)]))
+                      handlers)
+                  :else (throw ~e-sym))))))))")
 
 ;; Define unwind-protect macro - guarantees cleanup forms run
 (sci/eval-string* sci-context
@@ -237,6 +243,44 @@
         ~bodyform
         (finally
           ~@cleanup-forms)))")
+
+;; =============================================================================
+;; Emacs Non-Local Exits: catch/throw
+;; =============================================================================
+;;
+;; Unlike condition-case/signal which handle ERRORS, catch/throw is for
+;; CONTROL FLOW - jumping out of nested computations to a named exit point.
+
+;; Define throw* function for non-local exits (named throw* to avoid shadowing clojure throw)
+(sci/eval-string* sci-context
+  "(defn throw*
+     \"Non-local exit to matching catch* point.
+      Searches up the call stack for (catch* TAG ...) with matching TAG.
+      Immediately exits to that catch*, which returns VALUE.\"
+     [tag value]
+     (throw (ex-info \"non-local-exit\"
+                     {:lexicon/non-local-exit true
+                      :tag tag
+                      :value value})))")
+
+;; Define catch* macro for non-local exit points (named catch* to avoid shadowing clojure catch)
+(sci/eval-string* sci-context
+  "(defmacro catch*
+     \"Establish a non-local exit point with TAG.
+      Executes BODY forms. If (throw* TAG VALUE) is called during execution,
+      immediately returns VALUE. Otherwise returns the result of BODY.\"
+     [tag & body]
+     (let [e# (gensym \"e\")
+           tag-val# (gensym \"tag\")]
+       `(let [~tag-val# ~tag]
+          (try
+            (do ~@body)
+            (catch :default ~e#
+              (let [data# (ex-data ~e#)]
+                (if (and (:lexicon/non-local-exit data#)
+                         (= (:tag data#) ~tag-val#))
+                  (:value data#)
+                  (throw ~e#))))))))")
 
 ;; =============================================================================
 ;; Core Evaluation Functions
