@@ -325,3 +325,81 @@
       (is (= pt-before (eval-lisp! "(point)"))
           "Point unchanged after look-ahead")
       (is (some? found?) "Should find 'World'"))))
+
+;; =============================================================================
+;; Buffer API (Lisp API Tests)
+;; =============================================================================
+;;
+;; Tests for buffer-related Lisp API functions.
+
+(deftest test-buffer-modified-p-api
+  (testing "buffer-modified-p returns false for unmodified buffer"
+    (setup-test)
+    ;; setup-test already calls (set-buffer-modified-p nil)
+    (let [result (eval-lisp! "(buffer-modified-p)")]
+      (is (not result) "Fresh buffer should not be modified")))
+
+  (testing "buffer-modified-p returns true after insert"
+    (setup-test)
+    (eval-lisp! "(insert \"test\")")
+    (let [result (eval-lisp! "(buffer-modified-p)")]
+      (is result "Buffer should be modified after insert"))))
+
+(deftest test-set-buffer-modified-p-api
+  (testing "set-buffer-modified-p clears modification flag"
+    (setup-test)
+    (eval-lisp! "(insert \"test\")")
+    (eval-lisp! "(set-buffer-modified-p nil)")
+    (let [result (eval-lisp! "(buffer-modified-p)")]
+      (is (not result) "Buffer should not be modified after clearing flag")))
+
+  (testing "set-buffer-modified-p can force modified state"
+    (setup-test)
+    (eval-lisp! "(set-buffer-modified-p t)")
+    (let [result (eval-lisp! "(buffer-modified-p)")]
+      (is result "Buffer should be modified when forced"))))
+
+(deftest test-erase-buffer-api
+  (testing "erase-buffer removes all content"
+    (setup-test)
+    (eval-lisp! "(insert \"Hello World\")")
+    (eval-lisp! "(erase-buffer)")
+    (is (= "" (eval-lisp! "(buffer-string)"))
+        "Buffer should be empty after erase-buffer"))
+
+  (testing "erase-buffer resets point to beginning"
+    (setup-test)
+    (eval-lisp! "(insert \"Hello World\")")
+    (eval-lisp! "(erase-buffer)")
+    (is (= 0 (eval-lisp! "(point)"))
+        "Point should be at beginning after erase-buffer")))
+
+(deftest test-current-buffer-api
+  (testing "current-buffer returns buffer object"
+    (setup-test)
+    (let [result (eval-lisp! "(current-buffer)")]
+      (is (some? result) "current-buffer should return something"))))
+
+(deftest ^:skip test-buffer-live-p-api
+  (testing "buffer-live-p checks if buffer is alive"
+    (setup-test)
+    ;; TODO: Implement buffer-live-p
+    (is true "PENDING: buffer-live-p needs implementation")))
+
+(deftest ^:skip test-get-buffer-create-api
+  (testing "get-buffer-create returns or creates buffer"
+    (setup-test)
+    ;; TODO: Implement get-buffer-create
+    (is true "PENDING: get-buffer-create needs implementation")))
+
+(deftest ^:skip test-narrow-to-region-api
+  (testing "narrow-to-region restricts buffer view"
+    (setup-test)
+    ;; TODO: Implement narrowing
+    (is true "PENDING: narrow-to-region needs implementation")))
+
+(deftest ^:skip test-save-restriction-api
+  (testing "save-restriction preserves narrowing state"
+    (setup-test)
+    ;; TODO: Implement save-restriction
+    (is true "PENDING: save-restriction needs implementation")))
