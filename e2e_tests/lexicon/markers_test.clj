@@ -5,7 +5,7 @@
   These tests verify user-visible behavior via keyboard simulation.
 
   For Lisp API marker tests (make-marker, marker-position, etc.),
-  see sci_integration_test.clj."
+  see lexicon.lisp.editing-test."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [lexicon.test-helpers :as h]))
 

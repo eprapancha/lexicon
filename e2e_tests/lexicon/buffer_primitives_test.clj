@@ -63,4 +63,4 @@
 ;; =============================================================================
 ;;
 ;; Note: Buffer Lisp API tests (buffer-modified-p, erase-buffer, narrowing, etc.)
-;; are in sci_integration_test.clj with other Lisp API tests.
+;; are in lexicon.lisp.buffer-test with other Lisp API tests.

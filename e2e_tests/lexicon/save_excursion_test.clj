@@ -83,6 +83,6 @@
 ;; =============================================================================
 ;;
 ;; Note: save-excursion is a Lisp macro. Tests for the Lisp API are in
-;; sci_integration_test.clj (test-save-excursion-* tests).
+;; lexicon.lisp.editing-test (test-save-excursion-* tests).
 ;; This file focuses on user-visible keyboard behavior that demonstrates
 ;; similar cursor restoration principles.

@@ -196,10 +196,12 @@
        Blocked: eval-lisp, evalLisp, setup-eval - these bypass user interaction."
       []
       (print-step "🔍" "Checking E2E tests don't use evalLisp...")
-      (let [;; Files that legitimately need eval (testing the eval system itself)
-            exempt-files (set ["test_helpers.clj"           ;; Defines the helpers
-                               "runtime_eval_test.clj"      ;; Tests eval itself
-                               "sci_integration_test.clj"]) ;; Tests SCI integration
+      (let [;; Files/paths that legitimately need eval (testing the eval system itself)
+            exempt-file? (fn [path]
+                          (let [path-str (str path)]
+                            (or (str/ends-with? path-str "test_helpers.clj")       ;; Defines the helpers
+                                (str/ends-with? path-str "runtime_eval_test.clj")  ;; Tests eval itself
+                                (str/includes? path-str "/lisp/"))))               ;; lexicon.lisp.* namespace
             ;; Bad patterns - evalLisp usage in test code
             bad-patterns [[(re-pattern "eval-lisp") "uses eval-lisp (should use keyboard simulation)"]
                          [(re-pattern "evalLisp") "uses evalLisp (should use keyboard simulation)"]
@@ -228,8 +230,8 @@
             test-files (fs/glob "e2e_tests" "**/*.clj")
             violations (atom [])]
         (doseq [file test-files]
-          (let [filename (str (fs/file-name file))]
-            (when-not (contains? exempt-files filename)
+          (let [filepath (str file)]
+            (when-not (exempt-file? filepath)
               (let [content (slurp (str file))
                     file-violations (atom [])]
                 ;; Check each bad pattern
