@@ -1953,6 +1953,134 @@
     nil))
 
 ;; =============================================================================
+;; Type Predicates
+;; =============================================================================
+
+(defn functionp
+  "Return non-nil if OBJECT is a function.
+
+  A function is any object that can be called with funcall.
+  This includes functions, closures, and symbols bound to functions.
+
+  Usage: (functionp obj)
+  Returns: Boolean"
+  [obj]
+  (or (fn? obj)
+      (and (symbol? obj)
+           (fn? (get @global-vars obj)))))
+
+(defn commandp
+  "Return non-nil if OBJECT is a command.
+
+  A command is a function that can be called interactively.
+  In Lexicon, this means it's registered via define-command or
+  :register-command.
+
+  Usage: (commandp 'save-buffer)
+  Returns: t or nil"
+  [obj]
+  (let [db @rfdb/app-db
+        cmd-keyword (cond
+                      (keyword? obj) obj
+                      (symbol? obj) (keyword obj)
+                      (string? obj) (keyword obj)
+                      :else nil)]
+    (when (and cmd-keyword
+               (get-in db [:commands cmd-keyword]))
+      true)))
+
+(defn fboundp
+  "Return non-nil if SYMBOL's function definition is not void.
+
+  Usage: (fboundp 'my-function)
+  Returns: Boolean"
+  [symbol]
+  (or (some? (get @global-vars symbol))
+      (commandp symbol)))
+
+(defn boundp
+  "Return non-nil if SYMBOL's value is not void.
+
+  Usage: (boundp 'my-variable)
+  Returns: Boolean"
+  [symbol]
+  (contains? @global-vars symbol))
+
+;; =============================================================================
+;; Autoload
+;; =============================================================================
+
+(def ^:private autoload-registry
+  "Registry of autoload definitions.
+   Maps function symbols to autoload info:
+   {:filename \"file\"
+    :docstring \"doc\"
+    :interactive bool
+    :type :function|:macro|:keymap}"
+  (atom {}))
+
+(defn autoload
+  "Define FUNCTION to autoload from FILENAME.
+
+  This creates a placeholder for FUNCTION that will trigger loading
+  FILENAME when FUNCTION is first called.
+
+  Arguments:
+  - function: Symbol naming the function to autoload
+  - filename: String with file/module to load
+  - docstring: Optional documentation string
+  - interactive: Optional - t if command, nil otherwise
+  - type: Optional - 'macro, 'keymap, or nil for function
+
+  Note: Full lazy loading is not yet implemented. This function
+  records the autoload definition for future use.
+
+  Usage: (autoload 'run-prolog \"prolog\" \"Run Prolog\" t)
+  Returns: nil"
+  ([function filename]
+   (autoload function filename nil nil nil))
+  ([function filename docstring]
+   (autoload function filename docstring nil nil))
+  ([function filename docstring interactive]
+   (autoload function filename docstring interactive nil))
+  ([function filename docstring interactive type]
+   (let [sym (if (symbol? function) function (symbol function))]
+     ;; Store autoload info in registry
+     (swap! autoload-registry assoc sym
+            {:filename filename
+             :docstring docstring
+             :interactive interactive
+             :type type})
+     ;; If interactive, register as a command placeholder
+     (when interactive
+       (let [cmd-keyword (keyword sym)]
+         (rf/dispatch-sync [:register-command cmd-keyword
+                            {:docstring (or docstring (str "Autoloaded from " filename))
+                             :handler [:autoload-trigger cmd-keyword filename]}])))
+     nil)))
+
+(defn autoloadp
+  "Return non-nil if OBJECT is an autoload placeholder.
+
+  Usage: (autoloadp 'some-function)
+  Returns: t or nil"
+  [obj]
+  (let [sym (cond
+              (symbol? obj) obj
+              (keyword? obj) (symbol (name obj))
+              :else nil)]
+    (when (and sym (contains? @autoload-registry sym))
+      true)))
+
+;; Event handler for autoload trigger (placeholder - logs warning)
+(rf/reg-event-fx
+ :autoload-trigger
+ (fn [_ [_ cmd-keyword filename]]
+   (js/console.warn (str "Autoload triggered for " cmd-keyword " from " filename
+                         " - lazy loading not yet implemented"))
+   {}))
+
+;; =============================================================================
 ;; Additional Buffer Functions
 ;; =============================================================================
 
@@ -2140,6 +2268,14 @@
    'key-binding key-binding
    ;; Commands
    'call-interactively call-interactively
+   'commandp commandp
+   ;; Type predicates (#106)
+   'functionp functionp
+   'fboundp fboundp
+   'boundp boundp
+   'autoloadp autoloadp
+   ;; Autoload (#106)
+   'autoload autoload
    ;; Messages
    'message message
    'current-message current-message
