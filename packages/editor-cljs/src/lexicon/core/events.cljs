@@ -148,11 +148,16 @@
       ;; Regular keys with modifiers (including special keys with modifiers)
       :else
       (let [;; Check if this is a special key that needs explicit S- prefix
-            ;; (e.g., Insert, not shifted punctuation like < or >)
+            ;; Arrow keys need S- prefix for selection (Shift+Arrow extends selection)
+            ;; Also Insert, PageUp, PageDown
             needs-s-prefix? (and shift?
                                  (or (= key "Insert")
                                      (= key "PageUp")
-                                     (= key "PageDown")))
+                                     (= key "PageDown")
+                                     (= key "ArrowRight")
+                                     (= key "ArrowLeft")
+                                     (= key "ArrowUp")
+                                     (= key "ArrowDown")))
             base-key (cond
                        (= key " ") "SPC"
                        (= key "Enter") "RET"

@@ -100,14 +100,38 @@
 (rf/reg-event-fx
  :delete-backward-char
  (fn [{:keys [db]} [_]]
-   "Delete character before cursor (backspace) - queue operation"
-   {:fx [[:dispatch [:editor/queue-transaction {:op :delete-backward}]]]}))
+   "Delete character before cursor (backspace) - queue operation.
+    If region is active, deletes the entire region (delete-selection-mode)."
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         mark-pos (:mark-position active-window)
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     ;; If region is active (mark is set and different from point), delete region
+     (if (and mark-pos (not= mark-pos current-pos))
+       (let [start (min mark-pos current-pos)
+             end (max mark-pos current-pos)
+             length (- end start)]
+         {:fx [[:dispatch [:editor/queue-transaction {:op :delete-range :start start :length length}]]
+               [:dispatch [:deactivate-mark]]]})
+       ;; Otherwise, delete single character
+       {:fx [[:dispatch [:editor/queue-transaction {:op :delete-backward}]]]}))))
 
 (rf/reg-event-fx
  :delete-forward-char
  (fn [{:keys [db]} [_]]
-   "Delete character after cursor (delete) - queue operation"
-   {:fx [[:dispatch [:editor/queue-transaction {:op :delete-forward}]]]}))
+   "Delete character after cursor (delete) - queue operation.
+    If region is active, deletes the entire region (delete-selection-mode)."
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         mark-pos (:mark-position active-window)
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     ;; If region is active, delete region
+     (if (and mark-pos (not= mark-pos current-pos))
+       (let [start (min mark-pos current-pos)
+             end (max mark-pos current-pos)
+             length (- end start)]
+         {:fx [[:dispatch [:editor/queue-transaction {:op :delete-range :start start :length length}]]
+               [:dispatch [:deactivate-mark]]]})
+       ;; Otherwise, delete single character
+       {:fx [[:dispatch [:editor/queue-transaction {:op :delete-forward}]]]}))))
 
 ;; -- Cursor Movement Commands --
 
@@ -215,6 +239,55 @@
          (println "🖱️ Click position - line:" line "col:" column "→ linear pos:" new-pos)
          {:fx [[:dispatch [:update-cursor-position new-pos]]]})
        {:db db}))))
+
+;; -- Shift+Arrow Selection Commands --
+;; These commands extend the region (selection) by setting mark if not set, then moving point.
+
+(rf/reg-event-fx
+ :forward-char-shift
+ (fn [{:keys [db]} [_]]
+   "Move forward one character while extending selection (Shift+Right)"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         mark-pos (:mark-position active-window)
+         current-pos (get-in db [:ui :cursor-position] 0)]
+     ;; If mark is not set, set it first at current position
+     (if mark-pos
+       {:fx [[:dispatch [:forward-char]]]}
+       {:fx [[:dispatch [:set-mark]]
+             [:dispatch [:forward-char]]]}))))
+
+(rf/reg-event-fx
+ :backward-char-shift
+ (fn [{:keys [db]} [_]]
+   "Move backward one character while extending selection (Shift+Left)"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         mark-pos (:mark-position active-window)]
+     (if mark-pos
+       {:fx [[:dispatch [:backward-char]]]}
+       {:fx [[:dispatch [:set-mark]]
+             [:dispatch [:backward-char]]]}))))
+
+(rf/reg-event-fx
+ :next-line-shift
+ (fn [{:keys [db]} [_]]
+   "Move to next line while extending selection (Shift+Down)"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         mark-pos (:mark-position active-window)]
+     (if mark-pos
+       {:fx [[:dispatch [:next-line]]]}
+       {:fx [[:dispatch [:set-mark]]
+             [:dispatch [:next-line]]]}))))
+
+(rf/reg-event-fx
+ :previous-line-shift
+ (fn [{:keys [db]} [_]]
+   "Move to previous line while extending selection (Shift+Up)"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         mark-pos (:mark-position active-window)]
+     (if mark-pos
+       {:fx [[:dispatch [:previous-line]]]}
+       {:fx [[:dispatch [:set-mark]]
+             [:dispatch [:previous-line]]]}))))
 
 (rf/reg-event-fx
  :beginning-of-line

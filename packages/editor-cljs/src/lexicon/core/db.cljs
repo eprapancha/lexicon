@@ -209,7 +209,12 @@
                                  "ArrowRight" :forward-char        ; Right arrow
                                  "ArrowLeft" :backward-char        ; Left arrow
                                  "ArrowDown" :next-line            ; Down arrow
-                                 "ArrowUp" :previous-line}}        ; Up arrow
+                                 "ArrowUp" :previous-line          ; Up arrow
+                                 ;; Shift+Arrow for selection (extends region)
+                                 "S-ArrowRight" :forward-char-shift ; Select right
+                                 "S-ArrowLeft" :backward-char-shift ; Select left
+                                 "S-ArrowDown" :next-line-shift     ; Select down
+                                 "S-ArrowUp" :previous-line-shift}} ; Select up
              :major {:buffer-menu-mode {:parent [:global]
                                         :bindings {"RET" :buffer-menu/select-buffer}}}  ; Major mode keymaps
              :minor {}                                  ; Minor mode keymaps

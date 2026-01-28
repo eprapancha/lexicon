@@ -872,6 +872,19 @@ C-h ?   This help menu
          [:dispatch [:register-command :previous-line
                     {:docstring "Move cursor to previous line"
                      :handler [:previous-line]}]]
+         ;; Shift+Arrow selection commands
+         [:dispatch [:register-command :forward-char-shift
+                    {:docstring "Move forward while extending selection (Shift+Right)"
+                     :handler [:forward-char-shift]}]]
+         [:dispatch [:register-command :backward-char-shift
+                    {:docstring "Move backward while extending selection (Shift+Left)"
+                     :handler [:backward-char-shift]}]]
+         [:dispatch [:register-command :next-line-shift
+                    {:docstring "Move to next line while extending selection (Shift+Down)"
+                     :handler [:next-line-shift]}]]
+         [:dispatch [:register-command :previous-line-shift
+                    {:docstring "Move to previous line while extending selection (Shift+Up)"
+                     :handler [:previous-line-shift]}]]
          [:dispatch [:register-command :beginning-of-line
                     {:docstring "Move cursor to beginning of line"
                      :handler [:beginning-of-line]}]]
