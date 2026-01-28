@@ -186,6 +186,7 @@
                                  "C-o" :open-line                  ; Open line
                                  "C-SPC" :set-mark-command         ; Set mark
                                  "C-x C-x" :exchange-point-and-mark ; Exchange point and mark
+                                 "C-x C-q" :read-only-mode          ; Toggle read-only mode
                                  "C-x C-e" :eval-last-sexp         ; Eval last sexp (Phase 6.5 Week 7-8)
                                  "M-:" :eval-expression            ; Eval expression (Phase 6.5 Week 7-8)
                                  "DEL" :delete-backward-char       ; Backspace

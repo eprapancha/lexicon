@@ -110,6 +110,24 @@
    See .CLAUDE.md Architecture Principles: State Management & Ownership"
    (assoc-in db [:buffers buffer-id :is-read-only?] read-only?)))
 
+(rf/reg-event-fx
+ :read-only-mode
+ (fn [{:keys [db]} [_]]
+   "Toggle read-only mode for current buffer (C-x C-q).
+
+   Emacs equivalent: read-only-mode (bound to C-x C-q)
+   When buffer is read-only, user keyboard input is blocked.
+   Programmatic access via inhibit-read-only can still modify."
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         buffer-id (:buffer-id active-window)
+         buffer (get-in db [:buffers buffer-id])
+         current-read-only? (:is-read-only? buffer false)
+         new-read-only? (not current-read-only?)]
+     {:db (assoc-in db [:buffers buffer-id :is-read-only?] new-read-only?)
+      :fx [[:dispatch [:message (if new-read-only?
+                                   "Buffer is now read-only"
+                                   "Buffer is now writable")]]]})))
+
 ;; -- Phase 6.6: Buffer Primitives (Issue #100) --
 
 (rf/reg-event-db

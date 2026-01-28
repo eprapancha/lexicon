@@ -899,6 +899,9 @@ C-h ?   This help menu
          [:dispatch [:register-command :execute-extended-command
                     {:docstring "Execute extended command (M-x)"
                      :handler [:execute-extended-command]}]]
+         [:dispatch [:register-command :read-only-mode
+                    {:docstring "Toggle read-only mode for current buffer (C-x C-q)"
+                     :handler [:read-only-mode]}]]
          ;; Note: Dired is now a package, not a core command
          ;; It self-registers when loaded via lexicon.dired (through package_loader)
          ;; Initialize mode commands
