@@ -106,29 +106,101 @@
       (is (some? result) "current-buffer should return something"))))
 
 ;; =============================================================================
-;; Pending Implementation
+;; Buffer Existence and Creation (#100)
 ;; =============================================================================
 
-(deftest ^:skip test-buffer-live-p
-  (testing "buffer-live-p checks if buffer is alive"
+(deftest test-buffer-live-p
+  (testing "buffer-live-p returns true for existing buffer"
     (lisp/setup-test)
-    ;; TODO: Implement buffer-live-p
-    (is true "PENDING: buffer-live-p needs implementation")))
+    ;; Current buffer should be live
+    (let [buf-id (lisp/eval-lisp! "(current-buffer)")]
+      (is (= true (lisp/eval-lisp! (str "(buffer-live-p " buf-id ")"))))))
 
-(deftest ^:skip test-get-buffer-create
-  (testing "get-buffer-create returns or creates buffer"
+  (testing "buffer-live-p returns true for buffer by name"
     (lisp/setup-test)
-    ;; TODO: Implement get-buffer-create
-    (is true "PENDING: get-buffer-create needs implementation")))
+    ;; *scratch* should exist
+    (is (= true (lisp/eval-lisp! "(buffer-live-p \"*scratch*\")"))))
 
-(deftest ^:skip test-narrow-to-region
+  (testing "buffer-live-p returns nil for non-existent buffer"
+    (lisp/setup-test)
+    (is (nil? (lisp/eval-lisp! "(buffer-live-p \"nonexistent-buffer-xyz\")")))
+    (is (nil? (lisp/eval-lisp! "(buffer-live-p 99999)")))
+    (is (nil? (lisp/eval-lisp! "(buffer-live-p nil)")))))
+
+(deftest test-get-buffer-create
+  (testing "get-buffer-create returns existing buffer"
+    (lisp/setup-test)
+    ;; Should return *scratch* without creating new one
+    (let [buf (lisp/eval-lisp! "(get-buffer-create \"*scratch*\")")]
+      (is (some? buf) "get-buffer-create should return buffer ID")))
+
+  (testing "get-buffer-create creates new buffer if missing"
+    (lisp/setup-test)
+    (let [new-name "test-buffer-for-create"
+          buf (lisp/eval-lisp! (str "(get-buffer-create \"" new-name "\")"))]
+      (is (some? buf) "get-buffer-create should create new buffer")
+      ;; Verify it exists now
+      (is (= true (lisp/eval-lisp! (str "(buffer-live-p \"" new-name "\")")))))))
+
+(deftest test-generate-new-buffer-name
+  (testing "generate-new-buffer-name returns name unchanged if unique"
+    (lisp/setup-test)
+    (let [result (lisp/eval-lisp! "(generate-new-buffer-name \"unique-name-xyz\")")]
+      (is (= "unique-name-xyz" result))))
+
+  (testing "generate-new-buffer-name adds suffix for existing name"
+    (lisp/setup-test)
+    ;; *scratch* exists, so should return *scratch*<2>
+    (let [result (lisp/eval-lisp! "(generate-new-buffer-name \"*scratch*\")")]
+      (is (= "*scratch*<2>" result)))))
+
+;; =============================================================================
+;; Narrowing (#100)
+;; =============================================================================
+
+(deftest test-narrow-to-region
   (testing "narrow-to-region restricts buffer view"
     (lisp/setup-test)
-    ;; TODO: Implement narrowing
-    (is true "PENDING: narrow-to-region needs implementation")))
+    (lisp/eval-lisp! "(insert \"Hello World\")")
+    (lisp/eval-lisp! "(narrow-to-region 0 5)")
+    ;; buffer-string should only return narrowed region
+    (is (= "Hello" (lisp/eval-lisp! "(buffer-string)")))
+    ;; point-max should be at end of narrowed region
+    (is (= 5 (lisp/eval-lisp! "(point-max)")))
+    ;; widen to restore
+    (lisp/eval-lisp! "(widen)")
+    (is (= "Hello World" (lisp/eval-lisp! "(buffer-string)")))))
 
-(deftest ^:skip test-save-restriction
-  (testing "save-restriction preserves narrowing state"
+(deftest test-buffer-narrowed-p
+  (testing "buffer-narrowed-p returns false for non-narrowed buffer"
     (lisp/setup-test)
-    ;; TODO: Implement save-restriction
-    (is true "PENDING: save-restriction needs implementation")))
+    (lisp/eval-lisp! "(insert \"test\")")
+    (is (not (lisp/eval-lisp! "(buffer-narrowed-p)"))))
+
+  (testing "buffer-narrowed-p returns true after narrowing"
+    (lisp/setup-test)
+    (lisp/eval-lisp! "(insert \"Hello World\")")
+    (lisp/eval-lisp! "(narrow-to-region 0 5)")
+    (is (= true (lisp/eval-lisp! "(buffer-narrowed-p)")))
+    ;; Clean up
+    (lisp/eval-lisp! "(widen)")))
+
+;; =============================================================================
+;; Buffer-Local Variables (#100)
+;; =============================================================================
+
+(deftest test-buffer-local-value
+  (testing "buffer-local-value returns nil for unset variable"
+    (lisp/setup-test)
+    (is (nil? (lisp/eval-lisp! "(buffer-local-value 'unset-var (current-buffer))")))))
+
+(deftest test-make-local-variable
+  (testing "make-local-variable creates buffer-local binding"
+    (lisp/setup-test)
+    ;; Set global value first
+    (lisp/eval-lisp! "(setq test-var \"global\")")
+    ;; Make it local and set different value
+    (lisp/eval-lisp! "(make-local-variable 'test-var)")
+    (lisp/eval-lisp! "(setq test-var \"local\")")
+    ;; Should get local value
+    (is (= "local" (lisp/eval-lisp! "test-var")))))

@@ -1306,6 +1306,42 @@
         buffers (:buffers db)]
     (vec (map :name (vals buffers)))))
 
+(defn buffer-live-p
+  "Return non-nil if OBJECT is a buffer which has not been killed.
+
+  OBJECT can be a buffer ID (number), buffer name (string), or nil.
+  Returns true if buffer exists, nil otherwise.
+
+  Usage: (buffer-live-p 1) or (buffer-live-p \"*scratch*\")
+  Returns: Boolean or nil"
+  [object]
+  (let [db @rfdb/app-db
+        buffers (:buffers db)]
+    (cond
+      (nil? object) nil
+      (number? object) (when (contains? buffers object) true)
+      (string? object) (when (some #(= (:name %) object) (vals buffers)) true)
+      :else nil)))
+
+(defn generate-new-buffer-name
+  "Return a buffer name based on NAME that is not in use.
+
+  If NAME is not in use, returns NAME unchanged.
+  Otherwise, appends <2>, <3>, etc. until a unique name is found.
+
+  Usage: (generate-new-buffer-name \"untitled\")
+  Returns: String"
+  [name]
+  (let [db @rfdb/app-db
+        existing-names (set (map :name (vals (:buffers db))))]
+    (if (not (contains? existing-names name))
+      name
+      (loop [n 2]
+        (let [candidate (str name "<" n ">")]
+          (if (not (contains? existing-names candidate))
+            candidate
+            (recur (inc n))))))))
+
 ;; =============================================================================
 ;; Message/Echo Area
 ;; =============================================================================
@@ -2220,6 +2256,8 @@
    'current-buffer current-buffer
    'buffer-name-from-id buffer-name-from-id
    'buffer-list buffer-list
+   'buffer-live-p buffer-live-p
+   'generate-new-buffer-name generate-new-buffer-name
    'get-buffer get-buffer
    ;; Buffer management
    'create-buffer create-buffer
