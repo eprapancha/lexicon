@@ -15,7 +15,8 @@
             [lexicon.core.db :as db]
             [lexicon.core.minibuffer :as minibuffer]
             [lexicon.core.completion.styles :as completion-styles]
-            [lexicon.core.completion.metadata :as completion-metadata]))
+            [lexicon.core.completion.metadata :as completion-metadata]
+            [lexicon.core.events.buffer :as buffer-events]))
 
 ;; =============================================================================
 ;; Window Management Events
@@ -110,11 +111,28 @@
          ;; Get next window (wrap around)
          next-index (mod (inc (or current-index 0)) (count all-windows))
          next-window (nth all-windows next-index)
-         next-window-id (:id next-window)]
+         next-window-id (:id next-window)
+         next-buffer-id (:buffer-id next-window)
+
+         ;; Get cursor position from the target WINDOW (not buffer)
+         ;; Each window has its own cursor even when showing the same buffer
+         window-cursor (:cursor-position next-window {:line 0 :column 0})
+
+         ;; Convert window's line/col to linear position using buffer text
+         ^js wasm-instance (get-in db [:buffers next-buffer-id :wasm-instance])
+         buffer-text (when wasm-instance (.getText wasm-instance))
+         linear-pos (if buffer-text
+                      (buffer-events/line-col-to-linear-pos
+                       buffer-text
+                       (:line window-cursor 0)
+                       (:column window-cursor 0))
+                      0)]
 
      {:db (-> db
               (assoc :active-window-id next-window-id)
-              (assoc :cursor-owner next-window-id))})))  ; Issue #62: Transfer cursor ownership
+              (assoc :cursor-owner next-window-id)
+              ;; Restore cursor position from the target window's cursor
+              (assoc-in [:ui :cursor-position] linear-pos))})))  ; Issue #62: Transfer cursor ownership
 
 (rf/reg-event-db
  :set-active-window
@@ -134,10 +152,16 @@
 
      (if (<= (count all-windows) 1)
        ;; Can't delete the last window
-       {:db db}
-       ;; TODO: Implement window deletion logic
-       ;; This requires removing the window from the tree and rebalancing
-       {:fx [[:dispatch [:echo/message "delete-window not yet implemented"]]]}))))
+       {:fx [[:dispatch [:message "Attempt to delete sole window"]]]}
+       ;; Delete the window and switch to another
+       (let [new-tree (db/delete-window-from-tree window-tree active-window-id)
+             remaining-windows (db/get-all-leaf-windows new-tree)
+             new-active-window (first remaining-windows)
+             new-active-id (:id new-active-window)]
+         {:db (-> db
+                  (assoc :window-tree new-tree)
+                  (assoc :active-window-id new-active-id)
+                  (assoc :cursor-owner new-active-id))})))))
 
 (rf/reg-event-fx
  :delete-other-windows

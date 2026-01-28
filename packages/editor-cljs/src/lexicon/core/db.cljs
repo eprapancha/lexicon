@@ -471,3 +471,32 @@
              :second (update-window-in-tree (:second tree) window-id update-fn))
 
       :else tree)))
+
+(defn delete-window-from-tree
+  "Delete a window from the tree by ID.
+   Returns the modified tree, or the sibling if parent split is removed.
+   Returns nil if the window is the only one (root leaf)."
+  [tree window-id]
+  (when tree
+    (cond
+      ;; If this is the target leaf, return nil (delete it)
+      (and (= (:type tree) :leaf) (= (:id tree) window-id))
+      nil
+
+      ;; If this is a different leaf, keep it
+      (= (:type tree) :leaf)
+      tree
+
+      ;; If this is a split, recursively process
+      (or (= (:type tree) :hsplit) (= (:type tree) :vsplit))
+      (let [new-first (delete-window-from-tree (:first tree) window-id)
+            new-second (delete-window-from-tree (:second tree) window-id)]
+        (cond
+          ;; First child was deleted - return second
+          (nil? new-first) new-second
+          ;; Second child was deleted - return first
+          (nil? new-second) new-first
+          ;; Neither deleted - return updated split
+          :else (assoc tree :first new-first :second new-second)))
+
+      :else tree)))
