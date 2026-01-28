@@ -152,18 +152,38 @@
 (rf/reg-event-db
   :command/begin-undo-boundary
   (fn [db [_ buffer-id]]
-    "Insert undo boundary at beginning of command"
-    (when buffer-id
-      (undo/undo-boundary! buffer-id))
-    db))
+    "Insert undo boundary at beginning of command.
+     Adds boundary directly to db instead of using dispatch-sync
+     to avoid race condition where returned db overwrites the change."
+    (if buffer-id
+      (let [stack (get-in db [:buffers buffer-id :undo-stack] [])
+            last-entry (peek stack)
+            ;; Don't add boundary if stack is empty or last entry is already a boundary
+            should-add? (and (seq stack)
+                            (not= (:type last-entry) :boundary))]
+        (if should-add?
+          (update-in db [:buffers buffer-id :undo-stack]
+                     conj {:type :boundary})
+          db))
+      db)))
 
 (rf/reg-event-db
   :command/end-undo-boundary
   (fn [db [_ buffer-id]]
-    "Insert undo boundary at end of command"
-    (when buffer-id
-      (undo/undo-boundary! buffer-id))
-    db))
+    "Insert undo boundary at end of command.
+     Adds boundary directly to db instead of using dispatch-sync
+     to avoid race condition where returned db overwrites the change."
+    (if buffer-id
+      (let [stack (get-in db [:buffers buffer-id :undo-stack] [])
+            last-entry (peek stack)
+            ;; Don't add boundary if stack is empty or last entry is already a boundary
+            should-add? (and (seq stack)
+                            (not= (:type last-entry) :boundary))]
+        (if should-add?
+          (update-in db [:buffers buffer-id :undo-stack]
+                     conj {:type :boundary})
+          db))
+      db)))
 
 (rf/reg-event-fx
  :execute-extended-command

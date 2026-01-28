@@ -215,8 +215,11 @@
               undoable-entries (filter #(#{:edit :marker} (:type %)) entries)
               ;; Reverse order for undo
               reversed-entries (reverse undoable-entries)
-              ;; Get point position for restoration
-              marker-entry (first (filter #(= (:type %) :marker) reversed-entries))]
+              ;; Get point position for restoration - use FIRST marker from original order
+              ;; (position BEFORE any changes), not last marker (position after all but last change)
+              marker-entry (first (filter #(and (= (:type %) :marker)
+                                                (= (:marker-id %) :point))
+                                          entries))]
 
           ;; Apply undo entries (entries are already inverted, don't invert again!)
           (doseq [entry reversed-entries]

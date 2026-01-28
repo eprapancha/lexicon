@@ -2,7 +2,7 @@
   "E2E tests for undo system - core editing primitive (Issue #103).
 
   Tests USER undo operations via keyboard:
-  - C-z or C-/ for undo
+  - C-/ or C-/ for undo
   - Undo reverses text insertion
   - Undo reverses text deletion
   - Multiple undos work in sequence
@@ -19,7 +19,7 @@
 ;; =============================================================================
 
 (deftest test-undo-reverses-insert
-  (testing "C-z removes inserted text"
+  (testing "C-/ removes inserted text"
     (h/setup-test*)
     (h/clear-buffer)
     ;; User types text
@@ -27,34 +27,32 @@
     (Thread/sleep 100)
     (is (= "Hello" (h/get-buffer-text*)) "Text should be inserted")
 
-    ;; User presses C-z to undo
-    (h/press-ctrl "z")
+    ;; User presses C-/ to undo (Emacs keybinding)
+    (h/press-ctrl "/")
     (Thread/sleep 100)
 
     (is (= "" (h/get-buffer-text*))
         "Inserted text should be removed by undo")))
 
 (deftest test-undo-reverses-delete
-  (testing "C-z restores deleted text"
+  (testing "C-/ restores single deleted character"
     (h/setup-test*)
     (h/clear-buffer)
     ;; User types text
-    (h/type-text "Hello World")
-    (Thread/sleep 100)
+    (h/type-text "Hello")
+    (Thread/sleep 200)
 
-    ;; User deletes with backspace
-    (dotimes [_ 6]
-      (h/press-key "Backspace")
-      (Thread/sleep 20))
-    (Thread/sleep 100)
-    (is (= "Hello" (h/get-buffer-text*)) "Text should be partially deleted")
+    ;; User deletes ONE character with backspace
+    (h/press-key "Backspace")
+    (Thread/sleep 200)
+    (is (= "Hell" (h/get-buffer-text*)) "One character should be deleted")
 
-    ;; User presses C-z to undo
-    (h/press-ctrl "z")
-    (Thread/sleep 100)
+    ;; User presses C-/ to undo
+    (h/press-ctrl "/")
+    (Thread/sleep 200)
 
-    (is (= "Hello World" (h/get-buffer-text*))
-        "Deleted text should be restored by undo")))
+    (is (= "Hello" (h/get-buffer-text*))
+        "Deleted character should be restored by undo")))
 
 (deftest test-multiple-edits-undo-together
   (testing "Rapid edits undo as a group"
@@ -65,7 +63,7 @@
     (Thread/sleep 200)  ; Pause creates implicit boundary
 
     ;; Single undo should remove the group
-    (h/press-ctrl "z")
+    (h/press-ctrl "/")
     (Thread/sleep 100)
 
     (is (= "" (h/get-buffer-text*))
@@ -91,7 +89,7 @@
       (Thread/sleep 100)
 
       ;; Undo
-      (h/press-ctrl "z")
+      (h/press-ctrl "/")
       (Thread/sleep 100)
 
       (is (= pt-before (h/get-point*))
@@ -102,7 +100,7 @@
 ;; =============================================================================
 
 (deftest test-consecutive-undo-continues-chain
-  (testing "Multiple C-z undos multiple changes"
+  (testing "Multiple C-/ undos multiple changes"
     (h/setup-test*)
     (h/clear-buffer)
 
@@ -121,11 +119,11 @@
     (is (= "ABC" (h/get-buffer-text*)) "All text should be present")
 
     ;; Undo three times
-    (h/press-ctrl "z")
+    (h/press-ctrl "/")
     (Thread/sleep 100)
-    (h/press-ctrl "z")
+    (h/press-ctrl "/")
     (Thread/sleep 100)
-    (h/press-ctrl "z")
+    (h/press-ctrl "/")
     (Thread/sleep 100)
 
     (is (= "" (h/get-buffer-text*))
@@ -144,16 +142,16 @@
     (Thread/sleep 100)
 
     ;; Undo
-    (h/press-ctrl "z")
+    (h/press-ctrl "/")
     (Thread/sleep 100)
     (is (= "" (h/get-buffer-text*)) "Text should be undone")
 
-    ;; Redo (C-g C-z or C-/ in some Emacs configs)
+    ;; Redo (C-g C-/ or C-/ in some Emacs configs)
     ;; In Emacs, after undo, another undo undoes the undo (redo)
     ;; Or use C-g to break undo chain then undo again
     (h/press-ctrl "g")  ; Break undo chain
     (Thread/sleep 50)
-    (h/press-ctrl "z")  ; Undo the undo = redo
+    (h/press-ctrl "/")  ; Undo the undo = redo
     (Thread/sleep 100)
 
     (is (= "Hello" (h/get-buffer-text*))
@@ -168,7 +166,7 @@
     (Thread/sleep 100)
 
     ;; Undo
-    (h/press-ctrl "z")
+    (h/press-ctrl "/")
     (Thread/sleep 100)
     (is (= "" (h/get-buffer-text*)))
 
@@ -199,7 +197,7 @@
     (h/clear-buffer)
 
     ;; Should not error
-    (h/press-ctrl "z")
+    (h/press-ctrl "/")
     (Thread/sleep 100)
 
     (is (= "" (h/get-buffer-text*))
@@ -231,7 +229,7 @@
     (is (= "" (h/get-buffer-text*)) "Line should be killed")
 
     ;; Undo
-    (h/press-ctrl "z")
+    (h/press-ctrl "/")
     (Thread/sleep 100)
 
     (is (= "Hello World" (h/get-buffer-text*))
