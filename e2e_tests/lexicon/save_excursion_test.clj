@@ -44,7 +44,7 @@
       (is (= original-pt (h/get-point*))
           "Cursor restored after cancelled search"))))
 
-(deftest ^:skip test-cursor-preserved-after-mark-operations
+(deftest test-cursor-preserved-after-mark-operations
   (testing "Cursor position preserved after mark-related commands"
     (h/setup-test*)
     (h/clear-buffer)
@@ -61,15 +61,17 @@
     (Thread/sleep 50)
 
     ;; Set mark
-    (h/press-ctrl " ")
+    (h/set-mark)
     (Thread/sleep 50)
 
     ;; Move to end
     (h/press-ctrl "e")
     (Thread/sleep 50)
 
-    ;; Exchange point and mark (C-x C-x)
-    (h/press-ctrl-x "C-x")
+    ;; Exchange point and mark (C-x C-x) - two separate key presses
+    (h/press-ctrl "x")
+    (Thread/sleep 30)
+    (h/press-ctrl "x")
     (Thread/sleep 100)
 
     ;; Should be back at position 5
@@ -77,56 +79,10 @@
         "C-x C-x exchanges point and mark")))
 
 ;; =============================================================================
-;; Save-Excursion API Tests - PENDING E2E Implementation
+;; Save-Excursion Lisp API Tests
 ;; =============================================================================
-
-(deftest ^:skip test-save-excursion-restores-point-after-keyboard-movement
-  (testing "Point restored after keyboard movement in save-excursion body"
-    ;; save-excursion is a Lisp macro that cannot be invoked via keyboard
-    ;; This behavior is tested via unit tests
-    (is true "PENDING: save-excursion point restoration - needs E2E implementation")))
-
-(deftest ^:skip test-save-excursion-restores-point-multiple-moves
-  (testing "Point restored even with multiple moves"
-    ;; Lisp API test
-    (is true "PENDING: save-excursion with multiple moves - needs E2E implementation")))
-
-(deftest ^:skip test-save-excursion-restores-on-error
-  (testing "Point restored even when body errors"
-    ;; Lisp API error handling test
-    (is true "PENDING: save-excursion error handling - needs E2E implementation")))
-
-(deftest ^:skip test-save-excursion-restores-mark
-  (testing "Mark restored after body"
-    ;; Lisp API test
-    (is true "PENDING: save-excursion mark restoration - needs E2E implementation")))
-
-(deftest ^:skip test-save-excursion-return-value
-  (testing "Return value from body"
-    ;; Lisp API test
-    (is true "PENDING: save-excursion return value - needs E2E implementation")))
-
-(deftest ^:skip test-save-excursion-nested
-  (testing "Nested save-excursion"
-    ;; Lisp API test
-    (is true "PENDING: Nested save-excursion - needs E2E implementation")))
-
-(deftest ^:skip test-save-excursion-in-read-only-buffer
-  (testing "Navigate in read-only buffer"
-    ;; Lisp API test
-    (is true "PENDING: save-excursion in read-only - needs E2E implementation")))
-
-(deftest ^:skip test-save-excursion-with-narrowing
-  (testing "save-excursion with narrowing"
-    ;; Lisp API test
-    (is true "PENDING: save-excursion with narrowing - needs E2E implementation")))
-
-(deftest ^:skip test-save-excursion-look-ahead-pattern
-  (testing "Look ahead pattern - cursor doesn't move"
-    ;; Lisp API pattern test
-    (is true "PENDING: Look-ahead pattern - needs E2E implementation")))
-
-(deftest ^:skip test-save-excursion-scan-buffer-pattern
-  (testing "Scan buffer pattern"
-    ;; Lisp API pattern test
-    (is true "PENDING: Scan buffer pattern - needs E2E implementation")))
+;;
+;; Note: save-excursion is a Lisp macro. Tests for the Lisp API are in
+;; sci_integration_test.clj (test-save-excursion-* tests).
+;; This file focuses on user-visible keyboard behavior that demonstrates
+;; similar cursor restoration principles.
