@@ -330,11 +330,23 @@
 (rf/reg-event-fx
  :isearch/exit
  (fn [{:keys [db]} [_]]
-   "Exit isearch and stay at current match (RET)"
-   {:db (-> db
-            (update :ui dissoc :isearch))
-    :fx [[:dispatch [:minibuffer/deactivate]]
-         [:dispatch [:echo/clear]]]}))
+   "Exit isearch and stay at current match (RET).
+    Emacs behavior:
+    - Forward search (C-s): cursor at END of match
+    - Backward search (C-r): cursor at START of match"
+   (let [current-match (get-in db [:ui :isearch :current-match])
+         direction (get-in db [:ui :isearch :direction] :forward)
+         ;; Position cursor based on search direction
+         exit-pos (when current-match
+                    (if (= direction :forward)
+                      (:end current-match)    ; Forward: end of match
+                      (:start current-match)))] ; Backward: start of match
+     {:db (-> db
+              (update :ui dissoc :isearch))
+      :fx (cond-> [[:dispatch [:minibuffer/deactivate]]
+                   [:dispatch [:echo/clear]]]
+            ;; Move cursor to appropriate position if we have a match
+            exit-pos (conj [:dispatch [:cursor/set-position exit-pos]]))})))
 
 (rf/reg-event-fx
  :isearch/abort

@@ -38,6 +38,7 @@
             [lexicon.core.modes]               ; Load minor mode infrastructure (Phase 6.5 Week 5-6)
             [lexicon.core.modes.line-number]   ; Load line-number-mode (Phase 6.5 Week 5-6)
             [lexicon.core.modes.auto-save]     ; Load auto-save-mode (Phase 6.5 Week 5-6)
+            [lexicon.core.modes.electric-pair] ; Load electric-pair-mode
             [lexicon.core.eval]                ; Load runtime evaluation (Phase 6.5 Week 7-8)
             [lexicon.core.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.core.views :as views]
@@ -196,6 +197,7 @@
   ;; Initialize minor modes (Phase 6.5 Week 5-6)
   (lexicon.core.modes.line-number/init-line-number-mode!)
   (lexicon.core.modes.auto-save/init-auto-save-mode!)
+  (lexicon.core.modes.electric-pair/init-electric-pair-mode!)
 
   ;; Mount the React application
   (mount-app)

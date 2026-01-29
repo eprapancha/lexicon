@@ -8,7 +8,8 @@
   - Special key insertion (SPC, RET, TAB)"
   (:require [re-frame.core :as rf]
             [lexicon.core.db :as db]
-            [lexicon.core.log :as log]))
+            [lexicon.core.log :as log]
+            [lexicon.core.modes.electric-pair :as electric-pair]))
 
 ;; -- Helper Functions --
 
@@ -209,14 +210,26 @@
                              (list? prefix-arg) (first prefix-arg)
                              :else 1)
                            1)
-             text-to-insert (apply str (repeat repeat-count key-str))]
+             ;; Electric-pair-mode: check if this is an opening delimiter
+             char (first key-str)
+             closing-char (when (electric-pair/electric-pair-enabled? db)
+                            (electric-pair/get-closing-char char))
+             ;; If electric-pair, insert opening + closing and move cursor back
+             text-to-insert (if closing-char
+                              (str (apply str (repeat repeat-count key-str))
+                                   (apply str (repeat repeat-count closing-char)))
+                              (apply str (repeat repeat-count key-str)))
+             ;; For electric-pair, we need to move cursor back after insert
+             ;; Pass cursor-adjust in transaction so it's applied after async insert completes
+             cursor-adjustment (when closing-char (- repeat-count))
+             transaction (cond-> {:op :insert :text text-to-insert}
+                           cursor-adjustment (assoc :cursor-adjust cursor-adjustment))]
          ;; (println "✍️ Inserting character:" key-str "×" repeat-count "=" text-to-insert)
          {:db (assoc db :last-command :self-insert-command)  ; Break consecutive kill chain
-          :fx [[:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
-               [:dispatch [:clear-prefix-key-state]]
-               ;; Phase 6.5: Clear prefix-arg after self-insert
-               (when prefix-arg
-                 [:dispatch [:clear-prefix-arg]])]})
+          :fx (cond-> [[:dispatch [:editor/queue-transaction transaction]]
+                       [:dispatch [:clear-prefix-key-state]]]
+                ;; Phase 6.5: Clear prefix-arg after self-insert
+                prefix-arg (conj [:dispatch [:clear-prefix-arg]]))})
 
            ;; Unknown key sequence - clear state and ignore
            :else

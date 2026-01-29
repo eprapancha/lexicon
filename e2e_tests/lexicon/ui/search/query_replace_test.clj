@@ -496,7 +496,7 @@
     ;; Type into minibuffer
     (h/type-in-minibuffer "query-replace-regexp")
     (Thread/sleep 100)
-    (h/press-key "Enter")
+    (h/press-minibuffer-enter)
     (Thread/sleep 200)
 
     ;; Type regex pattern

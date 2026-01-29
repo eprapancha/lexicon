@@ -393,7 +393,9 @@
    (try
      (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
            active-buffer-id (:buffer-id active-window)
-           final-cursor     new-cursor
+           ;; Apply cursor adjustment (e.g., for electric-pair mode)
+           cursor-adjust    (:cursor-adjust operation 0)
+           final-cursor     (max 0 (+ new-cursor cursor-adjust))
 
            _ (println "🎯 Transaction result - operation:" (:op operation) "final cursor:" final-cursor)
 
