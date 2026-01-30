@@ -1566,12 +1566,30 @@
 ;; =============================================================================
 
 (defn split-window-horizontally
-  "Split active window horizontally.
+  "Split active window horizontally (side by side).
 
   Usage: (split-window-horizontally)
   Returns: nil (side effect only)"
   []
   (rf/dispatch-sync [:window/split :horizontal])
+  nil)
+
+(defn split-window-vertically
+  "Split active window vertically (stacked).
+
+  Usage: (split-window-vertically)
+  Returns: nil (side effect only)"
+  []
+  (rf/dispatch-sync [:window/split :vertical])
+  nil)
+
+(defn delete-window
+  "Delete the current window.
+
+  Usage: (delete-window)
+  Returns: nil (side effect only)"
+  []
+  (rf/dispatch-sync [:window/delete])
   nil)
 
 (defn delete-other-windows
@@ -1582,6 +1600,35 @@
   []
   (rf/dispatch-sync [:window/delete-others])
   nil)
+
+(defn other-window
+  "Select the next window in cyclic order.
+
+  Usage: (other-window 1)
+  Returns: nil (side effect only)"
+  [count]
+  (rf/dispatch-sync [:window/next-window])
+  nil)
+
+(defn selected-window
+  "Return the currently selected window.
+
+  Usage: (selected-window)
+  Returns: Window ID"
+  []
+  (:active-window-id @rfdb/app-db))
+
+(defn window-buffer
+  "Return the buffer displayed in WINDOW.
+
+  Usage: (window-buffer)
+         (window-buffer window)
+  Returns: Buffer ID"
+  ([] (window-buffer (selected-window)))
+  ([window]
+   (let [db @rfdb/app-db
+         win (db/find-window-in-tree (:window-tree db) window)]
+     (:buffer-id win))))
 
 ;; =============================================================================
 ;; Buffer-File Association
@@ -2640,7 +2687,12 @@
    'redo redo
    ;; Windows
    'split-window-horizontally split-window-horizontally
+   'split-window-vertically split-window-vertically
+   'delete-window delete-window
    'delete-other-windows delete-other-windows
+   'other-window other-window
+   'selected-window selected-window
+   'window-buffer window-buffer
    ;; Files
    'set-visited-file-name set-visited-file-name
    'buffer-file-name buffer-file-name
