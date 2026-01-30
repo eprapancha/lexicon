@@ -677,6 +677,153 @@
        (rf/dispatch-sync [:text-property/remove buffer-id start end prop]))
      nil)))
 
+(defn text-properties-at
+  "Return all text properties at position POS as a plist.
+
+  Returns a map of property names to values for all properties
+  that apply at POS.
+
+  Usage: (text-properties-at 5)
+  Returns: Map like {:face :bold :read-only true} or {}"
+  [pos]
+  (let [db @rfdb/app-db
+        buffer-id (current-buffer)
+        props (get-in db [:buffers buffer-id :text-properties] {})]
+    ;; Find all ranges that contain pos and merge their properties
+    (reduce (fn [result [start ranges]]
+              (if (<= start pos)
+                (reduce (fn [r [end prop-map]]
+                          (if (> end pos)
+                            (merge r prop-map)
+                            r))
+                        result
+                        ranges)
+                result))
+            {}
+            props)))
+
+(defn add-text-properties
+  "Add text properties to range without removing existing ones.
+
+  Unlike put-text-property which overwrites, add-text-properties
+  only adds new properties and doesn't change existing values.
+
+  Usage: (add-text-properties 0 10 {:face :bold})
+  Returns: t if any property changed, nil otherwise"
+  [start end props-map]
+  (let [buffer-id (current-buffer)]
+    (doseq [[prop value] props-map]
+      ;; Convert keyword to symbol for consistency with Emacs
+      (let [prop-sym (if (keyword? prop) (symbol (name prop)) prop)]
+        ;; Only set if not already present
+        (when-not (get-text-property start prop-sym)
+          (rf/dispatch-sync [:text-property/put buffer-id start end prop-sym value]))))
+    true))
+
+(defn next-property-change
+  "Return position of next text property change after POS.
+
+  Finds the next position where any text property changes value.
+  Returns nil if no change found before LIMIT (or end of buffer).
+
+  Usage: (next-property-change 0)
+         (next-property-change 0 100)
+  Returns: Position or nil"
+  ([pos] (next-property-change pos nil))
+  ([pos limit]
+   (let [db @rfdb/app-db
+         buffer-id (current-buffer)
+         props (get-in db [:buffers buffer-id :text-properties] {})
+         text-len (count (buffer-string))
+         effective-limit (or limit text-len)
+         ;; Collect all start and end positions after pos
+         change-points (->> props
+                            (mapcat (fn [[start ranges]]
+                                      (cons start (keys ranges))))
+                            (filter #(and (> % pos) (<= % effective-limit)))
+                            (sort)
+                            (distinct))]
+     (first change-points))))
+
+(defn previous-property-change
+  "Return position of previous text property change before POS.
+
+  Finds the previous position where any text property changes value.
+  Returns nil if no change found after LIMIT (or beginning of buffer).
+
+  Usage: (previous-property-change 10)
+         (previous-property-change 10 0)
+  Returns: Position or nil"
+  ([pos] (previous-property-change pos nil))
+  ([pos limit]
+   (let [db @rfdb/app-db
+         buffer-id (current-buffer)
+         props (get-in db [:buffers buffer-id :text-properties] {})
+         effective-limit (or limit 0)
+         ;; Collect all start and end positions before pos
+         change-points (->> props
+                            (mapcat (fn [[start ranges]]
+                                      (cons start (keys ranges))))
+                            (filter #(and (< % pos) (>= % effective-limit)))
+                            (sort)
+                            (reverse))]
+     (first change-points))))
+
+(defn next-single-property-change
+  "Return position where PROPERTY next changes after POS.
+
+  Like next-property-change but only considers a specific property.
+  Returns nil if PROPERTY doesn't change before LIMIT.
+
+  Usage: (next-single-property-change 0 'face)
+         (next-single-property-change 0 'face 100)
+  Returns: Position or nil"
+  ([pos property] (next-single-property-change pos property nil))
+  ([pos property limit]
+   (let [db @rfdb/app-db
+         buffer-id (current-buffer)
+         props (get-in db [:buffers buffer-id :text-properties] {})
+         text-len (count (buffer-string))
+         effective-limit (or limit text-len)
+         ;; Find positions where this specific property exists
+         change-points (->> props
+                            (mapcat (fn [[start ranges]]
+                                      (for [[end prop-map] ranges
+                                            :when (contains? prop-map property)]
+                                        [start end])))
+                            (mapcat identity)
+                            (filter #(and (> % pos) (<= % effective-limit)))
+                            (sort)
+                            (distinct))]
+     (first change-points))))
+
+(defn previous-single-property-change
+  "Return position where PROPERTY previously changes before POS.
+
+  Like previous-property-change but only considers a specific property.
+  Returns nil if PROPERTY doesn't change after LIMIT.
+
+  Usage: (previous-single-property-change 10 'face)
+         (previous-single-property-change 10 'face 0)
+  Returns: Position or nil"
+  ([pos property] (previous-single-property-change pos property nil))
+  ([pos property limit]
+   (let [db @rfdb/app-db
+         buffer-id (current-buffer)
+         props (get-in db [:buffers buffer-id :text-properties] {})
+         effective-limit (or limit 0)
+         ;; Find positions where this specific property exists
+         change-points (->> props
+                            (mapcat (fn [[start ranges]]
+                                      (for [[end prop-map] ranges
+                                            :when (contains? prop-map property)]
+                                        [start end])))
+                            (mapcat identity)
+                            (filter #(and (< % pos) (>= % effective-limit)))
+                            (sort)
+                            (reverse))]
+     (first change-points))))
+
 ;; =============================================================================
 ;; Search Functions
 ;; =============================================================================
@@ -2292,6 +2439,12 @@
    'put-text-property put-text-property
    'get-text-property get-text-property
    'remove-text-properties remove-text-properties
+   'text-properties-at text-properties-at
+   'add-text-properties add-text-properties
+   'next-property-change next-property-change
+   'previous-property-change previous-property-change
+   'next-single-property-change next-single-property-change
+   'previous-single-property-change previous-single-property-change
    ;; Line navigation
    'current-line current-line
    'line-count line-count
