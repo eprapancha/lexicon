@@ -1720,6 +1720,133 @@
   "")
 
 ;; =============================================================================
+;; Completion System (Issue #108 - Vertico Prerequisites)
+;; =============================================================================
+
+(defn all-completions
+  "Return all completions of STRING in COLLECTION.
+
+  COLLECTION can be:
+  - A list/vector of strings
+  - The symbol 'commands (all registered commands)
+  - The symbol 'buffers (all buffer names)
+
+  Optional PREDICATE filters results.
+
+  Usage: (all-completions \"for\" [\"forward\" \"backward\" \"format\"])
+         (all-completions \"\" 'commands)
+  Returns: List of matching completions"
+  ([string collection] (all-completions string collection nil))
+  ([string collection predicate]
+   (let [candidates (cond
+                      (= collection 'commands)
+                      (let [db @rfdb/app-db]
+                        (keys (get-in db [:commands] {})))
+
+                      (= collection 'buffers)
+                      (let [db @rfdb/app-db]
+                        (map :name (vals (:buffers db))))
+
+                      (sequential? collection)
+                      collection
+
+                      :else [])
+         prefix (str/lower-case (str string))
+         matches (->> candidates
+                      (map str)
+                      (filter #(str/starts-with? (str/lower-case %) prefix)))]
+     (if predicate
+       (filter predicate matches)
+       (vec matches)))))
+
+(defn try-completion
+  "Try to complete STRING in COLLECTION.
+
+  Returns:
+  - t if STRING is already a complete valid match
+  - Completed string if unique completion exists
+  - nil if no completions
+
+  Usage: (try-completion \"forw\" [\"forward\" \"backward\"])
+  Returns: \"forward\" or t or nil"
+  ([string collection] (try-completion string collection nil))
+  ([string collection predicate]
+   (let [matches (all-completions string collection predicate)]
+     (cond
+       (empty? matches) nil
+       ;; Check for exact match first (before unique completion)
+       (some #(= (str/lower-case %) (str/lower-case string)) matches) true
+       (= 1 (count matches)) (first matches)
+       :else (first matches)))))
+
+(defn test-completion
+  "Return t if STRING is a valid completion in COLLECTION.
+
+  Usage: (test-completion \"forward\" [\"forward\" \"backward\"])
+  Returns: t or nil"
+  ([string collection] (test-completion string collection nil))
+  ([string collection predicate]
+   (let [candidates (all-completions "" collection predicate)]
+     (when (some #(= (str/lower-case %) (str/lower-case string)) candidates)
+       true))))
+
+(defn minibuffer-completion-table
+  "Return the completion table for current minibuffer.
+
+  Returns list of current completion candidates or nil if no completions.
+
+  Usage: (minibuffer-completion-table)
+  Returns: List of strings or nil"
+  []
+  (let [db @rfdb/app-db]
+    (get-in db [:minibuffer :completions])))
+
+(defn completion-metadata-get
+  "Get metadata property PROP from current minibuffer completion.
+
+  Metadata properties include:
+  - :category - completion category (:command, :buffer, :file, etc.)
+  - :annotation-function - function to annotate candidates
+  - :group-function - function to group candidates
+
+  Usage: (completion-metadata-get :category)
+  Returns: Property value or nil"
+  [prop]
+  (let [db @rfdb/app-db]
+    (get-in db [:minibuffer :metadata prop])))
+
+(defn completing-read
+  "Read a string from minibuffer with completion.
+
+  PROMPT is the prompt string.
+  COLLECTION is the completion table (list of candidates).
+  Optional PREDICATE filters candidates.
+  Optional REQUIRE-MATCH if non-nil, only allow valid completions.
+  Optional INITIAL-INPUT is initial text in minibuffer.
+
+  Note: This is a synchronous stub. Full implementation needs async support.
+
+  Usage: (completing-read \"Command: \" [\"forward\" \"backward\"])
+  Returns: Selected string"
+  ([prompt collection]
+   (completing-read prompt collection nil nil nil))
+  ([prompt collection predicate]
+   (completing-read prompt collection predicate nil nil))
+  ([prompt collection predicate require-match]
+   (completing-read prompt collection predicate require-match nil))
+  ([prompt collection predicate require-match initial-input]
+   (let [candidates (if (sequential? collection) collection [])]
+     (rf/dispatch-sync [:minibuffer/activate
+                        {:prompt prompt
+                         :completions candidates
+                         :initial-input (or initial-input "")
+                         :require-match require-match
+                         :on-confirm [:minibuffer/deactivate]
+                         :on-cancel [:minibuffer/deactivate]}])
+     ;; Return empty string - full impl needs callback/promise
+     "")))
+
+;; =============================================================================
 ;; Keymaps
 ;; =============================================================================
 
@@ -2511,6 +2638,13 @@
    'set-buffer-modified-p set-buffer-modified-p
    ;; Minibuffer
    'read-string read-string
+   ;; Completion (Issue #108)
+   'all-completions all-completions
+   'try-completion try-completion
+   'test-completion test-completion
+   'minibuffer-completion-table minibuffer-completion-table
+   'completion-metadata-get completion-metadata-get
+   'completing-read completing-read
    ;; Keymaps
    'global-set-key global-set-key
    'local-set-key local-set-key
