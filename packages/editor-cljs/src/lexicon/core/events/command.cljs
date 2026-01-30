@@ -200,7 +200,6 @@
                        {:prompt "M-x "
                         :completions command-names
                         :metadata metadata
-                        :persist? true
                         :on-confirm [:execute-command-by-name]}]]]})))
 
 (rf/reg-event-fx

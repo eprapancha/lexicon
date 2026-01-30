@@ -43,34 +43,129 @@
 ;; Show Paren Mode - PENDING E2E Implementation
 ;; =============================================================================
 
-(deftest ^:skip test-show-paren-mode
-  (testing "show-paren-mode highlights matching parens"
-    ;; show-paren-mode is a Lisp function
-    (is true "PENDING: show-paren-mode - needs E2E implementation")))
+(deftest test-show-paren-mode
+  (testing "show-paren-mode can be toggled via M-x"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Type some text with parens
+    (h/type-text "(defn foo [x] (+ x 1))")
+    (Thread/sleep 100)
+
+    ;; Enable show-paren-mode via M-x
+    (h/execute-command "show-paren-mode")
+    (Thread/sleep 100)
+
+    ;; Mode should be enabled without error
+    (is (= "(defn foo [x] (+ x 1))"
+           (h/get-buffer-text*))
+        "Buffer text should remain intact after enabling show-paren-mode")
+
+    ;; Move cursor to a paren position and check mode still works
+    (h/press-ctrl "a")  ; Go to beginning
+    (Thread/sleep 50)
+
+    ;; Toggle off
+    (h/execute-command "show-paren-mode")
+    (Thread/sleep 100)
+
+    (is (= "(defn foo [x] (+ x 1))"
+           (h/get-buffer-text*))
+        "Buffer text should remain intact after disabling show-paren-mode")))
 
 ;; =============================================================================
 ;; Hl-Line Mode - PENDING E2E Implementation
 ;; =============================================================================
 
-(deftest ^:skip test-hl-line-mode
-  (testing "hl-line-mode highlights current line"
-    ;; hl-line-mode is a Lisp function
-    (is true "PENDING: hl-line-mode - needs E2E implementation")))
+(deftest test-hl-line-mode
+  (testing "hl-line-mode can be toggled via M-x"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Type some text
+    (h/type-text "line one")
+    (h/press-key "Enter")
+    (h/type-text "line two")
+    (h/press-key "Enter")
+    (h/type-text "line three")
+    (Thread/sleep 100)
+
+    ;; Enable hl-line-mode via M-x
+    (h/execute-command "hl-line-mode")
+    (Thread/sleep 100)
+
+    ;; Mode should be enabled without error
+    ;; Visual highlighting is hard to test in E2E, but command should work
+    (is (= "line one\nline two\nline three"
+           (h/get-buffer-text*))
+        "Buffer text should remain intact after enabling hl-line-mode")
+
+    ;; Toggle off
+    (h/execute-command "hl-line-mode")
+    (Thread/sleep 100)
+
+    (is (= "line one\nline two\nline three"
+           (h/get-buffer-text*))
+        "Buffer text should remain intact after disabling hl-line-mode")))
 
 ;; =============================================================================
 ;; Whitespace Mode - PENDING E2E Implementation
 ;; =============================================================================
 
-(deftest ^:skip test-whitespace-mode
-  (testing "whitespace-mode shows spaces/tabs"
-    ;; whitespace-mode is a Lisp function
-    (is true "PENDING: whitespace-mode - needs E2E implementation")))
+(deftest test-whitespace-mode
+  (testing "whitespace-mode can be toggled via M-x"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Type text with spaces and tabs
+    (h/type-text "hello")
+    (h/press-key "Tab")
+    (h/type-text "world")
+    (Thread/sleep 100)
+
+    ;; Enable whitespace-mode via M-x
+    (h/execute-command "whitespace-mode")
+    (Thread/sleep 100)
+
+    ;; Mode should be enabled without error
+    ;; Buffer text should remain intact (the stored text, not visual)
+    (is (= "hello\tworld"
+           (h/get-buffer-text*))
+        "Buffer text should remain intact after enabling whitespace-mode")
+
+    ;; Toggle off
+    (h/execute-command "whitespace-mode")
+    (Thread/sleep 100)
+
+    (is (= "hello\tworld"
+           (h/get-buffer-text*))
+        "Buffer text should remain intact after disabling whitespace-mode")))
 
 ;; =============================================================================
 ;; Line Numbers - PENDING E2E Implementation
 ;; =============================================================================
 
-(deftest ^:skip test-line-numbers
-  (testing "display-line-numbers-mode works"
-    ;; display-line-numbers-mode is a Lisp function
-    (is true "PENDING: display-line-numbers-mode - needs E2E implementation")))
+(deftest test-line-numbers
+  (testing "display-line-numbers-mode can be toggled via M-x"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Type some text
+    (h/type-text "line one")
+    (h/press-key "Enter")
+    (h/type-text "line two")
+    (Thread/sleep 100)
+
+    ;; Line numbers should be on by default
+    ;; Toggle off via M-x
+    (h/execute-command "display-line-numbers-mode")
+    (Thread/sleep 100)
+
+    ;; Buffer text should remain intact
+    (is (= "line one\nline two"
+           (h/get-buffer-text*))
+        "Buffer text should remain intact after toggling display-line-numbers-mode")
+
+    ;; Toggle back on
+    (h/execute-command "display-line-numbers-mode")
+    (Thread/sleep 100)
+
+    (is (= "line one\nline two"
+           (h/get-buffer-text*))
+        "Buffer text should remain intact after re-enabling display-line-numbers-mode")))

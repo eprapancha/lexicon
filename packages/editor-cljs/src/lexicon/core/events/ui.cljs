@@ -345,23 +345,20 @@
 (rf/reg-event-fx
  :minibuffer/set-input
  (fn [{:keys [db]} [_ input-text]]
-   "Update the minibuffer input text (Phase 6.5 Week 3-4 - stack-based)"
+   "Update the minibuffer input text"
    (let [on-change (get-in db [:minibuffer :on-change])]
      (if on-change
        ;; Custom on-change handler exists (e.g., for isearch)
        {:fx [[:dispatch (conj on-change input-text)]]}
-       ;; Standard minibuffer - update current frame input
-       {:db (-> db
-                (minibuffer/update-current-frame {:input input-text})
-                minibuffer/sync-to-legacy)}))))
+       ;; Standard minibuffer - update input directly
+       {:db (assoc-in db [:minibuffer :input] input-text)}))))
 
 (rf/reg-event-db
  :minibuffer/complete
  (fn [db [_]]
-   "TAB completion in minibuffer - Phase 7.8.1 with visual completion list"
-   (let [minibuffer (:minibuffer db)
-         input (:input minibuffer)
-         completions (:completions minibuffer)
+   "TAB completion in minibuffer with visual completion list"
+   (let [input (get-in db [:minibuffer :input] "")
+         completions (get-in db [:minibuffer :completions] [])
          ;; Get effective styles for current completion
          styles (or (get-in db [:completion :styles]) [:basic :substring :flex])
          ;; Filter completions using styles
@@ -396,7 +393,7 @@
                                   (first matches)
                                   (rest matches))
              num-candidates-to-show (min 10 (count matches))
-             height-lines (inc num-candidates-to-show)]  ; +1 for input line
+             height-lines (inc num-candidates-to-show)]
          (-> db
              (assoc-in [:minibuffer :input] (if (> (count common-prefix) (count input))
                                               common-prefix
@@ -413,12 +410,13 @@
 (rf/reg-event-fx
  :minibuffer/confirm
  (fn [{:keys [db]} [_]]
-   "Confirm minibuffer input (Phase 6.5 Week 3-4 - stack-based).
+   "Confirm minibuffer input.
    IMPORTANT: Does NOT auto-deactivate anymore! Commands must deactivate explicitly
    or use :replace? true to take over the minibuffer slot. This fixes Issue #72."
-   (let [input (minibuffer/get-input db)
-         on-confirm (minibuffer/get-on-confirm db)
-         persist? (minibuffer/get-persist? db)]
+   ;; Read directly from :minibuffer map (the single source of truth)
+   (let [input (get-in db [:minibuffer :input] "")
+         on-confirm (get-in db [:minibuffer :on-confirm])
+         persist? (get-in db [:minibuffer :persist?])]
      (if on-confirm
        (if persist?
          ;; Multi-step prompt - dispatch without deactivating
@@ -429,7 +427,7 @@
        ;; No handler - just deactivate
        {:fx [[:dispatch [:minibuffer/deactivate]]]}))))
 
-;; Phase 7.8.1: Completion navigation events
+;; Completion navigation events
 (rf/reg-event-db
  :minibuffer/completion-next
  (fn [db [_]]
@@ -439,7 +437,7 @@
          num-completions (count completions)
          new-index (if (< completion-index (dec num-completions))
                      (inc completion-index)
-                     0)]  ; Wrap around to start
+                     0)]
      (assoc-in db [:minibuffer :completion-index] new-index))))
 
 (rf/reg-event-db
@@ -451,7 +449,7 @@
          num-completions (count completions)
          new-index (if (> completion-index 0)
                      (dec completion-index)
-                     (dec num-completions))]  ; Wrap around to end
+                     (dec num-completions))]
      (assoc-in db [:minibuffer :completion-index] new-index))))
 
 (rf/reg-event-db

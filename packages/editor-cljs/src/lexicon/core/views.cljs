@@ -5,7 +5,11 @@
             [lexicon.core.constants :as const]
             [lexicon.core.subs :as subs]
             [lexicon.core.events :as events]
-            [lexicon.core.log :as log]))
+            [lexicon.core.log :as log]
+            [lexicon.core.modes.hl-line]
+            [lexicon.core.modes.show-paren]
+            [lexicon.core.modes.whitespace :as whitespace]
+            [lexicon.core.modes.display-line-numbers]))
 
 ;; -- Input Event Handling --
 
@@ -241,6 +245,24 @@
            :class "region-highlight"
            :type :region})))))
 
+(defn create-paren-decorations
+  "Create decorations for matching parentheses (show-paren-mode).
+  Takes match-info {:paren-pos :match-pos :matched?} and buffer text."
+  [match-info text]
+  (when (and match-info text (:matched? match-info))
+    (let [{:keys [paren-pos match-pos]} match-info
+          paren-coords (linear-to-line-col text paren-pos)
+          match-coords (linear-to-line-col text match-pos)]
+      ;; Create decorations for both the paren at cursor and the matching paren
+      [{:from {:line (:line paren-coords) :column (:column paren-coords)}
+        :to {:line (:line paren-coords) :column (inc (:column paren-coords))}
+        :class "show-paren-match"
+        :type :paren}
+       {:from {:line (:line match-coords) :column (:column match-coords)}
+        :to {:line (:line match-coords) :column (inc (:column match-coords))}
+        :class "show-paren-match"
+        :type :paren}])))
+
 (defn editor-gutter
   "IDE-style gutter with line numbers and diagnostic markers"
   []
@@ -319,6 +341,7 @@
         mark-position @(rf/subscribe [:mark-position])
         region-active? @(rf/subscribe [:region-active?])
         buffer-content @(rf/subscribe [:buffer-content])
+        hl-line-enabled? @(rf/subscribe [:hl-line/enabled?])  ; Issue #123: hl-line-mode
         ;; DEBUG: Log what we're getting
         ;; Auto-scroll: Ensure cursor stays visible in viewport
         _ (when (and cursor-pos viewport)
@@ -346,9 +369,13 @@
         ;; Add region decorations if region is active
         region-decorations (when region-active?
                             (create-region-decorations mark-position cursor-pos buffer-content))
-        decorations (if region-decorations
-                     (concat base-decorations region-decorations)
-                     base-decorations)
+        ;; Add paren match decorations if show-paren-mode is enabled
+        paren-match-info @(rf/subscribe [:show-paren/match-info])
+        paren-decorations (when paren-match-info
+                           (create-paren-decorations paren-match-info buffer-content))
+        decorations (cond-> base-decorations
+                      region-decorations (concat region-decorations)
+                      paren-decorations (concat paren-decorations))
         handle-click (fn [e]
                        (.stopPropagation e)  ; Stop event from bubbling to parent handlers
                        ;; Focus hidden input to receive keyboard events
@@ -398,13 +425,17 @@
 
       ;; Render visible lines as individual divs with syntax highlighting
       (when visible-lines
-        (let [lines (clojure.string/split visible-lines #"\n" -1)]  ; -1 keeps trailing empty strings
+        (let [lines (clojure.string/split visible-lines #"\n" -1)  ; -1 keeps trailing empty strings
+              current-line (when cursor-pos (:line cursor-pos))]
           (for [[idx line] (map-indexed vector lines)]
-            (let [line-number (+ (:start-line viewport 0) idx)]
+            (let [line-number (+ (:start-line viewport 0) idx)
+                  is-current-line? (and hl-line-enabled? (= line-number current-line))]
               ^{:key line-number}
               [:div.text-line
-               {:style {:min-height (str line-height "px")
-                        :color "#d4d4d4"}}
+               {:style (cond-> {:min-height (str line-height "px")
+                                :color "#d4d4d4"}
+                         ;; Add hl-line background when enabled and on current line
+                         is-current-line? (assoc :background-color "rgba(80, 80, 120, 0.6)"))}
                (apply-decorations-to-line line line-number decorations)]))))
 
       ;; Cursor - now positioned INSIDE editable-area
@@ -430,13 +461,16 @@
 (defn window-pane-gutter
   "Gutter for a specific window"
   [window-id]
-  (let [visible-lines @(rf/subscribe [:lexicon.core.subs/window-visible-lines window-id])
+  (let [show-line-numbers? @(rf/subscribe [:display-line-numbers/enabled? window-id])
+        visible-lines @(rf/subscribe [:lexicon.core.subs/window-visible-lines window-id])
         line-height @(rf/subscribe [:line-height])
         viewport @(rf/subscribe [:lexicon.core.subs/window-viewport window-id])
         decorations @(rf/subscribe [:lexicon.core.subs/window-decorations window-id])
         diagnostic-decorations (filter #(= (:type %) :diagnostic) decorations)]
 
-    [:div.gutter
+    ;; Only render gutter when line numbers are enabled
+    (when show-line-numbers?
+      [:div.gutter
      {:style {:flex-shrink "0"
               :width "60px"
               :background-color "#2d2d30"
@@ -489,7 +523,7 @@
                                   has-hint? "#d7ba7d"
                                   :else "#858585")}}
                  line-num]]))
-           lines)))]))
+           lines)))])))
 
 (defn window-pane-text
   "Text rendering pane for a specific window"
@@ -505,12 +539,17 @@
           buffer-content @(rf/subscribe [:lexicon.core.subs/window-buffer-content window-id])
           cursor-owner @(rf/subscribe [:cursor-owner])  ; Issue #62: Cursor singleton
           owns-cursor? (= cursor-owner window-id)       ; Only render cursor if THIS window owns it
+          hl-line-enabled? @(rf/subscribe [:hl-line/enabled?])  ; Issue #123: hl-line-mode
+          paren-match-info @(rf/subscribe [:show-paren/match-info])  ; Issue #123: show-paren-mode
+          whitespace-enabled? @(rf/subscribe [:whitespace/enabled?])  ; Issue #123: whitespace-mode
           region-active? (not (nil? mark-position))
           region-decorations (when region-active?
                               (create-region-decorations mark-position cursor-pos buffer-content))
-          decorations (if region-decorations
-                       (concat base-decorations region-decorations)
-                       base-decorations)
+          paren-decorations (when paren-match-info
+                              (create-paren-decorations paren-match-info buffer-content))
+          decorations (cond-> base-decorations
+                        region-decorations (concat region-decorations)
+                        paren-decorations (concat paren-decorations))
           ;; Calculate actual visible lines based on container height
           _ (when @container-ref
               (let [container @container-ref
@@ -592,14 +631,24 @@
 
       ;; Render visible lines
       (when visible-lines
-        (let [lines (clojure.string/split visible-lines #"\n" -1)]
+        (let [lines (clojure.string/split visible-lines #"\n" -1)
+              current-line (when cursor-pos (:line cursor-pos))]
           (for [[idx line] (map-indexed vector lines)]
-            (let [line-number (+ (:start-line viewport 0) idx)]
+            (let [line-number (+ (:start-line viewport 0) idx)
+                  is-current-line? (and hl-line-enabled?
+                                        owns-cursor?
+                                        (= line-number current-line))
+                  ;; Apply whitespace visualization when enabled
+                  display-line (if whitespace-enabled?
+                                 (whitespace/visualize-whitespace line)
+                                 line)]
               ^{:key line-number}
               [:div.text-line
-               {:style {:min-height (str line-height "px")
-                        :color "#d4d4d4"}}
-               (apply-decorations-to-line line line-number decorations)]))))
+               {:style (cond-> {:min-height (str line-height "px")
+                                :color "#d4d4d4"}
+                         ;; Add hl-line background when enabled and on current line
+                         is-current-line? (assoc :background-color "rgba(80, 80, 120, 0.6)"))}
+               (apply-decorations-to-line display-line line-number decorations)]))))
 
       ;; Cursor - only show if this window owns the cursor (Issue #62)
       (when (and owns-cursor? cursor-pos)

@@ -142,13 +142,7 @@
       (mb/update-current-frame db {:filtered-completions filtered
                                    :completion-index 0}))))
 
-;; Register command
-(rf/dispatch-sync
-  [:register-command
-   :example-fancy-file-selector
-   {:docstring "Demo: Custom minibuffer renderer with preview (Issue #46)"
-    :interactive-spec nil
-    :handler [:example/fancy-file-selector]}])
+;; Command registration moved to init-example-commands!
 
 ;; =============================================================================
 ;; Simpler Example: Custom Candidate Display
@@ -204,9 +198,19 @@
       {:db (mb/pop-frame db)
        :fx [[:dispatch [:message (str "You selected: " input)]]]})))
 
-(rf/dispatch-sync
-  [:register-command
-   :example-simple-custom-minibuffer
-   {:docstring "Demo: Simple custom candidate display"
-    :interactive-spec nil
-    :handler [:example/simple-custom-minibuffer]}])
+(defn init-example-commands!
+  "Register example minibuffer commands. Must be called after :initialize-commands."
+  []
+  (rf/dispatch-sync
+    [:register-command
+     :example-fancy-file-selector
+     {:docstring "Demo: Custom minibuffer renderer with preview (Issue #46)"
+      :interactive-spec nil
+      :handler [:example/fancy-file-selector]}])
+
+  (rf/dispatch-sync
+    [:register-command
+     :example-simple-custom-minibuffer
+     {:docstring "Demo: Simple custom candidate display"
+      :interactive-spec nil
+      :handler [:example/simple-custom-minibuffer]}]))

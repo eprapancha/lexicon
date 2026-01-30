@@ -445,16 +445,19 @@
 ;; Command Registration
 ;; =============================================================================
 
-(rf/dispatch-sync
- [:register-command
-  :eval-last-sexp
-  {:docstring "Evaluate sexp before point and print value in the echo area"
-   :interactive-spec nil
-   :handler [:eval/last-sexp]}])
+(defn init-eval-commands!
+  "Register eval commands. Must be called after :initialize-commands."
+  []
+  (rf/dispatch-sync
+   [:register-command
+    :eval-last-sexp
+    {:docstring "Evaluate sexp before point and print value in the echo area"
+     :interactive-spec nil
+     :handler [:eval/last-sexp]}])
 
-(rf/dispatch-sync
- [:register-command
-  :eval-expression
-  {:docstring "Evaluate EXP and print value in the echo area"
-   :interactive-spec nil
-   :handler [:eval/expression]}])
+  (rf/dispatch-sync
+   [:register-command
+    :eval-expression
+    {:docstring "Evaluate EXP and print value in the echo area"
+     :interactive-spec nil
+     :handler [:eval/expression]}]))

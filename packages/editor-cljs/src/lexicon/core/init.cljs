@@ -138,19 +138,22 @@
 ;; Commands
 ;; =============================================================================
 
-(rf/dispatch-sync
- [:register-command
-  :load-init-file
-  {:docstring "Load user's init file from storage"
-   :interactive-spec nil
-   :handler [:init/load-file]}])
+(defn init-init-commands!
+  "Register init file commands. Must be called after :initialize-commands."
+  []
+  (rf/dispatch-sync
+   [:register-command
+    :load-init-file
+    {:docstring "Load user's init file from storage"
+     :interactive-spec nil
+     :handler [:init/load-file]}])
 
-(rf/dispatch-sync
- [:register-command
-  :reload-init-file
-  {:docstring "Reload user's init file (for testing)"
-   :interactive-spec nil
-   :handler [:init/reload-file]}])
+  (rf/dispatch-sync
+   [:register-command
+    :reload-init-file
+    {:docstring "Reload user's init file (for testing)"
+     :interactive-spec nil
+     :handler [:init/reload-file]}]))
 
 ;; =============================================================================
 ;; Example Init File Template

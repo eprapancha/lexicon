@@ -114,11 +114,7 @@
 
       {:fx [[:dispatch [:echo/message "Buffer list refreshed"]]]})))
 
-;; Select buffer at point (placeholder)
-(rf/reg-event-fx
-  :buffer-menu/select-buffer
-  (fn [_ _]
-    {:fx [[:dispatch [:echo/message "Select buffer (not yet implemented)"]]]}))
+;; NOTE: :buffer-menu/select-buffer is defined in events/buffer.cljs
 
 ;; Mark buffer for deletion (placeholder)
 (rf/reg-event-fx

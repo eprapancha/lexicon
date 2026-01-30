@@ -93,24 +93,7 @@
    (println "Error:" message)
    (assoc-in db [:system :last-error] message)))
 
-(rf/reg-event-fx
- :keyboard-quit
- (fn [{:keys [db]} [_]]
-   "Cancel the current operation (equivalent to C-g in Emacs)"
-   (let [minibuffer-active? (get-in db [:minibuffer :active?])
-         on-cancel (get-in db [:minibuffer :on-cancel] [:minibuffer/deactivate])]
-     (if minibuffer-active?
-       ;; If minibuffer is active, cancel it and dispatch on-cancel
-       {:db (-> db
-                (assoc-in [:ui :selection] {:start 0 :end 0})
-                (assoc-in [:fsm :operator-pending] nil))
-        :fx [[:dispatch on-cancel]
-             [:dispatch [:echo/message "Quit"]]]}
-       ;; Otherwise just clear pending operations and show quit message
-       {:db (-> db
-                (assoc-in [:ui :selection] {:start 0 :end 0})
-                (assoc-in [:fsm :operator-pending] nil))
-        :fx [[:dispatch [:echo/message "Quit"]]]}))))
+;; NOTE: :keyboard-quit is defined in events/edit.cljs
 
 ;; -- Key Sequence Parsing and Processing --
 
@@ -124,7 +107,7 @@
         key (.-key event)
         code (.-code event)]
     ;; DEBUG: Log key event details (disabled - too noisy)
-    ;; (rf/dispatch [:message/display (str "🔍 KEY EVENT: key=" key " code=" code " ctrl=" ctrl? " meta=" meta? " alt=" alt? " shift=" shift?)])
+    ;; (println "🔍 KEY EVENT: key=" key " code=" code " ctrl=" ctrl? " meta=" meta? " alt=" alt? " shift=" shift?)
     (cond
       ;; Special handling for certain keys
       (= key "Control") nil  ; Ignore standalone modifier keys

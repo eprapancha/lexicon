@@ -4,9 +4,9 @@
             [reagent.dom :as rdom]
             [clojure.string :as str]
             [lexicon.core.db :as db]  ; For find-window-in-tree
-            [lexicon.core.eval :as eval]  ; For E2E test eval
             [lexicon.core.log]       ; Load log bus (Issue #73)
-            [lexicon.core.events]    ; Load event handlers
+            [lexicon.core.events]    ; Load event handlers (MUST be before eval)
+            [lexicon.core.eval :as eval]  ; For E2E test eval
             [lexicon.core.subs]      ; Load subscriptions
             [lexicon.core.lsp]       ; Load LSP handlers
             [lexicon.core.effects]   ; Load DOM effect handlers
@@ -39,6 +39,10 @@
             [lexicon.core.modes.line-number]   ; Load line-number-mode (Phase 6.5 Week 5-6)
             [lexicon.core.modes.auto-save]     ; Load auto-save-mode (Phase 6.5 Week 5-6)
             [lexicon.core.modes.electric-pair] ; Load electric-pair-mode
+            [lexicon.core.modes.hl-line]       ; Load hl-line-mode (#123)
+            [lexicon.core.modes.show-paren]    ; Load show-paren-mode (#123)
+            [lexicon.core.modes.whitespace]    ; Load whitespace-mode (#123)
+            [lexicon.core.modes.display-line-numbers]  ; Load display-line-numbers-mode (#123)
             [lexicon.core.eval]                ; Load runtime evaluation (Phase 6.5 Week 7-8)
             [lexicon.core.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.core.views :as views]
@@ -184,6 +188,12 @@
   ;; Initialize built-in commands first
   (rf/dispatch-sync [:initialize-commands])
 
+  ;; Initialize eval commands (must be after :initialize-commands)
+  (eval/init-eval-commands!)
+
+  ;; Initialize init file commands (must be after :initialize-commands)
+  (lexicon.core.init/init-init-commands!)
+
   ;; Register all packages (must be after db init)
   ;; Called directly, not via event, because define-command uses dispatch-sync
   (lexicon.core.package-loader/register-all-packages!)
@@ -198,6 +208,10 @@
   (lexicon.core.modes.line-number/init-line-number-mode!)
   (lexicon.core.modes.auto-save/init-auto-save-mode!)
   (lexicon.core.modes.electric-pair/init-electric-pair-mode!)
+  (lexicon.core.modes.hl-line/init-hl-line-mode!)
+  (lexicon.core.modes.show-paren/init-show-paren-mode!)
+  (lexicon.core.modes.whitespace/init-whitespace-mode!)
+  (lexicon.core.modes.display-line-numbers/init-display-line-numbers-mode!)
 
   ;; Mount the React application
   (mount-app)
