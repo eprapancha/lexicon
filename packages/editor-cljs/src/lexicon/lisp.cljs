@@ -2144,6 +2144,64 @@
       (swap! rfdb/app-db update :buffers dissoc buffer-id)
       true)))
 
+;; =============================================================================
+;; Indirect Buffers (Issue #100)
+;; =============================================================================
+
+(defn buffer-base-buffer
+  "Return the base buffer of indirect buffer BUFFER.
+  If BUFFER is not indirect, return nil.
+
+  Usage: (buffer-base-buffer buffer-id)
+         (buffer-base-buffer \"buffer-name\")
+  Returns: Base buffer ID or nil"
+  ([] (buffer-base-buffer (current-buffer)))
+  ([buffer-or-name]
+   (let [buffer-id (if (string? buffer-or-name)
+                     (get-buffer buffer-or-name)
+                     buffer-or-name)
+         buffer (get-in @rfdb/app-db [:buffers buffer-id])]
+     (:base-buffer-id buffer))))
+
+(defn make-indirect-buffer
+  "Create and return an indirect buffer for buffer BASE-BUFFER, named NAME.
+
+  An indirect buffer shares the text of its base buffer, but has its own
+  values of point, mark, narrowing, major mode, minor modes, and local
+  variables.
+
+  BASE-BUFFER may be a buffer or a buffer name.
+  If CLONE is non-nil, copy the current values of variables from base buffer.
+
+  Usage: (make-indirect-buffer \"*scratch*\" \"scratch-indirect\")
+         (make-indirect-buffer base-id \"indirect\" t)
+  Returns: New buffer ID"
+  ([base-buffer name] (make-indirect-buffer base-buffer name nil))
+  ([base-buffer name clone]
+   (let [base-id (if (string? base-buffer)
+                   (get-buffer base-buffer)
+                   base-buffer)
+         ;; No double indirection - if base is indirect, use base's base
+         actual-base-id (or (buffer-base-buffer base-id) base-id)
+         base-buf (get-in @rfdb/app-db [:buffers actual-base-id])]
+     (when (and actual-base-id base-buf)
+       (let [buffer-id (db/next-buffer-id (:buffers @rfdb/app-db))
+             ;; Share the WASM instance with the base buffer
+             wasm-instance (:wasm-instance base-buf)
+             ;; Create indirect buffer with shared text but independent state
+             indirect-buffer (-> (db/create-buffer buffer-id name wasm-instance)
+                                 (assoc :base-buffer-id actual-base-id)
+                                 ;; Share undo list with base (per Emacs semantics)
+                                 (assoc :undo-stack (:undo-stack base-buf))
+                                 ;; Clone local vars if requested
+                                 (cond-> clone
+                                   (assoc :local-vars (:local-vars base-buf)
+                                          :local-vars-set (:local-vars-set base-buf)
+                                          :major-mode (:major-mode base-buf)
+                                          :minor-modes (:minor-modes base-buf))))]
+         (swap! rfdb/app-db assoc-in [:buffers buffer-id] indirect-buffer)
+         buffer-id)))))
+
 (defn looking-at
   "Return t if text after point matches REGEXP.
 
@@ -2363,6 +2421,9 @@
    ;; Additional buffer functions
    'get-buffer-create get-buffer-create
    'kill-buffer kill-buffer
+   ;; Indirect buffers (Issue #100)
+   'buffer-base-buffer buffer-base-buffer
+   'make-indirect-buffer make-indirect-buffer
    'looking-at looking-at
    'forward-word forward-word
    'error lisp-error})

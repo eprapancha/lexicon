@@ -378,7 +378,9 @@
    :zv nil                                ; End of accessible region (nil = no narrowing)
    :narrowing-stack []                    ; Stack for save-restriction
    ;; MRU ordering for other-buffer
-   :last-accessed-time 0})
+   :last-accessed-time 0
+   ;; Indirect buffer support (Issue #100)
+   :base-buffer-id nil})
 
 (defn create-buffer-with-content
   "Create a new buffer with initial content"

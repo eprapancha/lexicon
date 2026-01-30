@@ -204,3 +204,65 @@
     (lisp/eval-lisp! "(setq test-var \"local\")")
     ;; Should get local value
     (is (= "local" (lisp/eval-lisp! "test-var")))))
+
+;; =============================================================================
+;; Indirect Buffers (#100)
+;; =============================================================================
+
+(deftest test-buffer-base-buffer-non-indirect
+  (testing "buffer-base-buffer returns nil for non-indirect buffer"
+    (lisp/setup-test)
+    (is (nil? (lisp/eval-lisp! "(buffer-base-buffer (current-buffer))")))))
+
+(deftest test-make-indirect-buffer
+  (testing "make-indirect-buffer creates buffer sharing text with base"
+    (lisp/setup-test)
+    ;; Put some text in current buffer
+    (lisp/eval-lisp! "(insert \"Hello World\")")
+    (let [base-id (lisp/eval-lisp! "(current-buffer)")
+          ;; Create indirect buffer
+          indirect-id (lisp/eval-lisp! "(make-indirect-buffer (current-buffer) \"indirect-test\")")]
+      (is (some? indirect-id) "make-indirect-buffer should return buffer ID")
+      ;; Switch to indirect buffer
+      (lisp/eval-lisp! "(switch-to-buffer \"indirect-test\")")
+      ;; Indirect buffer should see same text
+      (is (= "Hello World" (lisp/eval-lisp! "(buffer-string)"))
+          "Indirect buffer should share text with base"))))
+
+(deftest test-indirect-buffer-base-buffer
+  (testing "buffer-base-buffer returns base buffer for indirect buffer"
+    (lisp/setup-test)
+    (let [base-id (lisp/eval-lisp! "(current-buffer)")]
+      ;; Create indirect buffer
+      (lisp/eval-lisp! "(make-indirect-buffer (current-buffer) \"indirect-base-test\")")
+      ;; Switch to indirect buffer
+      (lisp/eval-lisp! "(switch-to-buffer \"indirect-base-test\")")
+      ;; Check base buffer
+      (is (= base-id (lisp/eval-lisp! "(buffer-base-buffer (current-buffer))"))
+          "buffer-base-buffer should return base buffer ID"))))
+
+(deftest test-indirect-buffer-text-changes-visible
+  (testing "Changes in base buffer are visible in indirect buffer"
+    (lisp/setup-test)
+    ;; Create indirect buffer first
+    (lisp/eval-lisp! "(make-indirect-buffer (current-buffer) \"indirect-changes-test\")")
+    ;; Add text in base buffer
+    (lisp/eval-lisp! "(insert \"Original\")")
+    ;; Switch to indirect and verify
+    (lisp/eval-lisp! "(switch-to-buffer \"indirect-changes-test\")")
+    (is (= "Original" (lisp/eval-lisp! "(buffer-string)"))
+        "Indirect buffer should see text from base")))
+
+(deftest test-no-double-indirection
+  (testing "Creating indirect of indirect uses base's base"
+    (lisp/setup-test)
+    (let [base-id (lisp/eval-lisp! "(current-buffer)")]
+      ;; Create first indirect
+      (lisp/eval-lisp! "(make-indirect-buffer (current-buffer) \"indirect-1\")")
+      ;; Create second indirect from first indirect
+      (lisp/eval-lisp! "(make-indirect-buffer \"indirect-1\" \"indirect-2\")")
+      ;; Switch to second indirect
+      (lisp/eval-lisp! "(switch-to-buffer \"indirect-2\")")
+      ;; Base should be original, not indirect-1
+      (is (= base-id (lisp/eval-lisp! "(buffer-base-buffer (current-buffer))"))
+          "Indirect of indirect should point to original base"))))
