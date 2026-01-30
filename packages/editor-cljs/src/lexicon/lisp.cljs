@@ -834,6 +834,25 @@
   [string]
   (= string (str/lower-case string)))
 
+(defn- set-point-internal
+  "Internal helper to set point position consistently.
+   Updates window-tree cursor-position, buffer :point, and :ui :cursor-position."
+  [pos]
+  (let [db @rfdb/app-db
+        active-window-id (:active-window-id db)
+        active-window (db/find-window-in-tree (:window-tree db) active-window-id)
+        buffer-id (:buffer-id active-window)
+        active-buffer (get (:buffers db) buffer-id)
+        line-col (buf/point-to-line-col active-buffer pos)]
+    (swap! rfdb/app-db
+           (fn [current-db]
+             (let [new-tree (db/update-window-in-tree (:window-tree current-db) active-window-id
+                                                       #(assoc % :cursor-position line-col))]
+               (-> current-db
+                   (assoc :window-tree new-tree)
+                   (assoc-in [:buffers buffer-id :point] pos)
+                   (assoc-in [:ui :cursor-position] pos)))))))
+
 (defn search-forward
   "Search forward for STRING starting after point.
    If found, move point to end of match and return point.
@@ -862,7 +881,7 @@
        (when (and (>= match-index 0)
                   (<= (+ current-pos match-index (count string)) effective-bound))
          (let [match-end (+ current-pos match-index (count string))]
-           (rf/dispatch-sync [:cursor/set-position match-end])
+           (set-point-internal match-end)
            match-end))))))
 
 (defn search-backward
@@ -892,7 +911,7 @@
            match-index (.lastIndexOf text-before-pos search-term)]
        (when (and (>= match-index 0)
                   (>= match-index effective-bound))
-         (rf/dispatch-sync [:cursor/set-position match-index])
+         (set-point-internal match-index)
          match-index)))))
 
 ;; =============================================================================
