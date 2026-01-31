@@ -50,6 +50,7 @@
             [lexicon.core.icomplete]           ; Load icomplete incremental completion (#128)
             [lexicon.core.windmove]            ; Load windmove S-arrow navigation (#117)
             [lexicon.core.winner]              ; Load winner window config undo (#117)
+            [lexicon.core.occur]               ; Load occur-mode (#131)
             [lexicon.core.eval]                ; Load runtime evaluation (Phase 6.5 Week 7-8)
             [lexicon.core.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.core.views :as views]
@@ -238,6 +239,9 @@
 
   ;; Initialize winner window config undo (#117)
   (lexicon.core.winner/init-winner!)
+
+  ;; Initialize occur-mode (#131)
+  (lexicon.core.occur/init-occur!)
 
   ;; Mount the React application
   (mount-app)
