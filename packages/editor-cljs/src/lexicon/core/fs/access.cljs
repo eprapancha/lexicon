@@ -117,6 +117,12 @@
          [:dispatch [:message/display (str "Permission denied for: " path)]]]}))
 
 (rf/reg-event-db
+ :fs-access/directory-cached
+ (fn [db [_ path entries]]
+   "Cache directory entries for file completion."
+   (assoc-in db [:fs-access :directory-cache path] entries)))
+
+(rf/reg-event-db
  :fs-access/handle-stored
  (fn [db [_ _path]]
    ;; Handle stored in IndexedDB
@@ -165,7 +171,33 @@
    (idb/store-handle path handle name)
    {:db (assoc-in db [:fs-access :granted-directories path]
                   {:handle handle :name name :granted-at (.now js/Date)})
-    :fx [[:dispatch [:message/display (str "Granted access to: " path)]]]}))
+    :fx [[:dispatch [:message/display (str "Granted access to: " path)]]
+         ;; Load directory contents for completion
+         [:fs-access/list-directory-for-cache {:path path :handle handle}]]}))
+
+(rf/reg-fx
+ :fs-access/list-directory-for-cache
+ (fn [{:keys [path handle]}]
+   "List directory contents and cache for file completion."
+   (let [entries (atom [])]
+     (-> (js/Promise.resolve
+          (let [iter (.entries handle)]
+            (letfn [(process-next []
+                      (-> (.next iter)
+                          (.then (fn [result]
+                                   (if (.-done result)
+                                     @entries
+                                     (let [[entry-name entry-handle] (.-value result)
+                                           kind (.-kind entry-handle)]
+                                       (swap! entries conj {:name entry-name
+                                                            :kind kind
+                                                            :full-path (str path "/" entry-name)})
+                                       (process-next)))))))]
+              (process-next))))
+         (.then (fn [result]
+                  (rf/dispatch [:fs-access/directory-cached path result])))
+         (.catch (fn [err]
+                   (js/console.error "Failed to list directory:" err)))))))
 
 ;; =============================================================================
 ;; File Operations

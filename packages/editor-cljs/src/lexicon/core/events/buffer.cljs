@@ -586,12 +586,31 @@
    See: #135 - File System Access API implementation"
    (let [api-supported? (get-in db [:fs-access :api-supported?] false)
          granted-dirs (get-in db [:fs-access :granted-directories] {})
-         has-granted? (seq granted-dirs)]
+         has-granted? (seq granted-dirs)
+         dir-cache (get-in db [:fs-access :directory-cache] {})]
      (if (and api-supported? has-granted?)
        ;; Use minibuffer with file completion
-       {:fx [[:dispatch [:minibuffer/activate
-                         {:prompt "Find file: "
-                          :on-confirm [:find-file/from-path]}]]]}
+       ;; Build completions from cached directory contents
+       (let [completions (reduce
+                          (fn [acc [path entries]]
+                            (into acc
+                                  (map (fn [{:keys [name kind]}]
+                                         (let [full-path (str path "/" name)]
+                                           (if (= kind "directory")
+                                             (str full-path "/")
+                                             full-path)))
+                                       entries)))
+                          []
+                          dir-cache)
+             ;; Also add root directory paths if cache is empty
+             root-paths (map (fn [[path _]] (str path "/")) granted-dirs)
+             all-completions (if (seq completions)
+                               completions
+                               root-paths)]
+         {:fx [[:dispatch [:minibuffer/activate
+                           {:prompt "Find file: "
+                            :completions (vec all-completions)
+                            :on-confirm [:find-file/from-path]}]]]})
        ;; Fall back to browser file picker
        {:fx [[:open-file-picker]]}))))
 
