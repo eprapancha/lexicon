@@ -48,6 +48,7 @@
             [lexicon.core.modes.rectangle]     ; Load rectangle operations (#121)
             [lexicon.core.dabbrev]             ; Load dabbrev M-/ expansion (#120)
             [lexicon.core.icomplete]           ; Load icomplete incremental completion (#128)
+            [lexicon.core.windmove]            ; Load windmove S-arrow navigation (#117)
             [lexicon.core.eval]                ; Load runtime evaluation (Phase 6.5 Week 7-8)
             [lexicon.core.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.core.views :as views]
@@ -230,6 +231,9 @@
 
   ;; Initialize icomplete incremental completion (#128)
   (lexicon.core.icomplete/init-icomplete!)
+
+  ;; Initialize windmove S-arrow navigation (#117)
+  (lexicon.core.windmove/init-windmove!)
 
   ;; Mount the React application
   (mount-app)
