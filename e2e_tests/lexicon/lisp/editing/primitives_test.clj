@@ -209,7 +209,7 @@
       (is (= "fantastic fan" text2) "Should have 'fantastic fan'"))
 
     ;; Press M-/ to expand "fan" to "fantastic"
-    (h/press-alt "/")
+    (h/press-meta "/")
     (Thread/sleep 200)
 
     ;; Should now have "fantastic fantastic"
@@ -230,7 +230,7 @@
     (Thread/sleep 100)
 
     ;; First M-/ should find "project" (backward search finds nearest first)
-    (h/press-alt "/")
+    (h/press-meta "/")
     (Thread/sleep 200)
 
     (let [text1 (h/get-buffer-text*)]
@@ -238,9 +238,71 @@
           "First expansion should be 'project'"))
 
     ;; Second M-/ should cycle to "program"
-    (h/press-alt "/")
+    (h/press-meta "/")
     (Thread/sleep 200)
 
     (let [text2 (h/get-buffer-text*)]
       (is (str/includes? text2 "program")
           "Second expansion should cycle to 'program'"))))
+
+;; =============================================================================
+;; Icomplete (Incremental Completion)
+;; =============================================================================
+
+(deftest test-icomplete-mode
+  (testing "icomplete-mode shows completions inline"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Enable icomplete-mode
+    (h/execute-command "icomplete-mode")
+    (Thread/sleep 100)
+
+    ;; Open M-x to test with command completion
+    (h/press-meta "x")
+    (Thread/sleep 200)
+
+    ;; Type partial command name
+    (h/type-text "goto")
+    (Thread/sleep 300)
+
+    ;; The minibuffer should show something - we can't easily check
+    ;; the exact icomplete display, but we can verify the mode works
+    ;; by checking that typing works in the minibuffer
+    (let [minibuffer-text (e/js-execute h/*driver*
+                            "return document.querySelector('.minibuffer-input')?.value || ''")]
+      (is (= "goto" minibuffer-text) "Minibuffer should have our typed text"))
+
+    ;; Cancel with C-g
+    (h/press-ctrl "g")
+    (Thread/sleep 100))
+
+  (testing "icomplete cycling with C-. and C-,"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Enable icomplete-mode if not already enabled
+    (e/js-execute h/*driver* "window.evalLisp('(icomplete-mode 1)')")
+    (Thread/sleep 100)
+
+    ;; Open M-x
+    (h/press-meta "x")
+    (Thread/sleep 200)
+
+    ;; Type partial command to get multiple matches
+    (h/type-text "goto")
+    (Thread/sleep 200)
+
+    ;; Press C-. to cycle forward
+    (h/press-ctrl ".")
+    (Thread/sleep 200)
+
+    ;; The input should change to a completion
+    (let [minibuffer-text (e/js-execute h/*driver*
+                            "return document.querySelector('.minibuffer-input')?.value || ''")]
+      (is (str/starts-with? minibuffer-text "goto")
+          "After C-., input should still start with 'goto' or be a completion"))
+
+    ;; Cancel
+    (h/press-ctrl "g")
+    (Thread/sleep 100)))

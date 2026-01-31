@@ -977,6 +977,7 @@
   (let [minibuffer @(rf/subscribe [:minibuffer])
         input-ref (atom nil)
         mode-line-style @(rf/subscribe [:theme-face :mode-line])
+        icomplete-display @(rf/subscribe [:icomplete/display])
         prompt-style @(rf/subscribe [:theme-face :minibuffer-prompt])
         active? (:active? minibuffer)
         message (:message minibuffer)
@@ -1063,7 +1064,15 @@
                    :color (:color mode-line-style "#cccccc")
                    :font-size "12px"
                    :font-family "monospace"
-                   :flex "1"}}]]
+                   :flex "1"}}]
+         ;; Icomplete display (inline completion candidates)
+         (when icomplete-display
+           [:span.icomplete-display
+            {:style {:color "#888888"
+                     :font-size "12px"
+                     :font-family "monospace"
+                     :white-space "nowrap"}}
+            icomplete-display])]
 
         ;; IDLE MODE: Show echo message or empty
         [:span.minibuffer-message.echo-area  ; Add .echo-area for E2E test compatibility (Issue #67)
