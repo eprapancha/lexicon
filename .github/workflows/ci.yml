@@ -39,27 +39,30 @@ jobs:
       with:
         cli: latest
 
-    - name: Setup Firefox and geckodriver
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y firefox
-        wget https://github.com/mozilla/geckodriver/releases/download/v0.34.0/geckodriver-v0.34.0-linux64.tar.gz
-        tar -xzf geckodriver-v0.34.0-linux64.tar.gz
-        sudo mv geckodriver /usr/local/bin/
-        sudo chmod +x /usr/local/bin/geckodriver
-        firefox --version
-        geckodriver --version
+    - name: Cache Clojure/Maven dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.m2/repository
+          ~/.gitlibs
+          ~/.clojure/.cpcache
+          packages/editor-cljs/.shadow-cljs
+        key: ${{ runner.os }}-clj-${{ hashFiles('**/deps.edn', '**/shadow-cljs.edn', '**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-clj-
+
+    - name: Setup Firefox
+      uses: browser-actions/setup-firefox@v1
+      with:
+        firefox-version: latest
+
+    - name: Setup geckodriver
+      uses: browser-actions/setup-geckodriver@latest
 
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
       with:
         targets: wasm32-unknown-unknown
-
-    - name: Install wasm-pack and cargo-nextest
-      run: |
-        curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-        cargo install cargo-nextest --locked
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
     - name: Cache Rust dependencies
       uses: actions/cache@v4
@@ -73,6 +76,13 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-
+
+    - name: Install wasm-pack and cargo-nextest
+      run: |
+        # Only install if not cached
+        which wasm-pack || curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        which cargo-nextest || cargo install cargo-nextest --locked
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
     - name: Run linters
       run: bb lint
