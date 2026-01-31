@@ -27,6 +27,19 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
+    # Cache BEFORE setup-clojure and any commands that download deps
+    - name: Cache Clojure/Maven dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.m2/repository
+          ~/.gitlibs
+          ~/.clojure/.cpcache
+          packages/editor-cljs/.shadow-cljs
+        key: ${{ runner.os }}-clj-${{ hashFiles('**/deps.edn', '**/shadow-cljs.edn') }}
+        restore-keys: |
+          ${{ runner.os }}-clj-
+
     - name: Setup Babashka
       run: |
         curl -sLO https://raw.githubusercontent.com/babashka/babashka/master/install
@@ -38,18 +51,6 @@ jobs:
       uses: DeLaGuardo/setup-clojure@12.5
       with:
         cli: latest
-
-    - name: Cache Clojure/Maven dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.m2/repository
-          ~/.gitlibs
-          ~/.clojure/.cpcache
-          packages/editor-cljs/.shadow-cljs
-        key: ${{ runner.os }}-clj-${{ hashFiles('**/deps.edn', '**/shadow-cljs.edn', '**/package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-clj-
 
     - name: Setup Firefox
       uses: browser-actions/setup-firefox@v1
@@ -64,6 +65,7 @@ jobs:
       with:
         targets: wasm32-unknown-unknown
 
+    # Cache Rust BEFORE installing tools
     - name: Cache Rust dependencies
       uses: actions/cache@v4
       with:
@@ -83,6 +85,13 @@ jobs:
         which wasm-pack || curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
         which cargo-nextest || cargo install cargo-nextest --locked
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    # Pre-download Clojure deps to populate cache
+    - name: Download Clojure dependencies
+      working-directory: packages/editor-cljs
+      run: |
+        clojure -P
+        npm ci
 
     - name: Run linters
       run: bb lint
