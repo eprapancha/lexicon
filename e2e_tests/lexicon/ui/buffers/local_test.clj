@@ -81,20 +81,22 @@
     (h/type-text "hello")
     (Thread/sleep 200)
 
-    ;; Open a buffer
-    (h/execute-command "find-file")
-    (h/type-in-minibuffer "/tmp/test.txt")
-    (h/press-minibuffer-enter)
-    (Thread/sleep 300)
+    ;; Note: find-file opens browser file dialog, not minibuffer prompt
+    ;; Skip file operations in this test - they require different handling
 
-    ;; Toggle a mode
+    ;; Toggle a mode via M-x
     (h/execute-command "line-number-mode")
     (Thread/sleep 200)
 
     ;; Type more text
-    (h/type-text "world")
+    (h/type-text " world")
     (Thread/sleep 200)
 
-    ;;  System should be fully functional
+    ;; Verify text was inserted
+    (let [text (h/get-buffer-text*)]
+      (is (clojure.string/includes? text "hello")
+          "Buffer should contain typed text"))
+
+    ;; System should be fully functional
     (is (e/exists? h/*driver* {:css ".editor-wrapper"})
         "Editor should remain fully functional with all infrastructure loaded")))
