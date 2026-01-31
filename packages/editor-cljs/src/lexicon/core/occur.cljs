@@ -66,8 +66,8 @@
  (fn [{:keys [db]} [_ regexp]]
    "Run occur with the given regexp."
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-         buffer-id (:buffer-id active-window)
-         buffer (get-in db [:buffers buffer-id])
+         source-buffer-id (:buffer-id active-window)
+         buffer (get-in db [:buffers source-buffer-id])
          buffer-name (:name buffer)
          wasm-instance (:wasm-instance buffer)
          text (when wasm-instance (.getText wasm-instance))
@@ -75,20 +75,44 @@
 
      (if (empty? matches)
        {:db db
-        :fx [[:dispatch [:echo/message (str "No matches for \"" regexp "\"")]]]}
+        :fx [[:dispatch [:message/display (str "No matches for \"" regexp "\"")]]]}
 
-       (do
-         ;; Store source buffer info
-         (reset! occur-source-buffer {:buffer-id buffer-id
+       ;; Create *Occur* buffer directly (like describe-bindings does)
+       (let [buffers (:buffers db)
+             ;; Check if *Occur* buffer exists, reuse its ID
+             existing-occur (first (filter #(= (:name %) "*Occur*") (vals buffers)))
+             occur-buffer-id (or (:id existing-occur) (db/next-buffer-id buffers))
+             WasmGapBuffer (get-in db [:system :wasm-constructor])
+             content (format-occur-buffer matches regexp buffer-name)
+             wasm-occur-instance (WasmGapBuffer. content)
+             lines (str/split-lines content)
+             line-count (count lines)
+
+             new-buffer {:id occur-buffer-id
+                         :wasm-instance wasm-occur-instance
+                         :file-handle nil
+                         :name "*Occur*"
+                         :is-modified? false
+                         :mark-position nil
+                         :cursor-position {:line 0 :column 0}
+                         :selection-range nil
+                         :major-mode :occur-mode
+                         :minor-modes #{}
+                         :buffer-local-vars {}
+                         :ast nil
+                         :language :text
+                         :diagnostics []
+                         :undo-stack []
+                         :undo-in-progress? false
+                         :editor-version 0
+                         :cache {:text content
+                                 :line-count line-count}}]
+         ;; Store source buffer info for navigation
+         (reset! occur-source-buffer {:buffer-id source-buffer-id
                                       :buffer-name buffer-name
                                       :matches matches})
-         {:db db
-          :fx [;; Create occur buffer
-               [:dispatch [:buffer/create
-                           {:name "*Occur*"
-                            :content (format-occur-buffer matches regexp buffer-name)
-                            :major-mode :occur-mode
-                            :read-only true}]]
+         {:db (assoc-in db [:buffers occur-buffer-id] new-buffer)
+          :fx [[:dispatch [:switch-buffer occur-buffer-id]]
                [:dispatch [:echo/message (str (count matches) " matches")]]]})))))
 
 (rf/reg-event-fx
