@@ -9,7 +9,8 @@
   (:require [re-frame.core :as rf]
             [lexicon.core.db :as db]
             [lexicon.core.log :as log]
-            [lexicon.core.modes.electric-pair :as electric-pair]))
+            [lexicon.core.modes.electric-pair :as electric-pair]
+            [lexicon.core.modes.delete-selection :as delete-selection]))
 
 ;; -- Helper Functions --
 
@@ -191,11 +192,25 @@
                               "SPC" " "
                               "RET" "\n"
                               "TAB" "\t"
-                              key-str)]
+                              key-str)
+             ;; Delete-selection-mode: check if region should be deleted first
+             delete-region? (and (delete-selection/delete-selection-enabled? db)
+                                 (delete-selection/region-active? db))
+             region-bounds (when delete-region? (delete-selection/get-region-bounds db))]
          ;; (println "✍️ Inserting special key:" key-str "as:" (pr-str text-to-insert))
          {:db (assoc db :last-command :self-insert-command)  ; Break consecutive kill chain
-          :fx [[:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
-               [:dispatch [:clear-prefix-key-state]]]})
+          :fx (cond-> []
+                ;; If delete-selection is active, delete region first
+                delete-region?
+                (conj [:dispatch [:editor/queue-transaction
+                                  {:op :delete-range
+                                   :start (:start region-bounds)
+                                   :length (- (:end region-bounds) (:start region-bounds))}]]
+                      [:dispatch [:deactivate-mark]])
+                ;; Then insert the text
+                true
+                (conj [:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
+                      [:dispatch [:clear-prefix-key-state]]))})
 
        ;; No binding found - check if it's a printable character for insertion (Emacs mode - always insert)
        (and (= (count key-str) 1)
@@ -210,6 +225,10 @@
                              (list? prefix-arg) (first prefix-arg)
                              :else 1)
                            1)
+             ;; Delete-selection-mode: check if region should be deleted first
+             delete-region? (and (delete-selection/delete-selection-enabled? db)
+                                 (delete-selection/region-active? db))
+             region-bounds (when delete-region? (delete-selection/get-region-bounds db))
              ;; Electric-pair-mode: check if this is an opening delimiter
              char (first key-str)
              closing-char (when (electric-pair/electric-pair-enabled? db)
@@ -226,8 +245,18 @@
                            cursor-adjustment (assoc :cursor-adjust cursor-adjustment))]
          ;; (println "✍️ Inserting character:" key-str "×" repeat-count "=" text-to-insert)
          {:db (assoc db :last-command :self-insert-command)  ; Break consecutive kill chain
-          :fx (cond-> [[:dispatch [:editor/queue-transaction transaction]]
-                       [:dispatch [:clear-prefix-key-state]]]
+          :fx (cond-> []
+                ;; If delete-selection is active, delete region first
+                delete-region?
+                (conj [:dispatch [:editor/queue-transaction
+                                  {:op :delete-range
+                                   :start (:start region-bounds)
+                                   :length (- (:end region-bounds) (:start region-bounds))}]]
+                      [:dispatch [:deactivate-mark]])
+                ;; Then insert the text
+                true
+                (conj [:dispatch [:editor/queue-transaction transaction]]
+                      [:dispatch [:clear-prefix-key-state]])
                 ;; Phase 6.5: Clear prefix-arg after self-insert
                 prefix-arg (conj [:dispatch [:clear-prefix-arg]]))})
 

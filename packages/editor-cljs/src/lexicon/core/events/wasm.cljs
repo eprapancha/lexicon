@@ -419,6 +419,9 @@
                           ;; Clear in-flight flag
                           (assoc :transaction-in-flight? false)
                           (assoc :window-tree new-window-tree)
+                          ;; CRITICAL: Update :ui :cursor-position so next queued operation
+                          ;; sees the correct position (fixes delete-selection-mode insert position)
+                          (assoc-in [:ui :cursor-position] final-cursor)
                           ;; Mark buffer as modified
                           (assoc-in [:buffers active-buffer-id :is-modified?] true)
                           ;; Update cache with fresh values

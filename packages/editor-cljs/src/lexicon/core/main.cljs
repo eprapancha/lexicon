@@ -39,6 +39,7 @@
             [lexicon.core.modes.line-number]   ; Load line-number-mode (Phase 6.5 Week 5-6)
             [lexicon.core.modes.auto-save]     ; Load auto-save-mode (Phase 6.5 Week 5-6)
             [lexicon.core.modes.electric-pair] ; Load electric-pair-mode
+            [lexicon.core.modes.delete-selection] ; Load delete-selection-mode (#121)
             [lexicon.core.modes.hl-line]       ; Load hl-line-mode (#123)
             [lexicon.core.modes.show-paren]    ; Load show-paren-mode (#123)
             [lexicon.core.modes.whitespace]    ; Load whitespace-mode (#123)
@@ -208,6 +209,7 @@
   (lexicon.core.modes.line-number/init-line-number-mode!)
   (lexicon.core.modes.auto-save/init-auto-save-mode!)
   (lexicon.core.modes.electric-pair/init-electric-pair-mode!)
+  (lexicon.core.modes.delete-selection/init-delete-selection-mode!)
   (lexicon.core.modes.hl-line/init-hl-line-mode!)
   (lexicon.core.modes.show-paren/init-show-paren-mode!)
   (lexicon.core.modes.whitespace/init-whitespace-mode!)
