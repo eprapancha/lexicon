@@ -6,8 +6,10 @@
 
   Tests:
   - delete-selection-mode: Delete region and insert
-  - rectangle operations: Rectangle kill/yank via Lisp setup"
+  - rectangle operations: Rectangle kill/yank via Lisp setup
+  - dabbrev: Dynamic abbreviation expansion (M-/)"
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [clojure.string :as str]
             [etaoin.api :as e]
             [lexicon.test-helpers :as h]))
 
@@ -178,5 +180,67 @@
     ;; The killed rectangle was ["bc" "gh"] (2 lines)
     ;; It should be inserted at the cursor column on successive lines
     (let [text3 (h/get-buffer-text*)]
-      (is (clojure.string/includes? text3 "bc") "Yanked rectangle should contain 'bc'")
-      (is (clojure.string/includes? text3 "gh") "Yanked rectangle should contain 'gh'"))))
+      (is (str/includes? text3 "bc") "Yanked rectangle should contain 'bc'")
+      (is (str/includes? text3 "gh") "Yanked rectangle should contain 'gh'"))))
+
+;; =============================================================================
+;; Dabbrev (Dynamic Abbreviation)
+;; =============================================================================
+
+(deftest test-dabbrev-expand
+  (testing "M-/ expands abbreviation to matching word"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Insert text with a word we'll try to complete
+    (e/js-execute h/*driver* "window.evalLisp('(insert \"fantastic \")')")
+    (Thread/sleep 100)
+
+    ;; Verify initial text
+    (let [text1 (h/get-buffer-text*)]
+      (is (= "fantastic " text1) "Initial text should be 'fantastic '"))
+
+    ;; Now type a partial word at the end
+    (e/js-execute h/*driver* "window.evalLisp('(insert \"fan\")')")
+    (Thread/sleep 100)
+
+    ;; Verify we have "fantastic fan"
+    (let [text2 (h/get-buffer-text*)]
+      (is (= "fantastic fan" text2) "Should have 'fantastic fan'"))
+
+    ;; Press M-/ to expand "fan" to "fantastic"
+    (h/press-alt "/")
+    (Thread/sleep 200)
+
+    ;; Should now have "fantastic fantastic"
+    (let [text3 (h/get-buffer-text*)]
+      (is (= "fantastic fantastic" text3)
+          "dabbrev should expand 'fan' to 'fantastic'")))
+
+  (testing "M-/ cycles through multiple matches"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Insert text with multiple words starting with "pro"
+    (e/js-execute h/*driver* "window.evalLisp('(insert \"program project \")')")
+    (Thread/sleep 100)
+
+    ;; Type partial word
+    (e/js-execute h/*driver* "window.evalLisp('(insert \"pro\")')")
+    (Thread/sleep 100)
+
+    ;; First M-/ should find "project" (backward search finds nearest first)
+    (h/press-alt "/")
+    (Thread/sleep 200)
+
+    (let [text1 (h/get-buffer-text*)]
+      (is (str/includes? text1 "project project")
+          "First expansion should be 'project'"))
+
+    ;; Second M-/ should cycle to "program"
+    (h/press-alt "/")
+    (Thread/sleep 200)
+
+    (let [text2 (h/get-buffer-text*)]
+      (is (str/includes? text2 "program")
+          "Second expansion should cycle to 'program'"))))
