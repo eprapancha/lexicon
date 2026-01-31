@@ -126,20 +126,61 @@
 ;; Rectangle Operations
 ;; =============================================================================
 
-(deftest ^:skip test-rectangle-kill-yank
-  (testing "C-x r k kills rectangle"
+(deftest test-rectangle-kill-yank
+  (testing "C-x r k kills rectangle and C-x r y yanks it"
     (h/setup-test*)
     (h/clear-buffer)
-    ;; Type multi-line text for rectangle
-    (h/type-text "abc")
-    (h/press-key "Enter")
-    (h/type-text "def")
-    (h/press-key "Enter")
-    (h/type-text "ghi")
+
+    ;; Insert multi-line text via Lisp for reliable setup
+    (e/js-execute h/*driver* "window.evalLisp('(insert \"abcde\\nfghij\\nklmno\")')")
+    (Thread/sleep 100)
+
+    ;; Verify initial text
+    (let [text1 (h/get-buffer-text*)]
+      (is (= "abcde\nfghij\nklmno" text1) "Initial text should be correct"))
+
+    ;; Set mark at position 1 (after 'a') and move to position 8 (after 'g' on line 2)
+    ;; This creates a rectangle: columns 1-2, lines 0-1
+    ;; Line 0: "abcde" -> select "bc"
+    ;; Line 1: "fghij" -> select "gh"
+    (e/js-execute h/*driver* "window.evalLisp('(goto-char 1)')")
+    (Thread/sleep 50)
+    (e/js-execute h/*driver* "window.evalLisp('(set-mark 1)')")
+    (Thread/sleep 50)
+    (e/js-execute h/*driver* "window.evalLisp('(goto-char 9)')")  ; Position 9 = line 1, col 3
     (Thread/sleep 50)
 
-    ;; Rectangle operations are complex - test placeholder
-    (is true "PENDING: rectangle - needs E2E implementation")))
+    ;; Kill the rectangle with C-x r k
+    (h/press-ctrl "x")
+    (Thread/sleep 100)
+    (h/press-key "r")
+    (Thread/sleep 100)
+    (h/press-key "k")
+    (Thread/sleep 200)
+
+    ;; After killing rectangle [1,3) on lines 0-1:
+    ;; Line 0: "a" + "de" = "ade"
+    ;; Line 1: "f" + "ij" = "fij"
+    ;; Line 2: unchanged = "klmno"
+    (let [text2 (h/get-buffer-text*)]
+      (is (= "ade\nfij\nklmno" text2) "After kill-rectangle, columns should be removed"))
+
+    ;; Move to end of buffer and yank the rectangle
+    (e/js-execute h/*driver* "window.evalLisp('(goto-char (point-max))')")
+    (Thread/sleep 50)
+    (h/press-ctrl "x")
+    (Thread/sleep 100)
+    (h/press-key "r")
+    (Thread/sleep 100)
+    (h/press-key "y")
+    (Thread/sleep 200)
+
+    ;; After yanking rectangle at end:
+    ;; The killed rectangle was ["bc" "gh"] (2 lines)
+    ;; It should be inserted at the cursor column on successive lines
+    (let [text3 (h/get-buffer-text*)]
+      (is (clojure.string/includes? text3 "bc") "Yanked rectangle should contain 'bc'")
+      (is (clojure.string/includes? text3 "gh") "Yanked rectangle should contain 'gh'"))))
 
 ;; =============================================================================
 ;; Keyboard Macros
