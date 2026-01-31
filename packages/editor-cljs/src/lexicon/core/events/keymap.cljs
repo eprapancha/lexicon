@@ -110,17 +110,53 @@
                        {:keymap keymap-path :parent parent-path}))))
    (assoc-in db (concat [:keymaps] keymap-path [:parent]) parent-path)))
 
-(rf/reg-event-db
- :set-prefix-key-state
- (fn [db [_ prefix-key]]
-   "Set the current prefix key state for multi-key sequences"
-   (assoc-in db [:ui :prefix-key-state] prefix-key)))
+;; Atom to track the prefix echo timer (for cancellation)
+(defonce prefix-echo-timer (atom nil))
 
-(rf/reg-event-db
+(rf/reg-event-fx
+ :set-prefix-key-state
+ (fn [{:keys [db]} [_ prefix-key]]
+   "Set the current prefix key state for multi-key sequences.
+   Starts a timer to echo the prefix in the minibuffer after a delay (Emacs-style)."
+   ;; Cancel any existing timer
+   (when-let [old-timer @prefix-echo-timer]
+     (js/clearTimeout old-timer))
+
+   ;; Start a new timer to show prefix after delay (default 1 second like Emacs)
+   (let [echo-delay 1000  ; 1 second delay like Emacs echo-keystrokes
+         timer-id (js/setTimeout
+                    #(rf/dispatch [:prefix-key-echo prefix-key])
+                    echo-delay)]
+     (reset! prefix-echo-timer timer-id))
+
+   {:db (assoc-in db [:ui :prefix-key-state] prefix-key)}))
+
+(rf/reg-event-fx
+ :prefix-key-echo
+ (fn [{:keys [db]} [_ prefix-key]]
+   "Echo the prefix key in the minibuffer with a trailing dash (like Emacs)."
+   ;; Only show if we're still waiting for the same prefix
+   (if (= prefix-key (get-in db [:ui :prefix-key-state]))
+     {:db (assoc-in db [:ui :prefix-key-echoed?] true)
+      :fx [[:dispatch [:echo/message (str prefix-key "-") true]]]}  ; persist=true
+     {:db db})))
+
+(rf/reg-event-fx
  :clear-prefix-key-state
- (fn [db [_]]
-   "Clear the prefix key state"
-   (assoc-in db [:ui :prefix-key-state] nil)))
+ (fn [{:keys [db]} [_]]
+   "Clear the prefix key state and cancel any pending echo timer."
+   ;; Cancel the echo timer
+   (when-let [timer @prefix-echo-timer]
+     (js/clearTimeout timer)
+     (reset! prefix-echo-timer nil))
+
+   ;; Clear the echo if we had echoed the prefix
+   (let [was-echoed? (get-in db [:ui :prefix-key-echoed?])]
+     {:db (-> db
+              (assoc-in [:ui :prefix-key-state] nil)
+              (assoc-in [:ui :prefix-key-echoed?] false))
+      :fx (when was-echoed?
+            [[:dispatch [:echo/clear]]])})))
 
 (rf/reg-event-fx
  :handle-key-sequence
