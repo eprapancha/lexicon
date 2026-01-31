@@ -577,8 +577,90 @@
 (rf/reg-event-fx
  :find-file
  (fn [{:keys [db]} [_]]
-   "Open a file from disk"
-   {:fx [[:open-file-picker]]}))
+   "Open a file from disk.
+
+   If File System Access API is supported and directories are granted,
+   uses minibuffer with path completion. Otherwise falls back to
+   browser file picker dialog.
+
+   See: #135 - File System Access API implementation"
+   (let [api-supported? (get-in db [:fs-access :api-supported?] false)
+         granted-dirs (get-in db [:fs-access :granted-directories] {})
+         has-granted? (seq granted-dirs)]
+     (if (and api-supported? has-granted?)
+       ;; Use minibuffer with file completion
+       {:fx [[:dispatch [:minibuffer/activate
+                         {:prompt "Find file: "
+                          :on-confirm [:find-file/from-path]}]]]}
+       ;; Fall back to browser file picker
+       {:fx [[:open-file-picker]]}))))
+
+(rf/reg-event-fx
+ :find-file/from-path
+ (fn [{:keys [db]} [_ path]]
+   "Open a file from a path entered in minibuffer.
+
+   Resolves the path against granted directories and reads the file.
+   Falls back to browser picker if path is not in a granted directory."
+   (let [granted-dirs (get-in db [:fs-access :granted-directories] {})]
+     ;; Find which granted directory contains this path
+     (if-let [matching-grant (first
+                              (keep (fn [[grant-path {:keys [handle]}]]
+                                      (when (clojure.string/starts-with? path grant-path)
+                                        {:grant-path grant-path
+                                         :handle handle
+                                         :relative-path (subs path (count grant-path))}))
+                                    granted-dirs))]
+       ;; Read file from granted directory
+       {:fx [[:fs-access/read-file-from-path
+              {:grant-handle (:handle matching-grant)
+               :relative-path (:relative-path matching-grant)
+               :full-path path}]]}
+       ;; Path not in granted directory - fall back to picker
+       {:fx [[:dispatch [:message/display (str "Path not accessible: " path)]]
+             [:open-file-picker]]}))))
+
+(rf/reg-fx
+ :fs-access/read-file-from-path
+ (fn [{:keys [grant-handle relative-path]}]
+   "Read a file from a granted directory via relative path."
+   (let [path-parts (->> (clojure.string/split
+                          (clojure.string/replace relative-path #"^/" "")
+                          #"/")
+                         (filter seq)
+                         vec)]
+     (if (empty? path-parts)
+       (rf/dispatch [:message/display "Invalid path"])
+       ;; Navigate through directories to get file handle
+       (letfn [(read-final-file [dir-handle filename]
+                 (-> (.getFileHandle dir-handle filename)
+                     (.then (fn [file-handle]
+                              (-> (.getFile file-handle)
+                                  (.then (fn [file]
+                                           (.text file)))
+                                  (.then (fn [content]
+                                           (rf/dispatch
+                                            [:file-read-success
+                                             {:file-handle file-handle
+                                              :content content
+                                              :name filename}]))))))
+                     (.catch (fn [err]
+                               (rf/dispatch
+                                [:message/display
+                                 (str "Failed to read file: " (.-message err))])))))
+               (resolve-path [handle remaining-parts]
+                 (if (= 1 (count remaining-parts))
+                   ;; Last part - read the file
+                   (read-final-file handle (first remaining-parts))
+                   ;; Navigate to subdirectory
+                   (-> (.getDirectoryHandle handle (first remaining-parts))
+                       (.then (fn [dir-handle]
+                                (resolve-path dir-handle (rest remaining-parts))))
+                       (.catch (fn [_err]
+                                 (rf/dispatch
+                                  [:message/display
+                                   (str "Directory not found: " (first remaining-parts))]))))))]
+         (resolve-path grant-handle path-parts))))))
 
 (rf/reg-event-fx
  :insert-file

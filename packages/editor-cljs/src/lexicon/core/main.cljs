@@ -51,6 +51,7 @@
             [lexicon.core.windmove]            ; Load windmove S-arrow navigation (#117)
             [lexicon.core.winner]              ; Load winner window config undo (#117)
             [lexicon.core.occur]               ; Load occur-mode (#131)
+            [lexicon.core.fs.access :as fs-access]  ; Load File System Access API (#135)
             [lexicon.core.eval]                ; Load runtime evaluation (Phase 6.5 Week 7-8)
             [lexicon.core.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.core.views :as views]
@@ -242,6 +243,9 @@
 
   ;; Initialize occur-mode (#131)
   (lexicon.core.occur/init-occur!)
+
+  ;; Initialize File System Access API (#135)
+  (fs-access/init-fs-access!)
 
   ;; Mount the React application
   (mount-app)

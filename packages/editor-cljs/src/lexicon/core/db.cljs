@@ -343,6 +343,12 @@
 
    ;; Phase 7.8.1: Theme system - Modus themes support
    :current-theme :modus-vivendi  ; Active theme (:modus-operandi or :modus-vivendi)
+
+   ;; Issue #135: File System Access API
+   ;; Enables Emacs-style minibuffer file path input with completion
+   :fs-access {:api-supported? false        ; Set true if showDirectoryPicker available
+               :granted-directories {}       ; {"/path" {:handle H :name "dir" :granted-at ts}}
+               :initializing? false}         ; True during startup handle verification
    })
 
 (defn create-buffer
