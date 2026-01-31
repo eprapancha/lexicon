@@ -10,7 +10,8 @@
             [lexicon.core.db :as db]
             [lexicon.core.log :as log]
             [lexicon.core.modes.electric-pair :as electric-pair]
-            [lexicon.core.modes.delete-selection :as delete-selection]))
+            [lexicon.core.modes.delete-selection :as delete-selection]
+            [lexicon.core.kmacro :as kmacro]))
 
 ;; -- Helper Functions --
 
@@ -145,11 +146,16 @@
 
        ;; Normal key handling
        :else
-       (let [prefix-state (get-in db [:ui :prefix-key-state])
-             full-sequence (if prefix-state
-                            (str prefix-state " " key-str)
-                            key-str)
-             command-name (resolve-keybinding db full-sequence)]
+       (do
+         ;; Record key for keyboard macros if recording
+         (when (kmacro/recording?-fn)
+           (kmacro/record-key! key-str))
+
+         (let [prefix-state (get-in db [:ui :prefix-key-state])
+               full-sequence (if prefix-state
+                              (str prefix-state " " key-str)
+                              key-str)
+               command-name (resolve-keybinding db full-sequence)]
 
          (cond
        ;; Found a complete command binding
@@ -243,7 +249,6 @@
              cursor-adjustment (when closing-char (- repeat-count))
              transaction (cond-> {:op :insert :text text-to-insert}
                            cursor-adjustment (assoc :cursor-adjust cursor-adjustment))]
-         ;; (println "✍️ Inserting character:" key-str "×" repeat-count "=" text-to-insert)
          {:db (assoc db :last-command :self-insert-command)  ; Break consecutive kill chain
           :fx (cond-> []
                 ;; If delete-selection is active, delete region first
@@ -262,7 +267,7 @@
 
            ;; Unknown key sequence - clear state and ignore
            :else
-           {:fx [[:dispatch [:clear-prefix-key-state]]]}))))))
+           {:fx [[:dispatch [:clear-prefix-key-state]]]})))))))
 
 ;; -- Simple Test API Events --
 ;; These provide a simple interface for tests to set keybindings directly

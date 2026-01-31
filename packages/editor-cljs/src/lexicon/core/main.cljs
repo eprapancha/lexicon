@@ -44,6 +44,7 @@
             [lexicon.core.modes.show-paren]    ; Load show-paren-mode (#123)
             [lexicon.core.modes.whitespace]    ; Load whitespace-mode (#123)
             [lexicon.core.modes.display-line-numbers]  ; Load display-line-numbers-mode (#123)
+            [lexicon.core.kmacro]              ; Load keyboard macros (#121)
             [lexicon.core.eval]                ; Load runtime evaluation (Phase 6.5 Week 7-8)
             [lexicon.core.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.core.views :as views]
@@ -214,6 +215,9 @@
   (lexicon.core.modes.show-paren/init-show-paren-mode!)
   (lexicon.core.modes.whitespace/init-whitespace-mode!)
   (lexicon.core.modes.display-line-numbers/init-display-line-numbers-mode!)
+
+  ;; Initialize keyboard macros (#121)
+  (lexicon.core.kmacro/init-kmacro!)
 
   ;; Mount the React application
   (mount-app)

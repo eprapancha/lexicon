@@ -16,7 +16,8 @@
             [lexicon.core.advanced-undo :as undo]
             [lexicon.core.log :as log]
             [lexicon.core.api.message :refer [message]]
-            [lexicon.core.dynamic :as dyn]))
+            [lexicon.core.dynamic :as dyn]
+            [lexicon.core.kmacro :as kmacro]))
 
 ;; -- Helper Functions --
 
@@ -209,6 +210,10 @@
  :handle-text-input
  (fn [{:keys [db]} [_ {:keys [input-type data dom-cursor-pos]}]]
    "Handle text input events by queueing operations"
+   ;; Record for keyboard macros if recording
+   (when (and (kmacro/recording?-fn) (= input-type "insertText") data)
+     (doseq [ch data]
+       (kmacro/record-key! (str ch))))
    (let [prefix-arg (get-in db [:ui :prefix-argument])
          prefix-active? (get-in db [:ui :prefix-argument-active?])
          repeat-count (if (and prefix-active? prefix-arg) prefix-arg 1)]
@@ -275,7 +280,7 @@
              ;; Use message function to both show in echo area AND log to *Messages*
              (message "Buffer is read-only")
              ;; Remove transaction from queue without processing
-             (swap! re-frame.db/app-db update :transaction-queue rest)
+             (swap! re-frame.db/app-db update :transaction-queue #(vec (rest %)))
              ;; Continue processing queue in case there are other operations
              (rf/dispatch [:editor/process-queue]))
            (if wasm-instance
@@ -414,8 +419,8 @@
                                                      #(assoc % :cursor-position (or line-col {:line 0 :column 0})))
 
            updated-db (-> db
-                          ;; Remove completed operation from queue
-                          (update :transaction-queue rest)
+                          ;; Remove completed operation from queue (use subvec to keep it as a vector)
+                          (update :transaction-queue #(vec (rest %)))
                           ;; Clear in-flight flag
                           (assoc :transaction-in-flight? false)
                           (assoc :window-tree new-window-tree)
@@ -447,7 +452,7 @@
        (println "❌ Error processing transaction success:" error)
        ;; Clear in-flight flag and continue processing
        (let [updated-db (-> db
-                            (update :transaction-queue rest)
+                            (update :transaction-queue #(vec (rest %)))
                             (assoc :transaction-in-flight? false))]
          {:db updated-db
           :fx [[:editor/process-queue updated-db]]})))))
@@ -459,8 +464,8 @@
    "Handle transaction failure"
    (println "❌ Queue: Transaction failed:" error "for operation:" operation)
    (let [updated-db (-> db
-                        ;; Remove failed operation from queue
-                        (update :transaction-queue rest)
+                        ;; Remove failed operation from queue (keep as vector)
+                        (update :transaction-queue #(vec (rest %)))
                         ;; Clear in-flight flag
                         (assoc :transaction-in-flight? false)
                         ;; Store error for debugging
