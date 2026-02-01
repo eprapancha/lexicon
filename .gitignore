@@ -53,3 +53,4 @@ temp/
 
 # Test artifacts
 test-results/
+.clj-kondo/
