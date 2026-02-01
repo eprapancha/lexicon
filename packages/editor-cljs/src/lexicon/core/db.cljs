@@ -258,7 +258,8 @@
    :minibuffer-stack []
    ;; Frame structure: {:prompt "" :input "" :on-confirm [...] :on-cancel [...]
    ;;                   :completions [] :completion-index 0 :metadata nil :persist? false
-   ;;                   :show-completions? false :filtered-completions [] :height-lines 1}
+   ;;                   :show-completions? false :filtered-completions [] :height-lines 1
+   ;;                   :last-tab-input nil}  ; For vanilla Emacs TAB completion (Issue #136)
 
    ;; Configuration for recursive minibuffer support (Phase 6.5 Week 3-4)
    :enable-recursive-minibuffers false              ; Allow minibuffer activation while already active
@@ -282,7 +283,8 @@
                 :filtered-completions []             ; Filtered completions based on input
                 :completion-index 0                  ; Current completion selection index
                 :height-lines 1                      ; Dynamic height (1-20+ lines)
-                :show-completions? false}            ; Whether to show completion candidates
+                :show-completions? false             ; Whether to show completion candidates
+                :last-tab-input nil}                 ; For vanilla Emacs TAB completion (Issue #136)
    :echo-area {:message ""                           ; DEPRECATED - use :minibuffer :message
                :timeout-id nil}                      ; DEPRECATED - use :minibuffer :message-timeout-id
    :help {:awaiting-key? false                      ; Waiting for key press for C-h k

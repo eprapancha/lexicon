@@ -505,6 +505,14 @@
    (get-in buffer [:cache :text] "")))
 
 (rf/reg-sub
+ ::window-buffer-name
+ (fn [[_ window-id]]
+   (rf/subscribe [::window-buffer window-id]))
+ (fn [buffer _]
+   "Get buffer name for a specific window"
+   (:name buffer)))
+
+(rf/reg-sub
  ::window-decorations
  (fn [[_ window-id]]
    [(rf/subscribe [::window-buffer window-id])])

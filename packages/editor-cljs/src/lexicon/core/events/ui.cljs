@@ -9,14 +9,18 @@
   - Minibuffer activation and interaction
   - Echo area messages
   - WebSocket bridge communication
-  - Focus management effects"
+  - Focus management effects
+  - Completion help (*Completions* buffer)"
   (:require [re-frame.core :as rf]
             [re-frame.db]
             [lexicon.core.db :as db]
             [lexicon.core.minibuffer :as minibuffer]
             [lexicon.core.completion.styles :as completion-styles]
-            [lexicon.core.completion.metadata :as completion-metadata]
-            [lexicon.core.events.buffer :as buffer-events]))
+            [lexicon.core.events.buffer :as buffer-events]
+            [lexicon.core.modes.special-mode :as special-mode]))
+
+;; Forward declarations for functions used in event handlers
+(declare delete-completions-window)
 
 ;; =============================================================================
 ;; Window Management Events
@@ -327,13 +331,18 @@
  :minibuffer/deactivate
  (fn [{:keys [db]} [_]]
    "Deactivate the minibuffer (Phase 6.5 Week 3-4).
-   Pops current frame from stack. If stack becomes empty, restores cursor to window."
+   Pops current frame from stack. If stack becomes empty, restores cursor to window.
+   Also closes *Completions* buffer when fully deactivating (Emacs behavior)."
    (let [active-window-id (:active-window-id db)
          db' (-> db
                  minibuffer/pop-frame
                  minibuffer/sync-to-legacy)
-         still-active? (minibuffer/minibuffer-active? db')]
-     {:db (cond-> db'
+         still-active? (minibuffer/minibuffer-active? db')
+         ;; Close *Completions* buffer when fully deactivating
+         db'' (if still-active?
+                db'
+                (delete-completions-window db'))]
+     {:db (cond-> db''
             ;; If stack is now empty, restore cursor to active window
             (not still-active?)
             (assoc :cursor-owner active-window-id))
@@ -345,67 +354,147 @@
 (rf/reg-event-fx
  :minibuffer/set-input
  (fn [{:keys [db]} [_ input-text]]
-   "Update the minibuffer input text"
-   (let [on-change (get-in db [:minibuffer :on-change])]
-     (if on-change
-       ;; Custom on-change handler exists (e.g., for isearch)
-       {:fx [[:dispatch (conj on-change input-text)]]}
-       ;; Standard minibuffer - update input directly
-       {:db (assoc-in db [:minibuffer :input] input-text)}))))
-
-(rf/reg-event-db
- :minibuffer/complete
- (fn [db [_]]
-   "TAB completion in minibuffer with visual completion list"
-   (let [input (get-in db [:minibuffer :input] "")
-         completions (get-in db [:minibuffer :completions] [])
-         ;; Get effective styles for current completion
-         styles (or (get-in db [:completion :styles]) [:basic :substring :flex])
-         ;; Filter completions using styles
-         matches (if (clojure.string/blank? input)
-                  completions
-                  (completion-styles/filter-candidates
-                   input
-                   completions
-                   :styles-list styles))]
+   "Update the minibuffer input text.
+   Also resets cycling state when user types (not during arrow cycling).
+   For file completion, also updates completions based on new input."
+   (let [on-change (get-in db [:minibuffer :on-change])
+         category (get-in db [:minibuffer :metadata :category])]
      (cond
+       ;; Custom on-change handler exists (e.g., for isearch)
+       on-change
+       {:fx [[:dispatch (conj on-change input-text)]]}
+
+       ;; File completion - update completions dynamically
+       (= category :file)
+       {:db (-> db
+                (assoc-in [:minibuffer :input] input-text)
+                (assoc-in [:minibuffer :cycling?] false)
+                (assoc-in [:minibuffer :completion-index] -1)
+                (assoc-in [:minibuffer :original-input] ""))
+        :fx [[:dispatch [:find-file/update-completions input-text]]]}
+
+       ;; Standard minibuffer - update input and reset cycling state
+       :else
+       {:db (-> db
+                (assoc-in [:minibuffer :input] input-text)
+                ;; Reset cycling state when user types
+                (assoc-in [:minibuffer :cycling?] false)
+                (assoc-in [:minibuffer :completion-index] -1)
+                (assoc-in [:minibuffer :original-input] ""))}))))
+
+(rf/reg-event-fx
+ :minibuffer/complete
+ (fn [{:keys [db]} [_]]
+   "TAB completion in minibuffer - vanilla Emacs behavior.
+
+   First TAB: Complete as far as possible (common prefix).
+   Second TAB: Show *Completions* buffer with all matching candidates.
+
+   For file completion, TAB on a complete directory path (ending with /)
+   descends into that directory and shows its children. If the subdirectory
+   isn't cached yet, triggers async caching.
+
+   This matches Emacs minibuffer-complete behavior:
+   - TAB once completes common prefix, no UI change if ambiguous
+   - TAB twice opens *Completions* buffer
+
+   See Issue #136 for details."
+   (let [input (get-in db [:minibuffer :input] "")
+         category (get-in db [:minibuffer :completion-metadata :category])
+         last-tab-input (get-in db [:minibuffer :last-tab-input])
+         ;; For file completion, check if we need to descend into a directory
+         is-file-completion? (= category :file)
+         input-is-directory? (and is-file-completion?
+                                  (clojure.string/ends-with? input "/"))
+         ;; Check if directory is cached (for file completion)
+         dir-cache (get-in db [:fs-access :directory-cache] {})
+         granted-dirs (get-in db [:fs-access :granted-directories] {})
+         ;; For directory input, check if we need to trigger caching
+         cache-key (when input-is-directory?
+                     ;; Remove trailing slash for cache lookup
+                     (subs input 0 (dec (count input))))
+         dir-is-cached? (or (not input-is-directory?)
+                            (contains? dir-cache cache-key))
+         ;; Find the grant that contains this path (for triggering cache)
+         matching-grant (when (and input-is-directory? (not dir-is-cached?))
+                          (first
+                           (keep (fn [[grant-path {:keys [handle]}]]
+                                   (when (clojure.string/starts-with? input grant-path)
+                                     {:grant-path grant-path
+                                      :handle handle}))
+                                 granted-dirs)))
+         ;; For file completion with directory input, refresh completions first
+         db' (if input-is-directory?
+               ;; Update completions for this directory
+               (let [new-completions (buffer-events/file-completions-for-input
+                                      dir-cache granted-dirs input)]
+                 (assoc-in db [:minibuffer :completions] (vec new-completions)))
+               db)
+         completions (get-in db' [:minibuffer :completions] [])
+         ;; Get effective styles for current completion
+         styles (or (get-in db' [:completion :styles]) [:basic :substring :flex])
+         ;; Filter completions by input (standard prefix/substring matching)
+         matches (if (clojure.string/blank? input)
+                   completions
+                   (completion-styles/filter-candidates
+                    input
+                    completions
+                    :styles-list styles))
+         ;; Detect consecutive TAB press (input unchanged since last TAB)
+         consecutive-tab? (= input last-tab-input)]
+     (cond
+       ;; Directory not cached - trigger async caching
+       (and input-is-directory? (not dir-is-cached?) matching-grant)
+       {:db (assoc-in db' [:minibuffer :last-tab-input] input)
+        :fx [[:fs-access/list-subdirectory-for-cache
+              {:grant-handle (:handle matching-grant)
+               :grant-path (:grant-path matching-grant)
+               :target-path cache-key}]
+             [:dispatch [:message/display "Loading directory..."]]]}
+
        ;; No completions available
        (empty? completions)
-       db
+       {:db db'}
 
-       ;; Single match - complete it
+       ;; Consecutive TAB - show *Completions* buffer
+       consecutive-tab?
+       {:db (assoc-in db' [:minibuffer :last-tab-input] nil)  ; Reset for next cycle
+        :fx [[:dispatch [:minibuffer/completion-help matches]]]}
+
+       ;; Single match - complete it fully
        (= (count matches) 1)
-       (-> db
-           (assoc-in [:minibuffer :input] (first matches))
-           (assoc-in [:minibuffer :show-completions?] false)
-           (assoc-in [:minibuffer :filtered-completions] [])
-           (assoc-in [:minibuffer :height-lines] 1))
+       {:db (-> db'
+                (assoc-in [:minibuffer :input] (first matches))
+                (assoc-in [:minibuffer :last-tab-input] (first matches))
+                (assoc-in [:minibuffer :show-completions?] false)
+                (assoc-in [:minibuffer :filtered-completions] [])
+                (assoc-in [:minibuffer :height-lines] 1))}
 
-       ;; Multiple matches - show completion list
+       ;; Multiple matches - complete common prefix only (first TAB)
        (> (count matches) 1)
        (let [common-prefix (reduce (fn [prefix candidate]
-                                    (loop [i 0]
-                                      (if (and (< i (count prefix))
-                                              (< i (count candidate))
-                                              (= (nth prefix i) (nth candidate i)))
-                                        (recur (inc i))
-                                        (subs prefix 0 i))))
-                                  (first matches)
-                                  (rest matches))
-             num-candidates-to-show (min 10 (count matches))
-             height-lines (inc num-candidates-to-show)]
-         (-> db
-             (assoc-in [:minibuffer :input] (if (> (count common-prefix) (count input))
-                                              common-prefix
-                                              input))
-             (assoc-in [:minibuffer :filtered-completions] matches)
-             (assoc-in [:minibuffer :show-completions?] true)
-             (assoc-in [:minibuffer :completion-index] 0)
-             (assoc-in [:minibuffer :height-lines] height-lines)))
+                                     (loop [i 0]
+                                       (if (and (< i (count prefix))
+                                                (< i (count candidate))
+                                                (= (nth prefix i) (nth candidate i)))
+                                         (recur (inc i))
+                                         (subs prefix 0 i))))
+                                   (first matches)
+                                   (rest matches))
+             new-input (if (> (count common-prefix) (count input))
+                         common-prefix
+                         input)]
+         {:db (-> db'
+                  (assoc-in [:minibuffer :input] new-input)
+                  (assoc-in [:minibuffer :last-tab-input] new-input)
+                  ;; Don't show inline completions on first TAB (vanilla Emacs)
+                  (assoc-in [:minibuffer :show-completions?] false)
+                  (assoc-in [:minibuffer :filtered-completions] [])
+                  (assoc-in [:minibuffer :height-lines] 1))})
 
        ;; No matches
        :else
-       db))))
+       {:db (assoc-in db' [:minibuffer :last-tab-input] input)}))))
 
 (rf/reg-event-fx
  :minibuffer/confirm
@@ -465,6 +554,418 @@
            (assoc-in [:minibuffer :filtered-completions] [])
            (assoc-in [:minibuffer :height-lines] 1))
        db))))
+
+;; =============================================================================
+;; Completion Buffer Formatting (Issue #137)
+;; =============================================================================
+
+(defn- format-completions-buffer
+  "Format completions for display in *Completions* buffer.
+   Shows one candidate per line with a marker for the selected item.
+   If selected-index is nil or -1, no item is highlighted.
+   If annotation-fn is provided, appends annotations to each line.
+   If strip-prefix is provided, strips it from display (but not value)."
+  ([candidates] (format-completions-buffer candidates -1 nil nil))
+  ([candidates selected-index] (format-completions-buffer candidates selected-index nil nil))
+  ([candidates selected-index annotation-fn] (format-completions-buffer candidates selected-index annotation-fn nil))
+  ([candidates selected-index annotation-fn strip-prefix]
+   (if (empty? candidates)
+     "No completions available."
+     (let [;; For display, optionally strip common prefix (e.g., directory path)
+           display-candidates (if strip-prefix
+                                (map #(if (clojure.string/starts-with? % strip-prefix)
+                                        (subs % (count strip-prefix))
+                                        %)
+                                     candidates)
+                                candidates)
+           ;; Find max display length for alignment
+           max-len (apply max (map count display-candidates))
+           ;; Pad to align annotations
+           pad-to (+ max-len 2)
+           format-line (fn [idx [_cand display-cand]]
+                         (let [prefix (if (= idx selected-index) "> " "  ")
+                               ;; Pad candidate for annotation alignment
+                               padded (str display-cand (apply str (repeat (- pad-to (count display-cand)) " ")))
+                               ;; Get annotation if function provided (using original candidate)
+                               annotation (when annotation-fn
+                                            (try
+                                              (annotation-fn _cand)
+                                              (catch :default _ nil)))]
+                           (str prefix padded (or annotation ""))))]
+       (str "Possible completions:\n"
+            (clojure.string/join "\n"
+                                 (map-indexed format-line (map vector candidates display-candidates))))))))
+
+;; =============================================================================
+;; Arrow Key Cycling - Vanilla Emacs Style (Issue #137)
+;; =============================================================================
+;; These handlers implement icomplete-style cycling through completions.
+;; Up/Down arrows cycle through matching completions, inserting the current
+;; selection into the minibuffer input. This provides visual feedback as
+;; users navigate without requiring a separate *Completions* buffer.
+;;
+;; NOTE: The *Completions* buffer is STATIC - it does NOT update when cycling.
+;; This matches Emacs behavior. The buffer shows the initial set of completions
+;; and users navigate using the minibuffer display, not by watching *Completions*.
+
+(rf/reg-event-db
+ :minibuffer/cycle-next
+ (fn [db [_]]
+   "Cycle to next completion candidate (Down arrow).
+
+   - First press: saves current input as original-input, starts cycling
+   - Subsequent: moves to next completion (wraps around)
+   - Updates minibuffer input to show selected completion
+   - Does NOT update *Completions* buffer (Emacs behavior: buffer is static)"
+   (let [input (get-in db [:minibuffer :input] "")
+         completions (get-in db [:minibuffer :completions] [])
+         ;; Filter completions by current input (case-insensitive substring match)
+         matches (if (clojure.string/blank? input)
+                   completions
+                   (filter #(clojure.string/includes?
+                             (clojure.string/lower-case %)
+                             (clojure.string/lower-case input))
+                           completions))
+         matches-vec (vec matches)
+         num-matches (count matches-vec)]
+     (if (zero? num-matches)
+       db  ; No matches to cycle through
+       (let [cycling? (get-in db [:minibuffer :cycling?] false)
+             original-input (if cycling?
+                              (get-in db [:minibuffer :original-input] "")
+                              input)
+             current-index (get-in db [:minibuffer :completion-index] -1)
+             ;; Next index: -1 -> 0, then increment with wrap
+             new-index (if (< current-index (dec num-matches))
+                         (inc current-index)
+                         0)
+             selected (nth matches-vec new-index)]
+         (-> db
+             (assoc-in [:minibuffer :cycling?] true)
+             (assoc-in [:minibuffer :original-input] original-input)
+             (assoc-in [:minibuffer :completion-index] new-index)
+             (assoc-in [:minibuffer :input] selected)))))))
+
+(rf/reg-event-db
+ :minibuffer/cycle-prev
+ (fn [db [_]]
+   "Cycle to previous completion candidate (Up arrow).
+
+   - First press: saves current input as original-input, starts cycling
+   - When at index 0 and pressing up: returns to original-input (index -1)
+   - Otherwise: moves to previous completion (wraps around)
+   - Updates minibuffer input to show selected completion"
+   (let [input (get-in db [:minibuffer :input] "")
+         completions (get-in db [:minibuffer :completions] [])
+         ;; Filter completions by current input (case-insensitive substring match)
+         matches (if (clojure.string/blank? input)
+                   completions
+                   (filter #(clojure.string/includes?
+                             (clojure.string/lower-case %)
+                             (clojure.string/lower-case input))
+                           completions))
+         matches-vec (vec matches)
+         num-matches (count matches-vec)]
+     (if (zero? num-matches)
+       db  ; No matches to cycle through
+       (let [cycling? (get-in db [:minibuffer :cycling?] false)
+             original-input (if cycling?
+                              (get-in db [:minibuffer :original-input] "")
+                              input)
+             current-index (get-in db [:minibuffer :completion-index] -1)]
+         (cond
+           ;; Not yet cycling, Up goes to last match
+           (not cycling?)
+           (let [new-index (dec num-matches)
+                 selected (nth matches-vec new-index)]
+             (-> db
+                 (assoc-in [:minibuffer :cycling?] true)
+                 (assoc-in [:minibuffer :original-input] original-input)
+                 (assoc-in [:minibuffer :completion-index] new-index)
+                 (assoc-in [:minibuffer :input] selected)))
+
+           ;; At index 0, go back to original input
+           (= current-index 0)
+           (-> db
+               (assoc-in [:minibuffer :cycling?] false)
+               (assoc-in [:minibuffer :completion-index] -1)
+               (assoc-in [:minibuffer :input] original-input))
+
+           ;; At index -1 (showing original), wrap to last match
+           (= current-index -1)
+           (let [new-index (dec num-matches)
+                 selected (nth matches-vec new-index)]
+             (-> db
+                 (assoc-in [:minibuffer :cycling?] true)
+                 (assoc-in [:minibuffer :completion-index] new-index)
+                 (assoc-in [:minibuffer :input] selected)))
+
+           ;; Otherwise, decrement index
+           :else
+           (let [new-index (dec current-index)
+                 selected (nth matches-vec new-index)]
+             (-> db
+                 (assoc-in [:minibuffer :completion-index] new-index)
+                 (assoc-in [:minibuffer :input] selected)))))))))
+
+;; =============================================================================
+;; Completion Help - *Completions* Buffer (Issue #136)
+;; =============================================================================
+
+(def ^:private completion-list-mode-map
+  "Keymap for completion-list-mode. Extends special-mode-map.
+   Defined here to avoid circular dependencies with modes namespace."
+  (merge special-mode/special-mode-map
+         {:RET   [:completion-list/choose-at-point]
+          :n     [:completion-list/next-completion]
+          :p     [:completion-list/previous-completion]
+          :down  [:completion-list/next-completion]
+          :up    [:completion-list/previous-completion]
+          :q     [:completion-list/quit]}))
+
+(defn- get-or-create-completions-buffer
+  "Get existing *Completions* buffer or create new one.
+   Returns [db buffer-id]."
+  [db]
+  (let [buffers (:buffers db)
+        existing (some (fn [[id buf]]
+                         (when (= (:name buf) "*Completions*") id))
+                       buffers)]
+    (if existing
+      [db existing]
+      ;; Create new buffer
+      (let [WasmGapBuffer (get-in db [:system :wasm-constructor])
+            wasm-instance (when WasmGapBuffer (new WasmGapBuffer ""))
+            buffer-id (db/next-buffer-id buffers)
+            new-buffer (-> (db/create-buffer buffer-id "*Completions*" wasm-instance)
+                           (assoc :is-read-only? true)
+                           (assoc :major-mode :completion-list-mode)
+                           (assoc :mode-keymap completion-list-mode-map)
+                           ;; Enable hl-line-mode to highlight current selection
+                           (assoc :minor-modes #{:hl-line-mode}))]
+        [(assoc-in db [:buffers buffer-id] new-buffer) buffer-id]))))
+
+(defn- find-completions-window
+  "Find window showing *Completions* buffer, if any."
+  [db buffer-id]
+  (let [window-tree (:window-tree db)]
+    (letfn [(find-in-tree [tree]
+              (cond
+                (nil? tree) nil
+                (= (:type tree) :leaf)
+                (when (= (:buffer-id tree) buffer-id)
+                  (:id tree))
+                (or (= (:type tree) :hsplit) (= (:type tree) :vsplit))
+                (or (find-in-tree (:first tree))
+                    (find-in-tree (:second tree)))
+                :else nil))]
+      (find-in-tree window-tree))))
+
+(defn- create-bottom-split-for-buffer
+  "Create a horizontal split at the ROOT level with buffer-id in the bottom window.
+   Returns updated db with new window tree.
+
+   IMPORTANT: Always creates the split at the root (frame level), not within
+   existing splits. This ensures *Completions* is always a single window at
+   the bottom of the frame, not nested within other splits.
+
+   The bottom window has a fixed height of ~6 lines for *Completions*."
+  [db buffer-id]
+  (let [window-tree (:window-tree db)
+        new-window-id (db/next-window-id db)
+        ;; Create new window for completions with fixed height
+        ;; 6 lines * 20px line-height + 24px mode-line = ~144px
+        new-window (-> (db/create-leaf-window new-window-id buffer-id)
+                       (assoc :viewport {:start-line 0 :end-line 6})
+                       (assoc :fixed-height 168))  ; 6 lines + mode-line + padding
+        ;; Create split at ROOT level - entire existing tree goes on top
+        split-id (inc new-window-id)
+        new-tree {:type :hsplit
+                  :id split-id
+                  :first window-tree      ; Entire existing tree on top
+                  :second new-window}]    ; *Completions* at bottom
+    (-> db
+        (assoc :window-tree new-tree)
+        (assoc :next-window-id (+ new-window-id 2))
+        ;; Store the completions window id for later use
+        (assoc-in [:completion-help :window-id] new-window-id))))
+
+(rf/reg-event-fx
+ :minibuffer/completion-help
+ (fn [{:keys [db]} [_ candidates]]
+   "Display *Completions* buffer with all matching candidates.
+
+   This is triggered by pressing TAB twice in the minibuffer (vanilla Emacs behavior).
+   Creates or updates the *Completions* buffer and displays it in a bottom split.
+   Focus remains on the minibuffer.
+
+   For file completion, strips the directory prefix from display (it's already
+   visible in the minibuffer input, so showing it again is redundant).
+
+   See Issue #136, #137."
+   (let [;; Get or create *Completions* buffer
+         [db' buffer-id] (get-or-create-completions-buffer db)
+         ;; Get annotation function from minibuffer state
+         annotation-fn (get-in db [:minibuffer :annotation-fn])
+         ;; For file completion, strip directory prefix from display
+         category (get-in db [:minibuffer :completion-metadata :category])
+         input (get-in db [:minibuffer :input] "")
+         strip-prefix (when (= category :file)
+                        ;; Get directory part of input (up to and including last /)
+                        (let [last-slash (clojure.string/last-index-of input "/")]
+                          (when last-slash
+                            (subs input 0 (inc last-slash)))))
+         ;; Format content with annotations and optional prefix stripping
+         content (format-completions-buffer candidates -1 annotation-fn strip-prefix)
+         ;; Get WASM instance and update content
+         ^js wasm-instance (get-in db' [:buffers buffer-id :wasm-instance])]
+     (when wasm-instance
+       ;; Clear existing content and insert new
+       (let [current-length (.-length wasm-instance)]
+         (when (pos? current-length)
+           (.delete wasm-instance 0 current-length))
+         (.insert wasm-instance 0 content)))
+     ;; Check if *Completions* window already exists
+     (let [existing-window (find-completions-window db' buffer-id)
+           db'' (-> db'
+                    (assoc-in [:buffers buffer-id :cache :text] content)
+                    (assoc-in [:buffers buffer-id :cache :line-count]
+                              (count (clojure.string/split content #"\n" -1)))
+                    (assoc-in [:completion-help :candidates] (vec candidates))
+                    (assoc-in [:completion-help :buffer-id] buffer-id))]
+       (if existing-window
+         ;; *Completions* window exists, just update content (already done above)
+         {:db db''
+          :fx [[:dom/focus-minibuffer nil]]}
+         ;; Create bottom split for *Completions*
+         {:db (create-bottom-split-for-buffer db'' buffer-id)
+          :fx [[:dom/focus-minibuffer nil]]})))))
+
+(defn- delete-completions-window
+  "Delete the *Completions* window from the window tree.
+   Returns updated db with window removed."
+  [db]
+  (let [buffer-id (get-in db [:completion-help :buffer-id])
+        window-id (when buffer-id (find-completions-window db buffer-id))]
+    (if window-id
+      ;; Delete the window from tree
+      (let [window-tree (:window-tree db)]
+        (letfn [(remove-from-tree [tree]
+                  (cond
+                    (nil? tree) nil
+                    ;; Leaf node - can't be the target since we're looking for splits
+                    (= (:type tree) :leaf) tree
+                    ;; Split node - check if either child is the completions window
+                    (or (= (:type tree) :hsplit) (= (:type tree) :vsplit))
+                    (cond
+                      ;; First child is the completions window - replace split with second
+                      (and (= (:type (:first tree)) :leaf)
+                           (= (:id (:first tree)) window-id))
+                      (:second tree)
+                      ;; Second child is the completions window - replace split with first
+                      (and (= (:type (:second tree)) :leaf)
+                           (= (:id (:second tree)) window-id))
+                      (:first tree)
+                      ;; Recurse
+                      :else
+                      (assoc tree
+                             :first (remove-from-tree (:first tree))
+                             :second (remove-from-tree (:second tree))))
+                    :else tree))]
+          (-> db
+              (assoc :window-tree (remove-from-tree window-tree))
+              (assoc-in [:completion-help :window-id] nil))))
+      ;; No completions window to delete
+      db)))
+
+(rf/reg-event-fx
+ :completion-list/choose
+ (fn [{:keys [db]} [_ candidate]]
+   "Choose a completion from *Completions* buffer.
+   Inserts the candidate into minibuffer and closes *Completions*."
+   (if (minibuffer/minibuffer-active? db)
+     {:db (-> db
+              (assoc-in [:minibuffer :input] candidate)
+              (assoc-in [:minibuffer :last-tab-input] nil)
+              delete-completions-window)
+      :fx [[:dom/focus-minibuffer nil]]}
+     {:db db})))
+
+(rf/reg-event-fx
+ :completion-list/quit
+ (fn [{:keys [db]} [_]]
+   "Quit *Completions* buffer and return to minibuffer."
+   {:db (delete-completions-window db)
+    :fx [[:dom/focus-minibuffer nil]]}))
+
+(rf/reg-event-fx
+ :focus-minibuffer
+ (fn [_ [_]]
+   "Focus the minibuffer input element."
+   {:fx [[:dom/focus-minibuffer nil]]}))
+
+(rf/reg-event-fx
+ :completion-list/choose-at-point
+ (fn [{:keys [db]} [_]]
+   "Choose the completion at or near point in *Completions* buffer.
+
+   Looks for the completion candidate on the current line and
+   inserts it into the minibuffer."
+   (let [;; Get the candidates stored when *Completions* was created
+         candidates (get-in db [:completion-help :candidates] [])
+         buffer-id (get-in db [:completion-help :buffer-id])
+         ;; Get current cursor position in *Completions* buffer
+         active-window-id (:active-window-id db)
+         active-window (db/find-window-in-tree (:window-tree db) active-window-id)
+         cursor-line (get-in active-window [:cursor-position :line] 0)
+         ;; Get buffer content to find candidate at point
+         buffer (get-in db [:buffers buffer-id])
+         wasm-instance (:wasm-instance buffer)
+         buffer-text (when wasm-instance (.getText wasm-instance))
+         lines (when buffer-text (clojure.string/split buffer-text #"\n"))
+         ;; Skip header lines (first 3 lines are header text)
+         content-line-index (- cursor-line 3)
+         current-line (when (and lines
+                                  (>= content-line-index 0)
+                                  (< cursor-line (count lines)))
+                        (nth lines cursor-line ""))]
+     ;; Parse candidate from current line - find matching candidate
+     (if-let [candidate (when current-line
+                          (first (filter #(and (not (clojure.string/blank? %))
+                                               (clojure.string/includes?
+                                                (clojure.string/trim current-line)
+                                                %))
+                                         candidates)))]
+       {:fx [[:dispatch [:completion-list/choose candidate]]]}
+       {:fx [[:dispatch [:echo/message "No completion at point"]]]}))))
+
+(rf/reg-event-fx
+ :completion-list/next-completion
+ (fn [_ [_]]
+   "Move to next completion in *Completions* buffer."
+   {:fx [[:dispatch [:editor/next-line]]]}))
+
+(rf/reg-event-fx
+ :completion-list/previous-completion
+ (fn [_ [_]]
+   "Move to previous completion in *Completions* buffer."
+   {:fx [[:dispatch [:editor/previous-line]]]}))
+
+(rf/reg-event-fx
+ :completion-list/click-line
+ (fn [{:keys [db]} [_ clicked-line]]
+   "Handle click on a line in *Completions* buffer.
+   Parses the clicked line and selects the completion.
+   Issue #137: Clickable completion entries."
+   (let [candidates (get-in db [:completion-help :candidates] [])
+         ;; Line 0 is header 'Possible completions:', completion entries start at line 1
+         ;; Each line has format '  candidate' or '> candidate' (selected)
+         completion-index (dec clicked-line)]  ; Line 1 = index 0
+     (if (and (>= completion-index 0) (< completion-index (count candidates)))
+       (let [candidate (nth candidates completion-index)]
+         {:fx [[:dispatch [:completion-list/choose candidate]]]})
+       ;; Clicked on header or outside range
+       {:db db}))))
 
 ;; =============================================================================
 ;; Echo Area Events

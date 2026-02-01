@@ -47,6 +47,9 @@
    - :height-lines - Minibuffer height (default 1)
    - :custom-renderer - Custom Reagent component fn for rendering (default nil)
    - :renderer-props - Props map to pass to custom renderer (default {})
+   - :last-tab-input - Input when TAB was last pressed (for vanilla Emacs completion)
+   - :original-input - User's typed input before arrow cycling (for restore on further typing)
+   - :cycling? - True if currently cycling through completions with arrows
 
    Returns updated db with new frame pushed."
   [db config]
@@ -55,14 +58,18 @@
                       :on-confirm nil
                       :on-cancel [:minibuffer/deactivate]
                       :completions []
-                      :completion-index 0
+                      :completion-index -1  ; -1 = user input, 0+ = cycling through completions
                       :metadata nil
                       :persist? false
                       :show-completions? false
                       :filtered-completions []
                       :height-lines 1
                       :custom-renderer nil
-                      :renderer-props {}}
+                      :renderer-props {}
+                      :last-tab-input nil
+                      :original-input ""    ; What user typed before cycling
+                      :cycling? false       ; Currently cycling with arrows?
+                      :annotation-fn nil}   ; Function to generate annotations for completions
                      config)]
     (update db :minibuffer-stack conj frame)))
 
@@ -93,14 +100,18 @@
                           :on-confirm nil
                           :on-cancel [:minibuffer/deactivate]
                           :completions []
-                          :completion-index 0
+                          :completion-index -1
                           :metadata nil
                           :persist? false
                           :show-completions? false
                           :filtered-completions []
                           :height-lines 1
                           :custom-renderer nil
-                          :renderer-props {}}
+                          :renderer-props {}
+                          :last-tab-input nil
+                          :original-input ""
+                          :cycling? false
+                          :annotation-fn nil}
                          config)]
         (assoc db :minibuffer-stack (conj new-stack frame))))))
 
@@ -141,7 +152,11 @@
                                    :filtered-completions (:filtered-completions frame)
                                    :height-lines (:height-lines frame)
                                    :custom-renderer (:custom-renderer frame)
-                                   :renderer-props (:renderer-props frame)}))
+                                   :renderer-props (:renderer-props frame)
+                                   :last-tab-input (:last-tab-input frame)
+                                   :original-input (:original-input frame)
+                                   :cycling? (:cycling? frame)
+                                   :annotation-fn (:annotation-fn frame)}))
     ;; No frame - mark as inactive
     (assoc-in db [:minibuffer :active?] false)))
 

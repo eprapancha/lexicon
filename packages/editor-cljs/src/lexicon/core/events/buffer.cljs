@@ -364,49 +364,80 @@
  :kill-buffer
  (fn [{:keys [db]} [_]]
    "Activate minibuffer for buffer killing (C-x k)"
-   (let [current-buffer (get (:buffers db) (get-in db [:windows (:active-window-id db) :buffer-id]))
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         current-buffer-id (:buffer-id active-window)
+         current-buffer (get (:buffers db) current-buffer-id)
          current-name (:name current-buffer)
+         ;; Get all buffer names for completion
+         buffer-names (map :name (vals (:buffers db)))
          prompt (str "Kill buffer (default " current-name "): ")]
      {:fx [[:dispatch [:minibuffer/activate
                        {:prompt prompt
+                        :completions (vec buffer-names)
                         :on-confirm [:kill-buffer-by-name]}]]]})))
 
 (rf/reg-event-fx
  :kill-buffer-by-name
  (fn [{:keys [db]} [_ buffer-name]]
-   "Kill buffer by name, or kill current if empty"
+   "Kill buffer by name, or kill current if empty.
+
+   Properly handles:
+   - Switching to another buffer BEFORE killing if needed
+   - Not killing the last buffer
+   - Running kill-buffer hooks"
    (let [buffers (:buffers db)
-         current-buffer-id (get-in db [:windows (:active-window-id db) :buffer-id])
+         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         current-buffer-id (:buffer-id active-window)
          current-buffer (get buffers current-buffer-id)
          ;; If input is empty, use current buffer name
          target-name (if (clojure.string/blank? buffer-name)
-                      (:name current-buffer)
-                      buffer-name)
+                       (:name current-buffer)
+                       buffer-name)
          ;; Find buffer with matching name
          target-buffer (first (filter #(= (:name %) target-name) (vals buffers)))
          target-id (:id target-buffer)]
-     (if target-id
-       ;; Don't allow killing the last buffer
-       (if (= (count buffers) 1)
-         {:fx []} ; Silently ignore
-         (let [;; Run kill-buffer hooks
-               hook-commands (get-in db [:hooks :kill-buffer-hook] [])
-               ;; If killing active buffer, switch to another one first
-               need-switch? (= target-id current-buffer-id)
-               ;; Find another buffer to switch to
-               other-buffer-id (first (filter #(not= % target-id) (keys buffers)))
-               updated-db (-> db
-                              ;; Remove the buffer
-                              (update :buffers dissoc target-id))]
-           {:db updated-db
-            :fx (concat
-                  ;; Run hook commands first
-                  (map (fn [cmd] [:dispatch [:execute-command cmd]]) hook-commands)
-                  ;; Switch to another buffer if needed
-                  (when (and need-switch? other-buffer-id)
-                    [[:dispatch [:switch-buffer other-buffer-id]]]))}))
+     (cond
        ;; Buffer not found
-       {:fx []}))))
+       (nil? target-id)
+       {:db db
+        :fx [[:dispatch [:echo/message (str "No buffer named " target-name)]]]}
+
+       ;; Don't allow killing the last buffer
+       (= (count buffers) 1)
+       {:db db
+        :fx [[:dispatch [:echo/message "Cannot kill the last buffer"]]]}
+
+       :else
+       (let [;; Run kill-buffer hooks
+             hook-commands (get-in db [:hooks :kill-buffer-hook] [])
+             ;; If killing active buffer, need to switch first
+             need-switch? (= target-id current-buffer-id)
+             ;; Find another buffer to switch to (prefer *scratch* if not being killed, else first available)
+             other-buffer-id (or (some (fn [[id buf]] (when (and (= (:name buf) "*scratch*")
+                                                                  (not= id target-id)) id)) buffers)
+                                 (first (filter #(not= % target-id) (keys buffers))))
+             ;; Build effect list
+             effects (vec (concat
+                           ;; Run hook commands first
+                           (map (fn [cmd] [:dispatch [:execute-command cmd]]) hook-commands)
+                           ;; Switch to another buffer if needed (BEFORE killing)
+                           (when (and need-switch? other-buffer-id)
+                             [[:dispatch [:switch-buffer other-buffer-id]]])
+                           ;; Then remove the buffer
+                           [[:dispatch [:kill-buffer-finalize target-id]]]))]
+         {:db db
+          :fx effects})))))
+
+(rf/reg-event-db
+ :kill-buffer-finalize
+ (fn [db [_ buffer-id]]
+   "Actually remove the buffer from db. Called after switch-buffer."
+   (let [buffer-name (get-in db [:buffers buffer-id :name])]
+     (js/console.log "Killing buffer:" buffer-name)
+     (-> db
+         (update :buffers dissoc buffer-id)
+         ;; Remove from access order
+         (update :buffer-access-order #(vec (remove #{buffer-id} %)))))))
 
 (rf/reg-event-fx
  :list-buffers
@@ -574,6 +605,43 @@
       :fx [[:dispatch [:lsp/on-buffer-saved buffer-id]]
            [:dispatch [:echo/message (str "Wrote " file-name)]]]})))
 
+(defn- get-immediate-children
+  "Get immediate children for a directory path from cache.
+   Returns list of filenames/dirnames (with / suffix for directories)."
+  [dir-cache dir-path]
+  (when-let [entries (get dir-cache dir-path)]
+    (map (fn [{:keys [name kind]}]
+           (if (= kind "directory")
+             (str name "/")
+             name))
+         entries)))
+
+(defn file-completions-for-input
+  "Compute file completions based on current input path.
+   Returns full paths for completion values (so selection works correctly).
+   Public so ui.cljs can call it for TAB directory descent."
+  [dir-cache granted-dirs input]
+  (let [;; Parse input into directory + partial filename
+        last-slash (clojure.string/last-index-of input "/")
+        [dir-path partial-name] (if last-slash
+                                  [(subs input 0 (inc last-slash))
+                                   (subs input (inc last-slash))]
+                                  ["" input])
+        ;; Normalize directory path (remove trailing slash for cache lookup)
+        cache-key (if (and (seq dir-path) (clojure.string/ends-with? dir-path "/"))
+                    (subs dir-path 0 (dec (count dir-path)))
+                    dir-path)
+        ;; Get immediate children
+        children (get-immediate-children dir-cache cache-key)]
+    (if children
+      ;; Return full paths, filtered by partial name
+      (->> children
+           (filter #(or (clojure.string/blank? partial-name)
+                        (clojure.string/starts-with? % partial-name)))
+           (map #(str dir-path %)))  ; Full path for completion value
+      ;; No cache for this directory - show granted roots
+      (map (fn [[path _]] (str path "/")) granted-dirs))))
+
 (rf/reg-event-fx
  :find-file
  (fn [{:keys [db]} [_]]
@@ -583,6 +651,9 @@
    uses minibuffer with path completion. Otherwise falls back to
    browser file picker dialog.
 
+   File completion shows ONLY immediate children of the current directory
+   (Emacs behavior), not recursive full paths.
+
    See: #135 - File System Access API implementation"
    (let [api-supported? (get-in db [:fs-access :api-supported?] false)
          granted-dirs (get-in db [:fs-access :granted-directories] {})
@@ -590,26 +661,16 @@
          dir-cache (get-in db [:fs-access :directory-cache] {})]
      (if (and api-supported? has-granted?)
        ;; Use minibuffer with file completion
-       ;; Build completions from cached directory contents
-       (let [completions (reduce
-                          (fn [acc [path entries]]
-                            (into acc
-                                  (map (fn [{:keys [name kind]}]
-                                         (let [full-path (str path "/" name)]
-                                           (if (= kind "directory")
-                                             (str full-path "/")
-                                             full-path)))
-                                       entries)))
-                          []
-                          dir-cache)
-             ;; Also add root directory paths if cache is empty
-             root-paths (map (fn [[path _]] (str path "/")) granted-dirs)
-             all-completions (if (seq completions)
-                               completions
-                               root-paths)]
+       ;; Start with first granted directory as initial input
+       (let [first-grant (first (keys granted-dirs))
+             initial-input (str first-grant "/")
+             ;; Get immediate children of initial directory
+             completions (file-completions-for-input dir-cache granted-dirs initial-input)]
          {:fx [[:dispatch [:minibuffer/activate
                            {:prompt "Find file: "
-                            :completions (vec all-completions)
+                            :input initial-input
+                            :completions (vec completions)
+                            :metadata {:category :file}  ; Just the category - live state used for updates
                             :on-confirm [:find-file/from-path]}]]]})
        ;; Fall back to browser file picker
        {:fx [[:open-file-picker]]}))))
@@ -638,6 +699,20 @@
        ;; Path not in granted directory - fall back to picker
        {:fx [[:dispatch [:message/display (str "Path not accessible: " path)]]
              [:open-file-picker]]}))))
+
+(rf/reg-event-db
+ :find-file/update-completions
+ (fn [db [_ input]]
+   "Update file completions based on current input path.
+    Called when minibuffer input changes during file completion.
+    Reads from live db state, not metadata snapshot."
+   (let [;; Read from live state, not metadata snapshot
+         dir-cache (get-in db [:fs-access :directory-cache] {})
+         granted-dirs (get-in db [:fs-access :granted-directories] {})]
+     (if (seq granted-dirs)
+       (let [completions (file-completions-for-input dir-cache granted-dirs input)]
+         (assoc-in db [:minibuffer :completions] (vec completions)))
+       db))))
 
 (rf/reg-fx
  :fs-access/read-file-from-path

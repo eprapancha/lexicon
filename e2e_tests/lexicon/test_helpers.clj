@@ -632,3 +632,94 @@
     return state.killRing.length;
   "]
     (e/js-execute *driver* script)))
+
+;; =============================================================================
+;; Minibuffer Completion Helpers (Issue #137)
+;; =============================================================================
+
+(defn press-arrow-down-in-minibuffer
+  "Press ArrowDown in the minibuffer to cycle to next completion"
+  []
+  (let [script "
+    const input = document.querySelector('.minibuffer-input');
+    if (input) {
+      input.focus();
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowDown',
+        code: 'ArrowDown',
+        bubbles: true
+      });
+      input.dispatchEvent(event);
+    }
+  "]
+    (e/js-execute *driver* script))
+  (Thread/sleep 50))
+
+(defn press-arrow-up-in-minibuffer
+  "Press ArrowUp in the minibuffer to cycle to previous completion"
+  []
+  (let [script "
+    const input = document.querySelector('.minibuffer-input');
+    if (input) {
+      input.focus();
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowUp',
+        code: 'ArrowUp',
+        bubbles: true
+      });
+      input.dispatchEvent(event);
+    }
+  "]
+    (e/js-execute *driver* script))
+  (Thread/sleep 50))
+
+(defn press-tab-in-minibuffer
+  "Press Tab in the minibuffer for completion"
+  []
+  (let [script "
+    const input = document.querySelector('.minibuffer-input');
+    if (input) {
+      input.focus();
+      const event = new KeyboardEvent('keydown', {
+        key: 'Tab',
+        code: 'Tab',
+        bubbles: true
+      });
+      input.dispatchEvent(event);
+    }
+  "]
+    (e/js-execute *driver* script))
+  (Thread/sleep 50))
+
+(defn get-minibuffer-input-value
+  "Get the current value in the minibuffer input field"
+  []
+  (try
+    (e/get-element-value *driver* {:css ".minibuffer-input"})
+    (catch Exception _ "")))
+
+(defn completions-buffer-visible?
+  "Check if *Completions* buffer window is visible"
+  []
+  (try
+    (let [script "
+      const state = window.editorState;
+      if (!state || !state.buffers) return false;
+      for (const buf of Object.values(state.buffers)) {
+        if (buf.name === '*Completions*') return true;
+      }
+      return false;
+    "]
+      (e/js-execute *driver* script))
+    (catch Exception _ false)))
+
+(defn get-window-count
+  "Get the number of visible windows"
+  []
+  (try
+    (let [script "
+      const windows = document.querySelectorAll('.window-pane');
+      return windows.length || 1;
+    "]
+      (e/js-execute *driver* script))
+    (catch Exception _ 1)))

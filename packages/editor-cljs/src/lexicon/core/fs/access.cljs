@@ -105,7 +105,9 @@
  (fn [{:keys [db]} [_ path handle name]]
    {:db (assoc-in db [:fs-access :granted-directories path]
                   {:handle handle :name name})
-    :fx [[:dispatch [:fs-access/verify-next-handle]]]}))
+    :fx [[:dispatch [:fs-access/verify-next-handle]]
+         ;; List directory contents for file completion cache
+         [:fs-access/list-directory-for-cache {:path path :handle handle}]]}))
 
 (rf/reg-event-fx
  :fs-access/permission-denied
@@ -178,26 +180,31 @@
 (rf/reg-fx
  :fs-access/list-directory-for-cache
  (fn [{:keys [path handle]}]
-   "List directory contents and cache for file completion."
+   "List immediate directory contents and cache for file completion.
+    Does NOT recursively list subdirectories - only lists on-demand when
+    user navigates to that directory (Emacs behavior)."
+   (js/console.log "📂 Listing directory for cache:" path)
    (let [entries (atom [])]
-     (-> (js/Promise.resolve
-          (let [iter (.entries handle)]
-            (letfn [(process-next []
-                      (-> (.next iter)
-                          (.then (fn [result]
-                                   (if (.-done result)
-                                     @entries
-                                     (let [[entry-name entry-handle] (.-value result)
-                                           kind (.-kind entry-handle)]
-                                       (swap! entries conj {:name entry-name
-                                                            :kind kind
-                                                            :full-path (str path "/" entry-name)})
-                                       (process-next)))))))]
-              (process-next))))
-         (.then (fn [result]
-                  (rf/dispatch [:fs-access/directory-cached path result])))
-         (.catch (fn [err]
-                   (js/console.error "Failed to list directory:" err)))))))
+     (letfn [(process-next [iter]
+               (-> (.next iter)
+                   (.then
+                    (fn [result]
+                      (if (.-done result)
+                        @entries
+                        (let [[entry-name entry-handle] (.-value result)
+                              kind (.-kind entry-handle)]
+                          (swap! entries conj {:name entry-name
+                                               :kind kind
+                                               :handle entry-handle})
+                          (process-next iter)))))))]
+       (-> (process-next (.entries handle))
+           (.then
+            (fn [entries]
+              (js/console.log "📂 Cached" (count entries) "entries for" path)
+              (rf/dispatch [:fs-access/directory-cached path entries])))
+           (.catch
+            (fn [err]
+              (js/console.error "Failed to list directory:" err))))))))
 
 ;; =============================================================================
 ;; File Operations
@@ -259,6 +266,55 @@
                    (if on-error
                      (rf/dispatch (conj on-error (.-message err)))
                      (rf/dispatch [:message/display (str "List error: " (.-message err))]))))))))
+
+(rf/reg-fx
+ :fs-access/list-subdirectory-for-cache
+ (fn [{:keys [grant-handle grant-path target-path]}]
+   "List a subdirectory within a granted directory and cache its contents.
+    - grant-handle: The FileSystemDirectoryHandle of the granted root
+    - grant-path: The path of the granted root (e.g., '/projects')
+    - target-path: The full path to list (e.g., '/projects/lexicon')
+
+    Navigates from grant-handle down to target-path and lists its contents."
+   (let [;; Get relative path from grant to target
+         relative-path (subs target-path (count grant-path))
+         ;; Split into directory parts (filter out empty strings)
+         path-parts (->> (str/split relative-path #"/")
+                         (filter seq)
+                         vec)]
+     (if (empty? path-parts)
+       ;; Target is the grant root itself - already cached
+       nil
+       ;; Navigate to subdirectory and list it
+       (letfn [(navigate-and-list [handle remaining-parts]
+                 (if (empty? remaining-parts)
+                   ;; Reached target - list this directory
+                   (let [entries (atom [])]
+                     (-> (let [iter (.entries handle)]
+                           (letfn [(process-next []
+                                     (-> (.next iter)
+                                         (.then (fn [result]
+                                                  (if (.-done result)
+                                                    @entries
+                                                    (let [[entry-name entry-handle] (.-value result)
+                                                          kind (.-kind entry-handle)]
+                                                      (swap! entries conj {:name entry-name
+                                                                           :kind kind
+                                                                           :handle entry-handle})
+                                                      (process-next)))))))]
+                             (process-next)))
+                         (.then (fn [entries]
+                                  (js/console.log "📂 Cached subdirectory" target-path "with" (count entries) "entries")
+                                  (rf/dispatch [:fs-access/directory-cached target-path entries])))
+                         (.catch (fn [err]
+                                   (js/console.error "Failed to list subdirectory:" target-path err)))))
+                   ;; Navigate to next directory in path
+                   (-> (.getDirectoryHandle handle (first remaining-parts))
+                       (.then (fn [subdir-handle]
+                                (navigate-and-list subdir-handle (rest remaining-parts))))
+                       (.catch (fn [err]
+                                 (js/console.error "Failed to navigate to:" (first remaining-parts) err))))))]
+         (navigate-and-list grant-handle path-parts))))))
 
 ;; =============================================================================
 ;; Path Resolution

@@ -537,11 +537,13 @@
           cursor-pos @(rf/subscribe [:lexicon.core.subs/window-cursor-position window-id])
           mark-position @(rf/subscribe [:lexicon.core.subs/window-mark-position window-id])
           buffer-content @(rf/subscribe [:lexicon.core.subs/window-buffer-content window-id])
+          buffer-name @(rf/subscribe [:lexicon.core.subs/window-buffer-name window-id])  ; Issue #137
           cursor-owner @(rf/subscribe [:cursor-owner])  ; Issue #62: Cursor singleton
           owns-cursor? (= cursor-owner window-id)       ; Only render cursor if THIS window owns it
           hl-line-enabled? @(rf/subscribe [:hl-line/enabled?])  ; Issue #123: hl-line-mode
           paren-match-info @(rf/subscribe [:show-paren/match-info])  ; Issue #123: show-paren-mode
           whitespace-enabled? @(rf/subscribe [:whitespace/enabled?])  ; Issue #123: whitespace-mode
+          is-completions-buffer? (= buffer-name "*Completions*")  ; Issue #137: Clickable completions
           region-active? (not (nil? mark-position))
           region-decorations (when region-active?
                               (create-region-decorations mark-position cursor-pos buffer-content))
@@ -583,11 +585,6 @@
                     (rf/dispatch [:update-viewport new-start new-end])))))
         handle-click (fn [e]
                        (.stopPropagation e)
-                       ;; Set this window as active
-                       (rf/dispatch [:set-active-window window-id])
-                       ;; Focus hidden input
-                       (when-let [hidden-input @hidden-input-ref]
-                         (.focus hidden-input))
                        (let [rect (-> e .-currentTarget .getBoundingClientRect)
                              click-x (- (.-clientX e) (.-left rect))
                              click-y (- (.-clientY e) (.-top rect))
@@ -595,9 +592,18 @@
                              left-padding 8
                              top-padding 20
                              clicked-line (int (/ (- click-y top-padding) line-height))
-                             clicked-column (max 0 (int (/ (- click-x left-padding) char-width)))
                              absolute-line (+ clicked-line (:start-line viewport 0))]
-                         (rf/dispatch [:click-to-position absolute-line clicked-column])))]
+                         (if is-completions-buffer?
+                           ;; Issue #137: Click in *Completions* buffer selects completion
+                           ;; Parse the clicked line and dispatch selection event
+                           (rf/dispatch [:completion-list/click-line absolute-line])
+                           ;; Normal buffer click - set position and focus
+                           (do
+                             (rf/dispatch [:set-active-window window-id])
+                             (when-let [hidden-input @hidden-input-ref]
+                               (.focus hidden-input))
+                             (let [clicked-column (max 0 (int (/ (- click-x left-padding) char-width)))]
+                               (rf/dispatch [:click-to-position absolute-line clicked-column]))))))]
 
     [:div.text-container
      {:ref (fn [el] (reset! container-ref el))
@@ -769,27 +775,47 @@
    [window-mode-line window-id is-active?]])
 
 (defn render-window-tree
-  "Recursively render the window tree"
+  "Recursively render the window tree.
+   Supports :fixed-height on leaf windows for *Completions* buffer."
   [tree active-window-id hidden-input-ref]
   (case (:type tree)
     :leaf
     [window-pane (:id tree) (= (:id tree) active-window-id) hidden-input-ref]
 
     :hsplit
-    [:div.hsplit
-     {:style {:display "flex"
-              :flex-direction "column"
-              :width "100%"
-              :height "100%"}}
-     [:div.split-first
-      {:style {:flex "1"
-               :width "100%"
-               :border-bottom "1px solid #3e3e3e"}}
-      (render-window-tree (:first tree) active-window-id hidden-input-ref)]
-     [:div.split-second
-      {:style {:flex "1"
-               :width "100%"}}
-      (render-window-tree (:second tree) active-window-id hidden-input-ref)]]
+    (let [;; Check if second child has fixed height (e.g., *Completions*)
+          second-fixed-height (when (= (:type (:second tree)) :leaf)
+                                (:fixed-height (:second tree)))]
+      [:div.hsplit
+       {:style {:display "flex"
+                :flex-direction "column"
+                :width "100%"
+                :height "100%"}}
+       [:div.split-first
+        {:style (if second-fixed-height
+                  ;; First takes remaining space when second is fixed
+                  {:flex "1"
+                   :width "100%"
+                   :min-height "0"  ; Allow shrinking
+                   :overflow "hidden"
+                   :border-bottom "1px solid #3e3e3e"}
+                  ;; Normal equal split
+                  {:flex "1"
+                   :width "100%"
+                   :border-bottom "1px solid #3e3e3e"})}
+        (render-window-tree (:first tree) active-window-id hidden-input-ref)]
+       [:div.split-second
+        {:style (if second-fixed-height
+                  ;; Fixed height for *Completions*
+                  {:flex "none"
+                   :width "100%"
+                   :height (str second-fixed-height "px")
+                   :max-height (str second-fixed-height "px")
+                   :overflow "hidden"}
+                  ;; Normal equal split
+                  {:flex "1"
+                   :width "100%"})}
+        (render-window-tree (:second tree) active-window-id hidden-input-ref)]])
 
     :vsplit
     [:div.vsplit
@@ -1044,14 +1070,16 @@
                                 (rf/dispatch [:minibuffer/complete]))
 
                               (= key "ArrowDown")
-                              (when show-completions?
+                              (do
                                 (.preventDefault e)
-                                (rf/dispatch [:minibuffer/completion-next]))
+                                ;; Use cycling events for arrow navigation
+                                ;; Works with or without *Completions* buffer shown
+                                (rf/dispatch [:minibuffer/cycle-next]))
 
                               (= key "ArrowUp")
-                              (when show-completions?
+                              (do
                                 (.preventDefault e)
-                                (rf/dispatch [:minibuffer/completion-prev]))
+                                (rf/dispatch [:minibuffer/cycle-prev]))
 
                               (or (= key "Escape")
                                   (and (.-ctrlKey e) (= key "g")))
@@ -1072,7 +1100,22 @@
                      :font-size "12px"
                      :font-family "monospace"
                      :white-space "nowrap"}}
-            icomplete-display])]
+            icomplete-display])
+
+         ;; Match count display [current/total] (Issue #137)
+         (let [completions (:completions minibuffer [])
+               total-count (count completions)
+               current-pos (if (and completion-index (>= completion-index 0))
+                             (inc completion-index)  ; 1-indexed for display
+                             0)]                     ; 0 means no selection
+           (when (pos? total-count)
+             [:span.match-count
+              {:style {:color "#888888"
+                       :font-size "11px"
+                       :font-family "monospace"
+                       :margin-left "8px"
+                       :white-space "nowrap"}}
+              (str "[" current-pos "/" total-count "]")]))]
 
         ;; IDLE MODE: Show echo message or empty
         [:span.minibuffer-message.echo-area  ; Add .echo-area for E2E test compatibility (Issue #67)

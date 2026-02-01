@@ -204,7 +204,7 @@
          queue-size (count (:transaction-queue updated-db))]
      (println "📋 Queue size after adding:" queue-size)
      {:db updated-db
-      :fx [[:editor/process-queue updated-db]]})))
+      :fx [[:editor/process-queue-fx updated-db]]})))
 
 (rf/reg-event-fx
  :handle-text-input
@@ -252,9 +252,16 @@
                  [:dispatch [:clear-prefix-argument]])]}
          {:db db})))))
 
+;; Event handler to trigger queue processing (called via dispatch)
+(rf/reg-event-fx
+ :editor/process-queue
+ (fn [{:keys [db]} [_]]
+   "Trigger queue processing via the effect"
+   {:fx [[:editor/process-queue-fx db]]}))
+
 ;; Core queue processor effect - ensures serialized execution
 (rf/reg-fx
- :editor/process-queue
+ :editor/process-queue-fx
  (fn [db-state]
    "Process the next transaction in the queue if not already processing"
    (println "🚀 Queue processor called")
@@ -440,7 +447,7 @@
        {:db updated-db
         :fx [[:dispatch [:cursor/set-position final-cursor]]
              [:dispatch [:buffer/increment-version active-buffer-id]]
-             [:editor/process-queue updated-db]
+             [:editor/process-queue-fx updated-db]
              [:dispatch [:parser/request-incremental-parse
                          {:op       (:op operation)
                           :position final-cursor
@@ -455,7 +462,7 @@
                             (update :transaction-queue #(vec (rest %)))
                             (assoc :transaction-in-flight? false))]
          {:db updated-db
-          :fx [[:editor/process-queue updated-db]]})))))
+          :fx [[:editor/process-queue-fx updated-db]]})))))
 
 ;; Transaction failure handler - continues processing queue
 (rf/reg-event-fx
@@ -472,7 +479,7 @@
                         (assoc-in [:system :last-error] error))]
      ;; Continue processing the queue
      {:db updated-db
-      :fx [[:editor/process-queue updated-db]]})))
+      :fx [[:editor/process-queue-fx updated-db]]})))
 
 ;; -- Transaction Events (Legacy) --
 
