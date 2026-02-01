@@ -358,7 +358,7 @@
    Also resets cycling state when user types (not during arrow cycling).
    For file completion, also updates completions based on new input."
    (let [on-change (get-in db [:minibuffer :on-change])
-         category (get-in db [:minibuffer :metadata :category])]
+         category (get-in db [:minibuffer :completion-metadata :category])]
      (cond
        ;; Custom on-change handler exists (e.g., for isearch)
        on-change
@@ -617,24 +617,25 @@
    - Subsequent: moves to next completion (wraps around)
    - Updates minibuffer input to show selected completion
    - Does NOT update *Completions* buffer (Emacs behavior: buffer is static)"
-   (let [input (get-in db [:minibuffer :input] "")
+   (let [cycling? (get-in db [:minibuffer :cycling?] false)
+         current-input (get-in db [:minibuffer :input] "")
+         ;; When cycling, use original-input for filtering (not the selected completion)
+         original-input (if cycling?
+                          (get-in db [:minibuffer :original-input] "")
+                          current-input)
          completions (get-in db [:minibuffer :completions] [])
-         ;; Filter completions by current input (case-insensitive substring match)
-         matches (if (clojure.string/blank? input)
+         ;; Filter completions by ORIGINAL input (case-insensitive substring match)
+         matches (if (clojure.string/blank? original-input)
                    completions
                    (filter #(clojure.string/includes?
                              (clojure.string/lower-case %)
-                             (clojure.string/lower-case input))
+                             (clojure.string/lower-case original-input))
                            completions))
          matches-vec (vec matches)
          num-matches (count matches-vec)]
      (if (zero? num-matches)
        db  ; No matches to cycle through
-       (let [cycling? (get-in db [:minibuffer :cycling?] false)
-             original-input (if cycling?
-                              (get-in db [:minibuffer :original-input] "")
-                              input)
-             current-index (get-in db [:minibuffer :completion-index] -1)
+       (let [current-index (get-in db [:minibuffer :completion-index] -1)
              ;; Next index: -1 -> 0, then increment with wrap
              new-index (if (< current-index (dec num-matches))
                          (inc current-index)
@@ -655,24 +656,25 @@
    - When at index 0 and pressing up: returns to original-input (index -1)
    - Otherwise: moves to previous completion (wraps around)
    - Updates minibuffer input to show selected completion"
-   (let [input (get-in db [:minibuffer :input] "")
+   (let [cycling? (get-in db [:minibuffer :cycling?] false)
+         current-input (get-in db [:minibuffer :input] "")
+         ;; When cycling, use original-input for filtering (not the selected completion)
+         original-input (if cycling?
+                          (get-in db [:minibuffer :original-input] "")
+                          current-input)
          completions (get-in db [:minibuffer :completions] [])
-         ;; Filter completions by current input (case-insensitive substring match)
-         matches (if (clojure.string/blank? input)
+         ;; Filter completions by ORIGINAL input (case-insensitive substring match)
+         matches (if (clojure.string/blank? original-input)
                    completions
                    (filter #(clojure.string/includes?
                              (clojure.string/lower-case %)
-                             (clojure.string/lower-case input))
+                             (clojure.string/lower-case original-input))
                            completions))
          matches-vec (vec matches)
          num-matches (count matches-vec)]
      (if (zero? num-matches)
        db  ; No matches to cycle through
-       (let [cycling? (get-in db [:minibuffer :cycling?] false)
-             original-input (if cycling?
-                              (get-in db [:minibuffer :original-input] "")
-                              input)
-             current-index (get-in db [:minibuffer :completion-index] -1)]
+       (let [current-index (get-in db [:minibuffer :completion-index] -1)]
          (cond
            ;; Not yet cycling, Up goes to last match
            (not cycling?)
