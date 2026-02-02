@@ -47,6 +47,14 @@
     (when-let [minibuffer-input (js/document.getElementById "minibuffer-input")]
       (.focus minibuffer-input))))
 
+;; Blur the minibuffer input element (Issue #137: cursor singleton).
+;; Used when cursor ownership transfers away from minibuffer to a window.
+(rf/reg-fx
+  :dom/blur-minibuffer
+  (fn [_]
+    (when-let [minibuffer-input (js/document.getElementById "minibuffer-input")]
+      (.blur minibuffer-input))))
+
 ;; Focus the main editor element.
 (rf/reg-fx
   :dom/focus-main-editor

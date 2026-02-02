@@ -152,11 +152,11 @@
 
    ;; Clear the echo if we had echoed the prefix
    (let [was-echoed? (get-in db [:ui :prefix-key-echoed?])]
-     {:db (-> db
-              (assoc-in [:ui :prefix-key-state] nil)
-              (assoc-in [:ui :prefix-key-echoed?] false))
-      :fx (when was-echoed?
-            [[:dispatch [:echo/clear]]])})))
+     (cond-> {:db (-> db
+                      (assoc-in [:ui :prefix-key-state] nil)
+                      (assoc-in [:ui :prefix-key-echoed?] false))}
+       ;; Only add :fx when we need to clear the echo
+       was-echoed? (assoc :fx [[:dispatch [:echo/clear]]])))))
 
 (rf/reg-event-fx
  :handle-key-sequence
@@ -253,6 +253,24 @@
                 true
                 (conj [:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
                       [:dispatch [:clear-prefix-key-state]]))})
+
+       ;; Issue #137: Route printable chars to minibuffer when *Completions* buffer is active
+       ;; This is a user-friendly enhancement over Emacs (which just shows "read-only" error).
+       ;; Allows typing to continue filtering completions even when focus is in the completions window.
+       (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+             active-buffer (get (:buffers db) (:buffer-id active-window))
+             in-completions? (= (:name active-buffer) "*Completions*")
+             minibuffer-active? (get-in db [:minibuffer :active?])
+             is-printable? (and (= (count key-str) 1)
+                                (not prefix-state)
+                                (not (re-matches #"[CM]-." key-str))
+                                (>= (.charCodeAt key-str 0) 32))]
+         (and in-completions? minibuffer-active? is-printable?))
+       ;; Route to minibuffer: use minibuffer/set-input which handles all completion types
+       (let [current-input (get-in db [:minibuffer :input] "")
+             new-input (str current-input key-str)]
+         {:fx [[:dom/focus-minibuffer nil]
+               [:dispatch [:minibuffer/set-input new-input]]]})
 
        ;; No binding found - check if it's a printable character for insertion (Emacs mode - always insert)
        (and (= (count key-str) 1)

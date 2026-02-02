@@ -231,14 +231,15 @@
               nil))
 
           ;; Update undo stack and redo stack, restore cursor
-          {:db (-> db
-                   (assoc-in [:buffers buffer-id :undo-stack]
-                            (subvec stack 0 boundary-index))
-                   (update-in [:buffers buffer-id :redo-stack]
-                              (fn [redo]
-                                (conj (or redo []) {:entries entries :boundary-index boundary-index}))))
-           :fx (when marker-entry
-                 [[:dispatch [:update-cursor-position (:old-pos marker-entry)]]])})
+          (cond->
+            {:db (-> db
+                     (assoc-in [:buffers buffer-id :undo-stack]
+                              (subvec stack 0 boundary-index))
+                     (update-in [:buffers buffer-id :redo-stack]
+                                (fn [redo]
+                                  (conj (or redo []) {:entries entries :boundary-index boundary-index}))))}
+            ;; Only add :fx when there's a cursor to restore
+            marker-entry (assoc :fx [[:dispatch [:update-cursor-position (:old-pos marker-entry)]]])))
         {:db db}))))
 
 ;; -- Redo Support --
@@ -269,13 +270,14 @@
               nil))
 
           ;; Update stacks and restore cursor
-          {:db (-> db
-                   (update-in [:buffers buffer-id :redo-stack] pop)
-                   (update-in [:buffers buffer-id :undo-stack]
-                              (fn [stack]
-                                (into (or stack []) entries))))
-           :fx (when marker-entry
-                 [[:dispatch [:update-cursor-position (:new-pos marker-entry)]]])})
+          (cond->
+            {:db (-> db
+                     (update-in [:buffers buffer-id :redo-stack] pop)
+                     (update-in [:buffers buffer-id :undo-stack]
+                                (fn [stack]
+                                  (into (or stack []) entries))))}
+            ;; Only add :fx when there's a cursor to restore
+            marker-entry (assoc :fx [[:dispatch [:update-cursor-position (:new-pos marker-entry)]]])))
         {:db db}))))
 
 ;; -- Clear Redo on New Edit --

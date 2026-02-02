@@ -105,6 +105,8 @@
    (let [window-tree (:window-tree db)
          all-windows (db/get-all-leaf-windows window-tree)
          active-window-id (:active-window-id db)
+         ;; Issue #137: Track if cursor was in minibuffer before switching
+         cursor-was-in-minibuffer? (= :minibuffer (:cursor-owner db))
 
          ;; Find current window index
          current-index (first (keep-indexed
@@ -136,15 +138,25 @@
               (assoc :active-window-id next-window-id)
               (assoc :cursor-owner next-window-id)
               ;; Restore cursor position from the target window's cursor
-              (assoc-in [:ui :cursor-position] linear-pos))})))  ; Issue #62: Transfer cursor ownership
+              (assoc-in [:ui :cursor-position] linear-pos))
+      ;; Issue #137: Blur minibuffer input when cursor leaves minibuffer
+      ;; This ensures only ONE cursor is visible (cursor singleton)
+      :fx (cond-> []
+            cursor-was-in-minibuffer?
+            (conj [:dom/blur-minibuffer nil] [:focus-editor]))})))  ; Issue #62: Transfer cursor ownership
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :set-active-window
- (fn [db [_ window-id]]
+ (fn [{:keys [db]} [_ window-id]]
    "Set the active window by ID (used when clicking on a window)"
-   (-> db
-       (assoc :active-window-id window-id)
-       (assoc :cursor-owner window-id))))  ; Issue #62: Transfer cursor ownership
+   (let [cursor-was-in-minibuffer? (= :minibuffer (:cursor-owner db))]
+     {:db (-> db
+              (assoc :active-window-id window-id)
+              (assoc :cursor-owner window-id))  ; Issue #62: Transfer cursor ownership
+      ;; Issue #137: Blur minibuffer when cursor moves to window (cursor singleton)
+      :fx (cond-> []
+            cursor-was-in-minibuffer?
+            (conj [:dom/blur-minibuffer nil] [:focus-editor]))})))
 
 (rf/reg-event-fx
  :delete-window
@@ -714,20 +726,14 @@
 ;; Completion Help - *Completions* Buffer (Issue #136)
 ;; =============================================================================
 
-(def ^:private completion-list-mode-map
-  "Keymap for completion-list-mode. Extends special-mode-map.
-   Defined here to avoid circular dependencies with modes namespace."
-  (merge special-mode/special-mode-map
-         {:RET   [:completion-list/choose-at-point]
-          :n     [:completion-list/next-completion]
-          :p     [:completion-list/previous-completion]
-          :down  [:completion-list/next-completion]
-          :up    [:completion-list/previous-completion]
-          :q     [:completion-list/quit]}))
+;; NOTE: completion-list-mode keymap is defined in db.cljs initial state
+;; Bindings: RET (choose), n/ArrowDown (next), p/ArrowUp (prev), q (quit)
 
 (defn- get-or-create-completions-buffer
   "Get existing *Completions* buffer or create new one.
-   Returns [db buffer-id]."
+   Returns [db buffer-id].
+
+   The completion-list-mode keymap is defined in db.cljs initial state."
   [db]
   (let [buffers (:buffers db)
         existing (some (fn [[id buf]]
@@ -742,7 +748,6 @@
             new-buffer (-> (db/create-buffer buffer-id "*Completions*" wasm-instance)
                            (assoc :is-read-only? true)
                            (assoc :major-mode :completion-list-mode)
-                           (assoc :mode-keymap completion-list-mode-map)
                            ;; Enable hl-line-mode to highlight current selection
                            (assoc :minor-modes #{:hl-line-mode}))]
         [(assoc-in db [:buffers buffer-id] new-buffer) buffer-id]))))
@@ -884,13 +889,42 @@
  :completion-list/choose
  (fn [{:keys [db]} [_ candidate]]
    "Choose a completion from *Completions* buffer.
-   Inserts the candidate into minibuffer and closes *Completions*."
+
+   Behavior depends on completion type:
+   - For file completion with directory: append to path and refresh completions
+   - For file completion with file: confirm selection (open file)
+   - For other completions: insert into minibuffer and close *Completions*"
    (if (minibuffer/minibuffer-active? db)
-     {:db (-> db
-              (assoc-in [:minibuffer :input] candidate)
-              (assoc-in [:minibuffer :last-tab-input] nil)
-              delete-completions-window)
-      :fx [[:dom/focus-minibuffer nil]]}
+     (let [category (get-in db [:minibuffer :completion-metadata :category])
+           is-file-completion? (= category :file)
+           is-directory? (and is-file-completion?
+                              (clojure.string/ends-with? candidate "/"))]
+       (cond
+         ;; Directory in file completion: update path and refresh completions
+         is-directory?
+         {:db (-> db
+                  (assoc-in [:minibuffer :input] candidate)
+                  (assoc-in [:minibuffer :last-tab-input] nil)
+                  (assoc-in [:minibuffer :cycling?] false)
+                  (assoc-in [:minibuffer :completion-index] -1)
+                  delete-completions-window)
+          :fx [[:dom/focus-minibuffer nil]
+               [:dispatch [:find-file/update-completions candidate]]]}
+
+         ;; File in file completion: confirm and open file
+         is-file-completion?
+         {:db (-> db
+                  (assoc-in [:minibuffer :input] candidate)
+                  delete-completions-window)
+          :fx [[:dispatch [:minibuffer/confirm]]]}
+
+         ;; Other completion types: just insert and close
+         :else
+         {:db (-> db
+                  (assoc-in [:minibuffer :input] candidate)
+                  (assoc-in [:minibuffer :last-tab-input] nil)
+                  delete-completions-window)
+          :fx [[:dom/focus-minibuffer nil]]}))
      {:db db})))
 
 (rf/reg-event-fx
@@ -911,34 +945,23 @@
  (fn [{:keys [db]} [_]]
    "Choose the completion at or near point in *Completions* buffer.
 
-   Looks for the completion candidate on the current line and
-   inserts it into the minibuffer."
+   Buffer format:
+   - Line 0: 'Possible completions:' (header)
+   - Line 1+: '  candidate' or '> candidate' (entries)
+
+   So completion-index = cursor-line - 1"
    (let [;; Get the candidates stored when *Completions* was created
          candidates (get-in db [:completion-help :candidates] [])
-         buffer-id (get-in db [:completion-help :buffer-id])
          ;; Get current cursor position in *Completions* buffer
          active-window-id (:active-window-id db)
          active-window (db/find-window-in-tree (:window-tree db) active-window-id)
          cursor-line (get-in active-window [:cursor-position :line] 0)
-         ;; Get buffer content to find candidate at point
-         buffer (get-in db [:buffers buffer-id])
-         wasm-instance (:wasm-instance buffer)
-         buffer-text (when wasm-instance (.getText wasm-instance))
-         lines (when buffer-text (clojure.string/split buffer-text #"\n"))
-         ;; Skip header lines (first 3 lines are header text)
-         content-line-index (- cursor-line 3)
-         current-line (when (and lines
-                                  (>= content-line-index 0)
-                                  (< cursor-line (count lines)))
-                        (nth lines cursor-line ""))]
-     ;; Parse candidate from current line - find matching candidate
-     (if-let [candidate (when current-line
-                          (first (filter #(and (not (clojure.string/blank? %))
-                                               (clojure.string/includes?
-                                                (clojure.string/trim current-line)
-                                                %))
-                                         candidates)))]
-       {:fx [[:dispatch [:completion-list/choose candidate]]]}
+         ;; Line 0 is header, entries start at line 1
+         ;; So completion-index = cursor-line - 1
+         completion-index (dec cursor-line)]
+     (if (and (>= completion-index 0) (< completion-index (count candidates)))
+       (let [candidate (nth candidates completion-index)]
+         {:fx [[:dispatch [:completion-list/choose candidate]]]})
        {:fx [[:dispatch [:echo/message "No completion at point"]]]}))))
 
 (rf/reg-event-fx

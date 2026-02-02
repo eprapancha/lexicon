@@ -216,7 +216,15 @@
                                  "S-ArrowDown" :next-line-shift     ; Select down
                                  "S-ArrowUp" :previous-line-shift}} ; Select up
              :major {:buffer-menu-mode {:parent [:global]
-                                        :bindings {"RET" :buffer-menu/select-buffer}}}  ; Major mode keymaps
+                                        :bindings {"RET" :buffer-menu/select-buffer}}
+                     ;; Issue #137: completion-list-mode for *Completions* buffer navigation
+                     :completion-list-mode {:parent nil
+                                            :bindings {"RET"       :completion-list/choose-at-point
+                                                       "n"         :completion-list/next-completion
+                                                       "p"         :completion-list/previous-completion
+                                                       "ArrowDown" :completion-list/next-completion
+                                                       "ArrowUp"   :completion-list/previous-completion
+                                                       "q"         :completion-list/quit}}}  ; Major mode keymaps
              :minor {}                                  ; Minor mode keymaps
              :transient {:universal-argument-map {:parent nil
                                                   :bindings {"C-u" :universal-argument-more

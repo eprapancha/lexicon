@@ -174,6 +174,13 @@
    "Check if view needs to be updated"
    (get-in db [:ui :view-needs-update?])))
 
+(rf/reg-sub
+ :prefix-key-state
+ (fn [db _]
+   "Get active prefix key state (e.g., 'C-x' when waiting for next key).
+   Issue #137: Used by minibuffer to route keys to keybinding system."
+   (get-in db [:ui :prefix-key-state])))
+
 ;; -- Editor State Subscriptions --
 
 (rf/reg-sub

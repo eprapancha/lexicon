@@ -99,9 +99,9 @@
                     (= arg '-) (list -4)
                     ;; Already a number, keep it
                     :else arg)]
-      {:db (assoc db :prefix-arg new-arg)
-       :fx (when (list? new-arg)
-             [[:dispatch [:set-transient-keymap :universal-argument-map]]])})))
+      (cond-> {:db (assoc db :prefix-arg new-arg)}
+        ;; Only set transient keymap when accumulating multiplier
+        (list? new-arg) (assoc :fx [[:dispatch [:set-transient-keymap :universal-argument-map]]])))))
 
 (rf/reg-event-fx
   :digit-argument

@@ -101,13 +101,19 @@
   (fn [{:keys [db]} [_]]
     (let [window-tree (:window-tree db)
           active-window-id (:active-window-id db)
+          ;; Issue #137: Track if cursor was in minibuffer before switching
+          cursor-was-in-minibuffer? (= :minibuffer (:cursor-owner db))
           all-windows (db/get-all-leaf-windows window-tree)
           current-window (db/find-window-in-tree window-tree active-window-id)
           target-window (find-window-in-direction all-windows current-window direction)]
       (if target-window
         {:db (-> db
                  (assoc :active-window-id (:id target-window))
-                 (assoc :cursor-owner (:id target-window)))}
+                 (assoc :cursor-owner (:id target-window)))
+         ;; Issue #137: Blur minibuffer when cursor moves to window (cursor singleton)
+         :fx (cond-> []
+               cursor-was-in-minibuffer?
+               (conj [:dom/blur-minibuffer nil] [:focus-editor]))}
         {:db db
          :fx [[:dispatch [:echo/message (str "No window " direction-name)]]]}))))
 

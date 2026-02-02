@@ -638,26 +638,40 @@
       ;; Render visible lines
       (when visible-lines
         (let [lines (clojure.string/split visible-lines #"\n" -1)
-              current-line (when cursor-pos (:line cursor-pos))]
+              current-line (when cursor-pos (:line cursor-pos))
+              ;; Issue #137: Ensure cursor line is in visible viewport to prevent ghost highlights
+              viewport-start (:start-line viewport 0)
+              viewport-end (:end-line viewport 1000)
+              cursor-in-viewport? (and current-line
+                                       (>= current-line viewport-start)
+                                       (<= current-line viewport-end))]
           (for [[idx line] (map-indexed vector lines)]
-            (let [line-number (+ (:start-line viewport 0) idx)
+            (let [line-number (+ viewport-start idx)
+                  ;; Only highlight if cursor is actually in viewport
                   is-current-line? (and hl-line-enabled?
                                         owns-cursor?
+                                        cursor-in-viewport?
                                         (= line-number current-line))
+                  ;; Issue #137: Completion entries are hoverable/clickable
+                  ;; Line 0 is header "Possible completions:", entries start at line 1
+                  is-completion-entry? (and is-completions-buffer? (> line-number 0))
                   ;; Apply whitespace visualization when enabled
                   display-line (if whitespace-enabled?
                                  (whitespace/visualize-whitespace line)
                                  line)]
-              ^{:key line-number}
+              ^{:key (str window-id "-" line-number)}  ;; Unique key per window to avoid React key collisions
               [:div.text-line
-               {:style (cond-> {:min-height (str line-height "px")
+               {:class (when is-completion-entry? "completion-entry")
+                :style (cond-> {:min-height (str line-height "px")
                                 :color "#d4d4d4"}
                          ;; Add hl-line background when enabled and on current line
                          is-current-line? (assoc :background-color "rgba(80, 80, 120, 0.6)"))}
                (apply-decorations-to-line display-line line-number decorations)]))))
 
-      ;; Cursor - only show if this window owns the cursor (Issue #62)
-      (when (and owns-cursor? cursor-pos)
+      ;; Cursor - Issue #62: cursor singleton, Issue #137: block cursor
+      ;; Active cursor: filled block with inverted character
+      ;; Inactive cursor: hollow (border only) - shown when window doesn't own cursor
+      (when cursor-pos
         (let [{:keys [line column]} cursor-pos
               ;; Calculate relative line position within viewport
               relative-line (- line (:start-line viewport 0))
@@ -665,17 +679,45 @@
               left-padding 8
               top-padding 20
               top-px (+ top-padding (* relative-line line-height))
-              left-px (+ left-padding (* column char-width))]
-          [:div.custom-cursor
-           {:style {:position "absolute"
-                    :top (str top-px "px")
-                    :left (str left-px "px")
-                    :width "2px"
-                    :height (str line-height "px")
-                    :background-color "#ffffff"
-                    :pointer-events "none"
-                    :animation "cursor-blink 1s infinite"
-                    :z-index "1000"}}]))]])))
+              left-px (+ left-padding (* column char-width))
+              ;; Get the character under cursor for rendering
+              cursor-char (when buffer-content
+                            (let [lines (clojure.string/split buffer-content #"\n" -1)
+                                  cursor-line-text (get lines line "")]
+                              (if (< column (count cursor-line-text))
+                                (str (nth cursor-line-text column))
+                                " ")))  ; Space if at end of line
+              ;; Determine if this is active (filled) or inactive (hollow) cursor
+              is-active-cursor? owns-cursor?]
+          (if is-active-cursor?
+            ;; Active cursor: filled block with inverted character visible
+            [:div.custom-cursor.cursor-active
+             {:style {:position "absolute"
+                      :top (str top-px "px")
+                      :left (str left-px "px")
+                      :width (str char-width "px")
+                      :height (str line-height "px")
+                      :background-color "#d4d4d4"  ; Light background
+                      :color "#1e1e1e"             ; Dark text (inverted)
+                      :pointer-events "none"
+                      :animation "cursor-blink 1s infinite"
+                      :z-index "1000"
+                      :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
+                      :font-size "14px"
+                      :line-height (str line-height "px")
+                      :text-align "center"}}
+             cursor-char]
+            ;; Inactive cursor: hollow block (border only)
+            [:div.custom-cursor.cursor-inactive
+             {:style {:position "absolute"
+                      :top (str top-px "px")
+                      :left (str left-px "px")
+                      :width (str (- char-width 2) "px")  ; Account for border
+                      :height (str (- line-height 2) "px")
+                      :background-color "transparent"
+                      :border "1px solid #888888"
+                      :pointer-events "none"
+                      :z-index "1000"}}])))]])))
 
 (defn window-mode-line
   "Mode-line for a specific window (Issue #63)"
@@ -761,7 +803,8 @@
             :flex-direction "column"  ; Changed from row to column for mode-line
             :width "100%"
             :height "100%"
-            :border (if is-active? "2px solid #007acc" "2px solid transparent")
+            ;; Issue #137: Removed blue active border - cursor active/inactive state
+            ;; now clearly indicates which window has focus
             :box-sizing "border-box"}}
    ;; Content area (gutter + text)
    [:div.window-content
@@ -1000,21 +1043,27 @@
 
   Supports custom renderers via :custom-renderer in frame config (Issue #46)"
   []
-  (let [minibuffer @(rf/subscribe [:minibuffer])
-        input-ref (atom nil)
-        mode-line-style @(rf/subscribe [:theme-face :mode-line])
-        icomplete-display @(rf/subscribe [:icomplete/display])
-        prompt-style @(rf/subscribe [:theme-face :minibuffer-prompt])
-        active? (:active? minibuffer)
-        message (:message minibuffer)
-        height-lines (:height-lines minibuffer 1)
-        line-height 24
-        total-height (* height-lines line-height)
-        filtered-completions (:filtered-completions minibuffer)
-        show-completions? (:show-completions? minibuffer)
-        completion-index (:completion-index minibuffer)
-        custom-renderer (:custom-renderer minibuffer)
-        renderer-props (:renderer-props minibuffer {})]
+  (r/with-let [input-ref (atom nil)
+               cursor-pos-atom (r/atom 0)]  ; Track cursor position for block cursor
+    (let [minibuffer @(rf/subscribe [:minibuffer])
+          mode-line-style @(rf/subscribe [:theme-face :mode-line])
+          icomplete-display @(rf/subscribe [:icomplete/display])
+          prompt-style @(rf/subscribe [:theme-face :minibuffer-prompt])
+          prefix-key-state @(rf/subscribe [:prefix-key-state])  ; Issue #137: Track prefix for C-x o
+          cursor-owner @(rf/subscribe [:cursor-owner])  ; Issue #137: Check if minibuffer owns cursor
+          owns-cursor? (= cursor-owner :minibuffer)
+          active? (:active? minibuffer)
+          message (:message minibuffer)
+          height-lines (:height-lines minibuffer 1)
+          line-height 24
+          total-height (* height-lines line-height)
+          filtered-completions (:filtered-completions minibuffer)
+          show-completions? (:show-completions? minibuffer)
+          completion-index (:completion-index minibuffer)
+          custom-renderer (:custom-renderer minibuffer)
+          renderer-props (:renderer-props minibuffer {})
+          input-text (:input minibuffer "")
+          cursor-pos @cursor-pos-atom]
 
     ;; ALWAYS render - never conditional
     [:div.minibuffer
@@ -1046,19 +1095,51 @@
           {:style (merge prompt-style {:margin-right "4px"})}
           (:prompt minibuffer)]
 
-         [:input.minibuffer-input
-          {:id "minibuffer-input"
-           :ref (fn [element]
-                  (when element
-                    (reset! input-ref element)
-                    (.focus element)))
-           :type "text"
-           :value (:input minibuffer)
-           :on-change (fn [e]
-                        (rf/dispatch [:minibuffer/set-input (.. e -target -value)]))
+         ;; Issue #137: Wrapper for input + block cursor
+         [:div.minibuffer-input-wrapper
+          {:style {:position "relative"
+                   :flex "1"
+                   :display "flex"
+                   :align-items "center"}}
+          [:input.minibuffer-input
+           {:id "minibuffer-input"
+            :ref (fn [element]
+                   (when element
+                     (reset! input-ref element)
+                     (.focus element)
+                     ;; Initialize cursor position
+                     (reset! cursor-pos-atom (.-selectionStart element))))
+            :type "text"
+            :value input-text
+            :on-change (fn [e]
+                         (let [el (.-target e)]
+                           (reset! cursor-pos-atom (.-selectionStart el))
+                           (rf/dispatch [:minibuffer/set-input (.-value el)])))
+            ;; Track cursor position on various events
+            :on-click (fn [e]
+                        (let [el (.-target e)]
+                          (js/setTimeout #(reset! cursor-pos-atom (.-selectionStart el)) 0)))
+            :on-select (fn [e]
+                         (let [el (.-target e)]
+                           (reset! cursor-pos-atom (.-selectionStart el))))
            :on-key-down (fn [e]
-                          (let [key (.-key e)]
+                          (let [key (.-key e)
+                                ctrl? (.-ctrlKey e)
+                                ;; Convert key to key-str for keybinding system
+                                key-str (cond
+                                          (and ctrl? (= (count key) 1))
+                                          (str "C-" key)
+                                          (= key " ") "SPC"
+                                          (= (count key) 1) key
+                                          :else nil)]
                             (cond
+                              ;; Issue #137: If prefix key is active (e.g., after C-x),
+                              ;; route ALL keys to keybinding system to complete the sequence
+                              (and prefix-key-state key-str)
+                              (do
+                                (.preventDefault e)
+                                (rf/dispatch [:handle-key-sequence key-str]))
+
                               (= key "Enter")
                               (do
                                 (.preventDefault e)
@@ -1082,17 +1163,65 @@
                                 (rf/dispatch [:minibuffer/cycle-prev]))
 
                               (or (= key "Escape")
-                                  (and (.-ctrlKey e) (= key "g")))
+                                  (and ctrl? (= key "g")))
                               (do
                                 (.preventDefault e)
-                                (rf/dispatch (:on-cancel minibuffer))))))
-           :style {:background-color "transparent"
-                   :border "none"
-                   :outline "none"
-                   :color (:color mode-line-style "#cccccc")
-                   :font-size "12px"
-                   :font-family "monospace"
-                   :flex "1"}}]
+                                (rf/dispatch (:on-cancel minibuffer)))
+
+                              ;; Issue #137: Allow C-x prefix through to main keybinding system
+                              ;; This enables C-x o (other-window) to work when minibuffer is active
+                              (and ctrl? (= key "x"))
+                              (do
+                                (.preventDefault e)
+                                (rf/dispatch [:handle-key-sequence "C-x"])))))
+            :on-key-up (fn [e]
+                         ;; Track cursor position after arrow key navigation
+                         (let [el (.-target e)]
+                           (reset! cursor-pos-atom (.-selectionStart el))))
+            :style {:background-color "transparent"
+                    :border "none"
+                    :outline "none"
+                    :color (:color mode-line-style "#cccccc")
+                    :font-size "12px"
+                    :font-family "monospace"
+                    :flex "1"
+                    ;; Issue #137: Hide native caret - we render our own block cursor
+                    :caret-color "transparent"}}]
+          ;; Issue #137: Block cursor for minibuffer (Emacs-style)
+          (let [char-width 7.2  ; Approximate monospace character width at 12px
+                cursor-left (* cursor-pos char-width)
+                char-at-cursor (if (< cursor-pos (count input-text))
+                                 (str (nth input-text cursor-pos))
+                                 " ")]
+            (if owns-cursor?
+              ;; Active cursor: filled block
+              [:div.minibuffer-cursor.cursor-active
+               {:style {:position "absolute"
+                        :left (str cursor-left "px")
+                        :top "0"
+                        :width (str char-width "px")
+                        :height "20px"
+                        :background-color "#d4d4d4"
+                        :color "#1e1e1e"
+                        :font-size "12px"
+                        :font-family "monospace"
+                        :line-height "20px"
+                        :text-align "center"
+                        :pointer-events "none"
+                        :animation "cursor-blink 1s infinite"
+                        :z-index "10"}}
+               char-at-cursor]
+              ;; Inactive cursor: hollow block
+              [:div.minibuffer-cursor.cursor-inactive
+               {:style {:position "absolute"
+                        :left (str cursor-left "px")
+                        :top "0"
+                        :width (str (- char-width 2) "px")
+                        :height "18px"
+                        :background-color "transparent"
+                        :border "1px solid #888888"
+                        :pointer-events "none"
+                        :z-index "10"}}]))]
          ;; Icomplete display (inline completion candidates)
          (when icomplete-display
            [:span.icomplete-display
@@ -1156,7 +1285,7 @@
                         :border-radius "2px"}
                 :on-click (fn []
                             (rf/dispatch [:minibuffer/select-completion idx]))}
-               candidate])])))]))  ; Display completion candidate
+               candidate])])))])))  ; Display completion candidate
 
 (defn echo-area
   "DEPRECATED: Echo area now unified with minibuffer.
