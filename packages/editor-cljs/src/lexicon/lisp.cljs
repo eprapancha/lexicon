@@ -2086,10 +2086,30 @@
   This is the core primitive for Dired buffer generation.
   Formats entries in ls -l style.
 
+  Uses File System Access API directory cache if available,
+  falls back to mock filesystem otherwise.
+
   Usage: (insert-directory \"/home/user\")
   Returns: nil (side effect: inserts text)"
   [directory]
-  (let [entries (get mock-filesystem directory [])
+  (let [;; Normalize directory path for cache lookup (remove trailing slash)
+        cache-key (if (and (seq directory) (str/ends-with? directory "/"))
+                    (subs directory 0 (dec (count directory)))
+                    directory)
+        ;; Try to get entries from FS Access cache first
+        fs-cache (get-in @rfdb/app-db [:fs-access :directory-cache] {})
+        fs-entries (get fs-cache cache-key)
+        ;; Convert FS Access entries to dired format, or use mock filesystem
+        entries (if fs-entries
+                  ;; Convert FS Access format {:name "x" :kind "file"|"directory"}
+                  (map (fn [{:keys [name kind]}]
+                         {:name name
+                          :type (if (= kind "directory") :directory :file)
+                          :size "-"
+                          :modified ""})
+                       fs-entries)
+                  ;; Fall back to mock filesystem
+                  (get mock-filesystem directory []))
         header (str "  " directory ":\n")
         pad-left (fn [s width]
                    (let [s (str s)

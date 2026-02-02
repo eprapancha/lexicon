@@ -18,7 +18,8 @@
             [lexicon.core.completion.styles :as completion-styles]
             [lexicon.core.events.buffer :as buffer-events]
             [lexicon.core.modes.special-mode :as special-mode]
-            [lexicon.core.text-properties :as text-props]))
+            [lexicon.core.text-properties :as text-props]
+            [lexicon.core.log :as log]))
 
 ;; Forward declarations for functions used in event handlers
 (declare delete-completions-window)
@@ -894,13 +895,19 @@
 
 (defn- delete-completions-window
   "Delete the *Completions* window from the window tree.
-   Returns updated db with window removed."
+   Returns updated db with window removed.
+
+   IMPORTANT: Also updates :active-window-id if the deleted window was active,
+   to prevent rendering crashes from referencing a non-existent window."
   [db]
   (let [buffer-id (get-in db [:completion-help :buffer-id])
         window-id (when buffer-id (find-completions-window db buffer-id))]
     (if window-id
       ;; Delete the window from tree
-      (let [window-tree (:window-tree db)]
+      (let [window-tree (:window-tree db)
+            active-window-id (:active-window-id db)
+            ;; Check if we're deleting the active window
+            deleting-active? (= window-id active-window-id)]
         (letfn [(remove-from-tree [tree]
                   (cond
                     (nil? tree) nil
@@ -922,10 +929,25 @@
                       (assoc tree
                              :first (remove-from-tree (:first tree))
                              :second (remove-from-tree (:second tree))))
-                    :else tree))]
-          (-> db
-              (assoc :window-tree (remove-from-tree window-tree))
-              (assoc-in [:completion-help :window-id] nil))))
+                    :else tree))
+                ;; Find first leaf window in tree (for fallback active window)
+                (find-first-leaf [tree]
+                  (cond
+                    (nil? tree) nil
+                    (= (:type tree) :leaf) (:id tree)
+                    (or (= (:type tree) :hsplit) (= (:type tree) :vsplit))
+                    (or (find-first-leaf (:first tree))
+                        (find-first-leaf (:second tree)))
+                    :else nil))]
+          (let [new-tree (remove-from-tree window-tree)
+                ;; If we deleted the active window, switch to first available window
+                new-active-id (if deleting-active?
+                                (find-first-leaf new-tree)
+                                active-window-id)]
+            (-> db
+                (assoc :window-tree new-tree)
+                (assoc :active-window-id new-active-id)
+                (assoc-in [:completion-help :window-id] nil)))))
       ;; No completions window to delete
       db)))
 
@@ -946,36 +968,42 @@
        (cond
          ;; Directory in file completion: update path and refresh completions
          is-directory?
-         {:db (-> db
-                  (assoc-in [:minibuffer :input] candidate)
-                  (assoc-in [:minibuffer :last-tab-input] nil)
-                  (assoc-in [:minibuffer :cycling?] false)
-                  (assoc-in [:minibuffer :completion-index] -1)
-                  delete-completions-window)
-          :fx [[:dom/focus-minibuffer nil]
-               [:dispatch [:find-file/update-completions candidate]]]}
+         (let [new-db (-> db
+                          (assoc-in [:minibuffer :input] candidate)
+                          (assoc-in [:minibuffer :last-tab-input] nil)
+                          (assoc-in [:minibuffer :cycling?] false)
+                          (assoc-in [:minibuffer :completion-index] -1)
+                          delete-completions-window
+                          (assoc :cursor-owner :minibuffer))]  ; Return cursor to minibuffer
+           {:db new-db
+            :fx [[:dom/focus-minibuffer nil]
+                 [:dispatch [:find-file/update-completions candidate]]]})
 
          ;; File in file completion: confirm and open file
          is-file-completion?
          {:db (-> db
-                  (assoc-in [:minibuffer :input] candidate)
-                  delete-completions-window)
-          :fx [[:dispatch [:minibuffer/confirm]]]}
+                    (assoc-in [:minibuffer :input] candidate)
+                    delete-completions-window
+                    (assoc :cursor-owner :minibuffer))
+            :fx [[:dispatch [:minibuffer/confirm]]]})
 
          ;; Other completion types: just insert and close
          :else
          {:db (-> db
                   (assoc-in [:minibuffer :input] candidate)
                   (assoc-in [:minibuffer :last-tab-input] nil)
-                  delete-completions-window)
+                  delete-completions-window
+                  (assoc :cursor-owner :minibuffer))
           :fx [[:dom/focus-minibuffer nil]]}))
-     {:db db})))
+     {:db db}))
 
 (rf/reg-event-fx
  :completion-list/quit
  (fn [{:keys [db]} [_]]
    "Quit *Completions* buffer and return to minibuffer."
-   {:db (delete-completions-window db)
+   {:db (-> db
+            delete-completions-window
+            (assoc :cursor-owner :minibuffer))
     :fx [[:dom/focus-minibuffer nil]]}))
 
 (rf/reg-event-fx

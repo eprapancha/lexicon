@@ -11,7 +11,8 @@
             [lexicon.core.db :as db]
             [lexicon.core.log :as log]
             [lexicon.core.api.message]
-            [lexicon.core.completion.metadata :as completion-metadata]))
+            [lexicon.core.completion.metadata :as completion-metadata]
+            [lexicon.dired :as dired]))
 
 ;; -- Helper Functions --
 
@@ -681,8 +682,11 @@
    "Open a file from a path entered in minibuffer.
 
    Resolves the path against granted directories and reads the file.
-   Falls back to browser picker if path is not in a granted directory."
-   (let [granted-dirs (get-in db [:fs-access :granted-directories] {})]
+   Falls back to browser picker if path is not in a granted directory.
+
+   If path is a directory (ends with /), opens dired instead of reading as file."
+   (let [granted-dirs (get-in db [:fs-access :granted-directories] {})
+         is-directory? (clojure.string/ends-with? path "/")]
      ;; Find which granted directory contains this path
      (if-let [matching-grant (first
                               (keep (fn [[grant-path {:keys [handle]}]]
@@ -691,14 +695,72 @@
                                          :handle handle
                                          :relative-path (subs path (count grant-path))}))
                                     granted-dirs))]
-       ;; Read file from granted directory
-       {:fx [[:fs-access/read-file-from-path
-              {:grant-handle (:handle matching-grant)
-               :relative-path (:relative-path matching-grant)
-               :full-path path}]]}
+       (if is-directory?
+         ;; Directory path - open dired
+         {:fx [[:dispatch [:dired/open path]]]}
+         ;; Read file from granted directory
+         {:fx [[:fs-access/read-file-from-path
+                {:grant-handle (:handle matching-grant)
+                 :relative-path (:relative-path matching-grant)
+                 :full-path path}]]})
        ;; Path not in granted directory - fall back to picker
        {:fx [[:dispatch [:message/display (str "Path not accessible: " path)]]
              [:open-file-picker]]}))))
+
+(rf/reg-fx
+ :dired/open-directory
+ (fn [directory-path]
+   "Effect to open a directory in Dired mode.
+
+   Uses js/setTimeout to defer execution because dired/dired
+   uses dispatch-sync internally via the lisp API, which cannot
+   be called from within an event handler."
+   (js/setTimeout #(dired/dired directory-path) 0)))
+
+(rf/reg-event-fx
+ :dired/open
+ (fn [{:keys [db]} [_ directory-path]]
+   "Open a directory in Dired mode.
+
+   Called when find-file is given a directory path (ending with /).
+   Ensures the directory is cached before opening dired.
+
+   If directory is not cached, triggers caching first and defers dired
+   until :dired/after-cache event is dispatched."
+   (let [;; Normalize path for cache lookup (remove trailing slash)
+         cache-key (if (clojure.string/ends-with? directory-path "/")
+                     (subs directory-path 0 (dec (count directory-path)))
+                     directory-path)
+         dir-cache (get-in db [:fs-access :directory-cache] {})
+         is-cached? (contains? dir-cache cache-key)
+         granted-dirs (get-in db [:fs-access :granted-directories] {})]
+     (if is-cached?
+       ;; Directory already cached - open dired immediately
+       {:db db
+        :fx [[:dired/open-directory directory-path]]}
+       ;; Need to cache first - find grant and trigger caching
+       (if-let [matching-grant (first
+                                (keep (fn [[grant-path {:keys [handle]}]]
+                                        (when (clojure.string/starts-with? directory-path grant-path)
+                                          {:grant-path grant-path :handle handle}))
+                                      granted-dirs))]
+         {:db (assoc-in db [:dired :pending-open] directory-path)
+          :fx [[:fs-access/list-subdirectory-for-cache
+                {:grant-handle (:handle matching-grant)
+                 :grant-path (:grant-path matching-grant)
+                 :target-path cache-key}]
+               [:dispatch [:echo/message "Loading directory..."]]]}
+         ;; Not in granted directory
+         {:fx [[:dispatch [:echo/message (str "Directory not accessible: " directory-path)]]]})))))
+
+(rf/reg-event-fx
+ :dired/after-cache
+ (fn [{:keys [db]} [_ _path]]
+   "Called after directory is cached. Opens dired if there's a pending open."
+   (if-let [pending-path (get-in db [:dired :pending-open])]
+     {:db (update db :dired dissoc :pending-open)
+      :fx [[:dired/open-directory pending-path]]}
+     {:db db})))
 
 (rf/reg-event-db
  :find-file/update-completions

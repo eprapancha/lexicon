@@ -118,11 +118,13 @@
     :fx [[:dispatch [:fs-access/verify-next-handle]]
          [:dispatch [:message/display (str "Permission denied for: " path)]]]}))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :fs-access/directory-cached
- (fn [db [_ path entries]]
-   "Cache directory entries for file completion."
-   (assoc-in db [:fs-access :directory-cache path] entries)))
+ (fn [{:keys [db]} [_ path entries]]
+   "Cache directory entries for file completion.
+    Also triggers :dired/after-cache in case dired is waiting for this directory."
+   {:db (assoc-in db [:fs-access :directory-cache path] entries)
+    :fx [[:dispatch [:dired/after-cache path]]]}))
 
 (rf/reg-event-db
  :fs-access/handle-stored
