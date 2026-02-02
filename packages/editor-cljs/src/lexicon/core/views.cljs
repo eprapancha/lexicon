@@ -544,6 +544,8 @@
           paren-match-info @(rf/subscribe [:show-paren/match-info])  ; Issue #123: show-paren-mode
           whitespace-enabled? @(rf/subscribe [:whitespace/enabled?])  ; Issue #123: whitespace-mode
           is-completions-buffer? (= buffer-name "*Completions*")  ; Issue #137: Clickable completions
+          ;; Issue #138: For *Completions*, get span-based cursor highlight instead of hl-line
+          current-entry @(rf/subscribe [:completion-help/current-entry])
           region-active? (not (nil? mark-position))
           region-decorations (when region-active?
                               (create-region-decorations mark-position cursor-pos buffer-content))
@@ -647,14 +649,24 @@
                                        (<= current-line viewport-end))]
           (for [[idx line] (map-indexed vector lines)]
             (let [line-number (+ viewport-start idx)
-                  ;; Only highlight if cursor is actually in viewport
+                  ;; Issue #138: For *Completions*, don't use full-line hl-line highlighting
+                  ;; Instead, use span-based cursor-face highlighting
                   is-current-line? (and hl-line-enabled?
                                         owns-cursor?
                                         cursor-in-viewport?
-                                        (= line-number current-line))
+                                        (= line-number current-line)
+                                        (not is-completions-buffer?))  ; Exclude *Completions*
                   ;; Issue #137: Completion entries are hoverable/clickable
                   ;; Line 0 is header "Possible completions:", entries start at line 1
                   is-completion-entry? (and is-completions-buffer? (> line-number 0))
+                  ;; Issue #138: Check if this line contains the current completion span
+                  ;; Count newlines before entry start to determine which line it's on
+                  entry-on-this-line? (and is-completions-buffer?
+                                           owns-cursor?
+                                           current-entry
+                                           (= line-number (count (filter #(= % \newline)
+                                                                         (take (:start current-entry)
+                                                                               (or buffer-content ""))))))
                   ;; Apply whitespace visualization when enabled
                   display-line (if whitespace-enabled?
                                  (whitespace/visualize-whitespace line)
@@ -664,9 +676,32 @@
                {:class (when is-completion-entry? "completion-entry")
                 :style (cond-> {:min-height (str line-height "px")
                                 :color "#d4d4d4"}
-                         ;; Add hl-line background when enabled and on current line
+                         ;; Add hl-line background when enabled and on current line (non-completions)
                          is-current-line? (assoc :background-color "rgba(80, 80, 120, 0.6)"))}
-               (apply-decorations-to-line display-line line-number decorations)]))))
+               ;; Issue #138: Apply span-based highlighting for *Completions* entries
+               (if (and entry-on-this-line? current-entry)
+                 ;; Render with cursor-face span highlighting
+                 (let [line-start-in-buffer (count (clojure.string/join "\n"
+                                                     (take line-number
+                                                           (clojure.string/split (or buffer-content "") #"\n" -1))))
+                       line-start (if (pos? line-number) (inc line-start-in-buffer) line-start-in-buffer)
+                       entry-start (:start current-entry)
+                       entry-end (:end current-entry)
+                       rel-start (max 0 (- entry-start line-start))
+                       rel-end (min (count line) (- entry-end line-start))
+                       before-span (when (pos? rel-start) (subs display-line 0 rel-start))
+                       highlight-span (when (and (< rel-start rel-end) (< rel-start (count display-line)))
+                                        (subs display-line rel-start (min rel-end (count display-line))))
+                       after-span (when (< rel-end (count display-line))
+                                    (subs display-line rel-end))]
+                   [:<>
+                    (when before-span [:span before-span])
+                    (when highlight-span
+                      [:span {:style {:background-color "rgba(80, 80, 120, 0.6)"}}
+                       highlight-span])
+                    (when after-span [:span after-span])])
+                 ;; Normal line rendering
+                 (apply-decorations-to-line display-line line-number decorations))]))))
 
       ;; Cursor - Issue #62: cursor singleton, Issue #137: block cursor
       ;; Active cursor: filled block with inverted character

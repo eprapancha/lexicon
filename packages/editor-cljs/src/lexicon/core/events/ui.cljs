@@ -1369,3 +1369,52 @@
 
 ;; TODO: Issue #62 - :blur-editor removed - wrong architectural approach
 ;; Proper fix: Implement cursor singleton with :cursor-owner field
+
+;; =============================================================================
+;; Command Registry for Completion List (Issue #138)
+;; =============================================================================
+
+(defn init-completion-list-commands!
+  "Register completion-list commands. Must be called after :initialize-commands."
+  []
+  (rf/dispatch-sync
+   [:register-command
+    :completion-list/next-completion
+    {:docstring "Move to next completion in *Completions* buffer"
+     :interactive-spec nil
+     :handler [:completion-list/next-completion]}])
+
+  (rf/dispatch-sync
+   [:register-command
+    :completion-list/previous-completion
+    {:docstring "Move to previous completion in *Completions* buffer"
+     :interactive-spec nil
+     :handler [:completion-list/previous-completion]}])
+
+  (rf/dispatch-sync
+   [:register-command
+    :completion-list/choose-at-point
+    {:docstring "Choose the completion at point"
+     :interactive-spec nil
+     :handler [:completion-list/choose-at-point]}])
+
+  (rf/dispatch-sync
+   [:register-command
+    :completion-list/quit
+    {:docstring "Quit *Completions* buffer"
+     :interactive-spec nil
+     :handler [:completion-list/quit]}])
+
+  (rf/dispatch-sync
+   [:register-command
+    :completion-list/first-completion
+    {:docstring "Jump to first completion in *Completions* buffer"
+     :interactive-spec nil
+     :handler [:completion-list/first-completion]}])
+
+  (rf/dispatch-sync
+   [:register-command
+    :completion-list/last-completion
+    {:docstring "Jump to last completion in *Completions* buffer"
+     :interactive-spec nil
+     :handler [:completion-list/last-completion]}]))

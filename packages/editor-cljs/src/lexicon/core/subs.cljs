@@ -3,7 +3,8 @@
             [lexicon.core.cache :as cache]
             [lexicon.core.wasm-utils :as wasm]
             [lexicon.core.db :as db]
-            [lexicon.core.faces :as faces]))
+            [lexicon.core.faces :as faces]
+            [lexicon.core.text-properties :as text-props]))
 
 ;; -- Base Subscriptions --
 
@@ -547,3 +548,43 @@
    Usage: @(rf/subscribe [:theme-face :mode-line])
    Returns: {:color '#ffffff' :background-color '#505050' ...}"
    (faces/face-to-style theme face)))
+
+;; -- Cursor-Face Highlighting (Issue #138) --
+
+(rf/reg-sub
+ :cursor-face/highlight-span
+ (fn [db [_ buffer-id cursor-pos]]
+   "Get the span to highlight based on cursor-face text property.
+
+   Returns {:start N :end M} if cursor is on text with :cursor-face property,
+   nil otherwise.
+
+   Issue #138: For *Completions* buffer, highlights just the completion text
+   under cursor, not the entire line."
+   (let [text-props (get-in db [:buffers buffer-id :text-properties] {})]
+     (when-let [cursor-face (text-props/get-text-property text-props cursor-pos :cursor-face)]
+       ;; Find the boundaries of this cursor-face span
+       (let [;; Find start of span (where property begins)
+             start (or (text-props/previous-single-property-change text-props cursor-pos :cursor-face)
+                       ;; If no change before, check if pos 0 has the property
+                       (when (text-props/get-text-property text-props 0 :cursor-face) 0))
+             ;; Find end of span (where property ends)
+             end (text-props/next-single-property-change text-props cursor-pos :cursor-face)]
+         (when (and start end)
+           {:start start :end end :face cursor-face}))))))
+
+(rf/reg-sub
+ :completion-help/current-entry
+ (fn [db _]
+   "Get the completion entry under the cursor, if any.
+
+   Returns {:start N :end M :value 'completion'} or nil.
+   Issue #138: Used for span-based highlighting in *Completions* buffer."
+   (let [buffer-id (get-in db [:completion-help :buffer-id])
+         cursor-pos (get-in db [:ui :cursor-position] 0)
+         entries (get-in db [:completion-help :entries] [])]
+     ;; Find entry that contains cursor position
+     (some (fn [{:keys [start end] :as entry}]
+             (when (and (<= start cursor-pos) (< cursor-pos end))
+               entry))
+           entries))))

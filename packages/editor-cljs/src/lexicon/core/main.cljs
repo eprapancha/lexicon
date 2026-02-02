@@ -52,6 +52,7 @@
             [lexicon.core.winner]              ; Load winner window config undo (#117)
             [lexicon.core.occur]               ; Load occur-mode (#131)
             [lexicon.core.fs.access :as fs-access]  ; Load File System Access API (#135)
+            [lexicon.core.events.ui :as ui-events]  ; Load UI events for command init (#138)
             [lexicon.core.eval]                ; Load runtime evaluation (Phase 6.5 Week 7-8)
             [lexicon.core.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.core.views :as views]
@@ -117,7 +118,10 @@
    - windowList: array of window IDs (for window count tests)
    - selectedWindow: currently active window ID
    - killRing: array of kill ring entries
-   - mark: current mark position in active window (nil if not set)"
+   - mark: current mark position in active window (nil if not set)
+   - cursorOwner: ID of window/component that owns the cursor (Issue #62)
+   - completionHelp: completion help state (Issue #138)
+   - buffers: map of buffer-id to buffer info (Issue #138)"
   []
   (when goog.DEBUG  ; Only in development mode
     (let [get-state (fn []
@@ -154,7 +158,21 @@
                             ;; Expose kill ring for E2E tests (Tier 2 fix)
                             kill-ring (:kill-ring app-db)
                             ;; Expose mark position from active window (Tier 2 fix)
-                            mark-position (:mark-position active-window)]
+                            mark-position (:mark-position active-window)
+                            ;; Expose cursor owner for singleton cursor tests (Issue #62)
+                            cursor-owner (:cursor-owner app-db)
+                            ;; Expose completion help state for testing (Issue #138)
+                            completion-help (:completion-help app-db)
+                            completion-help-js (when completion-help
+                                                (clj->js {:entries (vec (:entries completion-help))
+                                                          :candidates (vec (:candidates completion-help))
+                                                          :bufferId (:buffer-id completion-help)}))
+                            ;; Expose basic buffer info for testing (Issue #138)
+                            buffers-info (into {}
+                                               (map (fn [[id buf]]
+                                                      [id {:name (:name buf)
+                                                           :readOnly (:read-only buf)}])
+                                                    (:buffers app-db)))]
                         #js {:point cursor-pos
                              :buffer (or buffer-text "")
                              :prefixArg prefix-arg-js
@@ -163,7 +181,10 @@
                              :windowList (clj->js window-ids)
                              :selectedWindow active-window-id
                              :killRing (clj->js kill-ring)
-                             :mark mark-position}))]
+                             :mark mark-position
+                             :cursorOwner cursor-owner
+                             :completionHelp completion-help-js
+                             :buffers (clj->js buffers-info)}))]
       ;; Expose as a getter function so it always returns fresh state
       (aset js/window "editorState"
             (js/Object.defineProperty
@@ -202,6 +223,9 @@
 
   ;; Initialize init file commands (must be after :initialize-commands)
   (lexicon.core.init/init-init-commands!)
+
+  ;; Initialize completion-list commands (must be after :initialize-commands, Issue #138)
+  (ui-events/init-completion-list-commands!)
 
   ;; Register all packages (must be after db init)
   ;; Called directly, not via event, because define-command uses dispatch-sync
