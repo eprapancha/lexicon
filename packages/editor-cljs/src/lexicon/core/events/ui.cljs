@@ -17,7 +17,8 @@
             [lexicon.core.minibuffer :as minibuffer]
             [lexicon.core.completion.styles :as completion-styles]
             [lexicon.core.events.buffer :as buffer-events]
-            [lexicon.core.modes.special-mode :as special-mode]))
+            [lexicon.core.modes.special-mode :as special-mode]
+            [lexicon.core.text-properties :as text-props]))
 
 ;; Forward declarations for functions used in event handlers
 (declare delete-completions-window)
@@ -576,13 +577,21 @@
    Shows one candidate per line with a marker for the selected item.
    If selected-index is nil or -1, no item is highlighted.
    If annotation-fn is provided, appends annotations to each line.
-   If strip-prefix is provided, strips it from display (but not value)."
+   If strip-prefix is provided, strips it from display (but not value).
+
+   Returns a map with:
+   - :content - The formatted string
+   - :entries - Vector of {:start :end :value} for each completion
+                (positions where completions are in the content string)
+
+   Issue #138: Returns position info for text properties."
   ([candidates] (format-completions-buffer candidates -1 nil nil))
   ([candidates selected-index] (format-completions-buffer candidates selected-index nil nil))
   ([candidates selected-index annotation-fn] (format-completions-buffer candidates selected-index annotation-fn nil))
   ([candidates selected-index annotation-fn strip-prefix]
    (if (empty? candidates)
-     "No completions available."
+     {:content "No completions available."
+      :entries []}
      (let [;; For display, optionally strip common prefix (e.g., directory path)
            display-candidates (if strip-prefix
                                 (map #(if (clojure.string/starts-with? % strip-prefix)
@@ -594,19 +603,36 @@
            max-len (apply max (map count display-candidates))
            ;; Pad to align annotations
            pad-to (+ max-len 2)
-           format-line (fn [idx [_cand display-cand]]
-                         (let [prefix (if (= idx selected-index) "> " "  ")
-                               ;; Pad candidate for annotation alignment
-                               padded (str display-cand (apply str (repeat (- pad-to (count display-cand)) " ")))
-                               ;; Get annotation if function provided (using original candidate)
-                               annotation (when annotation-fn
-                                            (try
-                                              (annotation-fn _cand)
-                                              (catch :default _ nil)))]
-                           (str prefix padded (or annotation ""))))]
-       (str "Possible completions:\n"
-            (clojure.string/join "\n"
-                                 (map-indexed format-line (map vector candidates display-candidates))))))))
+           ;; Header line
+           header "Possible completions:\n"
+           header-len (count header)
+           ;; Build content and track positions
+           {:keys [lines entries]}
+           (reduce
+            (fn [{:keys [lines entries pos]} [idx [cand display-cand]]]
+              (let [prefix "  "  ; Always use "  " prefix (not "> ")
+                    prefix-len (count prefix)
+                    ;; Position where the actual completion text starts
+                    cand-start (+ pos prefix-len)
+                    cand-end (+ cand-start (count display-cand))
+                    ;; Pad candidate for annotation alignment
+                    padded (str display-cand (apply str (repeat (- pad-to (count display-cand)) " ")))
+                    ;; Get annotation if function provided
+                    annotation (when annotation-fn
+                                 (try
+                                   (annotation-fn cand)
+                                   (catch :default _ nil)))
+                    line (str prefix padded (or annotation ""))
+                    line-len (+ (count line) 1)]  ; +1 for newline
+                {:lines (conj lines line)
+                 :entries (conj entries {:start cand-start
+                                         :end cand-end
+                                         :value cand})
+                 :pos (+ pos line-len)}))
+            {:lines [] :entries [] :pos header-len}
+            (map-indexed vector (map vector candidates display-candidates)))]
+       {:content (str header (clojure.string/join "\n" lines))
+        :entries entries}))))
 
 ;; =============================================================================
 ;; Arrow Key Cycling - Vanilla Emacs Style (Issue #137)
@@ -809,7 +835,13 @@
    For file completion, strips the directory prefix from display (it's already
    visible in the minibuffer input, so showing it again is redundant).
 
-   See Issue #136, #137."
+   Issue #138: Sets text properties on completions for Emacs-compatible navigation.
+   Each completion entry gets:
+   - :mouse-face 'highlight - Makes it interactive
+   - :completion--string value - Stores the actual completion value
+   - :cursor-face 'completions-highlight - For cursor highlighting
+
+   See Issue #136, #137, #138."
    (let [;; Get or create *Completions* buffer
          [db' buffer-id] (get-or-create-completions-buffer db)
          ;; Get annotation function from minibuffer state
@@ -823,7 +855,8 @@
                           (when last-slash
                             (subs input 0 (inc last-slash)))))
          ;; Format content with annotations and optional prefix stripping
-         content (format-completions-buffer candidates -1 annotation-fn strip-prefix)
+         ;; Returns {:content "..." :entries [{:start :end :value} ...]}
+         {:keys [content entries]} (format-completions-buffer candidates -1 annotation-fn strip-prefix)
          ;; Get WASM instance and update content
          ^js wasm-instance (get-in db' [:buffers buffer-id :wasm-instance])]
      (when wasm-instance
@@ -832,13 +865,24 @@
          (when (pos? current-length)
            (.delete wasm-instance 0 current-length))
          (.insert wasm-instance 0 content)))
-     ;; Check if *Completions* window already exists
-     (let [existing-window (find-completions-window db' buffer-id)
+     ;; Build text properties for each completion entry
+     ;; Issue #138: Mark completions with properties for navigation
+     (let [text-properties (reduce
+                            (fn [props {:keys [start end value]}]
+                              (-> props
+                                  (text-props/put-text-property start end :mouse-face :highlight)
+                                  (text-props/put-text-property start end :completion--string value)
+                                  (text-props/put-text-property start end :cursor-face :completions-highlight)))
+                            {}
+                            entries)
+           existing-window (find-completions-window db' buffer-id)
            db'' (-> db'
                     (assoc-in [:buffers buffer-id :cache :text] content)
                     (assoc-in [:buffers buffer-id :cache :line-count]
                               (count (clojure.string/split content #"\n" -1)))
+                    (assoc-in [:buffers buffer-id :text-properties] text-properties)
                     (assoc-in [:completion-help :candidates] (vec candidates))
+                    (assoc-in [:completion-help :entries] entries)
                     (assoc-in [:completion-help :buffer-id] buffer-id))]
        (if existing-window
          ;; *Completions* window exists, just update content (already done above)
@@ -945,36 +989,127 @@
  (fn [{:keys [db]} [_]]
    "Choose the completion at or near point in *Completions* buffer.
 
-   Buffer format:
-   - Line 0: 'Possible completions:' (header)
-   - Line 1+: '  candidate' or '> candidate' (entries)
-
-   So completion-index = cursor-line - 1"
-   (let [;; Get the candidates stored when *Completions* was created
-         candidates (get-in db [:completion-help :candidates] [])
-         ;; Get current cursor position in *Completions* buffer
-         active-window-id (:active-window-id db)
-         active-window (db/find-window-in-tree (:window-tree db) active-window-id)
-         cursor-line (get-in active-window [:cursor-position :line] 0)
-         ;; Line 0 is header, entries start at line 1
-         ;; So completion-index = cursor-line - 1
-         completion-index (dec cursor-line)]
-     (if (and (>= completion-index 0) (< completion-index (count candidates)))
-       (let [candidate (nth candidates completion-index)]
-         {:fx [[:dispatch [:completion-list/choose candidate]]]})
-       {:fx [[:dispatch [:echo/message "No completion at point"]]]}))))
+   Issue #138: Uses text properties to find completion value.
+   Looks for :completion--string property at cursor position.
+   This works regardless of buffer layout (single-column, multi-column, etc.)."
+   (let [buffer-id (get-in db [:completion-help :buffer-id])
+         text-props (get-in db [:buffers buffer-id :text-properties] {})
+         ;; Get current cursor position (linear)
+         cursor-pos (get-in db [:ui :cursor-position] 0)
+         ;; Get completion value from text property
+         completion-value (text-props/get-text-property text-props cursor-pos :completion--string)]
+     (if completion-value
+       {:fx [[:dispatch [:completion-list/choose completion-value]]]}
+       ;; Try one position before (in case cursor is at end of completion)
+       (let [prev-value (when (> cursor-pos 0)
+                          (text-props/get-text-property text-props (dec cursor-pos) :completion--string))]
+         (if prev-value
+           {:fx [[:dispatch [:completion-list/choose prev-value]]]}
+           {:fx [[:dispatch [:echo/message "No completion at point"]]]}))))))
 
 (rf/reg-event-fx
  :completion-list/next-completion
- (fn [_ [_]]
-   "Move to next completion in *Completions* buffer."
-   {:fx [[:dispatch [:editor/next-line]]]}))
+ (fn [{:keys [db]} [_]]
+   "Move to next completion in *Completions* buffer.
+
+   Issue #138: Uses text properties for navigation.
+   Jumps to the start of the next completion entry (skips non-completion text).
+   Uses :mouse-face property to detect completion boundaries."
+   (let [buffer-id (get-in db [:completion-help :buffer-id])
+         text-props (get-in db [:buffers buffer-id :text-properties] {})
+         ;; Get current cursor position (linear)
+         cursor-pos (get-in db [:ui :cursor-position] 0)
+         ;; If cursor is on a completion, find end of current completion first
+         current-has-mouse-face? (text-props/get-text-property text-props cursor-pos :mouse-face)
+         pos-after-current (if current-has-mouse-face?
+                             ;; Find end of current completion
+                             (or (text-props/next-single-property-change text-props cursor-pos :mouse-face)
+                                 cursor-pos)
+                             cursor-pos)
+         ;; Now find start of next completion
+         next-start (text-props/next-single-property-change text-props pos-after-current :mouse-face)]
+     (if next-start
+       {:fx [[:dispatch [:update-cursor-position next-start]]]}
+       ;; No next completion - wrap to first completion
+       (let [first-completion (text-props/next-single-property-change text-props 0 :mouse-face)]
+         (if first-completion
+           {:fx [[:dispatch [:update-cursor-position first-completion]]]}
+           {:db db}))))))
 
 (rf/reg-event-fx
  :completion-list/previous-completion
- (fn [_ [_]]
-   "Move to previous completion in *Completions* buffer."
-   {:fx [[:dispatch [:editor/previous-line]]]}))
+ (fn [{:keys [db]} [_]]
+   "Move to previous completion in *Completions* buffer.
+
+   Issue #138: Uses text properties for navigation.
+   Jumps to the start of the previous completion entry.
+   Uses :mouse-face property to detect completion boundaries."
+   (let [buffer-id (get-in db [:completion-help :buffer-id])
+         text-props (get-in db [:buffers buffer-id :text-properties] {})
+         ;; Get current cursor position (linear)
+         cursor-pos (get-in db [:ui :cursor-position] 0)
+         ;; Find the start of the current completion (if on one)
+         current-has-mouse-face? (text-props/get-text-property text-props cursor-pos :mouse-face)
+         ;; If we're at the start of a completion, we need to go before it
+         start-of-current (when current-has-mouse-face?
+                            (or (text-props/previous-single-property-change text-props cursor-pos :mouse-face)
+                                0))
+         search-from (if (and start-of-current (= start-of-current cursor-pos))
+                       ;; At start of completion, search from before
+                       (dec cursor-pos)
+                       ;; In middle or not on completion, search from current
+                       (if current-has-mouse-face?
+                         start-of-current
+                         cursor-pos))
+         ;; Find previous completion boundary (could be end of prev completion)
+         prev-boundary (when (> search-from 0)
+                         (text-props/previous-single-property-change text-props search-from :mouse-face))]
+     (if prev-boundary
+       ;; prev-boundary might be end of a completion or start of a gap
+       ;; We need to find the START of the completion at or before prev-boundary
+       (let [has-mouse-face-at-prev? (text-props/get-text-property text-props prev-boundary :mouse-face)
+             target-pos (if has-mouse-face-at-prev?
+                          ;; prev-boundary is inside a completion, find its start
+                          (or (text-props/previous-single-property-change text-props prev-boundary :mouse-face)
+                              prev-boundary)
+                          ;; prev-boundary is at boundary, check one before
+                          (when (> prev-boundary 0)
+                            (let [pos-before (dec prev-boundary)]
+                              (when (text-props/get-text-property text-props pos-before :mouse-face)
+                                (or (text-props/previous-single-property-change text-props pos-before :mouse-face)
+                                    prev-boundary)))))]
+         (if target-pos
+           {:fx [[:dispatch [:update-cursor-position target-pos]]]}
+           {:db db}))
+       ;; No previous completion - wrap to last
+       (let [;; Find last completion by iterating (not ideal but works)
+             entries (get-in db [:completion-help :entries] [])
+             last-entry (last entries)]
+         (if last-entry
+           {:fx [[:dispatch [:update-cursor-position (:start last-entry)]]]}
+           {:db db}))))))
+
+(rf/reg-event-fx
+ :completion-list/first-completion
+ (fn [{:keys [db]} [_]]
+   "Jump to first completion in *Completions* buffer.
+   Issue #138: Called when first entering the buffer to skip informational text."
+   (let [buffer-id (get-in db [:completion-help :buffer-id])
+         text-props (get-in db [:buffers buffer-id :text-properties] {})
+         first-pos (text-props/next-single-property-change text-props 0 :mouse-face)]
+     (if first-pos
+       {:fx [[:dispatch [:update-cursor-position first-pos]]]}
+       {:db db}))))
+
+(rf/reg-event-fx
+ :completion-list/last-completion
+ (fn [{:keys [db]} [_]]
+   "Jump to last completion in *Completions* buffer."
+   (let [entries (get-in db [:completion-help :entries] [])
+         last-entry (last entries)]
+     (if last-entry
+       {:fx [[:dispatch [:update-cursor-position (:start last-entry)]]]}
+       {:db db}))))
 
 (rf/reg-event-fx
  :completion-list/click-line
