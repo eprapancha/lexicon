@@ -84,18 +84,58 @@
     modified?                  "++"
     :else                      "--"))
 
-(defn- get-mode-name
-  "Get the display name for a major mode."
+(defn get-mode-name
+  "Get the display name for a major mode.
+
+  In Emacs, each major mode has a `mode-name` variable that provides
+  the human-readable name shown in the mode-line. This function provides
+  the equivalent mapping.
+
+  Args:
+    major-mode - Keyword like :clojure-mode, :fundamental-mode
+    mode-data  - Optional map that may contain :mode-line-name override
+
+  Returns:
+    Human-readable mode name string (e.g., 'Clojure', 'Fundamental')"
   [major-mode mode-data]
   (or (:mode-line-name mode-data)
       (case major-mode
+        ;; Core modes
         :fundamental-mode "Fundamental"
         :lisp-interaction-mode "Lisp Interaction"
         :emacs-lisp-mode "Emacs-Lisp"
         :special-mode "Special"
         :help-mode "Help"
         :buffer-menu-mode "Buffer Menu"
-        (name major-mode))))
+        :text-mode "Text"
+
+        ;; Programming modes (Issue #130)
+        :clojure-mode "Clojure"
+        :javascript-mode "JavaScript"
+        :python-mode "Python"
+        :rust-mode "Rust"
+        :html-mode "HTML"
+        :css-mode "CSS"
+        :markdown-mode "Markdown"
+
+        ;; File management modes
+        :dired-mode "Dired"
+        :occur-mode "Occur"
+        :completion-list-mode "Completions"
+
+        ;; Outline mode
+        :outline-mode "Outline"
+
+        ;; Default: strip -mode suffix and capitalize
+        (let [mode-str (name major-mode)]
+          (if (clojure.string/ends-with? mode-str "-mode")
+            (-> mode-str
+                (clojure.string/replace #"-mode$" "")
+                (clojure.string/replace #"-" " ")
+                (clojure.string/split #" ")
+                (->> (map clojure.string/capitalize)
+                     (clojure.string/join " ")))
+            (clojure.string/capitalize mode-str))))))
 
 ;; -- Format String Processor --
 

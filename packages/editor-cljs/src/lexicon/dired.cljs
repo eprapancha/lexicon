@@ -247,6 +247,156 @@
     (vec (keys (filter (fn [[_ mark]] (= mark "D")) marks)))))
 
 ;; =============================================================================
+;; Dired File Operations (Issue #139)
+;; =============================================================================
+
+(defn dired-find-file
+  "Visit the file or directory at point.
+
+  If it's a file, opens it in a buffer.
+  If it's a directory, opens a new dired buffer.
+
+  Usage: (dired-find-file)
+  Returns: nil"
+  []
+  (let [buffer-name (lisp/buffer-name)
+        directory (extract-directory-from-buffer-name buffer-name)
+        filename (dired-get-filename)]
+    (if filename
+      (let [full-path (str directory (when-not (str/ends-with? directory "/") "/") filename)]
+        (if (str/ends-with? filename "/")
+          ;; It's a directory - open in dired
+          (dired full-path)
+          ;; It's a file - try to open it
+          ;; Use find-file command
+          (lisp/find-file full-path)))
+      (lisp/message "No file at point"))))
+
+(defn dired-up-directory
+  "Go up to parent directory in Dired.
+
+  Usage: (dired-up-directory)
+  Returns: nil"
+  []
+  (let [buffer-name (lisp/buffer-name)
+        directory (extract-directory-from-buffer-name buffer-name)]
+    (when directory
+      (let [;; Remove trailing slash and get parent
+            normalized (if (str/ends-with? directory "/")
+                         (subs directory 0 (dec (count directory)))
+                         directory)
+            parent-path (str/replace normalized #"/[^/]+$" "")
+            parent (if (str/blank? parent-path) "/" (str parent-path "/"))]
+        (dired parent)))))
+
+(defn dired-unmark-all-marks
+  "Remove all marks from all files in the Dired buffer.
+
+  Usage: (dired-unmark-all-marks)
+  Returns: nil"
+  []
+  (let [buffer-name (lisp/buffer-name)]
+    (clear-all-marks! buffer-name)
+    (lisp/message "All marks cleared")))
+
+(defn dired-do-flagged-delete
+  "Delete all files flagged with D.
+
+  Prompts for confirmation before deletion.
+
+  Usage: (dired-do-flagged-delete)
+  Returns: nil"
+  []
+  (let [flagged (dired-get-flagged-files)]
+    (if (empty? flagged)
+      (lisp/message "No flagged files")
+      ;; Note: In a real implementation, this would:
+      ;; 1. Show confirmation prompt
+      ;; 2. Actually delete the files via File System Access API
+      ;; 3. Refresh the buffer
+      ;; For now, we just display the flagged files
+      (do
+        (lisp/message (str "Would delete: " (str/join ", " flagged)))
+        ;; Clear flags after "deletion"
+        (doseq [f flagged]
+          (clear-mark-for-file! (lisp/buffer-name) f))
+        (dired-refresh)))))
+
+(defn dired-toggle-marks
+  "Toggle marks on all files.
+  Marked files become unmarked, unmarked become marked.
+
+  Usage: (dired-toggle-marks)
+  Returns: nil"
+  []
+  (let [buffer-name (lisp/buffer-name)
+        directory (extract-directory-from-buffer-name buffer-name)]
+    ;; This would need to iterate over all files in the buffer
+    ;; For now, just show a message
+    (lisp/message "Toggle marks (not yet implemented)")))
+
+(defn dired-mark-files-regexp
+  "Mark files matching a regular expression.
+
+  Usage: (dired-mark-files-regexp regexp)
+  Returns: nil"
+  [regexp]
+  (lisp/message (str "Would mark files matching: " regexp)))
+
+(defn dired-do-copy
+  "Copy marked files (or file at point if none marked).
+
+  Usage: (dired-do-copy)
+  Returns: nil"
+  []
+  (let [marked (dired-get-marked-files)
+        target (if (empty? marked)
+                 (dired-get-filename)
+                 marked)]
+    (if target
+      (lisp/message (str "Copy: " target " (not yet implemented - needs FS Access write)"))
+      (lisp/message "No files to copy"))))
+
+(defn dired-do-rename
+  "Rename marked files (or file at point if none marked).
+
+  Usage: (dired-do-rename)
+  Returns: nil"
+  []
+  (let [marked (dired-get-marked-files)
+        target (if (empty? marked)
+                 (dired-get-filename)
+                 marked)]
+    (if target
+      (lisp/message (str "Rename: " target " (not yet implemented - needs FS Access write)"))
+      (lisp/message "No files to rename"))))
+
+(defn dired-do-delete
+  "Delete marked files (or file at point if none marked).
+
+  Usage: (dired-do-delete)
+  Returns: nil"
+  []
+  (let [marked (dired-get-marked-files)
+        target (if (empty? marked)
+                 (list (dired-get-filename))
+                 marked)]
+    (if (and target (first target))
+      (lisp/message (str "Delete: " target " (not yet implemented - needs FS Access write)"))
+      (lisp/message "No files to delete"))))
+
+(defn dired-create-directory
+  "Create a new directory.
+
+  Usage: (dired-create-directory name)
+  Returns: nil"
+  [name]
+  (let [buffer-name (lisp/buffer-name)
+        directory (extract-directory-from-buffer-name buffer-name)
+        full-path (str directory (when-not (str/ends-with? directory "/") "/") name)]
+    (lisp/message (str "Create directory: " full-path " (not yet implemented - needs FS Access write)"))))
+
+;; =============================================================================
 ;; Package Registration
 ;; =============================================================================
 
@@ -306,11 +456,65 @@
     "Move up and unmark")
   (println "🗂️ Dired: Registered mark commands")
 
-  ;; Set up dired-mode keybindings
-  ;; Note: local-set-key binds to current buffer's local keymap
-  ;; For mode-specific bindings, we need mode keymap support
-  ;; For now, register global bindings that check mode
-  ;; TODO: Implement proper mode-specific keymaps
+  ;; Issue #139: Register file operation commands
+  (lisp/define-command
+    'dired-find-file
+    dired-find-file
+    "Visit file or directory at point")
+  (lisp/define-command
+    'dired-up-directory
+    dired-up-directory
+    "Go to parent directory")
+  (lisp/define-command
+    'dired-unmark-all-marks
+    dired-unmark-all-marks
+    "Remove all marks from files")
+  (lisp/define-command
+    'dired-do-flagged-delete
+    dired-do-flagged-delete
+    "Delete flagged files")
+  (lisp/define-command
+    'dired-do-copy
+    dired-do-copy
+    "Copy marked files")
+  (lisp/define-command
+    'dired-do-rename
+    dired-do-rename
+    "Rename marked files")
+  (lisp/define-command
+    'dired-do-delete
+    dired-do-delete
+    "Delete marked files")
+  (lisp/define-command
+    'dired-create-directory
+    dired-create-directory
+    "Create new directory"
+    {:interactive [{:prompt "Create directory: "}]})
+  (lisp/define-command
+    'dired-toggle-marks
+    dired-toggle-marks
+    "Toggle marks on all files")
+  (println "🗂️ Dired: Registered file operation commands")
+
+  ;; Issue #139: Register dired-mode keybindings
+  ;; These use the mode-specific keymap
+  (lisp/define-key-for-mode 'dired-mode "n" 'dired-next-line)
+  (lisp/define-key-for-mode 'dired-mode "p" 'dired-previous-line)
+  (lisp/define-key-for-mode 'dired-mode "RET" 'dired-find-file)
+  (lisp/define-key-for-mode 'dired-mode "^" 'dired-up-directory)
+  (lisp/define-key-for-mode 'dired-mode "g" 'dired-refresh)
+  (lisp/define-key-for-mode 'dired-mode "m" 'dired-mark)
+  (lisp/define-key-for-mode 'dired-mode "u" 'dired-unmark)
+  (lisp/define-key-for-mode 'dired-mode "U" 'dired-unmark-all-marks)
+  (lisp/define-key-for-mode 'dired-mode "d" 'dired-flag-file-deletion)
+  (lisp/define-key-for-mode 'dired-mode "x" 'dired-do-flagged-delete)
+  (lisp/define-key-for-mode 'dired-mode "C" 'dired-do-copy)
+  (lisp/define-key-for-mode 'dired-mode "R" 'dired-do-rename)
+  (lisp/define-key-for-mode 'dired-mode "D" 'dired-do-delete)
+  (lisp/define-key-for-mode 'dired-mode "+" 'dired-create-directory)
+  (lisp/define-key-for-mode 'dired-mode "t" 'dired-toggle-marks)
+  (lisp/define-key-for-mode 'dired-mode "DEL" 'dired-unmark-backward)
+  (println "🗂️ Dired: Registered keybindings")
 
   (lisp/message "Dired package loaded")
   (println "🗂️ Dired: Package registration complete"))

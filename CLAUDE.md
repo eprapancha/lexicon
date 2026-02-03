@@ -289,4 +289,31 @@ e2e_tests/                            # E2E tests
 
 ---
 
-**This file survives conversation compactions. Updated 2026-01-30.**
+## Current Work Session (2026-02-03)
+
+**Active Issues (in priority order):**
+1. **#130** - Code Intelligence (font-lock.el, which-func.el) - Syntax highlighting
+2. **#139** - Interactive dired-mode (navigation, file operations)
+3. **#115** - Buffer Menu (ibuffer, buff-menu, uniquify)
+4. **#109** - Help System (help.el, info.el)
+5. **#114** - Outline & Folding (outline.el, hideshow.el)
+
+**Implementation Guidelines:**
+- Full implementation without shortcuts or caveats
+- No commits until ALL features are implemented and manually tested by user
+- UI tests preferred; lisp tests only for non-user-testable/package-developer functionality
+- If tests get complicated, skip temporarily - implementation is highest priority
+- Add periodic progress updates to GitHub issues
+- Study Emacs source at `~/projects/emacs-source/` for fidelity
+
+**Workflow:**
+1. Deep dive Emacs source for each feature
+2. Implement the feature completely
+3. Write UI tests for user-facing functionality
+4. Update GitHub issue with progress
+5. Move to next feature
+6. When ALL done, user will manually test before committing
+
+---
+
+**This file survives conversation compactions. Updated 2026-02-03.**

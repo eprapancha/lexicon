@@ -807,7 +807,7 @@
                   (assoc :window-tree new-tree)
                   (assoc-in [:buffers active-buffer-id :cursor-position] line-col)  ; Save line/col to buffer
                   (assoc-in [:buffers active-buffer-id :point] clamped-pos)  ; Save linear position to buffer
-                  (assoc-in [:ui :cursor-position] clamped-pos))})  ; Keep old for compatibility
+                  (assoc-in [:ui :cursor-position] clamped-pos))})
        {:db db}))))
 
 (rf/reg-event-db

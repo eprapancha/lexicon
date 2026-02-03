@@ -165,8 +165,10 @@
                                  "C-x o" :other-window             ; Switch to next window
                                  "C-h b" :describe-bindings        ; Describe bindings
                                  "C-h k" :describe-key             ; Describe key
+                                 "C-h c" :describe-key-briefly     ; Describe key briefly
                                  "C-h f" :describe-function        ; Describe function
                                  "C-h v" :describe-variable        ; Describe variable
+                                 "C-h m" :describe-mode            ; Describe current mode
                                  "C-h a" :apropos-command          ; Search commands
                                  "C-h ?" :help-for-help            ; Help menu
                                  "C-u" :universal-argument         ; Universal argument
@@ -225,7 +227,14 @@
                                                        "p"         :completion-list/previous-completion
                                                        "ArrowDown" :completion-list/next-completion
                                                        "ArrowUp"   :completion-list/previous-completion
-                                                       "q"         :completion-list/quit}}}  ; Major mode keymaps
+                                                       "q"         :completion-list/quit}}
+                     ;; Issue #109: help-mode for *Help* buffer navigation
+                     :help-mode {:parent [:global]
+                                :bindings {"q" :help/quit
+                                           "n" :next-line
+                                           "p" :previous-line
+                                           "SPC" :scroll-up-command
+                                           "DEL" :scroll-down-command}}}  ; Major mode keymaps
              :minor {}                                  ; Minor mode keymaps
              :transient {:universal-argument-map {:parent nil
                                                   :bindings {"C-u" :universal-argument-more

@@ -58,6 +58,13 @@
      (get buffers (:buffer-id active-window)))))
 
 (rf/reg-sub
+ :active-buffer-id
+ :<- [:active-window]
+ (fn [active-window _]
+   "Get the buffer ID of the currently active buffer"
+   (:buffer-id active-window)))
+
+(rf/reg-sub
  :active-wasm-instance
  :<- [:active-buffer]
  (fn [active-buffer _]
@@ -489,6 +496,42 @@
    "Get viewport for a specific window"
    (:viewport window)))
 
+;; Issue #114: Get folded regions for a buffer
+(rf/reg-sub
+ ::buffer-folded-regions
+ (fn [[_ buffer-id]]
+   (rf/subscribe [::buffer-by-id buffer-id]))
+ (fn [buffer _]
+   "Get all folded (invisible) overlays for a buffer"
+   (let [overlays (get buffer :overlays {})]
+     (into {} (filter (fn [[_ o]] (:invisible o)) overlays)))))
+
+(rf/reg-sub
+ ::window-folded-regions
+ (fn [[_ window-id]]
+   (rf/subscribe [::window-buffer window-id]))
+ (fn [buffer _]
+   "Get folded regions for the window's buffer"
+   (let [overlays (get buffer :overlays {})]
+     (into {} (filter (fn [[_ o]] (:invisible o)) overlays)))))
+
+(defn line-folded?
+  "Check if a line number is inside any folded region."
+  [folded-regions line-number]
+  (some (fn [[_ overlay]]
+          (and (<= (:start-line overlay) line-number)
+               (>= (:end-line overlay) line-number)))
+        folded-regions))
+
+(defn get-fold-indicator
+  "Get fold indicator if a fold starts after this line."
+  [folded-regions line-number]
+  (when-let [[_ overlay] (first
+                          (filter (fn [[_ o]]
+                                   (= (:start-line o) (inc line-number)))
+                                 folded-regions))]
+    (:after-string overlay "...")))
+
 (rf/reg-sub
  ::window-visible-lines
  (fn [[_ window-id]]
@@ -588,3 +631,29 @@
              (when (and (<= start cursor-pos) (< cursor-pos end))
                entry))
            entries))))
+
+;; -- Font-Lock Text Properties Subscriptions (Issue #130) --
+
+(rf/reg-sub
+ ::window-text-properties
+ (fn [[_ window-id]]
+   (rf/subscribe [::window-buffer window-id]))
+ (fn [buffer _]
+   "Get text properties for a specific window's buffer"
+   (get buffer :text-properties {})))
+
+(rf/reg-sub
+ ::window-face-intervals
+ (fn [[_ window-id]]
+   (rf/subscribe [::window-text-properties window-id]))
+ (fn [text-props _]
+   "Get face intervals from text properties for syntax highlighting"
+   (get text-props :face [])))
+
+(rf/reg-sub
+ ::window-font-lock-enabled?
+ (fn [[_ window-id]]
+   (rf/subscribe [::window-buffer window-id]))
+ (fn [buffer _]
+   "Check if font-lock mode is enabled for this buffer"
+   (get buffer :font-lock-mode false)))

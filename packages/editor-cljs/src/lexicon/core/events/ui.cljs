@@ -1005,13 +1005,21 @@
        (cond
          ;; Directory in file completion: update path and refresh completions
          is-directory?
-         (let [new-db (-> db
-                          (assoc-in [:minibuffer :input] candidate)
-                          (assoc-in [:minibuffer :last-tab-input] nil)
-                          (assoc-in [:minibuffer :cycling?] false)
-                          (assoc-in [:minibuffer :completion-index] -1)
+         (let [;; Update BOTH minibuffer stack frame AND legacy map
+               ;; This ensures the change survives sync-to-legacy calls
+               new-db (-> db
+                          ;; Update stack frame first
+                          (minibuffer/update-current-frame
+                           {:input candidate
+                            :last-tab-input nil
+                            :cycling? false
+                            :completion-index -1})
+                          ;; Sync to legacy map
+                          minibuffer/sync-to-legacy
+                          ;; Delete completions window
                           delete-completions-window
-                          (assoc :cursor-owner :minibuffer))]  ; Return cursor to minibuffer
+                          ;; Return cursor to minibuffer
+                          (assoc :cursor-owner :minibuffer))]
            {:db new-db
             :fx [[:dom/focus-minibuffer nil]
                  [:dispatch [:find-file/update-completions candidate]]]})
@@ -1019,20 +1027,23 @@
          ;; File in file completion: confirm and open file
          is-file-completion?
          {:db (-> db
-                    (assoc-in [:minibuffer :input] candidate)
-                    delete-completions-window
-                    (assoc :cursor-owner :minibuffer))
-            :fx [[:dispatch [:minibuffer/confirm]]]})
+                  (minibuffer/update-current-frame {:input candidate})
+                  minibuffer/sync-to-legacy
+                  delete-completions-window
+                  (assoc :cursor-owner :minibuffer))
+          :fx [[:dispatch [:minibuffer/confirm]]]}
 
          ;; Other completion types: just insert and close
          :else
          {:db (-> db
-                  (assoc-in [:minibuffer :input] candidate)
-                  (assoc-in [:minibuffer :last-tab-input] nil)
+                  (minibuffer/update-current-frame
+                   {:input candidate
+                    :last-tab-input nil})
+                  minibuffer/sync-to-legacy
                   delete-completions-window
                   (assoc :cursor-owner :minibuffer))
           :fx [[:dom/focus-minibuffer nil]]}))
-     {:db db}))
+     {:db db})))
 
 (rf/reg-event-fx
  :completion-list/quit

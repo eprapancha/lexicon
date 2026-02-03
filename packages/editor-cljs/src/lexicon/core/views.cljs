@@ -9,7 +9,9 @@
             [lexicon.core.modes.hl-line]
             [lexicon.core.modes.show-paren]
             [lexicon.core.modes.whitespace :as whitespace]
-            [lexicon.core.modes.display-line-numbers]))
+            [lexicon.core.modes.display-line-numbers]
+            [lexicon.core.faces :as faces]
+            [lexicon.core.ui.mode-line :as mode-line]))
 
 ;; -- Input Event Handling --
 
@@ -199,6 +201,94 @@
 
         ;; Return combined segments
         (into [:span.line-content {:style {:color "#d4d4d4"}}] @segments)))))
+
+;; =============================================================================
+;; Font-Lock Rendering (Issue #130)
+;; =============================================================================
+
+(defn- get-face-color
+  "Get the foreground color for a face from the current theme."
+  [theme face-keyword]
+  (faces/get-face-foreground theme face-keyword))
+
+(defn apply-font-lock-to-line
+  "Apply font-lock face colors to a line of text.
+
+   Args:
+     line-text - The text of the line
+     line-start-pos - The absolute character position where this line starts
+     face-intervals - Vector of {:start :end :value face-keyword} intervals
+     theme - Current theme keyword (e.g., :modus-vivendi)
+     default-color - Default text color
+
+   Returns:
+     Hiccup vector with colored spans."
+  [line-text line-start-pos face-intervals theme default-color]
+  (let [line-end-pos (+ line-start-pos (count line-text))
+        ;; Find intervals that overlap with this line
+        overlapping (filter (fn [{:keys [start end]}]
+                              (and (< start line-end-pos)
+                                   (> end line-start-pos)))
+                            face-intervals)]
+    (if (empty? overlapping)
+      ;; No face intervals, return plain text with default color
+      [:span.line-content {:style {:color default-color}} line-text]
+      ;; Build colored spans
+      (let [;; Create change points within this line
+            changes (atom (sorted-set 0 (count line-text)))
+            _ (doseq [{:keys [start end]} overlapping]
+                (let [rel-start (max 0 (- start line-start-pos))
+                      rel-end (min (count line-text) (- end line-start-pos))]
+                  (when (< rel-start (count line-text))
+                    (swap! changes conj rel-start))
+                  (when (and (> rel-end 0) (<= rel-end (count line-text)))
+                    (swap! changes conj rel-end))))
+            positions (vec @changes)
+            ;; Build spans
+            spans (atom [])]
+        (doseq [i (range (dec (count positions)))]
+          (let [span-start (nth positions i)
+                span-end (nth positions (inc i))
+                span-text (subs line-text span-start span-end)
+                abs-pos (+ line-start-pos span-start)
+                ;; Find the face at this position
+                face (some (fn [{:keys [start end value]}]
+                             (when (and (<= start abs-pos) (< abs-pos end))
+                               value))
+                           overlapping)
+                color (if face
+                        (or (get-face-color theme face) default-color)
+                        default-color)
+                ;; Get additional face attributes (bold, italic)
+                face-def (when face (get faces/default-faces face))
+                weight (when (= (:weight face-def) :bold) "bold")
+                slant (when (= (:slant face-def) :italic) "italic")]
+            (when (seq span-text)
+              (swap! spans conj
+                     [:span {:style (cond-> {:color color}
+                                      weight (assoc :font-weight weight)
+                                      slant (assoc :font-style slant))}
+                      span-text]))))
+        (into [:span.line-content] @spans)))))
+
+(defn render-line-with-font-lock
+  "Render a line with font-lock highlighting, falling back to decorations.
+
+   This is the main entry point for line rendering with syntax highlighting.
+   It combines font-lock faces from text properties with decoration-based
+   highlighting (diagnostics, region, paren matching, etc.)."
+  [line-text line-number line-start-pos face-intervals theme decorations default-color]
+  (let [;; First apply font-lock faces
+        font-locked (apply-font-lock-to-line line-text line-start-pos face-intervals theme default-color)
+        ;; Check for line-level decorations (diagnostics, etc.)
+        line-decorations (filter #(= (:line (:from %)) line-number) decorations)
+        line-diagnostics (filter #(= (:type %) :diagnostic) line-decorations)]
+    (if (empty? line-decorations)
+      ;; No decorations, just return font-locked content
+      font-locked
+      ;; Apply decorations on top of font-locked content
+      ;; For now, decorations take priority over font-lock for their spans
+      (apply-decorations-to-line line-text line-number decorations))))
 
 (defn linear-to-line-col
   "Convert linear position to line/column coordinates"
@@ -546,6 +636,10 @@
           is-completions-buffer? (= buffer-name "*Completions*")  ; Issue #137: Clickable completions
           ;; Issue #138: For *Completions*, get span-based cursor highlight instead of hl-line
           current-entry @(rf/subscribe [:completion-help/current-entry])
+          ;; Issue #130: Font-lock syntax highlighting
+          face-intervals @(rf/subscribe [:lexicon.core.subs/window-face-intervals window-id])
+          font-lock-enabled? @(rf/subscribe [:lexicon.core.subs/window-font-lock-enabled? window-id])
+          current-theme @(rf/subscribe [:current-theme])
           region-active? (not (nil? mark-position))
           region-decorations (when region-active?
                               (create-region-decorations mark-position cursor-pos buffer-content))
@@ -644,13 +738,25 @@
       ;; Render visible lines
       (when visible-lines
         (let [lines (clojure.string/split visible-lines #"\n" -1)
+              all-buffer-lines (when buffer-content (clojure.string/split buffer-content #"\n" -1))
               current-line (when cursor-pos (:line cursor-pos))
               ;; Issue #137: Ensure cursor line is in visible viewport to prevent ghost highlights
               viewport-start (:start-line viewport 0)
               viewport-end (:end-line viewport 1000)
               cursor-in-viewport? (and current-line
                                        (>= current-line viewport-start)
-                                       (<= current-line viewport-end))]
+                                       (<= current-line viewport-end))
+              ;; Issue #130: Calculate line start positions for font-lock
+              ;; Pre-compute cumulative character positions for each line
+              line-start-positions (when (and font-lock-enabled? (seq face-intervals))
+                                     (loop [positions [0]
+                                            line-idx 0]
+                                       (if (>= line-idx (count all-buffer-lines))
+                                         positions
+                                         (let [line-len (count (nth all-buffer-lines line-idx ""))
+                                               next-pos (+ (peek positions) line-len 1)]  ; +1 for newline
+                                           (recur (conj positions next-pos) (inc line-idx))))))
+              default-color "#d4d4d4"]
           (for [[idx line] (map-indexed vector lines)]
             (let [line-number (+ viewport-start idx)
                   ;; Issue #138: For *Completions*, don't use full-line hl-line highlighting
@@ -674,12 +780,15 @@
                   ;; Apply whitespace visualization when enabled
                   display-line (if whitespace-enabled?
                                  (whitespace/visualize-whitespace line)
-                                 line)]
+                                 line)
+                  ;; Issue #130: Get line start position for font-lock
+                  line-start-pos (when line-start-positions
+                                   (get line-start-positions line-number 0))]
               ^{:key (str window-id "-" line-number)}  ;; Unique key per window to avoid React key collisions
               [:div.text-line
                {:class (when is-completion-entry? "completion-entry")
                 :style (cond-> {:min-height (str line-height "px")
-                                :color "#d4d4d4"}
+                                :color default-color}
                          ;; Add hl-line background when enabled and on current line (non-completions)
                          is-current-line? (assoc :background-color "rgba(80, 80, 120, 0.6)"))}
                ;; Issue #138: Apply span-based highlighting for *Completions* entries
@@ -704,8 +813,11 @@
                       [:span {:style {:background-color "rgba(80, 80, 120, 0.6)"}}
                        highlight-span])
                     (when after-span [:span after-span])])
-                 ;; Normal line rendering
-                 (apply-decorations-to-line display-line line-number decorations))]))))
+                 ;; Issue #130: Use font-lock rendering when enabled, otherwise fall back to decorations
+                 (if (and font-lock-enabled? (seq face-intervals) line-start-pos)
+                   (render-line-with-font-lock display-line line-number line-start-pos
+                                               face-intervals current-theme decorations default-color)
+                   (apply-decorations-to-line display-line line-number decorations)))]))))
 
       ;; Cursor - Issue #62: cursor singleton, Issue #137: block cursor
       ;; Active cursor: filled block with inverted character
@@ -763,6 +875,7 @@
   [window-id is-active?]
   (let [window @(rf/subscribe [:lexicon.core.subs/window-by-id window-id])
         buffer @(rf/subscribe [:lexicon.core.subs/window-buffer window-id])
+        buffer-id (:id buffer)
         cursor-pos @(rf/subscribe [:lexicon.core.subs/window-cursor-position window-id])
         show-line-numbers? @(rf/subscribe [:show-line-numbers?])
         show-column-number? @(rf/subscribe [:show-column-number?])
@@ -770,7 +883,9 @@
         mode-line-inactive-style @(rf/subscribe [:theme-face :mode-line-inactive])
         buffer-id-style @(rf/subscribe [:theme-face :mode-line-buffer-id])
         effective-style (if is-active? mode-line-style mode-line-inactive-style)
-        buffer-modified? (:is-modified? buffer false)]
+        buffer-modified? (:is-modified? buffer false)
+        ;; Issue #130: Which-func display
+        which-func-display @(rf/subscribe [:which-func/mode-line-display buffer-id])]
     [:div.window-mode-line.status-bar  ; Add .status-bar for E2E test compatibility (Issue #66)
      {:style (merge effective-style
                     {:height "24px"
@@ -799,6 +914,13 @@
       {:style (merge buffer-id-style {:margin-right "10px"})}
       (:name buffer)]
 
+     ;; Issue #130: Which-func display (current function name)
+     (when which-func-display
+       [:span.which-func-info
+        {:style {:margin-right "10px"
+                 :color (:color effective-style "#888888")}}
+        which-func-display])
+
      [:div.spacer {:style {:flex "1"}}]
 
      ;; Position indicator (Top/Bot/All/N%)
@@ -822,11 +944,11 @@
              (when show-column-number?
                (str "C" (:column cursor-pos)))))]
 
-     ;; Major mode
-     [:span.mode-info
+     ;; Major mode (Emacs format: mode-name in parentheses)
+     [:span.mode-info.mode-line
       {:style {:margin-left "10px"}}
       (when-let [mode (:major-mode buffer)]
-        (str "(" (clojure.string/capitalize (name mode)) ")"))
+        (str "(" (mode-line/get-mode-name mode (:mode-data buffer {})) ")"))
       ;; Minor mode indicators
       (let [minor-modes (filter identity
                                 [(when show-line-numbers? "L")
@@ -1403,11 +1525,11 @@
                (when show-column-number?
                  (str "C" (:column cursor-pos)))))]
 
-       ;; Major mode
-       [:span.mode-info
+       ;; Major mode (Emacs format: mode-name in parentheses)
+       [:span.mode-info.mode-line
         {:style {:margin-left "10px"}}
         (when-let [mode (:major-mode active-buffer)]
-          (str "(" (clojure.string/capitalize (name mode)) ")"))
+          (str "(" (mode-line/get-mode-name mode (:mode-data active-buffer {})) ")"))
         ;; Minor mode indicators
         (let [minor-modes (filter identity
                                   [(when show-line-numbers? "L")

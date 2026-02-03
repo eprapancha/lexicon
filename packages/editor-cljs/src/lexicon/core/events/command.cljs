@@ -91,8 +91,12 @@
  :execute-command
  (fn [{:keys [db]} [_ command-name & args]]
    "Execute a command by name from the central registry with before/after hooks and undo boundaries"
-   (log/info (str "execute-command: " command-name " args: " (pr-str args)))
-   (let [command-def (get-in db [:commands command-name])
+   ;; Normalize command name to keyword (keymaps may pass symbols)
+   (let [command-name (if (symbol? command-name)
+                        (keyword command-name)
+                        command-name)]
+     (log/info (str "execute-command: " command-name " args: " (pr-str args)))
+     (let [command-def (get-in db [:commands command-name])
          active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ;; Phase 6.5: Use new prefix-arg location
@@ -145,7 +149,7 @@
                                                     :context exec-context}])
                 ;; Phase 6.5: Clear prefix-arg and transient-keymap after command execution
                 should-clear-prefix? (conj [:dispatch [:clear-prefix-arg]]))})
-       {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]}))))
+       {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]})))))
 
 ;; -- Command Lifecycle Undo Integration --
 
@@ -629,6 +633,111 @@
                   (assoc-in [:buffers buffer-id] new-buffer))
          :fx [[:dispatch [:switch-buffer buffer-id]]]})))))
 
+;; describe-mode - Show information about current modes (C-h m)
+(rf/reg-event-fx
+ :describe-mode
+ (fn [{:keys [db]} [_]]
+   "Describe current major and minor modes (C-h m)"
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer (get-in db [:buffers (:buffer-id active-window)])
+         major-mode (:major-mode active-buffer :fundamental-mode)
+         minor-modes (:minor-modes active-buffer #{})
+
+         ;; Get mode documentation from commands registry
+         major-doc (get-in db [:commands major-mode :docstring] "No documentation available")
+
+         ;; Format minor modes section
+         minor-section (if (seq minor-modes)
+                        (str "\nMinor modes enabled:\n"
+                             (clojure.string/join "\n"
+                               (map (fn [mode]
+                                     (let [doc (get-in db [:commands mode :docstring] "")]
+                                       (str "  " (name mode)
+                                            (when (not-empty doc)
+                                              (str ": " doc)))))
+                                    (sort minor-modes))))
+                        "\nNo minor modes enabled.")
+
+         content (str "Current mode: " (name major-mode) "\n\n"
+                     major-doc "\n"
+                     minor-section "\n")
+
+         buffers (:buffers db)
+         help-buffer (first (filter #(= (:name %) "*Help*") (vals buffers)))]
+
+     (if help-buffer
+       ;; Update existing help buffer
+       (let [buffer-id (:id help-buffer)
+             ^js wasm-instance (:wasm-instance help-buffer)
+             current-length (.length wasm-instance)
+             lines (clojure.string/split content #"\n" -1)
+             line-count (count lines)]
+         (.delete wasm-instance 0 current-length)
+         (.insert wasm-instance 0 content)
+         {:db (-> db
+                  (assoc-in [:buffers buffer-id :cache :text] content)
+                  (assoc-in [:buffers buffer-id :cache :line-count] line-count))
+          :fx [[:dispatch [:buffer/increment-version buffer-id]]
+               [:dispatch [:switch-buffer buffer-id]]]})
+       ;; Create new help buffer
+       (let [buffer-id (db/next-buffer-id buffers)
+             WasmGapBuffer (get-in db [:system :wasm-constructor])
+             lines (clojure.string/split content #"\n" -1)
+             line-count (count lines)
+             wasm-instance (WasmGapBuffer. content)
+             new-buffer {:id buffer-id
+                        :wasm-instance wasm-instance
+                        :file-handle nil
+                        :name "*Help*"
+                        :is-modified? false
+                        :major-mode :help-mode
+                        :minor-modes #{}
+                        :buffer-local-vars {}
+                        :ast nil
+                        :language :text
+                        :diagnostics []
+                        :undo-stack []
+                        :undo-in-progress? false
+                        :editor-version 0
+                        :cache {:text content
+                                :line-count line-count}}]
+         {:db (-> db
+                  (assoc-in [:buffers buffer-id] new-buffer))
+         :fx [[:dispatch [:switch-buffer buffer-id]]]})))))
+
+;; describe-key-briefly - Show key binding briefly (C-h c)
+(rf/reg-event-fx
+ :describe-key-briefly
+ (fn [{:keys [db]} [_]]
+   "Describe what a key does briefly (C-h c) - shows in echo area"
+   {:db (-> db
+            (assoc-in [:help :awaiting-key?] true)
+            (assoc-in [:help :callback] [:describe-key-briefly/show]))
+    :fx [[:dispatch [:echo/message "Describe key briefly: "]]]}))
+
+(rf/reg-event-fx
+ :describe-key-briefly/show
+ (fn [{:keys [db]} [_ key-str]]
+   "Show brief description of a key binding in echo area"
+   (let [keymaps (:keymaps db)
+         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer (get-in db [:buffers (:buffer-id active-window)])
+         major-mode (:major-mode active-buffer :fundamental-mode)
+
+         ;; Look up key in keymaps (major mode first, then global)
+         major-bindings (get-in keymaps [:major major-mode])
+         global-bindings (get-in keymaps [:global])
+         mode-bindings (get-in keymaps [:mode major-mode])
+         command (or (get major-bindings key-str)
+                    (get mode-bindings key-str)
+                    (get global-bindings key-str))
+
+         message (if command
+                  (str key-str " runs " (name command))
+                  (str key-str " is undefined"))]
+     {:db (assoc-in db [:help :awaiting-key?] false)
+      :fx [[:dispatch [:echo/message message]]]})))
+
 (rf/reg-event-fx
  :help-for-help
  (fn [{:keys [db]} [_]]
@@ -636,10 +745,15 @@
    (let [content "Help Commands:
 
 C-h k   Describe key: show what a key does
+C-h c   Describe key briefly: show command name only
 C-h f   Describe function: show command documentation
+C-h v   Describe variable: show variable value and documentation
+C-h m   Describe mode: show current major and minor modes
 C-h b   Describe bindings: list all keybindings
 C-h a   Apropos command: search commands by pattern
 C-h ?   This help menu
+
+Press 'q' in *Help* buffer to close it.
 "
 
          buffers (:buffers db)
@@ -685,6 +799,13 @@ C-h ?   This help menu
                   (assoc-in [:buffers buffer-id] new-buffer))
          :fx [[:dispatch [:switch-buffer buffer-id]]]})))))
 
+;; help/quit - Close the help buffer (q in help-mode)
+(rf/reg-event-fx
+ :help/quit
+ (fn [{:keys [db]} [_]]
+   "Close the *Help* buffer and return to previous buffer"
+   {:fx [[:dispatch [:kill-buffer-by-name ""]]]}))
+
 ;; =============================================================================
 ;; Mode Initialization Commands
 ;; =============================================================================
@@ -693,7 +814,8 @@ C-h ?   This help menu
  :initialize-mode-commands
  (fn [{:keys [db]} [_]]
    "Initialize mode-related commands"
-   {:fx [[:dispatch [:register-command :fundamental-mode
+   {:fx [;; Major modes
+         [:dispatch [:register-command :fundamental-mode
                     {:docstring "Switch to fundamental mode"
                      :handler [:set-major-mode :fundamental-mode]}]]
          [:dispatch [:register-command :text-mode
@@ -702,6 +824,26 @@ C-h ?   This help menu
          [:dispatch [:register-command :clojure-mode
                     {:docstring "Switch to Clojure mode"
                      :handler [:set-major-mode :clojure-mode]}]]
+         ;; Issue #130: Additional programming modes
+         [:dispatch [:register-command :javascript-mode
+                    {:docstring "Switch to JavaScript mode"
+                     :handler [:set-major-mode :javascript-mode]}]]
+         [:dispatch [:register-command :python-mode
+                    {:docstring "Switch to Python mode"
+                     :handler [:set-major-mode :python-mode]}]]
+         [:dispatch [:register-command :rust-mode
+                    {:docstring "Switch to Rust mode"
+                     :handler [:set-major-mode :rust-mode]}]]
+         [:dispatch [:register-command :html-mode
+                    {:docstring "Switch to HTML mode"
+                     :handler [:set-major-mode :html-mode]}]]
+         [:dispatch [:register-command :css-mode
+                    {:docstring "Switch to CSS mode"
+                     :handler [:set-major-mode :css-mode]}]]
+         [:dispatch [:register-command :markdown-mode
+                    {:docstring "Switch to Markdown mode"
+                     :handler [:set-major-mode :markdown-mode]}]]
+         ;; Minor modes
          [:dispatch [:register-command :line-number-mode
                     {:docstring "Toggle line number display"
                      :handler [:toggle-minor-mode :line-number-mode]}]]
@@ -783,6 +925,15 @@ C-h ?   This help menu
          [:dispatch [:register-command :help-for-help
                     {:docstring "Show help menu"
                      :handler [:help-for-help]}]]
+         [:dispatch [:register-command :describe-mode
+                    {:docstring "Describe current major and minor modes (C-h m)"
+                     :handler [:describe-mode]}]]
+         [:dispatch [:register-command :describe-key-briefly
+                    {:docstring "Describe key binding briefly (C-h c)"
+                     :handler [:describe-key-briefly]}]]
+         [:dispatch [:register-command :help/quit
+                    {:docstring "Close help buffer"
+                     :handler [:help/quit]}]]
          [:dispatch [:register-command :keyboard-quit
                     {:docstring "Cancel current operation"
                      :handler [:keyboard-quit]}]]

@@ -1935,6 +1935,17 @@
     (rf/dispatch-sync [:keymap/set-local buffer-id key-sequence command])
     nil))
 
+(defn define-key-for-mode
+  "Bind KEY-SEQUENCE to COMMAND in MODE's keymap.
+
+  Issue #139: Mode-specific keybindings for packages like Dired.
+
+  Usage: (define-key-for-mode 'dired-mode \"n\" 'dired-next-line)
+  Returns: nil (side effect only)"
+  [mode key-sequence command]
+  (rf/dispatch-sync [:keymap/set-mode-key mode key-sequence command])
+  nil)
+
 (defn key-binding
   "Look up KEY-SEQUENCE and return bound command.
 
@@ -2079,6 +2090,20 @@
   Returns: Boolean"
   [file-path]
   (some? (file-attributes file-path)))
+
+(defn find-file
+  "Visit file at PATH.
+
+  Issue #139: Used by dired-find-file to open files.
+  If the file is in a granted directory (FS Access API), opens it directly.
+  Otherwise, may prompt for file access.
+
+  Usage: (find-file \"/home/user/file.txt\")
+  Returns: nil"
+  [path]
+  ;; Dispatch the find-file event which handles FS Access API integration
+  (rf/dispatch-sync [:find-file/from-path path])
+  nil)
 
 (defn insert-directory
   "Insert directory listing for DIR at point.
@@ -2739,6 +2764,7 @@
    ;; Keymaps
    'global-set-key global-set-key
    'local-set-key local-set-key
+   'define-key-for-mode define-key-for-mode
    'key-binding key-binding
    ;; Commands
    'call-interactively call-interactively
@@ -2758,6 +2784,7 @@
    'file-attributes file-attributes
    'file-directory-p file-directory-p
    'file-exists-p file-exists-p
+   'find-file find-file
    'insert-directory insert-directory
    ;; Phase 6.6: Narrowing (Issue #100)
    'narrow-to-region narrow-to-region

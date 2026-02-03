@@ -36,13 +36,19 @@
    :bg-prompt "#f0f0f0"
    :fg-prompt "#0031a9"  ; Blue for prompts
 
-   ;; Syntax highlighting (basic set)
-   :keyword "#5317ac"     ; Purple
-   :string "#2a5045"      ; Green
-   :comment "#505050"     ; Gray
-   :number "#0000c0"      ; Blue
-   :function "#721045"    ; Magenta
-   :variable "#00538b"    ; Cyan
+   ;; Syntax highlighting (Modus Operandi colors)
+   :keyword "#5317ac"           ; Purple - keywords
+   :string "#2a5045"            ; Green - strings
+   :comment "#505050"           ; Gray - comments
+   :number "#0000c0"            ; Blue - numbers
+   :function "#721045"          ; Magenta - function names
+   :variable "#00538b"          ; Cyan - variable names
+   :type-face "#005a5f"         ; Teal - type names
+   :constant "#0000c0"          ; Blue - constants
+   :builtin "#8f0075"           ; Magenta - built-in functions
+   :warning "#70480f"           ; Orange - warnings
+   :preprocessor "#005f88"      ; Blue-cyan - preprocessor
+   :comment-delimiter "#505050" ; Gray - comment delimiters
 
    ;; Special highlights
    :region-bg "#bcbcbc"
@@ -77,13 +83,19 @@
    :bg-prompt "#1e1e1e"
    :fg-prompt "#00d3d0"  ; Cyan for prompts
 
-   ;; Syntax highlighting (basic set)
-   :keyword "#b6a0ff"     ; Purple
-   :string "#44bc44"      ; Green
-   :comment "#989898"     ; Gray
-   :number "#00bcff"      ; Blue
-   :function "#feacd0"    ; Magenta
-   :variable "#00d3d0"    ; Cyan
+   ;; Syntax highlighting (Modus Vivendi colors)
+   :keyword "#b6a0ff"           ; Purple - keywords
+   :string "#44bc44"            ; Green - strings
+   :comment "#989898"           ; Gray - comments
+   :number "#00bcff"            ; Blue - numbers
+   :function "#feacd0"          ; Magenta - function names
+   :variable "#00d3d0"          ; Cyan - variable names
+   :type-face "#6ae4b9"         ; Teal - type names
+   :constant "#00bcff"          ; Blue - constants
+   :builtin "#f78fe7"           ; Magenta - built-in functions
+   :warning "#d0bc00"           ; Yellow - warnings
+   :preprocessor "#00d3d0"      ; Cyan - preprocessor
+   :comment-delimiter "#989898" ; Gray - comment delimiters
 
    ;; Special highlights
    :region-bg "#3c3c3c"
@@ -154,7 +166,27 @@
     :weight :bold}
 
    :font-lock-variable-name-face
-   {:foreground :variable}})
+   {:foreground :variable}
+
+   :font-lock-type-face
+   {:foreground :type-face}
+
+   :font-lock-constant-face
+   {:foreground :constant}
+
+   :font-lock-builtin-face
+   {:foreground :builtin}
+
+   :font-lock-warning-face
+   {:foreground :warning
+    :weight :bold}
+
+   :font-lock-preprocessor-face
+   {:foreground :preprocessor}
+
+   :font-lock-comment-delimiter-face
+   {:foreground :comment-delimiter
+    :slant :italic}})
 
 ;; -- Theme Registry --
 

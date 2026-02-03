@@ -68,6 +68,7 @@
     ;; 0. Transient keymap (for C-u accumulation)
     ;; 1. Active minor mode keymaps (in reverse order of activation)
     ;; 2. Active major mode keymap
+    ;; 2.5. Mode-specific bindings (Issue #139: from define-key-for-mode)
     ;; 3. Global keymap
     ;; Each keymap can have a parent chain
 
@@ -83,6 +84,10 @@
 
      ;; 2. Check major mode keymap (with parent chain)
      (lookup-key-in-keymap keymaps [:major major-mode] key-sequence-str)
+
+     ;; 2.5. Issue #139: Check mode-specific keymaps (from define-key-for-mode)
+     ;; These are stored at [:keymaps :mode mode key-sequence]
+     (get-in keymaps [:mode major-mode key-sequence-str])
 
      ;; 3. Check global keymap (with parent chain)
      (lookup-key-in-keymap keymaps [:global] key-sequence-str)
@@ -347,6 +352,20 @@
      command - Keyword or function to invoke"
    (assoc-in db [:buffers buffer-id :local-keymap key-sequence] command)))
 
+(rf/reg-event-db
+ :keymap/set-mode-key
+ (fn [db [_ mode key-sequence command]]
+   "Set a mode-specific keybinding (Issue #139).
+
+   Args:
+     mode - Mode symbol (e.g., 'dired-mode)
+     key-sequence - String like \"n\" or \"RET\"
+     command - Command symbol or function to invoke
+
+   Mode keymaps are checked after local keymaps but before global."
+   (let [mode-kw (if (symbol? mode) (keyword mode) mode)]
+     (assoc-in db [:keymaps :mode mode-kw key-sequence] command))))
+
 (rf/reg-event-fx
  :input/keys
  (fn [{:keys [db]} [_ key-sequence]]
@@ -362,9 +381,13 @@
                         (str pending " " key-sequence))
          active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          buffer-id (:buffer-id active-window)
+         ;; Issue #139: Get buffer's major mode for mode-specific keymaps
+         buffer-mode (get-in db [:buffers buffer-id :major-mode])
 
-         ;; Try to resolve: buffer-local first, then global
+         ;; Try to resolve: buffer-local -> mode keymap -> global
          command (or (get-in db [:buffers buffer-id :local-keymap full-sequence])
+                     (when buffer-mode
+                       (get-in db [:keymaps :mode buffer-mode full-sequence]))
                      (get-in db [:keymaps :global :bindings full-sequence]))]
 
      (if command

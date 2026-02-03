@@ -455,58 +455,67 @@
              WasmGapBuffer (get-in db [:system :wasm-constructor])
              ;; Generate buffer list content
              buffer-lines (map (fn [buf]
-                                (str (if (:is-modified? buf) " *" "  ")
-                                     " "
-                                     (:name buf)
-                                     "  "
-                                     (or (:file-handle buf) "")))
-                              (sort-by :id (vals buffers)))
+                                 (str (if (:is-modified? buf) " *" "  ")
+                                      " "
+                                      (:name buf)
+                                      "  "
+                                      (or (:file-handle buf) "")))
+                               (sort-by :id (vals buffers)))
              header "MR Buffer           File\n-- ------           ----\n"
              content (str header (clojure.string/join "\n" buffer-lines))
              lines (clojure.string/split content #"\n" -1)
              line-count (count lines)
-             wasm-instance (WasmGapBuffer. content)]
-
-         (let [new-buffer {:id buffer-id
-                          :wasm-instance wasm-instance
-                          :file-handle nil
-                          :name "*Buffer List*"
-                          :is-modified? false
-                          :mark-position nil
-                          :cursor-position {:line 0 :column 0}
-                          :selection-range nil
-                          :major-mode :buffer-menu-mode
-                          :minor-modes #{}
-                          :buffer-local-vars {}
-                          :ast nil
-                          :language :text
-                          :diagnostics []
-                          :undo-stack []
-                          :undo-in-progress? false
-                          :editor-version 0
-                          :cache {:text content
-                                  :line-count line-count}}]
-           {:db (-> db
-                    (assoc-in [:buffers buffer-id] new-buffer)
-                    (assoc-in [:windows (:active-window-id db) :buffer-id] buffer-id))}))))))
+             wasm-instance (when WasmGapBuffer (WasmGapBuffer. content))
+             new-buffer {:id buffer-id
+                         :wasm-instance wasm-instance
+                         :file-handle nil
+                         :name "*Buffer List*"
+                         :is-modified? false
+                         :mark-position nil
+                         :cursor-position {:line 0 :column 0}
+                         :selection-range nil
+                         :major-mode :buffer-menu-mode
+                         :minor-modes #{}
+                         :buffer-local-vars {}
+                         :ast nil
+                         :language :text
+                         :diagnostics []
+                         :undo-stack []
+                         :undo-in-progress? false
+                         :editor-version 0
+                         :cache {:text content
+                                 :line-count line-count}}]
+         (if-not wasm-instance
+           ;; WASM not available - log error
+           {:fx [[:dispatch [:echo/message "Error: WASM not initialized"]]]}
+           ;; Create buffer and then dispatch switch-buffer
+           {:db (assoc-in db [:buffers buffer-id] new-buffer)
+            :fx [[:dispatch [:switch-buffer buffer-id]]]}))))))
 
 (rf/reg-event-fx
  :buffer-menu/select-buffer
  (fn [{:keys [db]} [_]]
    "Select buffer at current line in buffer-menu-mode (RET key)"
-   (let [active-buffer-id (get-in db [:windows (:active-window-id db) :buffer-id])
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
          active-buffer (get-in db [:buffers active-buffer-id])
-         cursor-line (get-in active-buffer [:cursor-position :line] 0)]
+         ;; Get cursor line from linear position (same as get-current-line-in-buffer-menu)
+         cursor-pos (get-in db [:ui :cursor-position] 0)
+         ^js wasm (get-in db [:buffers active-buffer-id :wasm-instance])
+         text (when wasm (.getText wasm))
+         cursor-line (if text
+                       (count (filter #(= % \newline) (take cursor-pos text)))
+                       0)]
      ;; Skip header lines (first 2 lines)
      (if (< cursor-line 2)
-       {:db db}
-       (let [buffer-content (get-in active-buffer [:cache :text] "")
-             lines (clojure.string/split buffer-content #"\n" -1)
+       {:fx [[:dispatch [:echo/message "No buffer on this line"]]]}
+       (let [lines (when text (clojure.string/split text #"\n" -1))
              selected-line (nth lines cursor-line nil)
-             ;; Extract buffer name from line (format: " * BufferName  FilePath")
-             ;; Buffer name starts at column 4 and ends before two consecutive spaces
-             buffer-name (when selected-line
-                          (let [trimmed (subs selected-line 4) ; Skip "MR " prefix
+             ;; Extract buffer name from line (format: "MR Name  File")
+             ;; MR is 2 chars (modified/readonly flags), then 1 space, then name
+             ;; Buffer name starts at column 3 and ends before two consecutive spaces
+             buffer-name (when (and selected-line (>= (count selected-line) 3))
+                          (let [trimmed (subs selected-line 3) ; Skip "MR " prefix (3 chars)
                                 name-part (first (clojure.string/split trimmed #"\s{2,}"))]
                             (clojure.string/trim name-part)))
              ;; Find the buffer with this name
@@ -514,9 +523,8 @@
                             (first (filter #(= (:name %) buffer-name) (vals (:buffers db)))))
              target-id (:id target-buffer)]
          (if target-id
-           {:fx [[:dispatch [:switch-buffer target-id]]
-                 [:dispatch [:kill-buffer-by-id (:id active-buffer)]]]}
-           {:db db}))))))
+           {:fx [[:dispatch [:switch-buffer target-id]]]}
+           {:fx [[:dispatch [:echo/message (str "Buffer not found: " buffer-name)]]]}))))))
 
 ;; -- File I/O Events --
 
@@ -875,29 +883,46 @@
          detected-language (detect-language-from-filename name)
          lines (clojure.string/split content #"\n" -1)
          line-count (count lines)
-           new-buffer {:id buffer-id
-                       :wasm-instance wasm-instance
-                       :file-handle file-handle
-                       :name name
-                       :is-modified? false
-                       :mark-position nil
-                       :cursor-position {:line 0 :column 0}
-                       :selection-range nil
-                       :major-mode :fundamental-mode
-                       :minor-modes #{}
-                       :buffer-local-vars {}
-                       :ast nil
-                       :language detected-language
-                       :diagnostics []
-                       :undo-stack []
-                       :undo-in-progress? false
-                       :editor-version 0
-                       :cache {:text content
-                               :line-count line-count}}]
+         ;; Issue #130: Detect major mode from filename for font-lock
+         detected-mode (cond
+                         (re-matches #".*\.(clj|cljs|cljc|edn)$" name) :clojure-mode
+                         (re-matches #".*\.(js|jsx|mjs|cjs|ts|tsx)$" name) :javascript-mode
+                         (re-matches #".*\.py$" name) :python-mode
+                         (re-matches #".*\.rs$" name) :rust-mode
+                         (re-matches #".*\.(html|htm)$" name) :html-mode
+                         (re-matches #".*\.(css|scss|less)$" name) :css-mode
+                         (re-matches #".*\.(md|markdown)$" name) :markdown-mode
+                         :else :fundamental-mode)
+         ;; Enable font-lock if global font-lock mode is on (default true)
+         global-font-lock? (get-in db [:settings :global-font-lock-mode] true)
+         new-buffer {:id buffer-id
+                     :wasm-instance wasm-instance
+                     :file-handle file-handle
+                     :name name
+                     :is-modified? false
+                     :mark-position nil
+                     :cursor-position {:line 0 :column 0}
+                     :selection-range nil
+                     :major-mode detected-mode
+                     :minor-modes #{}
+                     :buffer-local-vars {}
+                     :ast nil
+                     :language detected-language
+                     :diagnostics []
+                     :undo-stack []
+                     :undo-in-progress? false
+                     :editor-version 0
+                     :font-lock-mode global-font-lock?  ; Issue #130: Enable font-lock
+                     :text-properties {}                ; Issue #130: Initialize text properties
+                     :cache {:text content
+                             :line-count line-count}}]
        {:db (assoc-in db [:buffers buffer-id] new-buffer)
         :fx [[:dispatch [:switch-buffer buffer-id]]
              [:dispatch [:parser/request-parse buffer-id]]
-             [:dispatch [:lsp/on-buffer-opened buffer-id]]]})))
+             [:dispatch [:lsp/on-buffer-opened buffer-id]]
+             ;; Issue #130: Trigger font-lock fontification after buffer is created
+             (when global-font-lock?
+               [:dispatch [:font-lock/fontify-buffer buffer-id]])]})))
 
 (rf/reg-event-db
  :file-read-failure

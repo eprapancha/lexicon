@@ -18,7 +18,7 @@
             [lexicon.core.modes.special-mode]  ; Load special-mode (Phase 6B Week 3)
             [lexicon.core.ui.mode-line]        ; Load mode-line formatter (Phase 6B Week 3)
             [lexicon.core.modes.help-mode]     ; Load help-mode (Phase 6B Week 3)
-            [lexicon.core.modes.buffer-menu-mode]  ; Load buffer-menu-mode (Phase 6B Week 3)
+            [lexicon.core.modes.buffer-menu-mode :as buffer-menu-mode]  ; Load buffer-menu-mode (Phase 6B Week 3)
             [lexicon.core.ui.themes]           ; Load theme system (Phase 6B Week 4)
             [lexicon.core.completion.metadata] ; Load completion metadata (Phase 6C Week 1-2)
             [lexicon.core.completion.styles]   ; Load completion styles (Phase 6C Week 3-4)
@@ -51,8 +51,11 @@
             [lexicon.core.windmove]            ; Load windmove S-arrow navigation (#117)
             [lexicon.core.winner]              ; Load winner window config undo (#117)
             [lexicon.core.occur]               ; Load occur-mode (#131)
+            [lexicon.core.modes.outline-mode :as outline-mode]  ; Load outline & hideshow (#114)
             [lexicon.core.fs.access :as fs-access]  ; Load File System Access API (#135)
             [lexicon.core.events.ui :as ui-events]  ; Load UI events for command init (#138)
+            [lexicon.core.font-lock :as font-lock]  ; Load font-lock syntax highlighting (#130)
+            [lexicon.core.which-func :as which-func]  ; Load which-func mode (#130)
             [lexicon.core.eval]                ; Load runtime evaluation (Phase 6.5 Week 7-8)
             [lexicon.core.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.core.views :as views]
@@ -170,11 +173,17 @@
                             ;; Expose basic buffer info for testing (Issue #138)
                             buffers-info (into {}
                                                (map (fn [[id buf]]
-                                                      [id {:name (:name buf)
-                                                           :readOnly (:read-only buf)}])
+                                                      (let [wasm (:wasm-instance buf)
+                                                            text (when wasm
+                                                                   (try (.getText wasm)
+                                                                        (catch :default _ "")))]
+                                                        [id {:name (:name buf)
+                                                             :readOnly (:read-only buf)
+                                                             :text (or text "")}]))
                                                     (:buffers app-db)))]
                         #js {:point cursor-pos
                              :buffer (or buffer-text "")
+                             :bufferName (:name buffer)
                              :prefixArg prefix-arg-js
                              :minibufferStack minibuffer-stack-js
                              :messagesBuffer (or messages-text "")
@@ -267,6 +276,18 @@
 
   ;; Initialize occur-mode (#131)
   (lexicon.core.occur/init-occur!)
+
+  ;; Initialize font-lock syntax highlighting (#130)
+  (font-lock/init-font-lock-commands!)
+
+  ;; Initialize which-func mode (#130)
+  (which-func/init-which-func-commands!)
+
+  ;; Initialize buffer-menu-mode (#115)
+  (buffer-menu-mode/init-buffer-menu-commands!)
+
+  ;; Initialize outline-mode and hideshow (#114)
+  (outline-mode/init-outline-minor-mode!)
 
   ;; Initialize File System Access API (#135)
   (fs-access/init-fs-access!)
