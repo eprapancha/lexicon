@@ -575,9 +575,9 @@
 
 (defn- format-completions-buffer
   "Format completions for display in *Completions* buffer.
-   Shows one candidate per line with a marker for the selected item.
+   Shows completions in multi-column layout when possible.
    If selected-index is nil or -1, no item is highlighted.
-   If annotation-fn is provided, appends annotations to each line.
+   If annotation-fn is provided, appends annotations (single column only).
    If strip-prefix is provided, strips it from display (but not value).
 
    Returns a map with:
@@ -585,7 +585,8 @@
    - :entries - Vector of {:start :end :value} for each completion
                 (positions where completions are in the content string)
 
-   Issue #138: Returns position info for text properties."
+   Issue #138: Returns position info for text properties.
+   Issue #138 Phase 5: Multi-column layout support."
   ([candidates] (format-completions-buffer candidates -1 nil nil))
   ([candidates selected-index] (format-completions-buffer candidates selected-index nil nil))
   ([candidates selected-index annotation-fn] (format-completions-buffer candidates selected-index annotation-fn nil))
@@ -602,38 +603,74 @@
                                 candidates)
            ;; Find max display length for alignment
            max-len (apply max (map count display-candidates))
-           ;; Pad to align annotations
-           pad-to (+ max-len 2)
+           ;; Column width = max length + padding
+           col-width (+ max-len 4)
+           ;; Window width (approximate - 80 chars typical)
+           window-width 80
+           ;; Calculate number of columns (at least 1)
+           num-cols (max 1 (int (/ window-width col-width)))
+           ;; Use single column if annotations or if items are very long
+           use-multi-col? (and (nil? annotation-fn) (> num-cols 1))
            ;; Header line
            header "Possible completions:\n"
-           header-len (count header)
-           ;; Build content and track positions
-           {:keys [lines entries]}
-           (reduce
-            (fn [{:keys [lines entries pos]} [idx [cand display-cand]]]
-              (let [prefix "  "  ; Always use "  " prefix (not "> ")
-                    prefix-len (count prefix)
-                    ;; Position where the actual completion text starts
-                    cand-start (+ pos prefix-len)
-                    cand-end (+ cand-start (count display-cand))
-                    ;; Pad candidate for annotation alignment
-                    padded (str display-cand (apply str (repeat (- pad-to (count display-cand)) " ")))
-                    ;; Get annotation if function provided
-                    annotation (when annotation-fn
-                                 (try
-                                   (annotation-fn cand)
-                                   (catch :default _ nil)))
-                    line (str prefix padded (or annotation ""))
-                    line-len (+ (count line) 1)]  ; +1 for newline
-                {:lines (conj lines line)
-                 :entries (conj entries {:start cand-start
-                                         :end cand-end
-                                         :value cand})
-                 :pos (+ pos line-len)}))
-            {:lines [] :entries [] :pos header-len}
-            (map-indexed vector (map vector candidates display-candidates)))]
-       {:content (str header (clojure.string/join "\n" lines))
-        :entries entries}))))
+           header-len (count header)]
+       (if use-multi-col?
+         ;; Multi-column layout
+         (let [paired (map vector candidates display-candidates)
+               rows (partition-all num-cols paired)
+               {:keys [lines entries]}
+               (reduce
+                (fn [{:keys [lines entries pos]} row]
+                  (let [;; Build the line and track entries for this row
+                        row-result
+                        (reduce
+                         (fn [{:keys [line-str row-entries col-pos]} [cand display-cand]]
+                           (let [;; Pad to column width
+                                 padded (str display-cand
+                                             (apply str (repeat (- col-width (count display-cand)) " ")))
+                                 cand-start (+ pos col-pos)
+                                 cand-end (+ cand-start (count display-cand))]
+                             {:line-str (str line-str padded)
+                              :row-entries (conj row-entries {:start cand-start
+                                                              :end cand-end
+                                                              :value cand})
+                              :col-pos (+ col-pos col-width)}))
+                         {:line-str "" :row-entries [] :col-pos 0}
+                         row)
+                        line (clojure.string/trimr (:line-str row-result))
+                        line-len (+ (count line) 1)]  ; +1 for newline
+                    {:lines (conj lines line)
+                     :entries (into entries (:row-entries row-result))
+                     :pos (+ pos line-len)}))
+                {:lines [] :entries [] :pos header-len}
+                rows)]
+           {:content (str header (clojure.string/join "\n" lines))
+            :entries entries})
+         ;; Single-column layout (with annotations support)
+         (let [pad-to (+ max-len 2)
+               {:keys [lines entries]}
+               (reduce
+                (fn [{:keys [lines entries pos]} [idx [cand display-cand]]]
+                  (let [prefix "  "
+                        prefix-len (count prefix)
+                        cand-start (+ pos prefix-len)
+                        cand-end (+ cand-start (count display-cand))
+                        padded (str display-cand (apply str (repeat (- pad-to (count display-cand)) " ")))
+                        annotation (when annotation-fn
+                                     (try
+                                       (annotation-fn cand)
+                                       (catch :default _ nil)))
+                        line (str prefix padded (or annotation ""))
+                        line-len (+ (count line) 1)]
+                    {:lines (conj lines line)
+                     :entries (conj entries {:start cand-start
+                                             :end cand-end
+                                             :value cand})
+                     :pos (+ pos line-len)}))
+                {:lines [] :entries [] :pos header-len}
+                (map-indexed vector (map vector candidates display-candidates)))]
+           {:content (str header (clojure.string/join "\n" lines))
+            :entries entries}))))))
 
 ;; =============================================================================
 ;; Arrow Key Cycling - Vanilla Emacs Style (Issue #137)
@@ -1142,7 +1179,7 @@
 (rf/reg-event-fx
  :completion-list/click-line
  (fn [{:keys [db]} [_ clicked-line]]
-   "Handle click on a line in *Completions* buffer.
+   "Handle click on a line in *Completions* buffer (legacy line-based).
    Parses the clicked line and selects the completion.
    Issue #137: Clickable completion entries."
    (let [candidates (get-in db [:completion-help :candidates] [])
@@ -1154,6 +1191,26 @@
          {:fx [[:dispatch [:completion-list/choose candidate]]]})
        ;; Clicked on header or outside range
        {:db db}))))
+
+(rf/reg-event-fx
+ :completion-list/click-position
+ (fn [{:keys [db]} [_ linear-pos]]
+   "Handle click at a position in *Completions* buffer.
+   Uses text properties to find the completion at the clicked position.
+   Issue #137: Clickable completion entries with text property support."
+   (let [buffer-id (get-in db [:completion-help :buffer-id])
+         text-props (get-in db [:buffers buffer-id :text-properties] {})
+         ;; Get completion value from text property at clicked position
+         completion-value (text-props/get-text-property text-props linear-pos :completion--string)]
+     (if completion-value
+       {:fx [[:dispatch [:completion-list/choose completion-value]]]}
+       ;; Try one position before (in case click was at end of completion)
+       (let [prev-value (when (> linear-pos 0)
+                          (text-props/get-text-property text-props (dec linear-pos) :completion--string))]
+         (if prev-value
+           {:fx [[:dispatch [:completion-list/choose prev-value]]]}
+           ;; Clicked on non-completion area (header, etc.)
+           {:db db}))))))
 
 ;; =============================================================================
 ;; Echo Area Events

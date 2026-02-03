@@ -597,8 +597,12 @@
                              absolute-line (+ clicked-line (:start-line viewport 0))]
                          (if is-completions-buffer?
                            ;; Issue #137: Click in *Completions* buffer selects completion
-                           ;; Parse the clicked line and dispatch selection event
-                           (rf/dispatch [:completion-list/click-line absolute-line])
+                           ;; Calculate linear position and use text properties
+                           (let [clicked-column (max 0 (int (/ (- click-x left-padding) char-width)))
+                                 lines (clojure.string/split (or buffer-content "") #"\n" -1)
+                                 chars-before (reduce + (map #(inc (count %)) (take absolute-line lines)))
+                                 linear-pos (+ chars-before clicked-column)]
+                             (rf/dispatch [:completion-list/click-position linear-pos]))
                            ;; Normal buffer click - set position and focus
                            (do
                              (rf/dispatch [:set-active-window window-id])

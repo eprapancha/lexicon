@@ -24,6 +24,7 @@
   - :commands           → command.cljs   (use :register-command)
   - :hooks              → hooks.cljs     (use :register-hook, :enable-hook, :disable-hook)
   - :packages           → packages/loader.cljs (use :load-package, :unload-package)
+  - :completion-ui      → ui.cljs        (extension point for packages like Vertico - Issue #136)
 
   BUFFER METADATA (within :buffers buffer-id):
   - :editor-version     → buffer.cljs    (use :buffer/increment-version)
@@ -293,6 +294,11 @@
                 :height-lines 1                      ; Dynamic height (1-20+ lines)
                 :show-completions? false             ; Whether to show completion candidates
                 :last-tab-input nil}                 ; For vanilla Emacs TAB completion (Issue #136)
+   ;; Completion Extension Points (Issue #136)
+   ;; Packages like Vertico can override these to provide custom completion UI
+   :completion-ui {:completing-read-function nil     ; nil = use default, or event keyword to dispatch
+                   :completion-in-region-function nil ; For in-buffer completion (future)
+                   :completion-styles [:basic :partial-completion]} ; Completion matching styles
    :echo-area {:message ""                           ; DEPRECATED - use :minibuffer :message
                :timeout-id nil}                      ; DEPRECATED - use :minibuffer :message-timeout-id
    :help {:awaiting-key? false                      ; Waiting for key press for C-h k
