@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.undo-semantics-test
+(ns lexicon.ui.editing.undo-semantics-test
   "E2E tests for Emacs undo semantic - Epic #86
 
   Tests critical invariant: Undo history is buffer-local"
@@ -66,4 +66,4 @@
 
 ;; Run tests
 (defn -main []
-  (clojure.test/run-tests 'lexicon.e2e.editor-semantics.undo-semantics-test))
+  (clojure.test/run-tests 'lexicon.ui.editing.undo-semantics-test))

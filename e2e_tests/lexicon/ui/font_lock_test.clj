@@ -2,7 +2,7 @@
   "E2E UI tests for font-lock syntax highlighting (#130)
 
   Tests font-lock and which-func mode using only keyboard interactions.
-  No eval-lisp calls - all operations done via M-x commands and key sequences."
+  All operations via M-x commands and key sequences."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [etaoin.api :as e]
             [lexicon.test-helpers :as h]))

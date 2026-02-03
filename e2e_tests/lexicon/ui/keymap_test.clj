@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.keymap-test
+(ns lexicon.ui.keymap-test
   "E2E tests for Emacs keymap semantic - Epic #86
 
   Tests critical invariants:

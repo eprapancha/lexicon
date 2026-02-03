@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.window-semantics-test
+(ns lexicon.ui.windows.semantics-test
   "E2E tests for Emacs window semantic - Epic #86
 
   Tests critical invariant: Buffer identity stable across multiple window views"
@@ -61,4 +61,4 @@
 
 ;; Run tests
 (defn -main []
-  (clojure.test/run-tests 'lexicon.e2e.editor-semantics.window-semantics-test))
+  (clojure.test/run-tests 'lexicon.ui.windows.semantics-test))

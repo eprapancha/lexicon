@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.kill-ring-test
+(ns lexicon.ui.editing.kill-ring-semantics-test
   "E2E tests for Emacs kill ring semantic - Epic #86
 
   Tests critical invariants:

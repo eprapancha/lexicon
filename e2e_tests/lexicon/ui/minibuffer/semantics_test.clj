@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.minibuffer-test
+(ns lexicon.ui.minibuffer.semantics-test
   "E2E tests for Emacs minibuffer semantic - Epic #86
 
   Tests critical invariant:
@@ -59,4 +59,4 @@
 
 ;; Run tests
 (defn -main []
-  (clojure.test/run-tests 'lexicon.e2e.editor-semantics.minibuffer-test))
+  (clojure.test/run-tests 'lexicon.ui.minibuffer.semantics-test))

@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.minibuffer-completion-test
+(ns lexicon.ui.minibuffer.completion-test
   "E2E tests for minibuffer completion cycling - Issue #137
 
   Tests vanilla Emacs minibuffer completion behavior:
@@ -224,4 +224,4 @@
 ;; =============================================================================
 
 (defn -main []
-  (clojure.test/run-tests 'lexicon.e2e.editor-semantics.minibuffer-completion-test))
+  (clojure.test/run-tests 'lexicon.ui.minibuffer.completion-test))

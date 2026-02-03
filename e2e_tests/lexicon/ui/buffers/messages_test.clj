@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.messages-test
+(ns lexicon.ui.buffers.messages-test
   "E2E tests for Emacs messages semantic - Epic #86
 
   Tests critical invariants:
@@ -72,4 +72,4 @@
 
 ;; Run tests
 (defn -main []
-  (clojure.test/run-tests 'lexicon.e2e.editor-semantics.messages-test))
+  (clojure.test/run-tests 'lexicon.ui.buffers.messages-test))

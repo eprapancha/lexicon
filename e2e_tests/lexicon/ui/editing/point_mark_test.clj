@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.point-mark-test
+(ns lexicon.ui.editing.point-mark-test
   "E2E tests for Emacs point/mark semantic - Epic #86
 
   Tests critical invariant: Point (cursor) is buffer-local"
@@ -85,4 +85,4 @@
 
 ;; Run tests
 (defn -main []
-  (clojure.test/run-tests 'lexicon.e2e.editor-semantics.point-mark-test))
+  (clojure.test/run-tests 'lexicon.ui.editing.point-mark-test))

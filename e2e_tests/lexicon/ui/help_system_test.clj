@@ -2,7 +2,7 @@
   "E2E UI tests for help system (#109)
 
   Tests help commands using only keyboard interactions.
-  No eval-lisp calls - all operations via C-h prefix and M-x commands."
+  All operations via C-h prefix and M-x commands."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [etaoin.api :as e]
             [lexicon.test-helpers :as h]))

@@ -2,7 +2,7 @@
   "E2E UI tests for outline-mode and folding (#114)
 
   Tests outline/hideshow functionality using only keyboard interactions.
-  No eval-lisp calls - all operations via M-x commands and key sequences."
+  All operations via M-x commands and key sequences."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [etaoin.api :as e]
             [lexicon.test-helpers :as h]))

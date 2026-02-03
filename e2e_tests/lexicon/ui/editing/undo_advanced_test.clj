@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.undo-advanced-test
+(ns lexicon.ui.editing.undo-advanced-test
   "E2E tests for advanced undo system - Epic #86
 
   Tests critical invariants:
@@ -117,4 +117,4 @@
 
 ;; Run tests
 (defn -main []
-  (clojure.test/run-tests 'lexicon.e2e.editor-semantics.undo-advanced-test))
+  (clojure.test/run-tests 'lexicon.ui.editing.undo-advanced-test))

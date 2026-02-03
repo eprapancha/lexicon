@@ -2,7 +2,7 @@
   "E2E UI tests for buffer-menu-mode (#115)
 
   Tests buffer menu functionality using only keyboard interactions.
-  No eval-lisp calls - all operations via C-x C-b and buffer-menu keys."
+  All operations via C-x C-b and buffer-menu keys."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [etaoin.api :as e]
             [lexicon.test-helpers :as h]))

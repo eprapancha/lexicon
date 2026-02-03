@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.read-only-test
+(ns lexicon.ui.modes.read-only-semantics-test
   "E2E tests for Emacs read-only buffer semantic - Epic #86
 
   Tests critical invariant: Read-only buffers prevent modification"
@@ -40,4 +40,4 @@
 
 ;; Run tests
 (defn -main []
-  (clojure.test/run-tests 'lexicon.e2e.editor-semantics.read-only-test))
+  (clojure.test/run-tests 'lexicon.ui.modes.read-only-semantics-test))

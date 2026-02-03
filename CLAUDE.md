@@ -1,6 +1,6 @@
 # Lexicon Project Memory
 
-**Last Updated:** 2026-01-30
+**Last Updated:** 2026-02-04
 **Status:** Phase 6.6 - Epic #86 Emacs Semantic Compatibility
 
 ---
@@ -75,6 +75,161 @@
 - Helper wrappers that delegate to `lexicon.api.test`
 
 **All test operations MUST go through `src/lexicon/api/test.cljs`.**
+
+---
+
+## E2E Test Guidelines
+
+### Test Location and Organization
+
+**Directory Structure:**
+```
+e2e_tests/lexicon/
+├── ui/                    # User interaction tests (keyboard-only)
+│   ├── editing/           # Text editing (undo, kill-ring, point-mark)
+│   ├── buffers/           # Buffer operations (identity, switching)
+│   ├── windows/           # Window management (split, delete)
+│   ├── minibuffer/        # Minibuffer and completion
+│   ├── modes/             # Major/minor mode tests
+│   ├── files/             # File operations (dired, find-file)
+│   ├── search/            # Search (isearch, occur, grep)
+│   └── ...                # Other UI features
+├── lisp/                  # Lisp API tests (for package developers)
+│   ├── primitives_test.clj
+│   ├── security_test.clj
+│   └── ...
+└── test_helpers.clj       # Shared test utilities
+```
+
+**Namespace Convention:**
+- File: `e2e_tests/lexicon/ui/editing/undo_test.clj`
+- Namespace: `lexicon.ui.editing.undo-test`
+- Use hyphens in namespaces, underscores in filenames
+
+### UI Tests vs Lisp Tests
+
+**UI Tests (`ui/` folder):**
+- Test user-visible behavior through keyboard simulation
+- NEVER use `eval-lisp` or `evalLisp` - this is a strict rule enforced by lint
+- Use helper functions: `h/type-text`, `h/press-ctrl`, `h/press-ctrl-x`, etc.
+- Verify state via read-only queries: `h/get-buffer-text*`, `h/get-echo-area-text`
+
+**Lisp Tests (`lisp/` folder):**
+- Test Emacs Lisp API for package developers
+- MAY use `eval-lisp` to test Lisp functions directly
+- Examples: security sandboxing, Lisp primitive correctness
+
+### Keyboard-Only Testing Philosophy
+
+**CORRECT - Keyboard simulation:**
+```clojure
+(deftest test-undo-restores-text
+  (testing "C-/ undoes the last change"
+    (h/setup-test*)
+    (h/type-text "hello")           ; User types
+    (h/press-ctrl "/")              ; User presses C-/
+    (is (= "" (h/get-buffer-text*)) ; Verify result
+        "Undo should remove typed text")))
+```
+
+**WRONG - Using eval-lisp in UI tests:**
+```clojure
+;; DON'T DO THIS IN ui/ TESTS
+(deftest test-undo-restores-text
+  (h/setup-test*)
+  (h/eval-lisp "(insert \"hello\")")  ; WRONG: bypasses user input
+  (h/eval-lisp "(undo)")              ; WRONG: bypasses keyboard
+  ...)
+```
+
+### Test Helper Functions
+
+**Setup:**
+- `(h/setup-test*)` - Initialize test state
+- `(h/clear-buffer)` - Clear buffer content
+- `(use-fixtures :once h/with-driver)` - Required fixture
+
+**Keyboard Input:**
+- `(h/type-text "string")` - Type text characters
+- `(h/press-ctrl "x")` - Press C-x
+- `(h/press-ctrl-x "2")` - Press C-x 2 (two-key sequence)
+- `(h/press-meta "x")` - Press M-x
+- `(h/press-key "Enter")` - Press special keys
+
+**Minibuffer:**
+- `(h/type-in-minibuffer "text")` - Type in minibuffer
+- `(h/press-minibuffer-enter)` - Confirm minibuffer input
+- `(h/run-mx-command "command-name")` - Full M-x workflow
+
+**State Verification:**
+- `(h/get-buffer-text*)` - Get current buffer text
+- `(h/get-echo-area-text)` - Get echo area message
+- `(h/get-mode-line-text)` - Get mode line content
+- `(e/query-all h/*driver* {:css ".selector"})` - Query DOM elements
+
+### How to Add New E2E Tests
+
+1. **Determine test category:**
+   - User feature? → `ui/` folder
+   - Lisp API? → `lisp/` folder
+
+2. **Find or create appropriate file:**
+   - Group related tests together
+   - One file per feature area (e.g., `ui/editing/undo_test.clj`)
+
+3. **Write the test:**
+```clojure
+(ns lexicon.ui.feature.my-test
+  "Description of what this tests"
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [etaoin.api :as e]
+            [lexicon.test-helpers :as h]))
+
+(use-fixtures :once h/with-driver)
+
+(deftest test-feature-behavior
+  (testing "User does X and sees Y"
+    (h/setup-test*)
+    ;; Simulate user actions
+    (h/type-text "input")
+    (h/press-ctrl "c")
+    ;; Verify results
+    (is (= "expected" (h/get-buffer-text*))
+        "Descriptive failure message")))
+```
+
+4. **Run the test:**
+```bash
+bb test:e2e ui.feature.my-test
+```
+
+### Skipped Tests
+
+**When to use `^:skip`:**
+- Features planned but not yet implemented
+- Tests for future phases (LSP, shell, VC, etc.)
+
+**Format:**
+```clojure
+(deftest ^:skip test-future-feature
+  (testing "Feature description"
+    (is true "PENDING: feature-name - needs implementation")))
+```
+
+**When NOT to use `^:skip`:**
+- Never skip a test just because implementation is hard
+- Never skip to hide a bug
+- If a test fails, fix the implementation or the test (not skip it)
+
+### Test Quality Checklist
+
+Before committing tests:
+- [ ] Tests are in correct folder (`ui/` vs `lisp/`)
+- [ ] No `eval-lisp` in `ui/` tests (run `bb lint`)
+- [ ] Uses proper test helpers (not direct state access)
+- [ ] Has descriptive test names and failure messages
+- [ ] Tests actual behavior, not just command existence
+- [ ] Includes appropriate `Thread/sleep` for async operations
 
 ---
 
@@ -289,14 +444,15 @@ e2e_tests/                            # E2E tests
 
 ---
 
-## Current Work Session (2026-02-03)
+## Current Work Session (2026-02-04)
 
 **Active Issues (in priority order):**
-1. **#130** - Code Intelligence (font-lock.el, which-func.el) - Syntax highlighting
-2. **#139** - Interactive dired-mode (navigation, file operations)
-3. **#115** - Buffer Menu (ibuffer, buff-menu, uniquify)
-4. **#109** - Help System (help.el, info.el)
-5. **#114** - Outline & Folding (outline.el, hideshow.el)
+1. **#135** - File System Access API (Emacs-style minibuffer file operations)
+2. **#130** - Code Intelligence (font-lock.el, which-func.el) - Syntax highlighting
+3. **#139** - Interactive dired-mode (navigation, file operations)
+4. **#115** - Buffer Menu (ibuffer, buff-menu, uniquify) - COMPLETED
+5. **#109** - Help System (help.el, info.el) - COMPLETED
+6. **#114** - Outline & Folding (outline.el, hideshow.el) - COMPLETED
 
 **Implementation Guidelines:**
 - Full implementation without shortcuts or caveats
@@ -316,4 +472,4 @@ e2e_tests/                            # E2E tests
 
 ---
 
-**This file survives conversation compactions. Updated 2026-02-03.**
+**This file survives conversation compactions. Updated 2026-02-04.**

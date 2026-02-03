@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.lisp-integration-test
+(ns lexicon.ui.lisp-integration-test
   "E2E tests for SCI/Lisp integration - Epic #86
 
   Tests critical invariants:
@@ -68,4 +68,4 @@
 
 ;; Run tests
 (defn -main []
-  (clojure.test/run-tests 'lexicon.e2e.editor-semantics.lisp-integration-test))
+  (clojure.test/run-tests 'lexicon.ui.lisp-integration-test))

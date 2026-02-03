@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.command-test
+(ns lexicon.ui.command-test
   "E2E tests for Emacs command system semantic - Epic #86
 
   Tests critical invariants:

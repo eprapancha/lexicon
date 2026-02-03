@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.buffer-identity-test
+(ns lexicon.ui.buffers.identity-test
   "E2E tests for Emacs buffer identity semantic - Epic #86
 
   Tests critical invariant: Buffer identity is stable across content changes"

@@ -2,7 +2,7 @@
   "E2E UI tests for interactive dired-mode (#139)
 
   Tests dired functionality using only keyboard interactions.
-  No eval-lisp calls - all operations done via M-x commands and key sequences.
+  All operations via M-x commands and key sequences.
 
   Note: Some tests require granted filesystem access which may not be available
   in headless testing. Those tests verify command availability and error handling."

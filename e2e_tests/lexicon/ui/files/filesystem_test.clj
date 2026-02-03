@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.filesystem-test
+(ns lexicon.ui.files.filesystem-test
   "E2E tests for filesystem integration - Epic #86
 
   Tests critical invariants:

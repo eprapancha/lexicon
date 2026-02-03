@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.undo-test
+(ns lexicon.ui.editing.undo-basic-test
   "E2E tests for Emacs undo semantic - Epic #86
 
   Tests critical invariant:
@@ -64,4 +64,4 @@
 
 ;; Run tests
 (defn -main []
-  (clojure.test/run-tests 'lexicon.e2e.editor-semantics.undo-test))
+  (clojure.test/run-tests 'lexicon.ui.editing.undo-basic-test))

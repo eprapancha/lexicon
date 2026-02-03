@@ -1,4 +1,4 @@
-(ns lexicon.e2e.editor-semantics.mode-test
+(ns lexicon.ui.modes.semantics-test
   "E2E tests for Emacs mode semantic - Epic #86
 
   Tests critical invariants:
@@ -89,4 +89,4 @@
 
 ;; Run tests
 (defn -main []
-  (clojure.test/run-tests 'lexicon.e2e.editor-semantics.mode-test))
+  (clojure.test/run-tests 'lexicon.ui.modes.semantics-test))

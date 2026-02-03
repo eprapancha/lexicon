@@ -85,6 +85,19 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `switch-to-buffer` | `C-x b` | Switch to buffer |
 | `kill-buffer` | `C-x k` | Kill buffer |
 | `list-buffers` | `C-x C-b` | List all buffers |
+| `buffer-menu` | `M-x buffer-menu` | Open buffer menu |
+
+**Buffer Menu Mode Keys:**
+| Key | Description |
+|-----|-------------|
+| `RET` | Select buffer at point |
+| `q` | Quit buffer menu |
+| `d` | Mark for deletion |
+| `x` | Execute deletions |
+| `s` | Save buffer |
+| `u` | Unmark |
+| `g` | Refresh list |
+| `n`/`p` | Navigate up/down |
 
 ### Window Management
 
@@ -106,10 +119,20 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 
 | Command | Keybinding | Description |
 |---------|------------|-------------|
-| `find-file` | `C-x C-f` | Open file (browser dialog) |
+| `find-file` | `C-x C-f` | Open file (with path completion) |
 | `save-buffer` | `C-x C-s` | Save buffer |
 | `write-file` | `C-x C-w` | Save as... |
 | `revert-buffer` | - | Reload from disk |
+| `dired` | `M-x dired` | Directory editor |
+| `grant-directory-access` | - | Grant FS Access API permission |
+
+**Dired Mode Keys:**
+| Key | Description |
+|-----|-------------|
+| `RET` | Open file/directory |
+| `n`/`p` | Navigate up/down |
+| `^` | Go to parent directory |
+| `g` | Refresh listing |
 
 ### Rectangle Operations
 
@@ -149,6 +172,37 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `digit-argument` | `C-0` to `C-9` | Numeric argument |
 | `negative-argument` | `C--` | Negative argument |
 
+### Occur Mode (Matching Lines)
+
+| Command | Keybinding | Description |
+|---------|------------|-------------|
+| `occur` | `M-x occur` | List lines matching regexp |
+
+**Occur Mode Keys:**
+| Key | Description |
+|-----|-------------|
+| `RET` | Go to occurrence |
+| `n`/`p` | Navigate occurrences |
+| `q` | Quit occur buffer |
+
+### Outline Mode (Folding)
+
+| Command | Keybinding | Description |
+|---------|------------|-------------|
+| `outline-hide-body` | `C-c @ C-t` | Hide all body text |
+| `outline-show-all` | `C-c @ C-a` | Show everything |
+| `outline-hide-entry` | `C-c @ C-c` | Hide current entry |
+| `outline-show-entry` | `C-c @ C-e` | Show current entry |
+| `outline-toggle-children` | `C-c @ TAB` | Toggle visibility |
+
+**Hideshow (Code Folding):**
+| Command | Keybinding | Description |
+|---------|------------|-------------|
+| `hs-hide-block` | `C-c @ C-h` | Hide block |
+| `hs-show-block` | `C-c @ C-s` | Show block |
+| `hs-hide-all` | `C-c @ C-M-h` | Hide all blocks |
+| `hs-show-all` | `C-c @ C-M-s` | Show all blocks |
+
 ### Miscellaneous
 
 | Command | Keybinding | Description |
@@ -171,9 +225,13 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `hl-line-mode` | Highlight current line |
 | `whitespace-mode` | Show whitespace characters |
 | `auto-save-mode` | Auto-save buffers |
-| `read-only-mode` | Toggle read-only |
+| `read-only-mode` | Toggle read-only (`C-x C-q`) |
 | `icomplete-mode` | Incremental completion in minibuffer |
 | `winner-mode` | Window configuration undo/redo |
+| `which-function-mode` | Show current function in mode-line |
+| `font-lock-mode` | Syntax highlighting |
+| `hs-minor-mode` | Code folding (hideshow) |
+| `outline-minor-mode` | Outline navigation |
 
 ---
 
@@ -183,10 +241,20 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 |------|-------------|
 | `fundamental-mode` | Default mode |
 | `text-mode` | Plain text editing |
+| `clojure-mode` | Clojure editing |
+| `javascript-mode` | JavaScript editing |
+| `python-mode` | Python editing |
+| `rust-mode` | Rust editing |
+| `html-mode` | HTML editing |
+| `css-mode` | CSS editing |
+| `markdown-mode` | Markdown editing |
 | `help-mode` | Help buffer display |
 | `special-mode` | Read-only special buffers |
 | `buffer-menu-mode` | Buffer list display |
-| `dired-mode` | Directory editor (partial) |
+| `dired-mode` | Directory editor |
+| `occur-mode` | Occur results display |
+| `outline-mode` | Hierarchical document editing |
+| `completion-list-mode` | *Completions* buffer navigation |
 
 ---
 
@@ -272,10 +340,22 @@ lexicon/
 
 **Current Phase:** 6.6 - Emacs Semantic Compatibility
 
-**Upcoming:**
+**Recently Completed:**
 - File System Access API for Emacs-style find-file (#135)
 - occur-mode - List matching lines (#131)
-- More Emacs packages (eldoc, compile, etc.)
+- Buffer menu with full functionality (#115)
+- Outline mode and code folding (#114)
+- Font-lock and which-function modes (#130)
+- Emacs completion framework (#136, #137, #138)
+
+**In Progress:**
+- Version control integration (vc.el, vc-git.el) (#113)
+- Project management (project.el, xref.el) (#116)
+- Programming support (compile, flymake, imenu) (#122)
+
+**Upcoming:**
+- LSP client (eglot.el) (#129)
+- Eldoc and documentation (#124)
 
 **See [GitHub Issues](https://github.com/eprapancha/lexicon/issues) for detailed status**
 
@@ -301,6 +381,6 @@ GNU General Public License v3.0 - See [LICENSE](./LICENSE)
 ---
 
 **Status:** Active Development
-**Last Updated:** 2026-01-31
+**Last Updated:** 2026-02-03
 
 *Building Emacs for the web, one gap buffer at a time.*
