@@ -341,6 +341,246 @@
   (some? (find-granted-directory db path)))
 
 ;; =============================================================================
+;; Path Navigation Helpers
+;; =============================================================================
+
+(defn- split-path
+  "Split a path into directory parts, filtering empty strings."
+  [path]
+  (->> (str/split path #"/")
+       (filter seq)
+       vec))
+
+(defn- navigate-to-directory
+  "Navigate from a handle to a subdirectory.
+   Returns a Promise resolving to the directory handle."
+  [handle path-parts]
+  (if (empty? path-parts)
+    (js/Promise.resolve handle)
+    (-> (.getDirectoryHandle handle (first path-parts))
+        (.then (fn [subdir]
+                 (navigate-to-directory subdir (rest path-parts)))))))
+
+(defn- navigate-to-parent
+  "Navigate from a handle to the parent of a path.
+   Returns a Promise resolving to {:parent-handle H :entry-name name}."
+  [handle relative-path]
+  (let [parts (split-path relative-path)
+        parent-parts (butlast parts)
+        entry-name (last parts)]
+    (if entry-name
+      (-> (navigate-to-directory handle (vec parent-parts))
+          (.then (fn [parent-handle]
+                   {:parent-handle parent-handle
+                    :entry-name entry-name})))
+      (js/Promise.reject (js/Error. "Invalid path: no entry name")))))
+
+;; =============================================================================
+;; Write Operations
+;; =============================================================================
+
+(rf/reg-fx
+ :fs-access/create-directory
+ (fn [{:keys [grant-handle relative-path on-success on-error]}]
+   "Create a new directory at the specified path.
+    - grant-handle: FileSystemDirectoryHandle of granted root
+    - relative-path: Path relative to grant (e.g., '/subdir/newdir')
+    - on-success: Event to dispatch on success
+    - on-error: Event to dispatch on error"
+   (-> (navigate-to-parent grant-handle relative-path)
+       (.then (fn [{:keys [parent-handle entry-name]}]
+                (.getDirectoryHandle parent-handle entry-name #js {:create true})))
+       (.then (fn [_new-handle]
+                (when on-success
+                  (rf/dispatch on-success))))
+       (.catch (fn [err]
+                 (if on-error
+                   (rf/dispatch (conj on-error (.-message err)))
+                   (rf/dispatch [:message/display (str "Create directory error: " (.-message err))])))))))
+
+(rf/reg-fx
+ :fs-access/delete-entry
+ (fn [{:keys [grant-handle relative-path recursive? on-success on-error]}]
+   "Delete a file or directory at the specified path.
+    - grant-handle: FileSystemDirectoryHandle of granted root
+    - relative-path: Path relative to grant (e.g., '/subdir/file.txt')
+    - recursive?: If true, delete directory contents recursively
+    - on-success: Event to dispatch on success
+    - on-error: Event to dispatch on error"
+   (-> (navigate-to-parent grant-handle relative-path)
+       (.then (fn [{:keys [parent-handle entry-name]}]
+                (.removeEntry parent-handle entry-name
+                              #js {:recursive (boolean recursive?)})))
+       (.then (fn []
+                (when on-success
+                  (rf/dispatch on-success))))
+       (.catch (fn [err]
+                 (if on-error
+                   (rf/dispatch (conj on-error (.-message err)))
+                   (rf/dispatch [:message/display (str "Delete error: " (.-message err))])))))))
+
+(rf/reg-fx
+ :fs-access/copy-file
+ (fn [{:keys [grant-handle source-path dest-path on-success on-error]}]
+   "Copy a file from source to destination.
+    - grant-handle: FileSystemDirectoryHandle of granted root
+    - source-path: Relative path to source file
+    - dest-path: Relative path to destination (can be new filename)
+    - on-success: Event to dispatch on success
+    - on-error: Event to dispatch on error"
+   (let [source-parts (split-path source-path)
+         source-parent-parts (butlast source-parts)
+         source-name (last source-parts)
+         dest-parts (split-path dest-path)
+         dest-parent-parts (butlast dest-parts)
+         dest-name (last dest-parts)]
+     (-> (navigate-to-directory grant-handle (vec source-parent-parts))
+         (.then (fn [source-parent]
+                  (.getFileHandle source-parent source-name)))
+         (.then (fn [source-file-handle]
+                  (-> (.getFile source-file-handle)
+                      (.then (fn [file]
+                               (.text file)))
+                      (.then (fn [content]
+                               ;; Navigate to dest parent and create file
+                               (-> (navigate-to-directory grant-handle (vec dest-parent-parts))
+                                   (.then (fn [dest-parent]
+                                            (.getFileHandle dest-parent dest-name #js {:create true})))
+                                   (.then (fn [dest-file-handle]
+                                            (.createWritable dest-file-handle)))
+                                   (.then (fn [writable]
+                                            (-> (.write writable content)
+                                                (.then #(.close writable)))))))))))
+         (.then (fn []
+                  (when on-success
+                    (rf/dispatch on-success))))
+         (.catch (fn [err]
+                   (if on-error
+                     (rf/dispatch (conj on-error (.-message err)))
+                     (rf/dispatch [:message/display (str "Copy error: " (.-message err))]))))))))
+
+(rf/reg-fx
+ :fs-access/move-entry
+ (fn [{:keys [grant-handle source-path dest-path on-success on-error]}]
+   "Move/rename a file or directory.
+    - grant-handle: FileSystemDirectoryHandle of granted root
+    - source-path: Relative path to source
+    - dest-path: Relative path to destination
+    - on-success: Event to dispatch on success
+    - on-error: Event to dispatch on error
+
+    Note: The File System Access API doesn't have a native move.
+    For files, we copy then delete. For directories, this is more complex."
+   (let [source-parts (split-path source-path)
+         source-parent-parts (butlast source-parts)
+         source-name (last source-parts)]
+     ;; First determine if it's a file or directory
+     (-> (navigate-to-directory grant-handle (vec source-parent-parts))
+         (.then (fn [source-parent]
+                  ;; Try to get as file first
+                  (-> (.getFileHandle source-parent source-name)
+                      (.then (fn [file-handle]
+                               ;; It's a file - copy content then delete
+                               (-> (.getFile file-handle)
+                                   (.then (fn [file] (.text file)))
+                                   (.then (fn [content]
+                                            (let [dest-parts (split-path dest-path)
+                                                  dest-parent-parts (butlast dest-parts)
+                                                  dest-name (last dest-parts)]
+                                              (-> (navigate-to-directory grant-handle (vec dest-parent-parts))
+                                                  (.then (fn [dest-parent]
+                                                           (.getFileHandle dest-parent dest-name #js {:create true})))
+                                                  (.then (fn [dest-handle]
+                                                           (.createWritable dest-handle)))
+                                                  (.then (fn [writable]
+                                                           (-> (.write writable content)
+                                                               (.then #(.close writable)))))
+                                                  (.then (fn []
+                                                           ;; Delete original
+                                                           (.removeEntry source-parent source-name))))))))))
+                      (.catch (fn [_]
+                                ;; Not a file, try directory
+                                ;; For simplicity, just rename in place if same parent
+                                (let [dest-parts (split-path dest-path)
+                                      dest-parent-parts (butlast dest-parts)
+                                      dest-name (last dest-parts)]
+                                  (if (= source-parent-parts dest-parent-parts)
+                                    ;; Same parent - simple rename not supported by API
+                                    ;; Would need to copy entire tree
+                                    (js/Promise.reject (js/Error. "Directory rename requires copying entire tree (not yet implemented)"))
+                                    (js/Promise.reject (js/Error. "Moving directories between locations not yet implemented")))))))))
+         (.then (fn []
+                  (when on-success
+                    (rf/dispatch on-success))))
+         (.catch (fn [err]
+                   (if on-error
+                     (rf/dispatch (conj on-error (.-message err)))
+                     (rf/dispatch [:message/display (str "Move error: " (.-message err))]))))))))
+
+
+;; =============================================================================
+;; Write Operation Events (with path resolution)
+;; =============================================================================
+
+(rf/reg-event-fx
+ :fs-access/create-directory-at-path
+ (fn [{:keys [db]} [_ full-path on-success on-error]]
+   "Create a directory at the given full path.
+    Resolves the path to a granted directory first."
+   (if-let [{:keys [handle relative-path]} (find-granted-directory db full-path)]
+     {:fx [[:fs-access/create-directory {:grant-handle handle
+                                          :relative-path relative-path
+                                          :on-success on-success
+                                          :on-error on-error}]]}
+     {:fx [[:dispatch (or on-error [:message/display (str "No access to: " full-path)])]]})))
+
+(rf/reg-event-fx
+ :fs-access/delete-at-path
+ (fn [{:keys [db]} [_ full-path recursive? on-success on-error]]
+   "Delete a file or directory at the given full path.
+    Resolves the path to a granted directory first."
+   (if-let [{:keys [handle relative-path]} (find-granted-directory db full-path)]
+     {:fx [[:fs-access/delete-entry {:grant-handle handle
+                                      :relative-path relative-path
+                                      :recursive? recursive?
+                                      :on-success on-success
+                                      :on-error on-error}]]}
+     {:fx [[:dispatch (or on-error [:message/display (str "No access to: " full-path)])]]})))
+
+(rf/reg-event-fx
+ :fs-access/copy-file-path
+ (fn [{:keys [db]} [_ source-full-path dest-full-path on-success on-error]]
+   "Copy a file from source to destination full paths.
+    Both paths must be in the same granted directory."
+   (if-let [{:keys [handle relative-path]} (find-granted-directory db source-full-path)]
+     (let [dest-info (find-granted-directory db dest-full-path)]
+       (if (and dest-info (= (:grant-path dest-info) (:grant-path (find-granted-directory db source-full-path))))
+         {:fx [[:fs-access/copy-file {:grant-handle handle
+                                       :source-path relative-path
+                                       :dest-path (:relative-path dest-info)
+                                       :on-success on-success
+                                       :on-error on-error}]]}
+         {:fx [[:dispatch (or on-error [:message/display "Source and destination must be in same granted directory"])]]}))
+     {:fx [[:dispatch (or on-error [:message/display (str "No access to: " source-full-path)])]]})))
+
+(rf/reg-event-fx
+ :fs-access/move-path
+ (fn [{:keys [db]} [_ source-full-path dest-full-path on-success on-error]]
+   "Move/rename a file or directory.
+    Both paths must be in the same granted directory."
+   (if-let [{:keys [handle relative-path]} (find-granted-directory db source-full-path)]
+     (let [source-info (find-granted-directory db source-full-path)
+           dest-info (find-granted-directory db dest-full-path)]
+       (if (and dest-info (= (:grant-path dest-info) (:grant-path source-info)))
+         {:fx [[:fs-access/move-entry {:grant-handle handle
+                                        :source-path relative-path
+                                        :dest-path (:relative-path dest-info)
+                                        :on-success on-success
+                                        :on-error on-error}]]}
+         {:fx [[:dispatch (or on-error [:message/display "Source and destination must be in same granted directory"])]]}))
+     {:fx [[:dispatch (or on-error [:message/display (str "No access to: " source-full-path)])]]})))
+
+;; =============================================================================
 ;; Subscriptions
 ;; =============================================================================
 

@@ -1804,6 +1804,50 @@
   ;; Return empty string for now - real implementation needs completion
   "")
 
+;; Storage for minibuffer callbacks (for read-from-minibuffer async API)
+(defonce ^:private minibuffer-callbacks (atom {}))
+(defonce ^:private callback-counter (atom 0))
+
+(defn read-from-minibuffer
+  "Read input from minibuffer with PROMPT, calling CALLBACK with the result.
+
+  This is the async version of read-string, suitable for packages.
+  CALLBACK is a function of one argument (the user's input string).
+
+  Usage: (read-from-minibuffer \"Enter name: \" (fn [input] (do-something input)))
+  Returns: nil (async operation)"
+  [prompt callback]
+  (let [callback-id (swap! callback-counter inc)]
+    ;; Store the callback
+    (swap! minibuffer-callbacks assoc callback-id callback)
+    ;; Activate minibuffer with our callback event
+    (rf/dispatch-sync [:minibuffer/activate
+                       {:prompt prompt
+                        :on-confirm [:lisp/minibuffer-callback callback-id]
+                        :on-cancel [:lisp/minibuffer-cancel callback-id]}])
+    nil))
+
+;; Register the callback handler event
+(rf/reg-event-fx
+ :lisp/minibuffer-callback
+ (fn [{:keys [db]} [_ callback-id input]]
+   ;; Get and remove the callback
+   (when-let [callback (get @minibuffer-callbacks callback-id)]
+     (swap! minibuffer-callbacks dissoc callback-id)
+     ;; Call the callback with the input
+     (callback input))
+   {:db db
+    :fx [[:dispatch [:minibuffer/deactivate]]]}))
+
+(rf/reg-event-fx
+ :lisp/minibuffer-cancel
+ (fn [{:keys [db]} [_ callback-id]]
+   ;; Just remove the callback without calling it
+   (swap! minibuffer-callbacks dissoc callback-id)
+   {:db db
+    :fx [[:dispatch [:minibuffer/deactivate]]
+         [:dispatch [:echo/message "Cancelled"]]]}))
+
 ;; =============================================================================
 ;; Completion System (Issue #108 - Vertico Prerequisites)
 ;; =============================================================================
@@ -2123,6 +2167,98 @@
   ;; Dispatch the find-file event which handles FS Access API integration
   (rf/dispatch-sync [:find-file/from-path path])
   nil)
+
+;; =============================================================================
+;; File System Write Operations (Issue #139)
+;; =============================================================================
+
+(defn fs-create-directory
+  "Create a new directory at PATH.
+
+  Requires the parent directory to be in a granted directory
+  (via grant-directory-access command).
+
+  ON-SUCCESS and ON-ERROR are optional event vectors to dispatch.
+
+  Usage: (fs-create-directory \"/projects/new-dir\")
+         (fs-create-directory \"/projects/new-dir\"
+                              [:dired/refresh-after-op]
+                              [:dired/handle-error])
+  Returns: nil (async operation)"
+  ([path]
+   (fs-create-directory path nil nil))
+  ([path on-success]
+   (fs-create-directory path on-success nil))
+  ([path on-success on-error]
+   (rf/dispatch [:fs-access/create-directory-at-path path on-success on-error])
+   nil))
+
+(defn fs-delete
+  "Delete a file or directory at PATH.
+
+  If RECURSIVE is true, deletes directory contents recursively.
+  Requires the path to be in a granted directory.
+
+  ON-SUCCESS and ON-ERROR are optional event vectors to dispatch.
+
+  Usage: (fs-delete \"/projects/file.txt\")
+         (fs-delete \"/projects/old-dir\" true)
+  Returns: nil (async operation)"
+  ([path]
+   (fs-delete path false nil nil))
+  ([path recursive?]
+   (fs-delete path recursive? nil nil))
+  ([path recursive? on-success]
+   (fs-delete path recursive? on-success nil))
+  ([path recursive? on-success on-error]
+   (rf/dispatch [:fs-access/delete-at-path path recursive? on-success on-error])
+   nil))
+
+(defn fs-copy-file
+  "Copy a file from SOURCE-PATH to DEST-PATH.
+
+  Both paths must be within the same granted directory.
+
+  ON-SUCCESS and ON-ERROR are optional event vectors to dispatch.
+
+  Usage: (fs-copy-file \"/projects/a.txt\" \"/projects/b.txt\")
+  Returns: nil (async operation)"
+  ([source-path dest-path]
+   (fs-copy-file source-path dest-path nil nil))
+  ([source-path dest-path on-success]
+   (fs-copy-file source-path dest-path on-success nil))
+  ([source-path dest-path on-success on-error]
+   (rf/dispatch [:fs-access/copy-file-path source-path dest-path on-success on-error])
+   nil))
+
+(defn fs-rename
+  "Rename/move a file or directory from SOURCE-PATH to DEST-PATH.
+
+  Both paths must be within the same granted directory.
+  Note: Directory rename is not yet fully supported.
+
+  ON-SUCCESS and ON-ERROR are optional event vectors to dispatch.
+
+  Usage: (fs-rename \"/projects/old.txt\" \"/projects/new.txt\")
+  Returns: nil (async operation)"
+  ([source-path dest-path]
+   (fs-rename source-path dest-path nil nil))
+  ([source-path dest-path on-success]
+   (fs-rename source-path dest-path on-success nil))
+  ([source-path dest-path on-success on-error]
+   (rf/dispatch [:fs-access/move-path source-path dest-path on-success on-error])
+   nil))
+
+(defn fs-path-accessible?
+  "Check if PATH is within a granted directory.
+
+  Usage: (fs-path-accessible? \"/projects/file.txt\")
+  Returns: Boolean"
+  [path]
+  (let [granted (get-in @rfdb/app-db [:fs-access :granted-directories] {})]
+    (some (fn [[grant-path _]]
+            (str/starts-with? path grant-path))
+          granted)))
 
 (defn insert-directory
   "Insert directory listing for DIR at point.
@@ -2780,6 +2916,7 @@
    'set-buffer-modified-p set-buffer-modified-p
    ;; Minibuffer
    'read-string read-string
+   'read-from-minibuffer read-from-minibuffer
    ;; Completion (Issue #108)
    'all-completions all-completions
    'try-completion try-completion
@@ -2812,6 +2949,12 @@
    'file-exists-p file-exists-p
    'find-file find-file
    'insert-directory insert-directory
+   ;; FS Access write operations (Issue #139)
+   'fs-create-directory fs-create-directory
+   'fs-delete fs-delete
+   'fs-copy-file fs-copy-file
+   'fs-rename fs-rename
+   'fs-path-accessible? fs-path-accessible?
    ;; Phase 6.6: Narrowing (Issue #100)
    'narrow-to-region narrow-to-region
    'widen widen

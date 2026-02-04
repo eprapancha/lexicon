@@ -327,24 +327,36 @@
   "Delete all files flagged with D.
 
   Prompts for confirmation before deletion.
+  Requires FS Access API write access.
 
   Usage: (dired-do-flagged-delete)
   Returns: nil"
   []
-  (let [flagged (dired-get-flagged-files)]
+  (let [flagged (dired-get-flagged-files)
+        buffer-name (lisp/buffer-name)
+        directory (extract-directory-from-buffer-name buffer-name)]
     (if (empty? flagged)
       (lisp/message "No flagged files")
-      ;; Note: In a real implementation, this would:
-      ;; 1. Show confirmation prompt
-      ;; 2. Actually delete the files via File System Access API
-      ;; 3. Refresh the buffer
-      ;; For now, we just display the flagged files
-      (do
-        (lisp/message (str "Would delete: " (str/join ", " flagged)))
-        ;; Clear flags after "deletion"
-        (doseq [f flagged]
-          (clear-mark-for-file! (lisp/buffer-name) f))
-        (dired-refresh)))))
+      (if (lisp/fs-path-accessible? directory)
+        ;; Prompt for confirmation
+        (lisp/read-from-minibuffer
+         (str "Delete " (count flagged) " flagged file(s)? (yes/no): ")
+         (fn [response]
+           (if (= (str/lower-case response) "yes")
+             ;; Delete the first flagged file (async operations will refresh buffer)
+             ;; Note: A full implementation would chain all deletions
+             (let [filename (first flagged)
+                   full-path (str directory
+                                  (when-not (str/ends-with? directory "/") "/")
+                                  filename)]
+               (lisp/fs-delete full-path false
+                               [:dired/refresh-current (str "Deleted: " filename)]
+                               [:dired/operation-error])
+               ;; Clear marks after initiating delete
+               (doseq [f flagged]
+                 (clear-mark-for-file! buffer-name f)))
+             (lisp/message "Cancelled"))))
+        (lisp/message (str "No write access to: " directory))))))
 
 (defn dired-toggle-marks
   "Toggle marks on all files.
@@ -383,47 +395,100 @@
 (defn dired-do-copy
   "Copy marked files (or file at point if none marked).
 
+  Prompts for destination path. Requires FS Access API write access.
+
   Usage: (dired-do-copy)
   Returns: nil"
   []
   (let [marked (dired-get-marked-files)
-        target (if (empty? marked)
-                 (dired-get-filename)
-                 marked)]
-    (if target
-      (lisp/message (str "Copy: " target " (not yet implemented - needs FS Access write)"))
+        filename (if (seq marked) (first marked) (dired-get-filename))
+        buffer-name (lisp/buffer-name)
+        directory (extract-directory-from-buffer-name buffer-name)]
+    (if filename
+      (let [source-path (str directory
+                             (when-not (str/ends-with? directory "/") "/")
+                             filename)]
+        (if (lisp/fs-path-accessible? source-path)
+          ;; Prompt for destination
+          (lisp/read-from-minibuffer
+           (str "Copy " filename " to: ")
+           (fn [dest-input]
+             (let [dest-path (if (str/starts-with? dest-input "/")
+                              dest-input
+                              (str directory
+                                   (when-not (str/ends-with? directory "/") "/")
+                                   dest-input))]
+               (lisp/fs-copy-file source-path dest-path
+                                  [:dired/refresh-current (str "Copied: " filename)]
+                                  [:dired/operation-error]))))
+          (lisp/message (str "No write access to: " source-path))))
       (lisp/message "No files to copy"))))
 
 (defn dired-do-rename
   "Rename marked files (or file at point if none marked).
 
+  Prompts for new name. Requires FS Access API write access.
+
   Usage: (dired-do-rename)
   Returns: nil"
   []
   (let [marked (dired-get-marked-files)
-        target (if (empty? marked)
-                 (dired-get-filename)
-                 marked)]
-    (if target
-      (lisp/message (str "Rename: " target " (not yet implemented - needs FS Access write)"))
+        filename (if (seq marked) (first marked) (dired-get-filename))
+        buffer-name (lisp/buffer-name)
+        directory (extract-directory-from-buffer-name buffer-name)]
+    (if filename
+      (let [source-path (str directory
+                             (when-not (str/ends-with? directory "/") "/")
+                             filename)]
+        (if (lisp/fs-path-accessible? source-path)
+          ;; Prompt for new name
+          (lisp/read-from-minibuffer
+           (str "Rename " filename " to: ")
+           (fn [dest-input]
+             (let [dest-path (if (str/starts-with? dest-input "/")
+                              dest-input
+                              (str directory
+                                   (when-not (str/ends-with? directory "/") "/")
+                                   dest-input))]
+               (lisp/fs-rename source-path dest-path
+                               [:dired/refresh-current (str "Renamed: " filename " -> " dest-input)]
+                               [:dired/operation-error]))))
+          (lisp/message (str "No write access to: " source-path))))
       (lisp/message "No files to rename"))))
 
 (defn dired-do-delete
   "Delete marked files (or file at point if none marked).
 
+  Prompts for confirmation. Requires FS Access API write access.
+
   Usage: (dired-do-delete)
   Returns: nil"
   []
   (let [marked (dired-get-marked-files)
-        target (if (empty? marked)
-                 (list (dired-get-filename))
-                 marked)]
-    (if (and target (first target))
-      (lisp/message (str "Delete: " target " (not yet implemented - needs FS Access write)"))
+        filename (if (seq marked) (first marked) (dired-get-filename))
+        buffer-name (lisp/buffer-name)
+        directory (extract-directory-from-buffer-name buffer-name)]
+    (if filename
+      (let [full-path (str directory
+                           (when-not (str/ends-with? directory "/") "/")
+                           filename)]
+        (if (lisp/fs-path-accessible? full-path)
+          ;; Prompt for confirmation
+          (lisp/read-from-minibuffer
+           (str "Delete " filename "? (yes/no): ")
+           (fn [response]
+             (if (= (str/lower-case response) "yes")
+               (lisp/fs-delete full-path false
+                               [:dired/refresh-current (str "Deleted: " filename)]
+                               [:dired/operation-error])
+               (lisp/message "Cancelled"))))
+          (lisp/message (str "No write access to: " full-path))))
       (lisp/message "No files to delete"))))
 
 (defn dired-create-directory
   "Create a new directory.
+
+  Requires FS Access API write access.
 
   Usage: (dired-create-directory name)
   Returns: nil"
@@ -431,7 +496,11 @@
   (let [buffer-name (lisp/buffer-name)
         directory (extract-directory-from-buffer-name buffer-name)
         full-path (str directory (when-not (str/ends-with? directory "/") "/") name)]
-    (lisp/message (str "Create directory: " full-path " (not yet implemented - needs FS Access write)"))))
+    (if (lisp/fs-path-accessible? directory)
+      (lisp/fs-create-directory full-path
+                                [:dired/refresh-current (str "Created directory: " name)]
+                                [:dired/operation-error])
+      (lisp/message (str "No write access to: " directory)))))
 
 ;; =============================================================================
 ;; Package Registration

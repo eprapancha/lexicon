@@ -770,6 +770,51 @@
       :fx [[:dired/open-directory pending-path]]}
      {:db db})))
 
+(rf/reg-event-fx
+ :dired/refresh-current
+ (fn [{:keys [db]} [_ msg]]
+   "Refresh current dired buffer and show message.
+    Used as callback after file operations complete."
+   (let [buffer-name (get-in db [:buffers
+                                  (get-in db [:windows
+                                              (db/find-window-in-tree
+                                               (:window-tree db)
+                                               (:active-window-id db))
+                                              :buffer-id])
+                                  :name] "")]
+     ;; Only refresh if in a dired buffer
+     (if (clojure.string/starts-with? buffer-name "*dired ")
+       {:fx [[:dispatch [:dired/refresh-buffer buffer-name msg]]]}
+       {:fx [[:dispatch [:echo/message (or msg "Operation complete")]]]}))))
+
+(rf/reg-event-fx
+ :dired/refresh-buffer
+ (fn [{:keys [db]} [_ buffer-name msg]]
+   "Refresh a specific dired buffer by re-listing the directory.
+    Called after file operations complete."
+   (let [;; Extract directory from buffer name: '*dired /path/to/dir*' -> '/path/to/dir'
+         directory (when (and buffer-name (clojure.string/starts-with? buffer-name "*dired "))
+                     (-> buffer-name
+                         (clojure.string/replace #"^\*dired " "")
+                         (clojure.string/replace #"\*$" "")))
+         ;; Find granted directory that contains this path
+         granted-dirs (get-in db [:fs-access :granted-directories] {})
+         grant-info (first (keep (fn [[grant-path {:keys [handle]}]]
+                                   (when (clojure.string/starts-with? (or directory "") grant-path)
+                                     {:grant-path grant-path :handle handle}))
+                                 granted-dirs))]
+     (if grant-info
+       {:fx [[:fs-access/list-directory-for-cache {:path directory
+                                                    :handle (:handle grant-info)}]
+             [:dispatch [:echo/message (or msg "Refreshed")]]]}
+       {:fx [[:dispatch [:echo/message (or msg "Operation complete")]]]}))))
+
+(rf/reg-event-fx
+ :dired/operation-error
+ (fn [_ [_ error-msg]]
+   "Handle file operation errors."
+   {:fx [[:dispatch [:echo/message (str "Error: " error-msg)]]]}))
+
 (rf/reg-event-db
  :find-file/update-completions
  (fn [db [_ input]]
