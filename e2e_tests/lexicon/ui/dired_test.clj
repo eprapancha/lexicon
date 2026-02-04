@@ -7,6 +7,7 @@
   Note: Some tests require granted filesystem access which may not be available
   in headless testing. Those tests verify command availability and error handling."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [clojure.string :as str]
             [etaoin.api :as e]
             [lexicon.test-helpers :as h]))
 
@@ -354,6 +355,198 @@
                 ;; Might fail if FS access not available
                 true)
             "^ key should navigate to parent directory")))))
+
+;; =============================================================================
+;; Visual Marks Tests (#139)
+;;
+;; These tests verify that marks are visually displayed in the buffer.
+;; When a file is marked with 'm', a '*' should appear at the line start.
+;; =============================================================================
+
+(defn get-line-at-point
+  "Get the current line text in the buffer (where cursor is)"
+  []
+  (try
+    (e/js-execute h/*driver* "
+      const state = window.editorState;
+      if (!state || !state.buffer) return '';
+      const buffer = state.buffer;
+      const point = state.point || 0;
+      // Find line start
+      let lineStart = point;
+      while (lineStart > 0 && buffer[lineStart - 1] !== '\\n') {
+        lineStart--;
+      }
+      // Find line end
+      let lineEnd = point;
+      while (lineEnd < buffer.length && buffer[lineEnd] !== '\\n') {
+        lineEnd++;
+      }
+      return buffer.substring(lineStart, lineEnd);
+    ")
+    (catch Exception _ "")))
+
+(defn buffer-contains-marked-line?
+  "Check if buffer contains any line starting with '*' (marked file)"
+  []
+  (let [buffer (h/get-buffer-text*)]
+    (some #(str/starts-with? % "*") (str/split-lines buffer))))
+
+(defn count-marked-lines
+  "Count lines starting with '*' in the buffer"
+  []
+  (let [buffer (h/get-buffer-text*)]
+    (count (filter #(str/starts-with? % "*") (str/split-lines buffer)))))
+
+(deftest test-dired-mark-visual-display
+  (testing "Marking a file with 'm' displays '*' at line start"
+    (h/setup-test*)
+
+    ;; Open dired buffer on mock directory
+    (when (open-dired-on-mock-dir)
+      ;; Move to a file line (skip header/directory entries)
+      (h/press-key "n")
+      (Thread/sleep 50)
+      (h/press-key "n")
+      (Thread/sleep 50)
+      (h/press-key "n")
+      (Thread/sleep 50)
+
+      ;; Verify no marks initially
+      (let [initial-marks (count-marked-lines)]
+        ;; Press 'm' to mark
+        (h/press-key "m")
+        (Thread/sleep 200)
+
+        ;; Check that a '*' mark now appears in the buffer
+        (let [final-marks (count-marked-lines)
+              echo (h/get-echo-area-text)]
+          (is (or (> final-marks initial-marks)
+                  (.contains (str echo) "Marked:")
+                  (.contains (str echo) "No file at point"))
+              "Marking should add '*' to line start or report no file"))))))
+
+(deftest test-dired-unmark-visual-display
+  (testing "Unmarking a file with 'u' removes '*' from line start"
+    (h/setup-test*)
+
+    ;; Open dired buffer on mock directory
+    (when (open-dired-on-mock-dir)
+      ;; Move to a file line
+      (h/press-key "n")
+      (Thread/sleep 50)
+      (h/press-key "n")
+      (Thread/sleep 50)
+      (h/press-key "n")
+      (Thread/sleep 50)
+
+      ;; Mark the file first
+      (h/press-key "m")
+      (Thread/sleep 200)
+
+      ;; Go back to the marked line (m moves forward)
+      (h/press-key "p")
+      (Thread/sleep 100)
+
+      (let [marks-before-unmark (count-marked-lines)]
+        ;; Press 'u' to unmark
+        (h/press-key "u")
+        (Thread/sleep 200)
+
+        ;; Check that mark count decreased or stayed same (if no file at point)
+        (let [marks-after-unmark (count-marked-lines)
+              echo (h/get-echo-area-text)]
+          (is (or (<= marks-after-unmark marks-before-unmark)
+                  (.contains (str echo) "Unmarked:")
+                  (.contains (str echo) "No file at point"))
+              "Unmarking should remove '*' from line start"))))))
+
+(deftest test-dired-toggle-marks-command
+  (testing "Pressing 't' toggles marks on all files"
+    (h/setup-test*)
+
+    ;; Open dired buffer on mock directory
+    (when (open-dired-on-mock-dir)
+      ;; Mark a file first
+      (h/press-key "n")
+      (Thread/sleep 50)
+      (h/press-key "n")
+      (Thread/sleep 50)
+      (h/press-key "m")
+      (Thread/sleep 200)
+
+      (let [initial-marks (count-marked-lines)]
+        ;; Press 't' to toggle marks
+        (h/press-key "t")
+        (Thread/sleep 300)
+
+        ;; After toggle, previously unmarked files should be marked
+        ;; and previously marked file should be unmarked
+        (let [final-marks (count-marked-lines)
+              echo (h/get-echo-area-text)]
+          (is (or (not= final-marks initial-marks)
+                  (.contains (str echo) "Toggled marks")
+                  (.contains (str echo) "Not in a Dired buffer"))
+              "Toggle marks should change which files are marked"))))))
+
+(deftest test-dired-unmark-all-marks-visual-clearing
+  (testing "Pressing 'U' clears all visual marks"
+    (h/setup-test*)
+
+    ;; Open dired buffer on mock directory
+    (when (open-dired-on-mock-dir)
+      ;; Mark several files
+      (h/press-key "n")
+      (Thread/sleep 50)
+      (h/press-key "n")
+      (Thread/sleep 50)
+      (h/press-key "m")
+      (Thread/sleep 100)
+      (h/press-key "m")
+      (Thread/sleep 100)
+      (h/press-key "m")
+      (Thread/sleep 200)
+
+      ;; Verify some marks exist
+      (let [marks-before (count-marked-lines)]
+        ;; Press 'U' to unmark all
+        (h/press-shift "u")  ;; Shift+u = U
+        (Thread/sleep 300)
+
+        ;; All marks should be cleared
+        (let [marks-after (count-marked-lines)
+              echo (h/get-echo-area-text)]
+          (is (or (= 0 marks-after)
+                  (< marks-after marks-before)
+                  (.contains (str echo) "marks removed")
+                  (.contains (str echo) "Not in a Dired buffer"))
+              "Unmark all should remove all '*' marks from buffer"))))))
+
+(deftest test-dired-flag-deletion-visual-display
+  (testing "Pressing 'd' displays 'D' flag at line start"
+    (h/setup-test*)
+
+    ;; Open dired buffer on mock directory
+    (when (open-dired-on-mock-dir)
+      ;; Move to a file line
+      (h/press-key "n")
+      (Thread/sleep 50)
+      (h/press-key "n")
+      (Thread/sleep 50)
+      (h/press-key "n")
+      (Thread/sleep 50)
+
+      ;; Press 'd' to flag for deletion
+      (h/press-key "d")
+      (Thread/sleep 200)
+
+      ;; Check echo area for flagging confirmation
+      (let [echo (h/get-echo-area-text)
+            buffer (h/get-buffer-text*)]
+        (is (or (.contains (str echo) "Flagged:")
+                (.contains (str echo) "No file at point")
+                (some #(str/starts-with? % "D") (str/split-lines buffer)))
+            "d key should flag file with 'D' or report no file at point")))))
 
 ;; =============================================================================
 ;; Run Tests

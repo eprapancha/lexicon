@@ -1057,6 +1057,21 @@
         (run-hook-with-args 'after-change-functions actual-start actual-start length))
     nil)))
 
+(defn delete-char
+  "Delete N characters after point.
+  If N is negative, delete characters before point.
+
+  Usage: (delete-char 1)  ; delete one character forward
+         (delete-char -1) ; delete one character backward
+  Returns: nil (side effect only)"
+  ([] (delete-char 1))
+  ([n]
+   (let [pos (point)]
+     (if (>= n 0)
+       (delete-region pos (+ pos n))
+       (delete-region (+ pos n) pos)))
+   nil))
+
 (defn erase-buffer
   "Delete entire contents of current buffer.
 
@@ -2118,43 +2133,49 @@
   Uses File System Access API directory cache if available,
   falls back to mock filesystem otherwise.
 
+  Optional MARKS is a map of {filename -> mark-char} where mark-char
+  is '*' for marked or 'D' for flagged for deletion.
+
   Usage: (insert-directory \"/home/user\")
+         (insert-directory \"/home/user\" {\"file.txt\" \"*\"})
   Returns: nil (side effect: inserts text)"
-  [directory]
-  (let [;; Normalize directory path for cache lookup (remove trailing slash)
-        cache-key (if (and (seq directory) (str/ends-with? directory "/"))
-                    (subs directory 0 (dec (count directory)))
-                    directory)
-        ;; Try to get entries from FS Access cache first
-        fs-cache (get-in @rfdb/app-db [:fs-access :directory-cache] {})
-        fs-entries (get fs-cache cache-key)
-        ;; Convert FS Access entries to dired format, or use mock filesystem
-        entries (if fs-entries
-                  ;; Convert FS Access format {:name "x" :kind "file"|"directory"}
-                  (map (fn [{:keys [name kind]}]
-                         {:name name
-                          :type (if (= kind "directory") :directory :file)
-                          :size "-"
-                          :modified ""})
-                       fs-entries)
-                  ;; Fall back to mock filesystem
-                  (get mock-filesystem directory []))
-        header (str "  " directory ":\n")
-        pad-left (fn [s width]
-                   (let [s (str s)
-                         pad (- width (count s))]
-                     (if (pos? pad)
-                       (str (apply str (repeat pad " ")) s)
-                       s)))
-        format-entry (fn [{:keys [name type size modified]}]
-                       (let [type-char (if (= type :directory) "d" "-")
-                             perms "rwxr-xr-x"]
-                         (str "  " type-char perms "  "
-                              (pad-left size 6) "  "
-                              modified "  " name)))
-        lines (map format-entry entries)
-        content (str header (str/join "\n" lines) "\n")]
-    (insert content)))
+  ([directory] (insert-directory directory {}))
+  ([directory marks]
+   (let [;; Normalize directory path for cache lookup (remove trailing slash)
+         cache-key (if (and (seq directory) (str/ends-with? directory "/"))
+                     (subs directory 0 (dec (count directory)))
+                     directory)
+         ;; Try to get entries from FS Access cache first
+         fs-cache (get-in @rfdb/app-db [:fs-access :directory-cache] {})
+         fs-entries (get fs-cache cache-key)
+         ;; Convert FS Access entries to dired format, or use mock filesystem
+         entries (if fs-entries
+                   ;; Convert FS Access format {:name "x" :kind "file"|"directory"}
+                   (map (fn [{:keys [name kind]}]
+                          {:name name
+                           :type (if (= kind "directory") :directory :file)
+                           :size "-"
+                           :modified ""})
+                        fs-entries)
+                   ;; Fall back to mock filesystem
+                   (get mock-filesystem directory []))
+         header (str "  " directory ":\n")
+         pad-left (fn [s width]
+                    (let [s (str s)
+                          pad (- width (count s))]
+                      (if (pos? pad)
+                        (str (apply str (repeat pad " ")) s)
+                        s)))
+         format-entry (fn [{:keys [name type size modified]}]
+                        (let [mark-char (get marks name " ")
+                              type-char (if (= type :directory) "d" "-")
+                              perms "rwxr-xr-x"]
+                          (str mark-char " " type-char perms "  "
+                               (pad-left size 6) "  "
+                               modified "  " name)))
+         lines (map format-entry entries)
+         content (str header (str/join "\n" lines) "\n")]
+     (insert content))))
 
 ;; =============================================================================
 ;; Markers (Issue #101)
@@ -2699,6 +2720,7 @@
    'buffer-substring-no-properties buffer-substring-no-properties
    'insert insert
    'delete-region delete-region
+   'delete-char delete-char
    'erase-buffer erase-buffer
    ;; Search
    'search-forward search-forward

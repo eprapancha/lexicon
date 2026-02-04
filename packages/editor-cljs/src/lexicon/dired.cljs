@@ -46,6 +46,23 @@
   [buffer-name]
   (swap! dired-marks dissoc buffer-name))
 
+(defn- update-line-mark
+  "Update the mark character at the beginning of the current line.
+  Mark should be a single character string like '*', 'D', or ' '."
+  [mark-char]
+  (when-let [line-start (lisp/line-beginning-position)]
+    ;; Only update if we're on a file line (not header)
+    ;; File lines start after position 0 (header is line 0)
+    (when (pos? ^number line-start)
+      (lisp/set-buffer-read-only false)
+      ;; Delete the first character and insert the new mark
+      (lisp/goto-char line-start)
+      (lisp/delete-char 1)
+      (lisp/insert mark-char)
+      ;; Move back to start of line for consistency
+      (lisp/goto-char line-start)
+      (lisp/set-buffer-read-only true))))
+
 ;; =============================================================================
 ;; Dired Buffer Creation
 ;; =============================================================================
@@ -99,7 +116,7 @@
   "Refresh the current Dired buffer.
 
   Re-reads the directory and regenerates the listing.
-  Attempts to preserve point position.
+  Attempts to preserve point position. Shows current marks.
 
   Usage: (dired-refresh)
   Returns: nil"
@@ -107,13 +124,14 @@
   (let [buffer-name (lisp/buffer-name)
         directory (extract-directory-from-buffer-name buffer-name)]
     (if (and buffer-name (str/starts-with? buffer-name "*dired "))
-      (let [current-line (lisp/current-line)]
+      (let [current-line (lisp/current-line)
+            marks (get-marks-for-buffer buffer-name)]
         ;; Disable read-only to allow modifications
         (lisp/set-buffer-read-only false)
         ;; Clear buffer
         (lisp/delete-region (lisp/point-min) (lisp/point-max))
-        ;; Re-insert directory listing
-        (lisp/insert-directory directory)
+        ;; Re-insert directory listing with marks
+        (lisp/insert-directory directory marks)
         ;; Re-enable read-only
         (lisp/set-buffer-read-only true)
         ;; Restore position (go to same line number)
@@ -179,6 +197,7 @@
     (if filename
       (do
         (set-mark-for-file! buffer-name filename "*")
+        (update-line-mark "*")
         (lisp/message (str "Marked: " filename))
         (dired-next-line))
       (lisp/message "No file at point"))))
@@ -194,6 +213,7 @@
     (if filename
       (do
         (clear-mark-for-file! buffer-name filename)
+        (update-line-mark " ")
         (lisp/message (str "Unmarked: " filename))
         (dired-next-line))
       (lisp/message "No file at point"))))
@@ -209,6 +229,7 @@
     (if filename
       (do
         (set-mark-for-file! buffer-name filename "D")
+        (update-line-mark "D")
         (lisp/message (str "Flagged for deletion: " filename))
         (dired-next-line))
       (lisp/message "No file at point"))))
@@ -224,6 +245,7 @@
         filename (dired-get-filename)]
     (when filename
       (clear-mark-for-file! buffer-name filename)
+      (update-line-mark " ")
       (lisp/message (str "Unmarked: " filename)))))
 
 (defn dired-get-marked-files
@@ -297,6 +319,8 @@
   []
   (let [buffer-name (lisp/buffer-name)]
     (clear-all-marks! buffer-name)
+    ;; Refresh to clear visual marks
+    (dired-refresh)
     (lisp/message "All marks cleared")))
 
 (defn dired-do-flagged-delete
@@ -325,15 +349,28 @@
 (defn dired-toggle-marks
   "Toggle marks on all files.
   Marked files become unmarked, unmarked become marked.
+  Files flagged for deletion (D) are not affected.
 
   Usage: (dired-toggle-marks)
   Returns: nil"
   []
   (let [buffer-name (lisp/buffer-name)
-        directory (extract-directory-from-buffer-name buffer-name)]
-    ;; This would need to iterate over all files in the buffer
-    ;; For now, just show a message
-    (lisp/message "Toggle marks (not yet implemented)")))
+        directory (extract-directory-from-buffer-name buffer-name)
+        all-files (lisp/directory-files directory)
+        current-marks (get-marks-for-buffer buffer-name)]
+    ;; Toggle marks for each file
+    (doseq [filename all-files]
+      (let [current-mark (get current-marks filename)]
+        (cond
+          ;; Skip files flagged for deletion
+          (= current-mark "D") nil
+          ;; Marked -> unmarked
+          (= current-mark "*") (clear-mark-for-file! buffer-name filename)
+          ;; Unmarked -> marked
+          :else (set-mark-for-file! buffer-name filename "*"))))
+    ;; Refresh to show changes
+    (dired-refresh)
+    (lisp/message "Toggled marks")))
 
 (defn dired-mark-files-regexp
   "Mark files matching a regular expression.
