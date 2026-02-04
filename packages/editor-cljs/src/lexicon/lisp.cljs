@@ -1662,11 +1662,15 @@
 (defn set-major-mode
   "Set major mode for current buffer.
 
+  NOTE: Uses direct swap! to update app-db because dispatch-sync doesn't work
+  when called from inside an event handler (e.g., from a command like dired).
+
   Usage: (set-major-mode 'clojure-mode)
   Returns: nil (side effect only)"
   [mode-symbol]
   (let [buffer-id (current-buffer)]
-    (rf/dispatch-sync [:mode/set-major buffer-id mode-symbol])
+    ;; Use swap! directly since dispatch-sync doesn't work inside event handlers
+    (swap! rfdb/app-db assoc-in [:buffers buffer-id :major-mode] mode-symbol)
     nil))
 
 (defn major-mode

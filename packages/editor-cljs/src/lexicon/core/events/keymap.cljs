@@ -8,7 +8,6 @@
   - Special key insertion (SPC, RET, TAB)"
   (:require [re-frame.core :as rf]
             [lexicon.core.db :as db]
-            [lexicon.core.log :as log]
             [lexicon.core.modes.electric-pair :as electric-pair]
             [lexicon.core.modes.delete-selection :as delete-selection]
             [lexicon.core.kmacro :as kmacro]))
@@ -87,7 +86,8 @@
 
      ;; 2.5. Issue #139: Check mode-specific keymaps (from define-key-for-mode)
      ;; These are stored at [:keymaps :mode mode key-sequence]
-     (get-in keymaps [:mode major-mode key-sequence-str])
+     ;; Mode keymaps are stored with keyword keys, but major-mode may be symbol
+     (get-in keymaps [:mode (keyword major-mode) key-sequence-str])
 
      ;; 3. Check global keymap (with parent chain)
      (lookup-key-in-keymap keymaps [:global] key-sequence-str)
