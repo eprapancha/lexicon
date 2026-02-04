@@ -133,6 +133,16 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `n`/`p` | Navigate up/down |
 | `^` | Go to parent directory |
 | `g` | Refresh listing |
+| `m` | Mark file |
+| `u` | Unmark file |
+| `U` | Unmark all |
+| `t` | Toggle marks |
+| `d` | Flag for deletion |
+| `x` | Execute flagged deletions |
+| `C` | Copy file |
+| `R` | Rename/move file |
+| `D` | Delete file |
+| `+` | Create directory |
 
 ### Rectangle Operations
 
@@ -203,6 +213,25 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `hs-hide-all` | `C-c @ C-M-h` | Hide all blocks |
 | `hs-show-all` | `C-c @ C-M-s` | Show all blocks |
 
+### Programming Support
+
+| Command | Keybinding | Description |
+|---------|------------|-------------|
+| `compile` | `M-x compile` | Run compilation command |
+| `recompile` | `M-x recompile` | Repeat last compilation |
+| `next-error` | `C-x \`` | Jump to next error |
+| `previous-error` | - | Jump to previous error |
+| `first-error` | - | Jump to first error |
+| `imenu` | `M-x imenu` | Jump to definition in buffer |
+
+**Compilation Mode Keys:**
+| Key | Description |
+|-----|-------------|
+| `g` | Recompile |
+| `n`/`p` | Navigate errors |
+| `RET` | Jump to error location |
+| `q` | Quit compilation buffer |
+
 ### Miscellaneous
 
 | Command | Keybinding | Description |
@@ -237,24 +266,32 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 
 ## Implemented Major Modes
 
+**Core Modes (fully implemented):**
 | Mode | Description |
 |------|-------------|
 | `fundamental-mode` | Default mode |
 | `text-mode` | Plain text editing |
-| `clojure-mode` | Clojure editing |
-| `javascript-mode` | JavaScript editing |
-| `python-mode` | Python editing |
-| `rust-mode` | Rust editing |
-| `html-mode` | HTML editing |
-| `css-mode` | CSS editing |
-| `markdown-mode` | Markdown editing |
 | `help-mode` | Help buffer display |
 | `special-mode` | Read-only special buffers |
-| `buffer-menu-mode` | Buffer list display |
-| `dired-mode` | Directory editor |
-| `occur-mode` | Occur results display |
+| `buffer-menu-mode` | Buffer list with mark/delete/execute |
+| `dired-mode` | Directory editor with file operations |
+| `occur-mode` | Occur results with navigation |
 | `outline-mode` | Hierarchical document editing |
 | `completion-list-mode` | *Completions* buffer navigation |
+
+**Programming Modes (basic support):**
+
+*These modes provide syntax highlighting via font-lock and basic editing. They do NOT include language-specific features like LSP integration, debugging, or advanced refactoring - those require additional packages.*
+
+| Mode | Includes |
+|------|----------|
+| `clojure-mode` | Syntax highlighting, paren matching |
+| `javascript-mode` | Syntax highlighting |
+| `python-mode` | Syntax highlighting |
+| `rust-mode` | Syntax highlighting |
+| `html-mode` | Syntax highlighting |
+| `css-mode` | Syntax highlighting |
+| `markdown-mode` | Syntax highlighting |
 
 ---
 
@@ -341,6 +378,8 @@ lexicon/
 **Current Phase:** 6.6 - Emacs Semantic Compatibility
 
 **Recently Completed:**
+- Dired mode with file operations via FS Access API (#139)
+- Programming support: compile, flymake, imenu (#122)
 - File System Access API for Emacs-style find-file (#135)
 - occur-mode - List matching lines (#131)
 - Buffer menu with full functionality (#115)
@@ -351,7 +390,6 @@ lexicon/
 **In Progress:**
 - Version control integration (vc.el, vc-git.el) (#113)
 - Project management (project.el, xref.el) (#116)
-- Programming support (compile, flymake, imenu) (#122)
 
 **Upcoming:**
 - LSP client (eglot.el) (#129)
@@ -381,6 +419,6 @@ GNU General Public License v3.0 - See [LICENSE](./LICENSE)
 ---
 
 **Status:** Active Development
-**Last Updated:** 2026-02-03
+**Last Updated:** 2026-02-04
 
 *Building Emacs for the web, one gap buffer at a time.*
