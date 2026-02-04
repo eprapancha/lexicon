@@ -426,6 +426,10 @@
   (press-minibuffer-enter)
   (Thread/sleep 200))
 
+(def run-mx-command
+  "Alias for execute-command"
+  execute-command)
+
 (defn get-cursor-position
   "Get current cursor position as {:row N :col N}"
   []
@@ -723,3 +727,33 @@
     "]
       (e/js-execute *driver* script))
     (catch Exception _ 1)))
+
+(defn get-current-buffer-name
+  "Get the current buffer name from editorState"
+  []
+  (try
+    (e/js-execute *driver* "
+      const state = window.editorState;
+      if (state && state.bufferName) return state.bufferName;
+      return '';
+    ")
+    (catch Exception _ "")))
+
+(defn get-minibuffer-prompt
+  "Get the minibuffer prompt text (alias for get-minibuffer-text)"
+  []
+  (get-minibuffer-text))
+
+(defn clear-minibuffer-input
+  "Clear the minibuffer input field"
+  []
+  (try
+    (e/js-execute *driver* "
+      const input = document.querySelector('.minibuffer-input');
+      if (input) {
+        input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    ")
+    (Thread/sleep 50)
+    (catch Exception _ nil)))

@@ -217,7 +217,11 @@
                                  "S-ArrowRight" :forward-char-shift ; Select right
                                  "S-ArrowLeft" :backward-char-shift ; Select left
                                  "S-ArrowDown" :next-line-shift     ; Select down
-                                 "S-ArrowUp" :previous-line-shift}} ; Select up
+                                 "S-ArrowUp" :previous-line-shift   ; Select up
+                                 ;; Error navigation (compile.el #122)
+                                 "M-g n" :next-error               ; Next error
+                                 "M-g p" :previous-error           ; Previous error
+                                 "C-x `" :next-error}}
              :major {:buffer-menu-mode {:parent [:global]
                                         :bindings {"RET" :buffer-menu/select-buffer}}
                      ;; Issue #137: completion-list-mode for *Completions* buffer navigation
@@ -234,7 +238,14 @@
                                            "n" :next-line
                                            "p" :previous-line
                                            "SPC" :scroll-up-command
-                                           "DEL" :scroll-down-command}}}  ; Major mode keymaps
+                                           "DEL" :scroll-down-command}}
+                     ;; Issue #122: compilation-mode for *compilation* buffer
+                     :compilation-mode {:parent [:global]
+                                        :bindings {"g" :recompile
+                                                   "RET" :compile/goto-error-at-point
+                                                   "n" :compilation-next-error
+                                                   "p" :compilation-previous-error
+                                                   "q" :quit-window}}}  ; Major mode keymaps
              :minor {}                                  ; Minor mode keymaps
              :transient {:universal-argument-map {:parent nil
                                                   :bindings {"C-u" :universal-argument-more

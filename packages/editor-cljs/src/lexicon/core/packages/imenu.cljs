@@ -15,7 +15,9 @@
   5. Point jumps to position"
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
-            [lexicon.core.completion.metadata :as metadata]))
+            [lexicon.core.completion.metadata :as metadata]
+            [lexicon.core.db :as db]
+            [lexicon.core.log :as log]))
 
 ;; -- Imenu Index Structure --
 
@@ -138,8 +140,12 @@
 (rf/reg-event-fx
   :imenu
   (fn [{:keys [db]} [_]]
+    (log/debug "imenu: starting")
     (let [buffer-id (get-in db [:editor :current-buffer-id])
+          buffer (get-in db [:buffers buffer-id])
+          mode (:major-mode buffer)
           index (create-imenu-index db buffer-id)]
+      (log/debug (str "imenu: buffer-id=" buffer-id " mode=" mode " index-count=" (count index)))
       (if (seq index)
         (let [flat-index (flatten-imenu-index index)
               candidates (map :name flat-index)
@@ -150,9 +156,10 @@
                             {:prompt "Imenu: "
                              :completions candidates
                              :metadata metadata
-                             :on-confirm [:imenu/goto]}]]]
+                             :on-confirm [:imenu/goto]
+                             :replace? true}]]]
            :db (assoc-in db [:imenu :current-index] flat-index)})
-        {:db (assoc db :message "No imenu items in buffer")}))))
+        {:fx [[:dispatch [:echo/message "No imenu items in buffer"]]]}))))
 
 (rf/reg-event-fx
   :imenu/goto
@@ -197,7 +204,6 @@
   :imenu-list
   (fn [{:keys [db]} [_]]
     (let [buffer-id (get-in db [:editor :current-buffer-id])
-          source-buffer (get-in db [:buffers buffer-id])
           index (create-imenu-index db buffer-id)]
       (if (seq index)
         (let [flat-index (flatten-imenu-index index)
@@ -205,16 +211,53 @@
               lines (map (fn [item]
                           (str (:name item) " [" (:position item) "]"))
                         flat-index)
-              content (str/join "\n" lines)]
-          {:fx [[:dispatch [:create-buffer "*Imenu*"
-                           :content content
-                           :major-mode :special-mode
-                           :read-only true]]]})
-        {:db (assoc db :message "No imenu items in buffer")}))))
+              content (str/join "\n" lines)
+              WasmGapBuffer (get-in db [:system :wasm-constructor])]
+          (if-not WasmGapBuffer
+            {:fx [[:dispatch [:echo/message "Error: WASM not initialized"]]]}
+            (let [buffers (:buffers db)
+                  existing (first (filter #(= (:name %) "*Imenu*") (vals buffers)))
+                  new-buffer-id (or (:id existing) (db/next-buffer-id buffers))
+                  wasm-instance (new WasmGapBuffer content)
+                  line-count (count (str/split-lines content))
+                  new-buffer {:id new-buffer-id
+                              :wasm-instance wasm-instance
+                              :file-handle nil
+                              :name "*Imenu*"
+                              :is-modified? false
+                              :mark-position nil
+                              :cursor-position {:line 0 :column 0}
+                              :selection-range nil
+                              :major-mode :special-mode
+                              :minor-modes #{}
+                              :read-only true
+                              :line-count line-count}
+                  new-db (assoc-in db [:buffers new-buffer-id] new-buffer)]
+              {:db new-db
+               :fx [[:dispatch [:switch-buffer new-buffer-id]]]})))
+        {:fx [[:dispatch [:echo/message "No imenu items in buffer"]]]}))))
+
+;; -- Command Registration --
+
+(defn register-imenu-commands! []
+  (rf/dispatch-sync
+   [:register-command :imenu
+    {:docstring "Jump to a place in the buffer chosen using a buffer menu"
+     :handler [:imenu]}])
+
+  (rf/dispatch-sync
+   [:register-command :imenu-list
+    {:docstring "Display imenu entries in a separate buffer"
+     :handler [:imenu-list]}]))
 
 ;; -- Initialization --
 
-(defn initialize-imenu! []
+(defn init-imenu-commands!
+  "Register imenu commands. Must be called after :initialize-commands."
+  []
+  ;; Register commands
+  (register-imenu-commands!)
+
   ;; Hook into buffer modification
   (hook-buffer-modification!)
 
@@ -226,5 +269,5 @@
   (fn [db [_]]
     (assoc-in db [:imenu :cache] {})))
 
-;; Auto-initialize on namespace load
-(initialize-imenu!)
+;; NOTE: Do NOT auto-initialize at namespace load.
+;; Call init-imenu-commands! from main.cljs after :initialize-commands.

@@ -56,6 +56,8 @@
             [lexicon.core.events.ui :as ui-events]  ; Load UI events for command init (#138)
             [lexicon.core.font-lock :as font-lock]  ; Load font-lock syntax highlighting (#130)
             [lexicon.core.which-func :as which-func]  ; Load which-func mode (#130)
+            [lexicon.core.compile :as compile]       ; Load compile.el (#122)
+            [lexicon.core.flymake :as flymake]       ; Load flymake.el (#122)
             [lexicon.core.eval]                ; Load runtime evaluation (Phase 6.5 Week 7-8)
             [lexicon.core.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.core.views :as views]
@@ -236,6 +238,9 @@
   ;; Initialize completion-list commands (must be after :initialize-commands, Issue #138)
   (ui-events/init-completion-list-commands!)
 
+  ;; Initialize imenu commands (must be after :initialize-commands, Issue #122)
+  (lexicon.core.packages.imenu/init-imenu-commands!)
+
   ;; Register all packages (must be after db init)
   ;; Called directly, not via event, because define-command uses dispatch-sync
   (lexicon.core.package-loader/register-all-packages!)
@@ -288,6 +293,12 @@
 
   ;; Initialize outline-mode and hideshow (#114)
   (outline-mode/init-outline-minor-mode!)
+
+  ;; Initialize compile.el (#122)
+  (compile/init-compile!)
+
+  ;; Initialize flymake.el (#122)
+  (flymake/init-flymake!)
 
   ;; Initialize File System Access API (#135)
   (fs-access/init-fs-access!)
