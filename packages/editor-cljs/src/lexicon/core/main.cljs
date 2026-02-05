@@ -227,8 +227,6 @@
        #js {:get get-state
             :enumerable true
             :configurable true}))
-    ;; Expose re-frame dispatch for testing (Issue #97)
-    (aset js/window "lexiconDispatch" rf/dispatch)
     ;; Expose evalLisp for E2E tests (Issue #101)
     (aset js/window "evalLisp"
           (fn [code-str]
