@@ -92,15 +92,84 @@
                        history))
       "No command history.")))
 
+(defn- eshell-cd
+  "Change directory."
+  [args]
+  (let [dir (or (first args) "/")]
+    (rf/dispatch [:shell/set-cwd dir])
+    (str "cd " dir)))
+
+(defn- eshell-ls
+  "List directory contents (lists open buffers as files)."
+  [_args]
+  (let [db @re-frame.db/app-db
+        buffers (vals (:buffers db))
+        file-buffers (filter #(not (str/starts-with? (:name %) "*")) buffers)]
+    (if (seq file-buffers)
+      (str/join "\n" (map :name file-buffers))
+      "(no files open)")))
+
+(defn- eshell-cat
+  "Display file contents (reads from open buffer)."
+  [args]
+  (let [filename (first args)]
+    (if filename
+      (let [db @re-frame.db/app-db
+            buffer (first (filter #(= (:name (val %)) filename) (:buffers db)))]
+        (if buffer
+          (let [wasm (:wasm-instance (val buffer))]
+            (if wasm
+              (try (.getText ^js wasm) (catch :default _ "Error reading buffer"))
+              "Buffer has no content"))
+          (str filename ": No such file or buffer")))
+      "cat: missing operand")))
+
+(defn- eshell-env
+  "Display environment variables."
+  [_args]
+  (let [db @re-frame.db/app-db
+        env (get-in db [:shell :env] {})]
+    (if (seq env)
+      (str/join "\n" (map (fn [[k v]] (str k "=" v)) (sort env)))
+      "TERM=xterm\nSHELL=/bin/eshell\nUSER=lexicon-user\nHOME=/\nPATH=/usr/bin")))
+
+(defn- eshell-export
+  "Set environment variable."
+  [args]
+  (let [assignment (first args)]
+    (if assignment
+      (let [parts (str/split assignment #"=" 2)
+            k (first parts)
+            v (or (second parts) "")]
+        (rf/dispatch [:shell/set-env k v])
+        (str k "=" v))
+      "export: usage: export NAME=VALUE")))
+
+(defn- eshell-which
+  "Show command type."
+  [args]
+  (let [cmd (first args)]
+    (if cmd
+      (if (get builtin-commands cmd)
+        (str cmd ": eshell built-in command")
+        (str cmd ": command not found"))
+      "which: missing argument")))
+
 (def builtin-commands
   "Map of built-in eshell commands."
   {"echo" eshell-echo
    "pwd" eshell-pwd
+   "cd" eshell-cd
+   "ls" eshell-ls
+   "cat" eshell-cat
    "date" eshell-date
    "whoami" eshell-whoami
    "clear" eshell-clear
    "help" eshell-help
-   "history" eshell-history})
+   "history" eshell-history
+   "env" eshell-env
+   "export" eshell-export
+   "which" eshell-which})
 
 (defn execute-command
   "Execute a shell command string. Returns output string or :clear."
@@ -111,6 +180,20 @@
     (if-let [builtin (get builtin-commands cmd)]
       (builtin args)
       (str cmd ": command not found"))))
+
+;; =============================================================================
+;; Shell State Management
+;; =============================================================================
+
+(rf/reg-event-db
+ :shell/set-cwd
+ (fn [db [_ dir]]
+   (assoc-in db [:shell :cwd] dir)))
+
+(rf/reg-event-db
+ :shell/set-env
+ (fn [db [_ key val]]
+   (assoc-in db [:shell :env key] val)))
 
 ;; =============================================================================
 ;; Shell Buffer Management

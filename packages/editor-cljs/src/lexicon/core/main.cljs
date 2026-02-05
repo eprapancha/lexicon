@@ -65,6 +65,10 @@
             [lexicon.core.shell :as shell]             ; Load shell/eshell (#112)
             [lexicon.core.info :as info]               ; Load info.el documentation browser (#142)
             [lexicon.core.eglot :as eglot]             ; Load eglot LSP client (#129)
+            [lexicon.core.grep :as grep]               ; Load grep.el search (#125)
+            [lexicon.core.ediff :as ediff]             ; Load ediff/smerge-mode (#119)
+            [lexicon.core.comint :as comint]           ; Load comint/term (#127)
+            [lexicon.core.tramp :as tramp]             ; Load TRAMP remote access (#126)
             [lexicon.core.events.ui :as ui-events]  ; Load UI events for command init (#138)
             [lexicon.core.font-lock :as font-lock]  ; Load font-lock syntax highlighting (#130)
             [lexicon.core.which-func :as which-func]  ; Load which-func mode (#130)
@@ -352,6 +356,18 @@
 
   ;; Initialize eglot LSP client (#129)
   (eglot/init!)
+
+  ;; Initialize grep.el search (#125)
+  (grep/init!)
+
+  ;; Initialize ediff/smerge-mode (#119)
+  (ediff/init!)
+
+  ;; Initialize comint/term (#127)
+  (comint/init!)
+
+  ;; Initialize TRAMP remote access (#126)
+  (tramp/init!)
 
   ;; Mount the React application
   (mount-app)

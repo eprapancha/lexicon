@@ -164,6 +164,70 @@
        {:fx [[:dispatch [:echo/message "Eglot: no active server"]]]}))))
 
 ;; =============================================================================
+;; Diagnostics Display
+;; =============================================================================
+
+(rf/reg-event-db
+ :eglot/set-diagnostics
+ (fn [db [_ buffer-id diagnostics]]
+   (assoc-in db [:eglot :diagnostics buffer-id] diagnostics)))
+
+(rf/reg-sub
+ :eglot/diagnostics
+ (fn [db [_ buffer-id]]
+   (get-in db [:eglot :diagnostics buffer-id] [])))
+
+(rf/reg-event-fx
+ :eglot/show-diagnostics
+ (fn [{:keys [db]} [_]]
+   "Show diagnostics for current buffer."
+   (let [window (get-in db [:window-tree])
+         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
+         diagnostics (get-in db [:eglot :diagnostics buffer-id] [])
+         buffer (get-in db [:buffers buffer-id])]
+     (if (seq diagnostics)
+       {:fx [[:dispatch [:echo/message
+                         (str (count diagnostics) " diagnostic"
+                              (when (not= 1 (count diagnostics)) "s")
+                              " in " (:name buffer))]]]}
+       {:fx [[:dispatch [:echo/message "No diagnostics"]]]}))))
+
+;; =============================================================================
+;; Hover Documentation
+;; =============================================================================
+
+(rf/reg-event-fx
+ :eglot/hover
+ (fn [{:keys [db]} [_]]
+   "Show hover documentation for symbol at point."
+   (let [window (get-in db [:window-tree])
+         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
+         server (get-in db [:eglot :servers buffer-id])]
+     (if server
+       {:fx [[:dispatch [:echo/message
+                         "Eglot: hover documentation (requires active LSP connection)"]]]}
+       {:fx [[:dispatch [:echo/message "Eglot: no active server"]]]}))))
+
+;; =============================================================================
+;; Document Symbols
+;; =============================================================================
+
+(rf/reg-event-fx
+ :eglot/workspace-symbol
+ (fn [{:keys [db]} [_]]
+   "Search for workspace symbols."
+   {:fx [[:dispatch [:minibuffer/activate
+                     {:prompt "Workspace symbol: "
+                      :on-confirm [:eglot/workspace-symbol-exec]}]]]}))
+
+(rf/reg-event-fx
+ :eglot/workspace-symbol-exec
+ (fn [{:keys [db]} [_ query]]
+   {:fx [[:dispatch [:echo/message
+                     (str "Eglot: workspace symbol '" query
+                          "' (requires active LSP connection)")]]]}))
+
+;; =============================================================================
 ;; Initialization
 ;; =============================================================================
 
@@ -198,4 +262,19 @@
   (rf/dispatch [:register-command :eglot-format-buffer
                 {:docstring "Format current buffer via LSP"
                  :interactive nil
-                 :handler [:eglot/format-buffer]}]))
+                 :handler [:eglot/format-buffer]}])
+
+  (rf/dispatch [:register-command :eglot-show-diagnostics
+                {:docstring "Show LSP diagnostics for current buffer"
+                 :interactive nil
+                 :handler [:eglot/show-diagnostics]}])
+
+  (rf/dispatch [:register-command :eglot-hover
+                {:docstring "Show hover documentation at point"
+                 :interactive nil
+                 :handler [:eglot/hover]}])
+
+  (rf/dispatch [:register-command :eglot-workspace-symbol
+                {:docstring "Search for workspace symbols"
+                 :interactive nil
+                 :handler [:eglot/workspace-symbol]}]))

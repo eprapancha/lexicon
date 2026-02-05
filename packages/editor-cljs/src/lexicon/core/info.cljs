@@ -95,7 +95,8 @@
         "Buffer operations:\n"
         "  C-x b        Switch buffer\n"
         "  C-x k        Kill buffer\n"
-        "  C-x C-b      List buffers\n\n")
+        "  C-x C-b      List buffers\n\n"
+        "See also: *Note Key Bindings:: for complete key binding reference.\n\n")
    "(lexicon)Key Bindings"
    (str "File: lexicon,\tNode: Key Bindings,\tNext: Commands,\tPrev: Getting Started,\tUp: Top\n\n"
         "Key Bindings\n"
@@ -118,7 +119,37 @@
         "  C-x 3        Split window vertically\n"
         "  C-x 0        Delete window\n"
         "  C-x 1        Delete other windows\n"
-        "  C-x o        Other window\n\n")})
+        "  C-x o        Other window\n\n")
+   "(lexicon)Commands"
+   (str "File: lexicon,\tNode: Commands,\tNext: Customization,\tPrev: Key Bindings,\tUp: Top\n\n"
+        "Commands\n"
+        (str/join "" (repeat 40 "=")) "\n\n"
+        "Lexicon provides hundreds of commands accessible via M-x.\n\n"
+        "Common commands:\n"
+        "  M-x grep          Search across open buffers\n"
+        "  M-x occur          List lines matching regexp\n"
+        "  M-x shell          Open a shell buffer\n"
+        "  M-x eshell         Open an Emacs shell\n"
+        "  M-x info           Open Info documentation\n"
+        "  M-x ibuffer        Buffer list with filtering\n"
+        "  M-x dired          Directory editor\n\n"
+        "See also: *Note Customization:: for configuration options.\n\n")
+   "(lexicon)Customization"
+   (str "File: lexicon,\tNode: Customization,\tPrev: Commands,\tUp: Top\n\n"
+        "Customization\n"
+        (str/join "" (repeat 40 "=")) "\n\n"
+        "Lexicon can be customized through:\n\n"
+        "  1. Themes - M-x load-theme\n"
+        "  2. Minor modes - Toggle features like line numbers, whitespace display\n"
+        "  3. Key bindings - Customize via init file\n"
+        "  4. Variables - Buffer-local and global variables\n\n"
+        "The init file is loaded on startup from your browser's local storage.\n\n")
+   "(elisp)Top"
+   (str "File: elisp,\tNode: Top,\tUp: (dir)\n\n"
+        "Emacs Lisp Reference\n"
+        (str/join "" (repeat 40 "*")) "\n\n"
+        "This is a placeholder for the Emacs Lisp reference manual.\n"
+        "In Lexicon, the extension language is ClojureScript rather than Elisp.\n\n")})
 
 ;; =============================================================================
 ;; Info Navigation
@@ -330,6 +361,80 @@
    {:fx [[:dispatch [:kill-buffer-by-name "*info*"]]]}))
 
 ;; =============================================================================
+;; Menu Navigation
+;; =============================================================================
+
+(defn- extract-menu-items
+  "Extract menu items from Info node content.
+   Menu items look like: * Name:: Description"
+  [content]
+  (let [lines (str/split content #"\n")]
+    (keep (fn [line]
+            (when-let [match (re-find #"^\*\s+(.+?)::" line)]
+              (str/trim (nth match 1))))
+          lines)))
+
+(defn- extract-cross-references
+  "Extract cross-references from Info node content.
+   References look like: *Note Name:: or *note Name::"
+  [content]
+  (let [matches (re-seq #"\*[Nn]ote\s+(.+?)::" content)]
+    (mapv (fn [match] (str/trim (nth match 1))) matches)))
+
+(rf/reg-event-fx
+ :info/menu
+ (fn [{:keys [db]} [_]]
+   "Select a menu item from current Info node (m)."
+   (let [current-key (get-in db [:info :current-node] "(dir)Top")
+         content (get info-nodes current-key "")
+         items (extract-menu-items content)]
+     (if (seq items)
+       {:fx [[:dispatch [:minibuffer/activate
+                         {:prompt (str "Menu item: (" (str/join ", " items) "): ")
+                          :on-confirm [:info/menu-select]}]]]}
+       {:fx [[:dispatch [:echo/message "No menu in this node"]]]}))))
+
+(rf/reg-event-fx
+ :info/menu-select
+ (fn [{:keys [db]} [_ item]]
+   "Navigate to selected menu item."
+   (let [current-key (get-in db [:info :current-node] "(dir)Top")
+         content (get info-nodes current-key "")
+         header (parse-header content)
+         file (:file header)
+         node-key (resolve-node-key file item)]
+     (if (get info-nodes node-key)
+       {:fx [[:dispatch [:info/open node-key]]]}
+       ;; Try with different file prefixes
+       (let [alt-keys (map #(str "(" % ")" item) ["lexicon" "dir" "elisp"])
+             found (first (filter #(get info-nodes %) alt-keys))]
+         (if found
+           {:fx [[:dispatch [:info/open found]]]}
+           {:fx [[:dispatch [:echo/message
+                             (str "No menu item: " item)]]]}))))))
+
+(rf/reg-event-fx
+ :info/follow-reference
+ (fn [{:keys [db]} [_]]
+   "Follow a cross-reference from current Info node (f)."
+   (let [current-key (get-in db [:info :current-node] "(dir)Top")
+         content (get info-nodes current-key "")
+         refs (extract-cross-references content)]
+     (if (seq refs)
+       {:fx [[:dispatch [:minibuffer/activate
+                         {:prompt (str "Follow xref: (" (str/join ", " refs) "): ")
+                          :on-confirm [:info/menu-select]}]]]}
+       {:fx [[:dispatch [:echo/message "No cross-references in this node"]]]}))))
+
+(rf/reg-event-fx
+ :info/index
+ (fn [_ [_]]
+   "Look up a topic in the index (i)."
+   {:fx [[:dispatch [:minibuffer/activate
+                     {:prompt "Index topic: "
+                      :on-confirm [:info/search-exec]}]]]}))
+
+;; =============================================================================
 ;; Initialization
 ;; =============================================================================
 
@@ -383,10 +488,28 @@
                  :interactive nil
                  :handler [:info/search]}])
 
+  (rf/dispatch [:register-command :Info-menu
+                {:docstring "Select a menu item from current Info node"
+                 :interactive nil
+                 :handler [:info/menu]}])
+
+  (rf/dispatch [:register-command :Info-follow-reference
+                {:docstring "Follow a cross-reference in current Info node"
+                 :interactive nil
+                 :handler [:info/follow-reference]}])
+
+  (rf/dispatch [:register-command :Info-index
+                {:docstring "Look up a topic in the index"
+                 :interactive nil
+                 :handler [:info/index]}])
+
   ;; Mode keybindings
   (rf/dispatch [:keymap/set-mode-key :info-mode "n" :Info-next])
   (rf/dispatch [:keymap/set-mode-key :info-mode "p" :Info-prev])
   (rf/dispatch [:keymap/set-mode-key :info-mode "u" :Info-up])
+  (rf/dispatch [:keymap/set-mode-key :info-mode "m" :Info-menu])
+  (rf/dispatch [:keymap/set-mode-key :info-mode "f" :Info-follow-reference])
+  (rf/dispatch [:keymap/set-mode-key :info-mode "i" :Info-index])
   (rf/dispatch [:keymap/set-mode-key :info-mode "l" :Info-history-back])
   (rf/dispatch [:keymap/set-mode-key :info-mode "r" :Info-history-forward])
   (rf/dispatch [:keymap/set-mode-key :info-mode "t" :Info-top-node])

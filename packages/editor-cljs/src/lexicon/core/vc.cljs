@@ -133,15 +133,57 @@
 (rf/reg-event-fx
  :vc/diff
  (fn [{:keys [db]} [_]]
-   "Show diff for current file (C-x v =)."
+   "Show diff for current file (C-x v =).
+    Creates a *vc-diff* buffer in diff-mode showing the file's modified state."
    (let [window (get-in db [:window-tree])
          buffer-id (when (= (:type window) :leaf) (:buffer-id window))
          buffer (get-in db [:buffers buffer-id])
-         file-path (or (:file-name buffer) (:name buffer))]
-     ;; In a full implementation, this would run git diff and show in diff-mode
-     ;; For now, create a placeholder diff buffer
-     {:fx [[:dispatch [:echo/message
-                       (str "vc-diff: " (or file-path "no file"))]]]})))
+         file-path (or (:file-name buffer) (:name buffer))
+         modified? (:is-modified? buffer false)
+         wasm (:wasm-instance buffer)
+         text (when wasm (try (.getText ^js wasm) (catch :default _ "")))
+         ;; Generate a pseudo-diff showing buffer state
+         diff-content (str "diff --git a/" file-path " b/" file-path "\n"
+                           "--- a/" file-path "\n"
+                           "+++ b/" file-path "\n"
+                           (if modified?
+                             (str "@@ -1,0 +1," (count (str/split (or text "") #"\n" -1)) " @@\n"
+                                  (str/join "\n" (map #(str "+" %) (str/split (or text "") #"\n" -1)))
+                                  "\n")
+                             "No differences.\n"))
+         buffers (:buffers db)
+         new-buffer-id (db/next-buffer-id buffers)
+         WasmGapBuffer (get-in db [:system :wasm-constructor])
+         wasm-instance (when WasmGapBuffer (WasmGapBuffer. diff-content))
+         lines (str/split diff-content #"\n" -1)
+         line-count (count lines)]
+     (if-not wasm-instance
+       {:fx [[:dispatch [:echo/message "Error: WASM not initialized"]]]}
+       {:db (assoc-in db [:buffers new-buffer-id]
+                       {:id new-buffer-id
+                        :name "*vc-diff*"
+                        :wasm-instance wasm-instance
+                        :file-handle nil
+                        :major-mode :diff-mode
+                        :is-read-only? true
+                        :is-modified? false
+                        :mark-position nil
+                        :cursor-position {:line 0 :column 0}
+                        :selection-range nil
+                        :minor-modes #{}
+                        :buffer-local-vars {}
+                        :ast nil
+                        :language :text
+                        :diagnostics []
+                        :undo-stack []
+                        :undo-in-progress? false
+                        :editor-version 0
+                        :text-properties {}
+                        :overlays {}
+                        :next-overlay-id 1
+                        :cache {:text diff-content
+                                :line-count line-count}})
+        :fx [[:dispatch [:switch-buffer new-buffer-id]]]}))))
 
 (rf/reg-event-fx
  :vc/log
@@ -218,13 +260,68 @@
 (rf/reg-event-fx
  :vc/annotate
  (fn [{:keys [db]} [_]]
-   "Show annotate/blame for current file (C-x v g)."
+   "Show annotate/blame for current file (C-x v g).
+    Creates a *vc-annotate* buffer with per-line annotation."
    (let [window (get-in db [:window-tree])
          buffer-id (when (= (:type window) :leaf) (:buffer-id window))
          buffer (get-in db [:buffers buffer-id])
-         file-path (or (:file-name buffer) (:name buffer))]
-     {:fx [[:dispatch [:echo/message
-                       (str "vc-annotate: " (or file-path "no file"))]]]})))
+         file-path (or (:file-name buffer) (:name buffer))
+         wasm (:wasm-instance buffer)
+         text (when wasm (try (.getText ^js wasm) (catch :default _ "")))
+         branch (get-in db [:vc :current-branch] "main")
+         lines (when text (str/split text #"\n" -1))
+         pad-left (fn [s n]
+                    (let [s (str s)]
+                      (if (< (count s) n)
+                        (str (str/join "" (repeat (- n (count s)) " ")) s)
+                        s)))
+         annotate-content
+         (str "Annotations for: " (or file-path "unknown") "\n"
+              (str/join "" (repeat 60 "=")) "\n\n"
+              (if lines
+                (str/join "\n"
+                          (map-indexed
+                           (fn [i line]
+                             (str (pad-left branch 8)
+                                  " "
+                                  (pad-left (inc i) 4)
+                                  ": "
+                                  line))
+                           lines))
+                "No content to annotate.\n"))
+         buffers (:buffers db)
+         new-buffer-id (db/next-buffer-id buffers)
+         WasmGapBuffer (get-in db [:system :wasm-constructor])
+         wasm-instance (when WasmGapBuffer (WasmGapBuffer. annotate-content))
+         ann-lines (str/split annotate-content #"\n" -1)
+         line-count (count ann-lines)]
+     (if-not wasm-instance
+       {:fx [[:dispatch [:echo/message "Error: WASM not initialized"]]]}
+       {:db (assoc-in db [:buffers new-buffer-id]
+                       {:id new-buffer-id
+                        :name "*vc-annotate*"
+                        :wasm-instance wasm-instance
+                        :file-handle nil
+                        :major-mode :fundamental-mode
+                        :is-read-only? true
+                        :is-modified? false
+                        :mark-position nil
+                        :cursor-position {:line 0 :column 0}
+                        :selection-range nil
+                        :minor-modes #{}
+                        :buffer-local-vars {}
+                        :ast nil
+                        :language :text
+                        :diagnostics []
+                        :undo-stack []
+                        :undo-in-progress? false
+                        :editor-version 0
+                        :text-properties {}
+                        :overlays {}
+                        :next-overlay-id 1
+                        :cache {:text annotate-content
+                                :line-count line-count}})
+        :fx [[:dispatch [:switch-buffer new-buffer-id]]]}))))
 
 ;; =============================================================================
 ;; VC Refresh
