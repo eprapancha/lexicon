@@ -242,9 +242,9 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `RET` | Jump to error location |
 | `q` | Quit compilation buffer |
 
-### Diff Mode
+### Diff Mode, Ediff, and Smerge
 
-View and navigate unified diffs:
+**diff-mode** - View and navigate unified diffs:
 
 | Command | Description |
 |---------|-------------|
@@ -256,7 +256,23 @@ View and navigate unified diffs:
 | `diff-hunk-kill` / `k` | Remove current hunk |
 | `q` | Quit diff buffer |
 
-*Note: ediff (visual side-by-side diff) and smerge-mode (merge conflict resolution) are not yet implemented.*
+**ediff** - Buffer comparison:
+
+`M-x ediff-buffers` creates a line-by-line comparison of two buffers, showing added/removed/changed lines in an `*ediff*` buffer. *Note: This is a basic text diff view, not Emacs's full interactive side-by-side editing with copy operations.*
+
+**smerge-mode** - Merge conflict resolution:
+
+| Command | Description |
+|---------|-------------|
+| `smerge-mode` | Enable conflict resolution mode |
+| `smerge-next` | Go to next conflict |
+| `smerge-prev` | Go to previous conflict |
+| `smerge-keep-upper` | Keep upper (mine) version |
+| `smerge-keep-lower` | Keep lower (other) version |
+| `smerge-keep-base` | Keep base version |
+| `smerge-keep-all` | Keep all versions |
+
+Smerge-mode parses real conflict markers (`<<<<<<<` / `=======` / `>>>>>>>`), resolves conflicts by modifying the buffer content, and re-parses remaining conflicts after each resolution.
 
 ### Interactive Highlighting (hi-lock)
 
@@ -272,6 +288,20 @@ View and navigate unified diffs:
 
 `eldoc-mode` shows function signatures and documentation in the echo area after a brief idle delay. Supports `global-eldoc-mode` and a pluggable documentation provider system.
 
+### Grep (Search Across Buffers)
+
+| Command | Description |
+|---------|-------------|
+| `grep` | Search open buffers with regexp |
+| `lgrep` | Local grep (same as grep) |
+| `rgrep` | Recursive grep (same as grep) |
+| `next-error` | Go to next match |
+| `previous-error` | Go to previous match |
+
+Creates a `*grep*` buffer in grep-mode with `file:line:text` results. Keybindings: `n`/`p` (navigate matches), `Enter` (jump to source), `g` (re-run), `q` (quit).
+
+*Note: Searches open buffers only - filesystem grep is not available in the browser.*
+
 ### Info Documentation Browser
 
 `M-x info` opens the Info documentation browser with built-in Lexicon documentation.
@@ -280,13 +310,18 @@ View and navigate unified diffs:
 |-----|-------------|
 | `n`/`p` | Next/previous node |
 | `u` | Go up in hierarchy |
+| `m` | Select menu item |
+| `f` | Follow cross-reference |
+| `i` | Index lookup |
 | `l`/`r` | History back/forward |
 | `t` | Top node |
 | `d` | Directory node |
 | `s` | Search |
 | `q` | Quit |
 
-*Note: Menu navigation (m) and cross-reference following (f) are not yet implemented. Only built-in documentation nodes are available.*
+Includes built-in documentation: Lexicon manual (Getting Started, Key Bindings, Commands, Customization), directory node, and Emacs Lisp placeholder. Menu navigation parses `* Item::` entries; cross-reference following parses `*Note Item::` references.
+
+*Note: Limited to built-in documentation nodes. No external Info file parsing.*
 
 ### Miscellaneous
 
@@ -319,6 +354,7 @@ View and navigate unified diffs:
 | `outline-minor-mode` | Outline navigation |
 | `eldoc-mode` | Show documentation in echo area |
 | `hi-lock-mode` | Interactive regexp highlighting |
+| `smerge-mode` | Merge conflict resolution |
 | `recentf-mode` | Track recently opened files |
 | `save-place-mode` | Remember cursor position per file |
 | `auto-revert-mode` | Auto-refresh when file changes on disk |
@@ -342,6 +378,7 @@ View and navigate unified diffs:
 | `diff-mode` | Unified diff viewing with hunk navigation |
 | `info-mode` | Info documentation browser |
 | `shell-mode` | Shell buffer (built-in commands only) |
+| `grep-mode` | Grep results with match navigation |
 | `ibuffer-mode` | Advanced buffer filtering and grouping |
 
 **Programming Modes (basic support):**
@@ -375,15 +412,15 @@ The following features have command infrastructure in place but are constrained 
 
 ### Version Control (vc.el)
 
-Commands registered: `vc-next-action`, `vc-diff`, `vc-log`, `vc-revert`, `vc-register`, `vc-annotate`. Mode-line shows VC status indicator (`%v` construct, e.g., `Git-main`).
+Commands registered: `vc-next-action`, `vc-diff`, `vc-log`, `vc-revert`, `vc-register`, `vc-annotate`. Mode-line shows VC status indicator (`%v` construct, e.g., `Git-main`). `vc-diff` creates a `*vc-diff*` buffer in diff-mode; `vc-annotate` creates a `*vc-annotate*` buffer with line annotations.
 
-**Limitation:** Cannot execute git commands in the browser. Commands show informational messages but do not perform actual version control operations. Requires a backend server bridge.
+**Limitation:** Cannot execute git commands in the browser. Diff and annotate buffers show placeholder content (not actual git output). Other VC operations show informational messages only. Requires a backend server bridge for real git integration.
 
 ### Shell and Eshell
 
-`M-x shell` and `M-x eshell` open shell buffers. `M-x shell-command` (`M-!`) executes commands. Built-in eshell commands work: `echo`, `pwd`, `date`, `help`, `whoami`, `history`, `clear`.
+`M-x shell` and `M-x eshell` open shell buffers. `M-x shell-command` (`M-!`) executes commands. Built-in eshell commands: `echo`, `pwd`, `cd`, `ls`, `cat`, `date`, `help`, `whoami`, `history`, `clear`, `env`, `export`, `which`.
 
-**Limitation:** Cannot spawn real processes in the browser. Only built-in commands execute; external commands (ls, grep, etc.) are not available without a backend server.
+**Limitation:** Cannot spawn real processes in the browser. `ls` lists open buffers (not filesystem), `cat` reads from open buffers, `cd` changes a virtual working directory. External commands are not available without a backend server.
 
 ### Project Management (project.el)
 
@@ -393,15 +430,27 @@ Commands registered: `project-find-file`, `project-switch-project`, `project-sea
 
 ### Cross-References (xref.el)
 
-Commands registered: `xref-find-definitions` (`M-.`), `xref-find-references` (`M-?`), `xref-go-back` (`M-,`). Marker stack for navigation history works.
+Commands registered: `xref-find-definitions` (`M-.`), `xref-find-references` (`M-?`), `xref-go-back` (`M-,`). Marker stack for navigation history works. Find-definitions and find-references search all open buffers for the identifier at point and create an `*xref*` results buffer with `file:line:text` matches.
 
-**Limitation:** Actual definition/reference lookup requires an LSP backend or tag system. Currently extracts identifier at point but cannot resolve definitions.
+**Limitation:** Searches open buffers only using text matching (word-boundary regex). No semantic understanding - cannot distinguish definitions from references, or resolve across files not currently open. Full definition/reference resolution requires an LSP backend.
+
+### Terminal Emulation (term.el, comint.el)
+
+Commands registered: `term`, `ansi-term`. Comint-mode provides input history ring with `M-p`/`M-n` for cycling through previous commands. Term and ansi-term currently delegate to the shell buffer infrastructure.
+
+**Limitation:** No real terminal emulation (VT100/ANSI). `term` and `ansi-term` open shell buffers with built-in commands only. Comint input history works, but process interaction, job control, and terminal escape sequences are not implemented. Requires a backend server with PTY support.
+
+### Remote Files (tramp.el)
+
+TRAMP path parsing is implemented: `/method:user@host:/path` syntax is recognized and decomposed. Method configurations for ssh, scp, sudo, su are defined. Connection state management and `tramp-cleanup-all-connections` command are available.
+
+**Limitation:** Path parsing only - no actual remote connections. Cannot SSH, SCP, or perform any remote file operations. This is purely the path parsing and connection management framework. Requires a backend server to establish real connections.
 
 ### LSP Client (eglot)
 
-Commands registered: `eglot`, `eglot-shutdown`, `eglot-reconnect`, `eglot-rename`, `eglot-code-actions`, `eglot-format-buffer`. Server program configuration for multiple languages defined.
+Commands registered: `eglot`, `eglot-shutdown`, `eglot-reconnect`, `eglot-rename`, `eglot-code-actions`, `eglot-format-buffer`, `eglot-show-diagnostics`, `eglot-hover`, `eglot-workspace-symbol`. Server program configuration for multiple languages defined. Diagnostics tracking state and display framework in place.
 
-**Limitation:** No LSP protocol implementation yet. Requires WebSocket bridge to communicate with language servers. This is framework/command registration only.
+**Limitation:** No LSP protocol implementation yet. Requires WebSocket bridge to communicate with language servers. This is framework/command registration only - no actual language intelligence.
 
 ---
 
@@ -479,13 +528,16 @@ lexicon/
 **Current Phase:** 6.6 - Emacs Semantic Compatibility
 
 **Recently Completed:**
+- Grep search across open buffers with `*grep*` results buffer (#125)
+- Ediff buffer comparison, smerge-mode conflict resolution (#119)
+- Shell/Eshell with 12 built-in commands (#112)
+- Info documentation browser with menu/cross-reference navigation (#142)
 - Buffer name uniquification (#141)
 - ibuffer - advanced buffer management (#140)
 - Font-lock multiline patterns and JIT fontification (#143, #144)
 - Eldoc documentation in echo area (#124)
 - File persistence: recentf, saveplace, autorevert (#118)
-- Diff mode with hunk navigation (#119, partial - diff-mode only)
-- Hi-lock interactive highlighting (#125, partial - hi-lock only)
+- Hi-lock interactive highlighting (#125)
 - Dired mode with file operations via FS Access API (#139)
 - Programming support: compile, flymake, imenu (#122)
 - File System Access API for Emacs-style find-file (#135)
@@ -495,18 +547,12 @@ lexicon/
 - Font-lock and which-function modes (#130)
 - Emacs completion framework (#136, #137, #138)
 
-**In Progress (framework in place, needs backend):**
-- Version control integration - vc.el commands and mode-line (#113)
-- Project management - project.el, xref.el commands (#116)
-- Shell/Eshell - built-in commands work (#112)
-- Info browser - basic navigation works (#142)
-- LSP client - eglot command framework (#129)
-
-**Not Started:**
-- Terminal emulation - term.el, comint.el (#127)
-- Remote files - tramp.el (#126)
-- grep.el - grep output parsing (part of #125)
-- ediff / smerge-mode - visual diff/merge (part of #119)
+**In Progress (framework in place, needs backend for full functionality):**
+- Version control - vc.el commands registered, mode-line indicator works, operations need git backend (#113)
+- Project/xref - xref searches open buffers, project commands need filesystem traversal (#116)
+- Terminal emulation - comint input history works, term/ansi-term delegate to shell (#127)
+- Remote files - TRAMP path parsing works, no actual remote connections (#126)
+- LSP client - eglot command framework and diagnostics state, no protocol implementation (#129)
 
 **See [GitHub Issues](https://github.com/eprapancha/lexicon/issues) for detailed status**
 
