@@ -86,6 +86,7 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `kill-buffer` | `C-x k` | Kill buffer |
 | `list-buffers` | `C-x C-b` | List all buffers |
 | `buffer-menu` | `M-x buffer-menu` | Open buffer menu |
+| `ibuffer` | `M-x ibuffer` | Advanced buffer management |
 
 **Buffer Menu Mode Keys:**
 | Key | Description |
@@ -98,6 +99,10 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `u` | Unmark |
 | `g` | Refresh list |
 | `n`/`p` | Navigate up/down |
+
+**ibuffer** provides filter groups (by mode, name, starred buffers), sorting (alphabetic, size, mode, recency), and bulk mark/delete operations.
+
+**uniquify**: Buffer names are automatically disambiguated when multiple files share the same name (e.g., `config.cljs<src>` vs `config.cljs<test>`). Supports forward, reverse, post-forward, and post-forward-angle-brackets styles.
 
 ### Window Management
 
@@ -143,6 +148,11 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `R` | Rename/move file |
 | `D` | Delete file |
 | `+` | Create directory |
+
+**File Persistence:**
+- **recentf**: Tracks recently opened files (persisted to localStorage)
+- **saveplace**: Remembers cursor position per file across sessions
+- **autorevert**: Auto-refreshes unmodified buffers when files change on disk (5s interval, requires FS Access API)
 
 ### Rectangle Operations
 
@@ -232,6 +242,52 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `RET` | Jump to error location |
 | `q` | Quit compilation buffer |
 
+### Diff Mode
+
+View and navigate unified diffs:
+
+| Command | Description |
+|---------|-------------|
+| `diff-hunk-next` / `n` | Navigate to next hunk |
+| `diff-hunk-prev` / `p` | Navigate to previous hunk |
+| `diff-file-next` / `N` | Navigate to next file |
+| `diff-file-prev` / `P` | Navigate to previous file |
+| `diff-goto-source` / `RET` | Jump to source location |
+| `diff-hunk-kill` / `k` | Remove current hunk |
+| `q` | Quit diff buffer |
+
+*Note: ediff (visual side-by-side diff) and smerge-mode (merge conflict resolution) are not yet implemented.*
+
+### Interactive Highlighting (hi-lock)
+
+| Command | Keybinding | Description |
+|---------|------------|-------------|
+| `highlight-regexp` | `M-s h r` | Highlight matches of a regexp |
+| `highlight-phrase` | `M-s h p` | Highlight a phrase |
+| `highlight-lines-matching-regexp` | `M-s h l` | Highlight entire matching lines |
+| `unhighlight-regexp` | `M-s h u` | Remove highlighting |
+| `highlight-symbol-at-point` | `M-s h .` | Highlight symbol at point |
+
+### Eldoc
+
+`eldoc-mode` shows function signatures and documentation in the echo area after a brief idle delay. Supports `global-eldoc-mode` and a pluggable documentation provider system.
+
+### Info Documentation Browser
+
+`M-x info` opens the Info documentation browser with built-in Lexicon documentation.
+
+| Key | Description |
+|-----|-------------|
+| `n`/`p` | Next/previous node |
+| `u` | Go up in hierarchy |
+| `l`/`r` | History back/forward |
+| `t` | Top node |
+| `d` | Directory node |
+| `s` | Search |
+| `q` | Quit |
+
+*Note: Menu navigation (m) and cross-reference following (f) are not yet implemented. Only built-in documentation nodes are available.*
+
 ### Miscellaneous
 
 | Command | Keybinding | Description |
@@ -258,9 +314,14 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `icomplete-mode` | Incremental completion in minibuffer |
 | `winner-mode` | Window configuration undo/redo |
 | `which-function-mode` | Show current function in mode-line |
-| `font-lock-mode` | Syntax highlighting |
+| `font-lock-mode` | Syntax highlighting (with multiline and JIT support) |
 | `hs-minor-mode` | Code folding (hideshow) |
 | `outline-minor-mode` | Outline navigation |
+| `eldoc-mode` | Show documentation in echo area |
+| `hi-lock-mode` | Interactive regexp highlighting |
+| `recentf-mode` | Track recently opened files |
+| `save-place-mode` | Remember cursor position per file |
+| `auto-revert-mode` | Auto-refresh when file changes on disk |
 
 ---
 
@@ -278,6 +339,10 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `occur-mode` | Occur results with navigation |
 | `outline-mode` | Hierarchical document editing |
 | `completion-list-mode` | *Completions* buffer navigation |
+| `diff-mode` | Unified diff viewing with hunk navigation |
+| `info-mode` | Info documentation browser |
+| `shell-mode` | Shell buffer (built-in commands only) |
+| `ibuffer-mode` | Advanced buffer filtering and grouping |
 
 **Programming Modes (basic support):**
 
@@ -301,6 +366,42 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 - **Completion styles**: basic, substring, flex
 - **icomplete-mode**: Show candidates inline as you type
 - **Completion cycling**: `C-.` / `C-,` (with icomplete)
+
+---
+
+## Features with Browser Limitations
+
+The following features have command infrastructure in place but are constrained by the browser environment. They provide the UI framework and will become fully functional when connected to a backend server.
+
+### Version Control (vc.el)
+
+Commands registered: `vc-next-action`, `vc-diff`, `vc-log`, `vc-revert`, `vc-register`, `vc-annotate`. Mode-line shows VC status indicator (`%v` construct, e.g., `Git-main`).
+
+**Limitation:** Cannot execute git commands in the browser. Commands show informational messages but do not perform actual version control operations. Requires a backend server bridge.
+
+### Shell and Eshell
+
+`M-x shell` and `M-x eshell` open shell buffers. `M-x shell-command` (`M-!`) executes commands. Built-in eshell commands work: `echo`, `pwd`, `date`, `help`, `whoami`, `history`, `clear`.
+
+**Limitation:** Cannot spawn real processes in the browser. Only built-in commands execute; external commands (ls, grep, etc.) are not available without a backend server.
+
+### Project Management (project.el)
+
+Commands registered: `project-find-file`, `project-switch-project`, `project-search`. Project registry and detection framework in place.
+
+**Limitation:** Project root detection and file listing require file system traversal not available in browser context. Currently returns placeholder data.
+
+### Cross-References (xref.el)
+
+Commands registered: `xref-find-definitions` (`M-.`), `xref-find-references` (`M-?`), `xref-go-back` (`M-,`). Marker stack for navigation history works.
+
+**Limitation:** Actual definition/reference lookup requires an LSP backend or tag system. Currently extracts identifier at point but cannot resolve definitions.
+
+### LSP Client (eglot)
+
+Commands registered: `eglot`, `eglot-shutdown`, `eglot-reconnect`, `eglot-rename`, `eglot-code-actions`, `eglot-format-buffer`. Server program configuration for multiple languages defined.
+
+**Limitation:** No LSP protocol implementation yet. Requires WebSocket bridge to communicate with language servers. This is framework/command registration only.
 
 ---
 
@@ -378,6 +479,13 @@ lexicon/
 **Current Phase:** 6.6 - Emacs Semantic Compatibility
 
 **Recently Completed:**
+- Buffer name uniquification (#141)
+- ibuffer - advanced buffer management (#140)
+- Font-lock multiline patterns and JIT fontification (#143, #144)
+- Eldoc documentation in echo area (#124)
+- File persistence: recentf, saveplace, autorevert (#118)
+- Diff mode with hunk navigation (#119, partial - diff-mode only)
+- Hi-lock interactive highlighting (#125, partial - hi-lock only)
 - Dired mode with file operations via FS Access API (#139)
 - Programming support: compile, flymake, imenu (#122)
 - File System Access API for Emacs-style find-file (#135)
@@ -387,13 +495,18 @@ lexicon/
 - Font-lock and which-function modes (#130)
 - Emacs completion framework (#136, #137, #138)
 
-**In Progress:**
-- Version control integration (vc.el, vc-git.el) (#113)
-- Project management (project.el, xref.el) (#116)
+**In Progress (framework in place, needs backend):**
+- Version control integration - vc.el commands and mode-line (#113)
+- Project management - project.el, xref.el commands (#116)
+- Shell/Eshell - built-in commands work (#112)
+- Info browser - basic navigation works (#142)
+- LSP client - eglot command framework (#129)
 
-**Upcoming:**
-- LSP client (eglot.el) (#129)
-- Eldoc and documentation (#124)
+**Not Started:**
+- Terminal emulation - term.el, comint.el (#127)
+- Remote files - tramp.el (#126)
+- grep.el - grep output parsing (part of #125)
+- ediff / smerge-mode - visual diff/merge (part of #119)
 
 **See [GitHub Issues](https://github.com/eprapancha/lexicon/issues) for detailed status**
 
@@ -419,6 +532,6 @@ GNU General Public License v3.0 - See [LICENSE](./LICENSE)
 ---
 
 **Status:** Active Development
-**Last Updated:** 2026-02-04
+**Last Updated:** 2026-02-05
 
 *Building Emacs for the web, one gap buffer at a time.*
