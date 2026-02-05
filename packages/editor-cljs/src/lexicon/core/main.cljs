@@ -26,7 +26,9 @@
             [lexicon.core.completion.capf]     ; Load completion-at-point (Phase 6C Week 5)
             [lexicon.core.packages.project]    ; Load project.el (Phase 6C Week 6)
             [lexicon.core.packages.imenu]      ; Load imenu (Phase 6C Week 6)
-            [lexicon.core.packages.recentf]    ; Load recentf (Phase 6C Week 6)
+            [lexicon.core.packages.recentf :as recentf]    ; Load recentf (Phase 6C Week 6)
+            [lexicon.core.packages.saveplace :as saveplace]  ; Load saveplace (#118)
+            [lexicon.core.packages.autorevert :as autorevert] ; Load autorevert (#118)
             [lexicon.core.packages.savehist]   ; Load savehist (Phase 6C Week 6)
             [lexicon.core.buffer-local]        ; Load buffer-local variables (Phase 6D Week 1)
             [lexicon.core.hooks]               ; Load enhanced hooks (Phase 6D Week 1)
@@ -53,6 +55,16 @@
             [lexicon.core.occur]               ; Load occur-mode (#131)
             [lexicon.core.modes.outline-mode :as outline-mode]  ; Load outline & hideshow (#114)
             [lexicon.core.fs.access :as fs-access]  ; Load File System Access API (#135)
+            [lexicon.core.uniquify :as uniquify]   ; Load uniquify buffer names (#141)
+            [lexicon.core.hi-lock :as hi-lock]     ; Load hi-lock highlighting (#125)
+            [lexicon.core.eldoc :as eldoc]         ; Load eldoc documentation (#124)
+            [lexicon.core.ibuffer :as ibuffer]     ; Load ibuffer (#140)
+            [lexicon.core.modes.diff-mode :as diff-mode] ; Load diff-mode (#119)
+            [lexicon.core.vc :as vc]                   ; Load vc.el version control (#113)
+            [lexicon.core.xref :as xref]               ; Load xref.el cross-references (#116)
+            [lexicon.core.shell :as shell]             ; Load shell/eshell (#112)
+            [lexicon.core.info :as info]               ; Load info.el documentation browser (#142)
+            [lexicon.core.eglot :as eglot]             ; Load eglot LSP client (#129)
             [lexicon.core.events.ui :as ui-events]  ; Load UI events for command init (#138)
             [lexicon.core.font-lock :as font-lock]  ; Load font-lock syntax highlighting (#130)
             [lexicon.core.which-func :as which-func]  ; Load which-func mode (#130)
@@ -302,6 +314,44 @@
 
   ;; Initialize File System Access API (#135)
   (fs-access/init-fs-access!)
+
+  ;; Initialize uniquify buffer naming (#141)
+  (uniquify/init!)
+
+  ;; Initialize hi-lock highlighting (#125)
+  (hi-lock/init!)
+
+  ;; Initialize eldoc documentation (#124)
+  (eldoc/init!)
+
+  ;; Initialize file persistence (#118)
+  (recentf/init!)
+  (saveplace/init!)
+  (autorevert/init!)
+
+  ;; Initialize ibuffer (#140)
+  (ibuffer/init!)
+
+  ;; Initialize diff-mode (#119)
+  (diff-mode/init!)
+
+  ;; Initialize vc.el version control (#113)
+  (vc/init!)
+
+  ;; Initialize xref cross-references (#116)
+  (xref/init!)
+
+  ;; Initialize project commands (#116)
+  (lexicon.core.packages.project/init!)
+
+  ;; Initialize shell/eshell (#112)
+  (shell/init!)
+
+  ;; Initialize info.el documentation browser (#142)
+  (info/init!)
+
+  ;; Initialize eglot LSP client (#129)
+  (eglot/init!)
 
   ;; Mount the React application
   (mount-app)

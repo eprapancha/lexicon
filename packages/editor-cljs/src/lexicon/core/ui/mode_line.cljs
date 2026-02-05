@@ -14,6 +14,7 @@
   - %*: Modified indicator (** modified, -- unmodified, %% read-only modified, %- read-only)
   - %+: Similar to %* but shows + for modified
   - %m: Major mode name
+  - %v: VC status (e.g., Git-main, Git:main)
   - %[: Begin face for recursive edit
   - %]: End face for recursive edit
   - %%: Literal %
@@ -158,6 +159,7 @@
     \* (format-modified-indicator (:modified? context false) (:read-only? context false))
     \+ (format-plus-indicator (:modified? context false) (:read-only? context false))
     \m (get-mode-name (:major-mode context :fundamental-mode) (:mode-data context {}))
+    \v (or (:vc-string context) "")
     \[ (let [depth (:minibuffer-depth context 0)]
          (if (> depth 1) (str "[" depth "]") ""))  ; Show [2], [3], etc. for depth > 1
     \] ""  ; End marker for recursive edit (paired with %[)
@@ -232,6 +234,29 @@
           ;; Get minibuffer depth (Phase 6.5 Week 3-4)
           minibuffer-depth (minibuffer/minibuffer-depth db)
 
+          ;; Get VC status (#113)
+          vc-status (get-in db [:vc :file-status buffer-id])
+          vc-backend (or (:backend vc-status) (get-in db [:vc :current-backend]))
+          vc-state (or (:state vc-status) :up-to-date)
+          vc-revision (or (:revision vc-status) (get-in db [:vc :current-branch]))
+          vc-string (when vc-backend
+                      (let [sep (case vc-state
+                                  :up-to-date "-"
+                                  :edited ":"
+                                  :added "@"
+                                  :removed "!"
+                                  :conflict "!"
+                                  :missing "?"
+                                  "-")
+                            backend-name (case vc-backend
+                                           :git "Git"
+                                           :svn "SVN"
+                                           :hg "Hg"
+                                           (when vc-backend
+                                             (str/capitalize (name vc-backend))))]
+                        (when backend-name
+                          (str backend-name sep (or vc-revision "")))))
+
           ;; Build context map
           context {:buffer-name buffer-name
                    :file-name file-name
@@ -243,7 +268,8 @@
                    :read-only? read-only?
                    :major-mode major-mode
                    :mode-data mode-data
-                   :minibuffer-depth minibuffer-depth}]
+                   :minibuffer-depth minibuffer-depth
+                   :vc-string vc-string}]
 
       (format-mode-line format-string context))))
 

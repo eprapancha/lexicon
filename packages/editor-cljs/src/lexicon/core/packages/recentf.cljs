@@ -171,39 +171,36 @@
                        :major-mode :special-mode
                        :read-only true]]]})))
 
-;; Toggle recentf-mode
-(rf/reg-event-db
-  :recentf-mode
-  (fn [db [_ enable?]]
-    (assoc-in db [:recentf :enabled?] enable?)))
-
-;; -- Auto-tracking --
-
-;; Hook into find-file to auto-add to recent list
-(defn hook-find-file! []
-  ;; In real implementation, would add interceptor to :find-file event
-  ;; For now, events.cljs should manually dispatch :recentf/add-file
-  ;; when opening files
-  nil)
-
-;; -- Cleanup --
-
-;; Remove non-existent files from list
-(rf/reg-event-fx
-  :recentf/cleanup
-  (fn [{:keys [db]} [_]]
-    ;; In browser environment, we can't check file existence
-    ;; This would integrate with backend server
-    {:db (assoc db :message "Cleanup not yet implemented")}))
 
 ;; -- Initialization --
 
-(defn initialize-recentf! []
-  ;; Initialize recentf system
-  (rf/dispatch-sync [:recentf/initialize])
+(defn init!
+  "Initialize recentf module and register commands."
+  []
+  ;; Initialize state
+  (rf/dispatch [:recentf/initialize])
 
-  ;; Hook into file opening
-  (hook-find-file!))
+  ;; Register commands
+  (rf/dispatch [:register-command :recentf-open-files
+                {:docstring "Open a recently visited file"
+                 :interactive nil
+                 :handler [:recentf-open]}])
 
-;; Auto-initialize on namespace load
-(initialize-recentf!)
+  (rf/dispatch [:register-command :recentf-edit-list
+                {:docstring "Edit the recent file list"
+                 :interactive nil
+                 :handler [:recentf-edit-list]}])
+
+  (rf/dispatch [:register-command :recentf-mode
+                {:docstring "Toggle recentf mode - track recently opened files"
+                 :interactive nil
+                 :handler [:command/recentf-mode]}]))
+
+(rf/reg-event-fx
+ :command/recentf-mode
+ (fn [{:keys [db]} [_]]
+   (let [currently-enabled? (get-in db [:recentf :enabled?] false)]
+     {:db (assoc-in db [:recentf :enabled?] (not currently-enabled?))
+      :fx [[:dispatch [:echo/message (if currently-enabled?
+                                       "recentf-mode disabled"
+                                       "recentf-mode enabled")]]]})))

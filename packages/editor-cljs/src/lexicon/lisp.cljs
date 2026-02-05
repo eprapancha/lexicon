@@ -1663,12 +1663,16 @@
   "Return file path associated with current buffer.
 
   Usage: (buffer-file-name)
-  Returns: String (file path) or nil"
+  Returns: String (file path) or nil
+
+  Note: In Emacs this returns the full path. The :file-path field
+  stores the full path string, while :file-handle stores the
+  FileSystemFileHandle object (for FS Access API operations)."
   []
   (let [db @rfdb/app-db
         buffer-id (current-buffer)
         buffer (get-in db [:buffers buffer-id])]
-    (:file-handle buffer)))
+    (:file-path buffer)))
 
 ;; =============================================================================
 ;; Buffer Modes

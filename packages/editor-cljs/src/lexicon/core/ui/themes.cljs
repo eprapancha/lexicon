@@ -150,7 +150,16 @@
              "--lexicon-font-family-mono" "\"JetBrains Mono\", \"Fira Code\", \"Consolas\", \"Monaco\", monospace"
              "--lexicon-font-family-sans" "\"Inter\", \"SF Pro\", -apple-system, BlinkMacSystemFont, sans-serif"
              "--lexicon-font-size" "14px"
-             "--lexicon-line-height" "1.5"}})
+             "--lexicon-line-height" "1.5"
+
+             ;; Hi-lock highlighting (#125)
+             "--lexicon-bg-hi-yellow" "#ffff00"
+             "--lexicon-bg-hi-pink" "#ffb6c1"
+             "--lexicon-bg-hi-green" "#90ee90"
+             "--lexicon-bg-hi-blue" "#b0e0e6"
+             "--lexicon-bg-hi-black" "#c0c0c0"
+             "--lexicon-bg-hi-red" "#ffcccc"
+             "--lexicon-fg-hi-black" "#000000"}})
 
 (def lexicon-base-dark
   "Default dark theme with WCAG AAA contrast compliance."
@@ -215,7 +224,16 @@
              "--lexicon-font-family-mono" "\"JetBrains Mono\", \"Fira Code\", \"Consolas\", \"Monaco\", monospace"
              "--lexicon-font-family-sans" "\"Inter\", \"SF Pro\", -apple-system, BlinkMacSystemFont, sans-serif"
              "--lexicon-font-size" "14px"
-             "--lexicon-line-height" "1.5"}})
+             "--lexicon-line-height" "1.5"
+
+             ;; Hi-lock highlighting (#125)
+             "--lexicon-bg-hi-yellow" "#8b8b00"
+             "--lexicon-bg-hi-pink" "#8b4557"
+             "--lexicon-bg-hi-green" "#3a5f3a"
+             "--lexicon-bg-hi-blue" "#3a5f8b"
+             "--lexicon-bg-hi-black" "#4a4a4a"
+             "--lexicon-bg-hi-red" "#5f3a3a"
+             "--lexicon-fg-hi-black" "#ffffff"}})
 
 ;; -- Theme Registry --
 

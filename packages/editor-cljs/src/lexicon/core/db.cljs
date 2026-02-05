@@ -46,7 +46,8 @@
   See .CLAUDE.md Architecture Principles section for detailed ownership rules"
   {:buffers {1 {:id 1
                 :wasm-instance nil                     ; Will be set when WASM loads
-                :file-handle nil
+                :file-handle nil                       ; FileSystemFileHandle (FS Access API)
+                :file-path nil                         ; Full path string (for uniquify)
                 :name "*scratch*"
                 :is-modified? false
                 :is-read-only? false                   ; Phase 6B: Read-only buffer flag
@@ -375,7 +376,22 @@
            :completions-common-part {:foreground "--lexicon-fg-completion-match"
                                      :font-weight "bold"}
            :completions-first-difference {:foreground "--lexicon-fg-completion-diff"}
-           :completions-annotations {:foreground "--lexicon-fg-completion-annotation"}}
+           :completions-annotations {:foreground "--lexicon-fg-completion-annotation"}
+           ;; Hi-lock faces for interactive highlighting (#125)
+           :hi-yellow {:background "--lexicon-bg-hi-yellow"}
+           :hi-pink {:background "--lexicon-bg-hi-pink"}
+           :hi-green {:background "--lexicon-bg-hi-green"}
+           :hi-blue {:background "--lexicon-bg-hi-blue"}
+           :hi-black-b {:background "--lexicon-bg-hi-black"
+                        :font-weight "bold"}
+           :hi-blue-b {:background "--lexicon-bg-hi-blue"
+                       :font-weight "bold"}
+           :hi-red-b {:background "--lexicon-bg-hi-red"
+                      :font-weight "bold"}
+           :hi-green-b {:background "--lexicon-bg-hi-green"
+                        :font-weight "bold"}
+           :hi-black-hb {:foreground "--lexicon-fg-hi-black"
+                         :font-weight "bold"}}
 
    ;; Phase 7.8.1: Theme system - Modus themes support
    :current-theme :modus-vivendi  ; Active theme (:modus-operandi or :modus-vivendi)
@@ -392,7 +408,8 @@
   [buffer-id name wasm-instance]
   {:id buffer-id
    :wasm-instance wasm-instance
-   :file-handle nil
+   :file-handle nil                               ; FileSystemFileHandle (FS Access API)
+   :file-path nil                                 ; Full path string (for uniquify)
    :name name
    :is-modified? false
    :is-read-only? false                   ; Phase 6B: Read-only buffer flag

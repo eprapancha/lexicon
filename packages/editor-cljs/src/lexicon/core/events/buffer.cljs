@@ -12,6 +12,7 @@
             [lexicon.core.log :as log]
             [lexicon.core.api.message]
             [lexicon.core.completion.metadata :as completion-metadata]
+            [lexicon.core.uniquify :as uniquify]
             [lexicon.dired :as dired]))
 
 ;; -- Helper Functions --
@@ -429,16 +430,21 @@
          {:db db
           :fx effects})))))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :kill-buffer-finalize
- (fn [db [_ buffer-id]]
+ (fn [{:keys [db]} [_ buffer-id]]
    "Actually remove the buffer from db. Called after switch-buffer."
-   (let [buffer-name (get-in db [:buffers buffer-id :name])]
+   (let [buffer (get-in db [:buffers buffer-id])
+         buffer-name (:name buffer)
+         file-path (:file-path buffer)]
      (js/console.log "Killing buffer:" buffer-name)
-     (-> db
-         (update :buffers dissoc buffer-id)
-         ;; Remove from access order
-         (update :buffer-access-order #(vec (remove #{buffer-id} %)))))))
+     {:db (-> db
+              (update :buffers dissoc buffer-id)
+              ;; Remove from access order
+              (update :buffer-access-order #(vec (remove #{buffer-id} %))))
+      ;; Issue #118: Save cursor position before killing
+      :fx (when file-path
+            [[:dispatch [:saveplace/on-kill-buffer buffer-id]]])})))
 
 (rf/reg-event-fx
  :list-buffers
@@ -831,8 +837,9 @@
 
 (rf/reg-fx
  :fs-access/read-file-from-path
- (fn [{:keys [grant-handle relative-path]}]
-   "Read a file from a granted directory via relative path."
+ (fn [{:keys [grant-handle relative-path full-path]}]
+   "Read a file from a granted directory via relative path.
+    Passes full-path to :file-read-success for uniquify support."
    (let [path-parts (->> (clojure.string/split
                           (clojure.string/replace relative-path #"^/" "")
                           #"/")
@@ -852,7 +859,8 @@
                                             [:file-read-success
                                              {:file-handle file-handle
                                               :content content
-                                              :name filename}]))))))
+                                              :name filename
+                                              :file-path full-path}]))))))
                      (.catch (fn [err]
                                (rf/dispatch
                                 [:message/display
@@ -920,8 +928,9 @@
 
 (rf/reg-event-fx
  :file-read-success
- (fn [{:keys [db]} [_ {:keys [file-handle content name]}]]
-   "Handle successful file read - create new buffer and switch to it"
+ (fn [{:keys [db]} [_ {:keys [file-handle content name file-path]}]]
+   "Handle successful file read - create new buffer and switch to it.
+    Supports uniquify: file-path (if provided) enables buffer name disambiguation."
    (let [buffer-id (db/next-buffer-id (:buffers db))
          WasmGapBuffer (get-in db [:system :wasm-constructor])
          wasm-instance (WasmGapBuffer. content)
@@ -940,10 +949,15 @@
                          :else :fundamental-mode)
          ;; Enable font-lock if global font-lock mode is on (default true)
          global-font-lock? (get-in db [:settings :global-font-lock-mode] true)
+         ;; Issue #141: Generate buffer name using uniquify if file-path provided
+         buffer-name (if file-path
+                       (uniquify/generate-buffer-name-for-file db file-path)
+                       name)
          new-buffer {:id buffer-id
                      :wasm-instance wasm-instance
                      :file-handle file-handle
-                     :name name
+                     :file-path file-path         ; Issue #141: Store full path for uniquify
+                     :name buffer-name
                      :is-modified? false
                      :mark-position nil
                      :cursor-position {:line 0 :column 0}
@@ -960,14 +974,26 @@
                      :font-lock-mode global-font-lock?  ; Issue #130: Enable font-lock
                      :text-properties {}                ; Issue #130: Initialize text properties
                      :cache {:text content
-                             :line-count line-count}}]
-       {:db (assoc-in db [:buffers buffer-id] new-buffer)
+                             :line-count line-count}}
+         ;; Add buffer first, then uniquify all affected buffers
+         db-with-new-buffer (assoc-in db [:buffers buffer-id] new-buffer)
+         ;; Issue #141: Rationalize buffer names if we have a file path
+         final-db (if file-path
+                    (uniquify/uniquify-buffer-names db-with-new-buffer file-path)
+                    db-with-new-buffer)]
+       {:db final-db
         :fx [[:dispatch [:switch-buffer buffer-id]]
              [:dispatch [:parser/request-parse buffer-id]]
              [:dispatch [:lsp/on-buffer-opened buffer-id]]
              ;; Issue #130: Trigger font-lock fontification after buffer is created
              (when global-font-lock?
-               [:dispatch [:font-lock/fontify-buffer buffer-id]])]})))
+               [:dispatch [:font-lock/fontify-buffer buffer-id]])
+             ;; Issue #118: Track in recent files
+             (when (or file-path name)
+               [:dispatch [:recentf/add-file (or file-path name)]])
+             ;; Issue #118: Restore saved cursor position
+             (when file-path
+               [:dispatch [:saveplace/restore-position buffer-id file-path]])]})))
 
 (rf/reg-event-db
  :file-read-failure

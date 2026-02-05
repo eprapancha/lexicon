@@ -454,19 +454,41 @@ e2e_tests/                            # E2E tests
 5. **#109** - Help System (help.el, info.el) - COMPLETED
 6. **#114** - Outline & Folding (outline.el, hideshow.el) - COMPLETED
 
-**Implementation Guidelines:**
-- Full implementation without shortcuts or caveats
-- No commits until ALL features are implemented and manually tested by user
-- UI tests preferred; lisp tests only for non-user-testable/package-developer functionality
-- If tests get complicated, skip temporarily - implementation is highest priority
-- Add periodic progress updates to GitHub issues
-- Study Emacs source at `~/projects/emacs-source/` for fidelity
+---
+
+## Bulk Implementation Rules
+
+**These rules ALWAYS apply during long coding runs to tackle big bucket lists:**
+
+1. **Every issue implemented in full** - Nothing is skipped. All functionalities listed in GitHub issues exist for a reason. We don't dilute our implementation.
+
+2. **Defer only when complexity is out of hand** - It's OK to defer a particular feature to move to other issues for functional coverage, but ONLY if that feature's complexity is getting slightly out of hand.
+
+3. **No commit after each feature** - Finish everything and commit at the end.
+
+4. **Every new feature needs E2E UI tests** - If the feature is an end-user feature, it MUST have a UI test. Only features targeted at package developers can be tested with lisp tests. Lisp tests are always the exception, never the rule.
+
+5. **All new tests must pass** - No exceptions.
+
+6. **No closing issues unless complete** - Don't close issues unless literally everything in the issue is covered.
+
+7. **Research Emacs source when required** - Use `~/projects/emacs-source/` for fidelity.
+
+8. **Never run full regression** - User will do that on GitHub and report failures.
+
+9. **Run `bb lint` and check for violations** - NEVER update linting rules. They exist for a reason.
+
+10. **Implementation Guidelines:**
+    - Full implementation without shortcuts or caveats
+    - UI tests preferred; lisp tests only for package-developer functionality
+    - Add periodic progress updates to GitHub issues
+    - Study Emacs source at `~/projects/emacs-source/` for fidelity
 
 **Workflow:**
 1. Deep dive Emacs source for each feature
 2. Implement the feature completely
 3. Write UI tests for user-facing functionality
-4. Update GitHub issue with progress
+4. Run tests for the specific feature (not full regression)
 5. Move to next feature
 6. When ALL done, user will manually test before committing
 

@@ -205,15 +205,6 @@
 
 ;; -- Initialization --
 
-(defn initialize-project! []
-  ;; Auto-detect current project
-  (rf/dispatch [:project/detect-current])
-
-  ;; Register Lexicon itself as a known project
-  (register-project! "/home/nixos/projects/lexicon"
-                     :clojurescript
-                     "lexicon"))
-
 (rf/reg-event-db
   :project/detect-current
   (fn [db [_]]
@@ -221,5 +212,24 @@
       (assoc-in db [:project :current-project] project)
       db)))
 
-;; Auto-initialize on namespace load
-(initialize-project!)
+(defn init!
+  "Initialize project module and register commands."
+  []
+  ;; Register commands
+  (rf/dispatch [:register-command :project-find-file
+                {:docstring "Find file in current project (C-x p f)"
+                 :interactive nil
+                 :handler [:project-find-file]}])
+
+  (rf/dispatch [:register-command :project-switch-project
+                {:docstring "Switch to another project (C-x p p)"
+                 :interactive nil
+                 :handler [:project-switch-project]}])
+
+  (rf/dispatch [:register-command :project-search
+                {:docstring "Search in current project"
+                 :interactive nil
+                 :handler [:project-search]}])
+
+  ;; Auto-detect current project
+  (rf/dispatch [:project/detect-current]))

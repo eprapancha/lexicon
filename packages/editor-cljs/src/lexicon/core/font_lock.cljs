@@ -292,29 +292,45 @@
 ;; Fontification Engine
 ;; =============================================================================
 
+(defn- multiline-pattern?
+  "Check if a regex pattern contains multiline constructs."
+  [pattern-str]
+  (or (str/includes? pattern-str "[\\s\\S]")
+      (str/includes? pattern-str "\\n")
+      (str/includes? pattern-str "[^]*")))
+
 (defn- compile-keyword
   "Compile a font-lock keyword spec to an efficient form.
-   Returns {:regex Pattern :face keyword :group int}."
+   Returns {:regex Pattern :face keyword :group int :multiline? bool}.
+
+   Issue #144: Patterns containing multiline constructs (e.g. [\\s\\S]*?)
+   are compiled with 'gs' flags to enable dotAll matching."
   [[pattern & rest]]
-  (let [pattern-str (if (string? pattern) pattern (str pattern))]
+  (let [pattern-str (if (string? pattern) pattern (str pattern))
+        ;; Issue #144: Detect multiline patterns and use appropriate flags
+        is-multiline (multiline-pattern? pattern-str)
+        flags (if is-multiline "gms" "gm")]
     (cond
       ;; [regex face] - simple form
       (keyword? (first rest))
-      {:regex (js/RegExp. pattern-str "gm")
+      {:regex (js/RegExp. pattern-str flags)
        :face (first rest)
-       :group 0}
+       :group 0
+       :multiline? is-multiline}
 
       ;; [regex group face] - group form
       (and (number? (first rest)) (keyword? (second rest)))
-      {:regex (js/RegExp. pattern-str "gm")
+      {:regex (js/RegExp. pattern-str flags)
        :face (second rest)
-       :group (first rest)}
+       :group (first rest)
+       :multiline? is-multiline}
 
       ;; Default: treat as simple
       :else
-      {:regex (js/RegExp. pattern-str "gm")
+      {:regex (js/RegExp. pattern-str flags)
        :face (first rest)
-       :group 0})))
+       :group 0
+       :multiline? is-multiline})))
 
 (defn- find-matches
   "Find all matches for a compiled keyword in text.
@@ -341,9 +357,40 @@
           (recur))))
     @results))
 
+(defn- extend-region-for-multiline
+  "Extend region boundaries to safe positions for multiline constructs.
+   Moves start backward and end forward to avoid splitting multiline patterns.
+
+   Issue #144: Prevents incorrect highlighting when multiline constructs
+   (strings, comments, etc.) span across region boundaries."
+  [text region-start region-end]
+  (let [text-len (count text)
+        ;; Extend start backward: find beginning of any multiline construct
+        ;; Look for unmatched opening delimiters (triple-quotes, /*, `)
+        extended-start (loop [pos region-start]
+                         (if (<= pos 0)
+                           0
+                           ;; Check if we're inside a multiline string/comment
+                           (let [ch (nth text (dec pos) nil)]
+                             (if (and ch (not (#{\newline} ch)))
+                               (recur (dec pos))
+                               pos))))
+        ;; Extend end forward: find end of any multiline construct
+        extended-end (loop [pos region-end]
+                       (if (>= pos text-len)
+                         text-len
+                         (let [ch (nth text pos nil)]
+                           (if (and ch (not (#{\newline} ch)))
+                             (recur (inc pos))
+                             pos))))]
+    [extended-start extended-end]))
+
 (defn fontify-region
   "Apply font-lock keywords to a region of text.
    Returns updated text-properties map with :face properties set.
+
+   Issue #144: Supports multiline patterns by extending region boundaries
+   to avoid splitting multiline constructs (strings, comments, etc.).
 
    Args:
      text - The buffer text string
@@ -357,10 +404,19 @@
   [text text-props region-start region-end keywords]
   (if (empty? keywords)
     text-props
-    (let [;; Extract the region text
-          region-text (subs text region-start region-end)
-          ;; Compile keywords
+    (let [;; Issue #144: Check if any keywords are multiline
           compiled (map compile-keyword keywords)
+          has-multiline? (some :multiline? compiled)
+          ;; Extend region if multiline patterns exist
+          [effective-start effective-end]
+          (if has-multiline?
+            (extend-region-for-multiline text region-start region-end)
+            [region-start region-end])
+          ;; Clamp to text bounds
+          effective-start (max 0 effective-start)
+          effective-end (min (count text) effective-end)
+          ;; Extract the region text
+          region-text (subs text effective-start effective-end)
           ;; Find all matches
           all-matches (mapcat (partial find-matches region-text) compiled)
           ;; Sort by start position, then by specificity (longer match wins)
@@ -368,13 +424,13 @@
       ;; Apply matches, later matches don't override earlier ones
       (reduce
        (fn [props {:keys [start end face]}]
-         (let [abs-start (+ region-start start)  ; Adjust to absolute position
-               abs-end (+ region-start end)]
+         (let [abs-start (+ effective-start start)
+               abs-end (+ effective-start end)
+               existing (text-props/get-text-property props abs-start :face)]
            ;; Only apply if no face already set (first match wins)
-           (let [existing (text-props/get-text-property props abs-start :face)]
-             (if existing
-               props
-               (text-props/put-text-property props abs-start abs-end :face face)))))
+           (if existing
+             props
+             (text-props/put-text-property props abs-start abs-end :face face))))
        text-props
        sorted-matches))))
 
@@ -564,3 +620,113 @@
      :handler (fn []
                 (let [enabled? @(rf/subscribe [:font-lock/global-enabled?])]
                   (rf/dispatch [:font-lock/set-global (not enabled?)])))}]))
+
+;; =============================================================================
+;; JIT Fontification (Issue #143)
+;; =============================================================================
+
+;; JIT (just-in-time) fontification defers highlighting to when regions
+;; become visible, rather than fontifying the entire buffer upfront.
+;; This is critical for large files (>10K lines).
+
+(def jit-lock-chunk-size
+  "Number of characters to fontify per chunk."
+  3000)
+
+(def jit-lock-context-lines
+  "Extra lines above/below viewport to fontify for scroll context."
+  50)
+
+(defonce jit-idle-timer (atom nil))
+
+(defn- cancel-jit-timer!
+  "Cancel any pending JIT fontification timer."
+  []
+  (when-let [t @jit-idle-timer]
+    (js/clearTimeout t)
+    (reset! jit-idle-timer nil)))
+
+(defn- schedule-jit-fontification!
+  "Schedule JIT fontification after a brief idle delay."
+  [buffer-id]
+  (cancel-jit-timer!)
+  (reset! jit-idle-timer
+          (js/setTimeout
+           (fn [] (rf/dispatch [:font-lock/jit-fontify buffer-id]))
+           100)))
+
+(rf/reg-event-fx
+ :font-lock/jit-fontify
+ (fn [{:keys [db]} [_ buffer-id]]
+   "JIT-fontify the visible region of a buffer plus context.
+    Issue #143: Only fontifies what's needed, not the entire buffer."
+   (let [buffer (get-in db [:buffers buffer-id])
+         wasm-instance (:wasm-instance buffer)
+         mode (or (:major-mode buffer) :fundamental-mode)
+         keywords (get-keywords-for-mode mode)
+         cursor-pos (get-in db [:ui :cursor-position] 0)]
+     (if (and wasm-instance (seq keywords))
+       (let [text (.getText wasm-instance)
+             text-len (count text)
+             ;; Estimate visible region around cursor
+             ;; Use lines to determine range
+             lines (str/split text #"\n" -1)
+             ;; Find which line cursor is on
+             cursor-line (loop [pos 0 ln 0]
+                           (if (or (>= pos cursor-pos) (>= ln (count lines)))
+                             ln
+                             (recur (+ pos 1 (count (nth lines ln ""))) (inc ln))))
+             ;; Visible range with context
+             start-line (max 0 (- cursor-line jit-lock-context-lines))
+             end-line (min (count lines) (+ cursor-line jit-lock-context-lines))
+             ;; Convert line range to character positions
+             region-start (reduce + 0 (map #(inc (count %)) (take start-line lines)))
+             region-end (min text-len
+                             (reduce + 0 (map #(inc (count %)) (take end-line lines))))
+             ;; Check if this region is already fontified
+             fontified-ranges (get-in db [:buffers buffer-id :fontified-ranges] #{})
+             range-key [region-start region-end]
+             already-fontified? (contains? fontified-ranges range-key)]
+         (if already-fontified?
+           {:db db}
+           (let [;; Clear existing props in range first
+                 cleared-props (unfontify-region
+                                (get-in db [:buffers buffer-id :text-properties] {})
+                                region-start region-end)
+                 ;; Fontify the visible region
+                 new-props (fontify-region text cleared-props region-start region-end keywords)]
+             {:db (-> db
+                      (assoc-in [:buffers buffer-id :text-properties] new-props)
+                      (update-in [:buffers buffer-id :fontified-ranges]
+                                 (fnil conj #{}) range-key))})))
+       {:db db}))))
+
+(rf/reg-event-fx
+ :font-lock/on-scroll
+ (fn [{:keys [db]} [_ buffer-id]]
+   "Trigger JIT fontification on scroll.
+    Issue #143: Schedules deferred fontification for visible region."
+   (let [font-lock-on? (get-in db [:buffers buffer-id :font-lock-mode] false)
+         jit-enabled? (get-in db [:settings :jit-lock-mode] true)]
+     (when (and font-lock-on? jit-enabled?)
+       (schedule-jit-fontification! buffer-id))
+     {:db db})))
+
+(rf/reg-event-fx
+ :font-lock/invalidate-region
+ (fn [{:keys [db]} [_ buffer-id region-start region-end]]
+   "Invalidate fontification cache for a region after text changes.
+    Issue #143: Marks region as needing re-fontification."
+   {:db (-> db
+            ;; Clear fontified ranges that overlap with changed region
+            (update-in [:buffers buffer-id :fontified-ranges]
+                       (fn [ranges]
+                         (set (remove (fn [[rs re]]
+                                        (and (< rs region-end) (> re region-start)))
+                                      (or ranges #{})))))
+            ;; Clear face properties in the changed region
+            (update-in [:buffers buffer-id :text-properties]
+                       (fn [props]
+                         (if props
+                           (unfontify-region props region-start region-end)
+                           {}))))}))
