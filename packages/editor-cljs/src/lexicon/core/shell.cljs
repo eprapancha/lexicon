@@ -38,6 +38,8 @@
 ;; Eshell Built-in Commands
 ;; =============================================================================
 
+(declare builtin-commands)
+
 (defn- eshell-echo
   "Echo arguments to output."
   [args]
