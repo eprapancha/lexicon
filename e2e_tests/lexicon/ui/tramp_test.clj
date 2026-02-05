@@ -47,3 +47,19 @@
     (Thread/sleep 200)
     (is (string? (get-current-buffer-name))
         "Editor should still be functional after tramp-cleanup-this-connection command")))
+
+(deftest test-tramp-list-connections-command
+  (testing "M-x tramp-list-connections command is available"
+    (wait-for-editor)
+    (execute-mx-command "tramp-list-connections")
+    (Thread/sleep 400)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after tramp-list-connections")))
+
+(deftest test-tramp-list-remote-buffers-command
+  (testing "M-x tramp-list-remote-buffers command is available"
+    (wait-for-editor)
+    (execute-mx-command "tramp-list-remote-buffers")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after tramp-list-remote-buffers")))

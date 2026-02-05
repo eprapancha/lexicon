@@ -63,3 +63,75 @@
     (Thread/sleep 200)
     (is (string? (get-current-buffer-name))
         "Editor should still be functional after comint-next-input command")))
+
+(deftest test-comint-previous-matching-input-command
+  (testing "M-x comint-previous-matching-input command is available"
+    (wait-for-editor)
+    (execute-mx-command "comint-previous-matching-input")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after comint-previous-matching-input")))
+
+(deftest test-comint-bol-command
+  (testing "M-x comint-bol command is available"
+    (wait-for-editor)
+    (execute-mx-command "comint-bol")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after comint-bol")))
+
+(deftest test-comint-kill-input-command
+  (testing "M-x comint-kill-input command is available"
+    (wait-for-editor)
+    (execute-mx-command "comint-kill-input")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after comint-kill-input")))
+
+(deftest test-comint-delete-output-command
+  (testing "M-x comint-delete-output command is available"
+    (wait-for-editor)
+    (execute-mx-command "comint-delete-output")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after comint-delete-output")))
+
+(deftest test-comint-show-output-command
+  (testing "M-x comint-show-output command is available"
+    (wait-for-editor)
+    (execute-mx-command "comint-show-output")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after comint-show-output")))
+
+(deftest test-comint-dynamic-list-input-ring-command
+  (testing "M-x comint-dynamic-list-input-ring command is available"
+    (wait-for-editor)
+    (execute-mx-command "comint-dynamic-list-input-ring")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after comint-dynamic-list-input-ring")))
+
+(deftest test-comint-interrupt-subjob-command
+  (testing "M-x comint-interrupt-subjob command is available"
+    (wait-for-editor)
+    (execute-mx-command "comint-interrupt-subjob")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after comint-interrupt-subjob")))
+
+(deftest test-comint-stop-subjob-command
+  (testing "M-x comint-stop-subjob command is available"
+    (wait-for-editor)
+    (execute-mx-command "comint-stop-subjob")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after comint-stop-subjob")))
+
+(deftest test-comint-send-eof-command
+  (testing "M-x comint-send-eof command is available"
+    (wait-for-editor)
+    (execute-mx-command "comint-send-eof")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after comint-send-eof")))

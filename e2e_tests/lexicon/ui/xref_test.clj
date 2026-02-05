@@ -71,3 +71,43 @@
     (Thread/sleep 200)
     (is (string? (get-current-buffer-name))
         "Editor should still be functional after project-switch-project")))
+
+(deftest test-xref-find-apropos-command
+  (testing "M-x xref-find-apropos command is available"
+    (wait-for-editor)
+    (execute-mx-command "xref-find-apropos")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after xref-find-apropos")))
+
+(deftest test-project-find-regexp-command
+  (testing "M-x project-find-regexp command is available"
+    (wait-for-editor)
+    (execute-mx-command "project-find-regexp")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after project-find-regexp")))
+
+(deftest test-project-switch-to-buffer-command
+  (testing "M-x project-switch-to-buffer command is available"
+    (wait-for-editor)
+    (execute-mx-command "project-switch-to-buffer")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after project-switch-to-buffer")))
+
+(deftest test-project-kill-buffers-command
+  (testing "M-x project-kill-buffers command is available"
+    (wait-for-editor)
+    (execute-mx-command "project-kill-buffers")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after project-kill-buffers")))
+
+(deftest test-project-list-buffers-command
+  (testing "M-x project-list-buffers command is available"
+    (wait-for-editor)
+    (execute-mx-command "project-list-buffers")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after project-list-buffers")))

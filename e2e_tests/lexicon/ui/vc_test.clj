@@ -71,3 +71,33 @@
     (Thread/sleep 200)
     (is (string? (get-current-buffer-name))
         "Editor should still be functional after vc-annotate")))
+
+(deftest test-vc-dir-command
+  (testing "M-x vc-dir command is available"
+    (wait-for-editor)
+    ;; Use full command name with trailing space to avoid M-x completion ambiguity
+    ;; with vc-dir-mark, vc-dir-unmark, vc-dir-refresh
+    (h/press-meta "x")
+    (Thread/sleep 300)
+    (h/type-text "vc-dir")
+    (Thread/sleep 100)
+    (h/press-key "Enter")
+    (Thread/sleep 500)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after vc-dir command")))
+
+(deftest test-vc-register-command
+  (testing "M-x vc-register command is available"
+    (wait-for-editor)
+    (execute-mx-command "vc-register")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after vc-register")))
+
+(deftest test-vc-refresh-command
+  (testing "M-x vc-refresh command is available"
+    (wait-for-editor)
+    (execute-mx-command "vc-refresh")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after vc-refresh")))

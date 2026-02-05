@@ -63,3 +63,43 @@
     (Thread/sleep 200)
     (is (string? (get-current-buffer-name))
         "Editor should still be functional after eglot-format-buffer")))
+
+(deftest test-eglot-shutdown-all-command
+  (testing "M-x eglot-shutdown-all command is available"
+    (wait-for-editor)
+    (execute-mx-command "eglot-shutdown-all")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after eglot-shutdown-all")))
+
+(deftest test-eglot-ensure-command
+  (testing "M-x eglot-ensure command is available"
+    (wait-for-editor)
+    (execute-mx-command "eglot-ensure")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after eglot-ensure")))
+
+(deftest test-eglot-find-declaration-command
+  (testing "M-x eglot-find-declaration command is available"
+    (wait-for-editor)
+    (execute-mx-command "eglot-find-declaration")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after eglot-find-declaration")))
+
+(deftest test-eglot-find-implementation-command
+  (testing "M-x eglot-find-implementation command is available"
+    (wait-for-editor)
+    (execute-mx-command "eglot-find-implementation")
+    (Thread/sleep 200)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after eglot-find-implementation")))
+
+(deftest test-eglot-events-buffer-command
+  (testing "M-x eglot-events-buffer command is available"
+    (wait-for-editor)
+    (execute-mx-command "eglot-events-buffer")
+    (Thread/sleep 400)
+    (is (string? (get-current-buffer-name))
+        "Editor should still be functional after eglot-events-buffer")))
