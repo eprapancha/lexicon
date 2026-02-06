@@ -126,29 +126,39 @@
 ;; Initialization
 ;; =============================================================================
 
+(rf/reg-event-fx
+ :windmove/default-keybindings
+ (fn [{:keys [db]} _]
+   ;; Set up key bindings (Shift + arrow keys)
+   ;; This overrides the default selection movement keys with windmove
+   {:fx [[:dispatch [:keymap/set-global "S-ArrowLeft" :windmove-left]]
+         [:dispatch [:keymap/set-global "S-ArrowRight" :windmove-right]]
+         [:dispatch [:keymap/set-global "S-ArrowUp" :windmove-up]]
+         [:dispatch [:keymap/set-global "S-ArrowDown" :windmove-down]]
+         [:dispatch [:echo/message "Windmove keybindings enabled (S-arrow)"]]]}))
+
 (defn init-windmove!
-  "Initialize windmove commands and keybindings."
+  "Initialize windmove commands. Keybindings are NOT set by default.
+   Call windmove-default-keybindings to enable S-arrow keybindings."
   []
   ;; Register commands
   (rf/dispatch [:register-command :windmove-left
-                {:docstring "Select the window to the left (S-left)"
+                {:docstring "Select the window to the left"
                  :handler [:windmove/left]}])
 
   (rf/dispatch [:register-command :windmove-right
-                {:docstring "Select the window to the right (S-right)"
+                {:docstring "Select the window to the right"
                  :handler [:windmove/right]}])
 
   (rf/dispatch [:register-command :windmove-up
-                {:docstring "Select the window above (S-up)"
+                {:docstring "Select the window above"
                  :handler [:windmove/up]}])
 
   (rf/dispatch [:register-command :windmove-down
-                {:docstring "Select the window below (S-down)"
+                {:docstring "Select the window below"
                  :handler [:windmove/down]}])
 
-  ;; Set up key bindings (Shift + arrow keys)
-  ;; Override the default selection movement keys with windmove
-  (rf/dispatch [:keymap/set-global "S-ArrowLeft" :windmove-left])
-  (rf/dispatch [:keymap/set-global "S-ArrowRight" :windmove-right])
-  (rf/dispatch [:keymap/set-global "S-ArrowUp" :windmove-up])
-  (rf/dispatch [:keymap/set-global "S-ArrowDown" :windmove-down]))
+  ;; Register the keybindings command (like Emacs windmove-default-keybindings)
+  (rf/dispatch [:register-command :windmove-default-keybindings
+                {:docstring "Enable S-arrow keybindings for windmove"
+                 :handler [:windmove/default-keybindings]}]))

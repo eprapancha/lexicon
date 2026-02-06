@@ -9,6 +9,7 @@
 
   Uses keyboard simulation for all editing actions."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [clojure.string :as str]
             [lexicon.test-helpers :as h]))
 
 (use-fixtures :once h/with-driver)
@@ -337,3 +338,115 @@
     (h/type-text "Hello World")
     (Thread/sleep 100)
     (is (= "World" (h/buffer-substring* 6 11)))))
+
+;; =============================================================================
+;; Delete Selection Mode
+;; =============================================================================
+
+(deftest test-delete-selection-mode
+  (testing "delete-selection-mode replaces selection when typing"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Enable delete-selection-mode
+    (h/execute-command "delete-selection-mode")
+    (Thread/sleep 100)
+
+    ;; Type initial text
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+
+    ;; Go to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+
+    ;; Select "Hello" with shift+arrows (5 chars)
+    (dotimes [_ 5]
+      (h/press-shift "right")
+      (Thread/sleep 20))
+    (Thread/sleep 50)
+
+    ;; Type "X" - should replace the selection
+    (h/type-text "X")
+    (Thread/sleep 100)
+
+    ;; Should now have "X World" (not "XHello World")
+    (is (= "X World" (h/get-buffer-text*))
+        "delete-selection-mode should replace selection with typed text")))
+
+;; =============================================================================
+;; Rectangle Operations
+;; =============================================================================
+
+(deftest test-rectangle-kill-yank
+  (testing "C-x r k kills rectangle and C-x r y yanks it"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type multi-line text
+    (h/type-text "abcde")
+    (h/press-key "Enter")
+    (h/type-text "fghij")
+    (h/press-key "Enter")
+    (h/type-text "klmno")
+    (Thread/sleep 100)
+
+    ;; Verify initial text
+    (is (= "abcde\nfghij\nklmno" (h/get-buffer-text*))
+        "Initial text should be correct")
+
+    ;; Go to absolute beginning of buffer
+    (h/press-meta "<")
+    (Thread/sleep 50)
+
+    ;; Move forward 1 char (to column 1, after 'a')
+    (h/press-ctrl "f")
+    (Thread/sleep 30)
+
+    ;; Set mark with C-Space
+    (h/press-ctrl " ")
+    (Thread/sleep 50)
+
+    ;; Move down to line 1, then forward to column 3
+    ;; For rectangle: columns 1-3 on lines 0-1
+    ;; Use execute-command for next-line since C-n may have focus issues
+    (h/execute-command "next-line")
+    (Thread/sleep 100)
+    (h/press-ctrl "f")
+    (Thread/sleep 30)
+    (h/press-ctrl "f")
+    (Thread/sleep 50)
+
+    ;; Kill the rectangle with C-x r k
+    (h/press-ctrl "x")
+    (Thread/sleep 100)
+    (h/press-key "r")
+    (Thread/sleep 100)
+    (h/press-key "k")
+    (Thread/sleep 200)
+
+    ;; After killing rectangle columns 1-3 on lines 0-1:
+    ;; Line 0: "a" + "de" = "ade"
+    ;; Line 1: "f" + "ij" = "fij"
+    ;; Line 2: unchanged = "klmno"
+    (let [text (h/get-buffer-text*)]
+      (is (= "ade\nfij\nklmno" text)
+          "After kill-rectangle, columns should be removed"))
+
+    ;; Move to end of buffer
+    (h/press-meta ">")
+    (Thread/sleep 50)
+
+    ;; Yank the rectangle with C-x r y
+    (h/press-ctrl "x")
+    (Thread/sleep 100)
+    (h/press-key "r")
+    (Thread/sleep 100)
+    (h/press-key "y")
+    (Thread/sleep 200)
+
+    ;; After yanking rectangle at end:
+    ;; The killed rectangle was ["bc" "gh"] (2 lines)
+    (let [text (h/get-buffer-text*)]
+      (is (str/includes? text "bc") "Yanked rectangle should contain 'bc'")
+      (is (str/includes? text "gh") "Yanked rectangle should contain 'gh'"))))

@@ -59,6 +59,10 @@
     (h/setup-test*)
     (h/clear-buffer)
 
+    ;; Enable windmove keybindings (like Emacs windmove-default-keybindings)
+    (h/execute-command "windmove-default-keybindings")
+    (Thread/sleep 100)
+
     ;; C-x 3 splits window vertically (side by side)
     (h/press-ctrl-x "3")
     (Thread/sleep 200)
