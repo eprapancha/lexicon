@@ -51,6 +51,7 @@
             [lexicon.core.dabbrev]             ; Load dabbrev M-/ expansion (#120)
             [lexicon.core.hippie-expand :as hippie-expand]  ; Load hippie-expand framework (#151)
             [lexicon.core.abbrev :as abbrev]                 ; Load abbrev-mode (#151)
+            [lexicon.core.tab-bar :as tab-bar]               ; Load tab-bar-mode (#152)
             [lexicon.core.icomplete]           ; Load icomplete incremental completion (#128)
             [lexicon.core.windmove]            ; Load windmove S-arrow navigation (#117)
             [lexicon.core.winner]              ; Load winner window config undo (#117)
@@ -327,6 +328,9 @@
 
   ;; Initialize abbrev-mode (#151)
   (abbrev/init!)
+
+  ;; Initialize tab-bar-mode (#152)
+  (tab-bar/init!)
 
   ;; Initialize hi-lock highlighting (#125)
   (hi-lock/init!)

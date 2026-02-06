@@ -147,7 +147,8 @@
                  :handler [:windmove/down]}])
 
   ;; Set up key bindings (Shift + arrow keys)
-  (rf/dispatch [:keymap/set-global "S-<left>" :windmove-left])
-  (rf/dispatch [:keymap/set-global "S-<right>" :windmove-right])
-  (rf/dispatch [:keymap/set-global "S-<up>" :windmove-up])
-  (rf/dispatch [:keymap/set-global "S-<down>" :windmove-down]))
+  ;; Override the default selection movement keys with windmove
+  (rf/dispatch [:keymap/set-global "S-ArrowLeft" :windmove-left])
+  (rf/dispatch [:keymap/set-global "S-ArrowRight" :windmove-right])
+  (rf/dispatch [:keymap/set-global "S-ArrowUp" :windmove-up])
+  (rf/dispatch [:keymap/set-global "S-ArrowDown" :windmove-down]))

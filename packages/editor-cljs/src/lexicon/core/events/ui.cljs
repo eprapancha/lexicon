@@ -62,7 +62,8 @@
               (assoc :window-tree new-tree)
               (assoc :active-window-id new-window-id)
               (assoc :cursor-owner new-window-id)  ; Issue #62: Transfer cursor to new window
-              (assoc :next-window-id (+ new-window-id 2)))})))
+              (assoc :next-window-id (+ new-window-id 2)))
+      :fx [[:dispatch [:winner/record-change]]]})))  ; Record for winner-mode (#152)
 
 (rf/reg-event-fx
  :split-window-right
@@ -98,7 +99,8 @@
               (assoc :window-tree new-tree)
               (assoc :active-window-id new-window-id)
               (assoc :cursor-owner new-window-id)  ; Issue #62: Transfer cursor to new window
-              (assoc :next-window-id (+ new-window-id 2)))})))
+              (assoc :next-window-id (+ new-window-id 2)))
+      :fx [[:dispatch [:winner/record-change]]]})))  ; Record for winner-mode (#152)
 
 (rf/reg-event-fx
  :other-window
