@@ -76,22 +76,44 @@
 ;; Hippie Expand
 ;; =============================================================================
 
-(deftest ^:skip test-hippie-expand
-  (testing "hippie-expand works"
+(deftest test-hippie-expand
+  (testing "hippie-expand tries multiple expansion strategies"
     (h/setup-test*)
     (h/clear-buffer)
-    (h/type-text "some text")
+
+    ;; Type text with a word to expand
+    (h/type-text "foobar foobaz")
     (Thread/sleep 50)
-    (is true "PENDING: hippie-expand - needs E2E implementation")))
+
+    ;; Type partial word
+    (h/type-text " foo")
+    (Thread/sleep 50)
+
+    ;; Run hippie-expand via M-x
+    (h/execute-command "hippie-expand")
+    (Thread/sleep 150)
+
+    (let [content (h/get-buffer-text*)]
+      (is (or (str/includes? content "foobar")
+              (str/includes? content "foobaz"))
+          "hippie-expand should find dabbrev expansion"))))
 
 ;; =============================================================================
 ;; Abbrev
 ;; =============================================================================
 
-(deftest ^:skip test-abbrev-tables
-  (testing "abbrev expands on trigger"
+(deftest test-abbrev-expand
+  (testing "expand-abbrev expands defined abbreviations"
     (h/setup-test*)
     (h/clear-buffer)
-    (h/type-text "test")
+    ;; Type a known default abbreviation (typo correction)
+    (h/type-text "teh")
     (Thread/sleep 50)
-    (is true "PENDING: abbrev - needs E2E implementation")))
+
+    ;; Run expand-abbrev command
+    (h/execute-command "expand-abbrev")
+    (Thread/sleep 100)
+
+    (let [content (h/get-buffer-text*)]
+      (is (str/includes? content "the")
+          "expand-abbrev should expand 'teh' to 'the'"))))
