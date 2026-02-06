@@ -525,76 +525,8 @@
           (str "First two should be replaced via regex. Got: " editor-text)))))
 
 ;; =============================================================================
-;; Batch 5: Isearch (2 commands)
-;; =============================================================================
-
-(deftest ^:skip test-p7-8-isearch-forward
-  (testing "P7.8 Batch 5: isearch-forward (C-s)"
-    (h/setup-test*)
-    (h/clear-buffer)
-
-    ;; Type text
-    (h/type-text "hello world testing hello")
-    (Thread/sleep 20)
-
-    ;; Move to beginning
-    (press-meta-less-than)
-    (Thread/sleep 20)
-
-    ;; Start isearch with C-s
-    (h/press-ctrl "s")
-    (Thread/sleep 50)
-
-    ;; Minibuffer should show isearch prompt
-    (let [minibuffer-exists (e/exists? h/*driver* {:css ".minibuffer"})]
-      (is minibuffer-exists "Isearch should activate minibuffer"))
-
-    ;; Type search string
-    (when (h/minibuffer-visible?)
-      (h/type-in-minibuffer "hello")
-      (Thread/sleep 50))
-
-    ;; Press Enter to exit isearch
-    (h/press-key "Enter")
-    (Thread/sleep 50)
-
-    ;; Cursor should be at or near first "hello"
-    ;; Hard to verify exact position in E2E, but command should work
-    (is true "PENDING: Isearch forward should execute - needs E2E implementation")))
-
-(deftest ^:skip test-p7-8-isearch-backward
-  (testing "P7.8 Batch 5: isearch-backward (C-r)"
-    (h/setup-test*)
-    (h/clear-buffer)
-
-    ;; Type text
-    (h/type-text "hello world testing hello")
-    (Thread/sleep 20)
-
-    ;; Stay at end of buffer
-
-    ;; Start isearch backward with C-r
-    (h/press-ctrl "r")
-    (Thread/sleep 50)
-
-    ;; Minibuffer should show isearch prompt
-    (let [minibuffer-exists (e/exists? h/*driver* {:css ".minibuffer"})]
-      (is minibuffer-exists "Isearch backward should activate minibuffer"))
-
-    ;; Type search string
-    (when (h/minibuffer-visible?)
-      (h/type-in-minibuffer "hello")
-      (Thread/sleep 50))
-
-    ;; Press Enter to exit isearch
-    (h/press-key "Enter")
-    (Thread/sleep 50)
-
-    ;; Cursor should be at or near last "hello"
-    (is true "PENDING: Isearch backward should execute - needs E2E implementation")))
-
-;; =============================================================================
 ;; Integration Tests - Testing command combinations
+;; Note: Isearch tests moved to isearch_test.clj
 ;; =============================================================================
 
 (deftest test-p7-8-kill-word-and-yank
