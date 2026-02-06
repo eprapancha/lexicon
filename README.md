@@ -242,6 +242,8 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `RET` | Jump to error location |
 | `q` | Quit compilation buffer |
 
+*Note: `compile` cannot run actual shell commands in the browser. It creates a `*compilation*` buffer with simulated output and parses error patterns for navigation. Error navigation (`next-error`, `previous-error`) works on the parsed output.*
+
 ### Diff Mode, Ediff, and Smerge
 
 **diff-mode** - View and navigate unified diffs:
@@ -412,9 +414,9 @@ The following features have command infrastructure in place but are constrained 
 
 ### Version Control (vc.el)
 
-Commands registered: `vc-next-action`, `vc-diff`, `vc-log`, `vc-revert`, `vc-register`, `vc-annotate`. Mode-line shows VC status indicator (`%v` construct, e.g., `Git-main`). `vc-diff` creates a `*vc-diff*` buffer in diff-mode; `vc-annotate` creates a `*vc-annotate*` buffer with line annotations.
+Commands available: `vc-dir`, `vc-next-action`, `vc-diff`, `vc-log`, `vc-revert`, `vc-register`, `vc-annotate`. `vc-dir` creates a `*vc-dir*` buffer with Git backend header, branch name, and file listing. `vc-diff` creates a `*vc-diff*` buffer in diff-mode; `vc-log` creates a `*vc-log*` buffer with commit-format entries. Mode-line shows a VC status indicator (`%v` construct).
 
-**Limitation:** Cannot execute git commands in the browser. Diff and annotate buffers show placeholder content (not actual git output). Other VC operations show informational messages only. Requires a backend server bridge for real git integration.
+**Limitation:** All data is synthetic — there are no actual git operations. `vc-diff` and `vc-log` show formatted placeholder content, not real git output. `vc-revert` clears a modified flag but doesn't restore file content. Requires a backend server bridge for real git integration.
 
 ### Shell and Eshell
 
@@ -424,33 +426,33 @@ Commands registered: `vc-next-action`, `vc-diff`, `vc-log`, `vc-revert`, `vc-reg
 
 ### Project Management (project.el)
 
-Commands registered: `project-find-file`, `project-switch-project`, `project-search`. Project registry and detection framework in place.
+Commands available: `project-find-regexp`, `project-kill-buffers`, `project-list-buffers`, `project-find-file`, `project-switch-project`. `project-find-regexp` searches all open buffer text and creates results. `project-kill-buffers` kills non-special buffers. `project-list-buffers` creates a `*project-buffers*` buffer listing all open file buffers.
 
-**Limitation:** Project root detection and file listing require file system traversal not available in browser context. Currently returns placeholder data.
+**Limitation:** Project root is inferred heuristically from buffer names — no real filesystem project detection (no `.git` directory scanning, no `project.el` root markers). `project-find-file` cannot list files from disk. Searches operate on open buffers only, not the filesystem.
 
 ### Cross-References (xref.el)
 
-Commands registered: `xref-find-definitions` (`M-.`), `xref-find-references` (`M-?`), `xref-go-back` (`M-,`). Marker stack for navigation history works. Find-definitions and find-references search all open buffers for the identifier at point and create an `*xref*` results buffer with `file:line:text` matches.
+Commands available: `xref-find-definitions` (`M-.`), `xref-find-references` (`M-?`), `xref-find-apropos`, `xref-go-back` (`M-,`). `xref-find-definitions` extracts the identifier at point and searches all open buffers, creating an `*xref*` results buffer with `file:line:text` matches. `xref-find-apropos` prompts for a pattern and searches across buffers. Marker stack for navigation history (`xref-go-back`) works.
 
-**Limitation:** Searches open buffers only using text matching (word-boundary regex). No semantic understanding - cannot distinguish definitions from references, or resolve across files not currently open. Full definition/reference resolution requires an LSP backend.
+**Limitation:** All searches use text matching (word-boundary regex) across open buffers only. There is no semantic understanding — cannot distinguish definitions from references, or resolve symbols across files not currently open. Full definition/reference resolution requires an LSP backend.
 
 ### Terminal Emulation (term.el, comint.el)
 
-Commands registered: `term`, `ansi-term`. Comint-mode provides input history ring with `M-p`/`M-n` for cycling through previous commands. Term and ansi-term currently delegate to the shell buffer infrastructure.
+Commands available: `term`, `ansi-term`. Both create terminal buffers that delegate to the shell infrastructure (built-in commands: `echo`, `pwd`, `which`, `help`, etc.). `comint-interrupt-subjob`, `comint-stop-subjob`, `comint-send-eof` echo limitation messages.
 
-**Limitation:** No real terminal emulation (VT100/ANSI). `term` and `ansi-term` open shell buffers with built-in commands only. Comint input history works, but process interaction, job control, and terminal escape sequences are not implemented. Requires a backend server with PTY support.
+**Limitation:** No real terminal emulation (VT100/ANSI escape sequences, character mode, line mode). `term` and `ansi-term` open shell buffers with built-in commands only — no process spawning. Comint signal commands report "no subprocess." Requires a backend server with PTY support for real terminal behavior.
 
 ### Remote Files (tramp.el)
 
-TRAMP path parsing is implemented: `/method:user@host:/path` syntax is recognized and decomposed. Method configurations for ssh, scp, sudo, su are defined. Connection state management and `tramp-cleanup-all-connections` command are available.
+Commands available: `tramp-list-connections`, `tramp-cleanup-all-connections`, `tramp-list-remote-buffers`. `tramp-list-connections` creates a `*TRAMP Connections*` buffer showing available methods (ssh, scp, sudo, su) and connection status. TRAMP path parsing recognizes `/method:user@host:/path` syntax.
 
-**Limitation:** Path parsing only - no actual remote connections. Cannot SSH, SCP, or perform any remote file operations. This is purely the path parsing and connection management framework. Requires a backend server to establish real connections.
+**Limitation:** Path parsing and method listing only — no actual remote connections. Cannot SSH, SCP, or perform any remote file operations. `tramp-list-connections` shows a hardcoded method list, not actual connection capabilities. Requires a backend server with SSH/WebSocket bridge for real remote access.
 
 ### LSP Client (eglot)
 
-Commands registered: `eglot`, `eglot-shutdown`, `eglot-reconnect`, `eglot-rename`, `eglot-code-actions`, `eglot-format-buffer`, `eglot-show-diagnostics`, `eglot-hover`, `eglot-workspace-symbol`. Server program configuration for multiple languages defined. Diagnostics tracking state and display framework in place.
+Commands available: `eglot`, `eglot-shutdown`, `eglot-shutdown-all`, `eglot-reconnect`, `eglot-format-buffer`, `eglot-events-buffer`, `eglot-rename`, `eglot-code-actions`. `eglot-events-buffer` creates an `*EGLOT Events*` buffer showing server count, configured modes, and event log. Server program configuration for multiple languages is defined.
 
-**Limitation:** No LSP protocol implementation yet. Requires WebSocket bridge to communicate with language servers. This is framework/command registration only - no actual language intelligence.
+**Limitation:** This is command registration and UI framework only — there is no LSP protocol implementation. No commands actually communicate with a language server. `eglot` does not start a real server process. `eglot-format-buffer` reports "no active server." Requires a WebSocket bridge to language servers for any actual language intelligence (completions, diagnostics, hover, etc.).
 
 ---
 
@@ -547,12 +549,12 @@ lexicon/
 - Font-lock and which-function modes (#130)
 - Emacs completion framework (#136, #137, #138)
 
-**In Progress (framework in place, needs backend for full functionality):**
-- Version control - vc.el commands registered, mode-line indicator works, operations need git backend (#113)
-- Project/xref - xref searches open buffers, project commands need filesystem traversal (#116)
-- Terminal emulation - comint input history works, term/ansi-term delegate to shell (#127)
-- Remote files - TRAMP path parsing works, no actual remote connections (#126)
-- LSP client - eglot command framework and diagnostics state, no protocol implementation (#129)
+**Partially Implemented (UI/command framework only, needs backend server for real functionality):**
+- Version control (#113) — `vc-dir`/`vc-diff`/`vc-log` create buffers with synthetic data, no actual git operations
+- Project/xref (#116) — xref text search across open buffers works, project root detection is heuristic, no filesystem access
+- Terminal emulation (#127) — shell built-in commands work, no real process spawning or terminal emulation
+- Remote files (#126) — TRAMP path parsing and method listing, no actual remote connections
+- LSP client (#129) — command registration and events buffer only, no LSP protocol implementation
 
 **See [GitHub Issues](https://github.com/eprapancha/lexicon/issues) for detailed status**
 
@@ -578,6 +580,6 @@ GNU General Public License v3.0 - See [LICENSE](./LICENSE)
 ---
 
 **Status:** Active Development
-**Last Updated:** 2026-02-05
+**Last Updated:** 2026-02-06
 
 *Building Emacs for the web, one gap buffer at a time.*
