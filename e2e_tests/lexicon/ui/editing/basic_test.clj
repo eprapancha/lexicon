@@ -999,7 +999,7 @@
       (is (.contains editor-text "FOO bar FOO baz foo")
           (str "Should have replaced first two 'foo' with 'FOO', got: " editor-text)))))
 
-(deftest ^:skip test-p7-8-06-query-replace-no-matches
+(deftest test-p7-8-06-query-replace-no-matches
   (testing "P7.8-06: Query-replace with no matches"
     (h/setup-test*)
     (h/clear-buffer)

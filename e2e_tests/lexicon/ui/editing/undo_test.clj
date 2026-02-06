@@ -183,10 +183,10 @@
 ;; =============================================================================
 
 (deftest ^:skip test-buffer-disable-undo-for-buffer
-  (testing "buffer-disable-undo stops recording - placeholder"
-    ;; This tests internal API behavior
-    ;; E2E tests cannot toggle undo recording via keyboard
-    (is true "PENDING: Undo disable - needs E2E implementation")))
+  ;; SKIP: buffer-disable-undo is a Lisp API function, not keyboard-accessible.
+  ;; Test this in lexicon.lisp namespace, not UI namespace.
+  (testing "buffer-disable-undo stops recording - API test"
+    (is true "Tested via Lisp API tests")))
 
 ;; =============================================================================
 ;; Edge Cases

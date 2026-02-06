@@ -1,9 +1,8 @@
 (ns lexicon.ui.modes.read-only-test
-  "E2E tests for read-only buffers - tests that USER TYPING is blocked.
+  "E2E tests for read-only buffers.
 
-  Read-only buffers block user keyboard input but modes can still update.
-  Tests verify user-visible behavior via keyboard simulation.
-  API-specific tests (inhibit-read-only) are pending E2E implementation."
+  Tests keyboard blocking in read-only buffers via C-x C-q toggle.
+  For inhibit-read-only API tests, see lexicon.lisp.read-only-test."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [lexicon.test-helpers :as h]))
 
@@ -125,47 +124,18 @@
     (h/press-ctrl-x "C-q")))
 
 ;; =============================================================================
-;; inhibit-read-only API Tests - PENDING E2E Implementation
-;; =============================================================================
-
-(deftest ^:skip test-inhibit-read-only-allows-lisp-insert
-  (testing "Programmatic insert succeeds with inhibit-read-only"
-    ;; inhibit-read-only is a Lisp API feature
-    (is true "PENDING: inhibit-read-only - needs E2E implementation")))
-
-(deftest ^:skip test-inhibit-read-only-allows-lisp-delete
-  (testing "Programmatic delete succeeds with inhibit-read-only"
-    ;; Lisp API feature
-    (is true "PENDING: inhibit-read-only delete - needs E2E implementation")))
-
-(deftest ^:skip test-protection-restored-after-inhibit-scope
-  (testing "Protection restored after inhibit scope"
-    ;; Lisp API scope behavior
-    (is true "PENDING: inhibit-read-only scope - needs E2E implementation")))
-
-(deftest ^:skip test-nested-inhibit-read-only
-  (testing "Nested inhibit scopes work"
-    ;; Lisp API nesting behavior
-    (is true "PENDING: Nested inhibit-read-only - needs E2E implementation")))
-
-(deftest ^:skip test-inhibit-with-errors
-  (testing "Protection restored despite error"
-    ;; Lisp API error handling
-    (is true "PENDING: inhibit-read-only error handling - needs E2E implementation")))
-
-;; =============================================================================
-;; Mode Patterns - PENDING E2E Implementation
+;; Mode Patterns - Tested via Mode E2E Tests
 ;; =============================================================================
 
 (deftest ^:skip test-dired-refresh-pattern
-  (testing "Dired refresh pattern - update read-only buffer"
-    ;; Dired uses inhibit-read-only internally
-    (is true "PENDING: Dired refresh pattern - needs E2E implementation")))
+  ;; SKIP: Tested in dired_test.clj - Dired uses inhibit-read-only internally
+  (testing "Dired refresh pattern"
+    (is true "Tested via dired refresh tests")))
 
 (deftest ^:skip test-help-buffer-pattern
-  (testing "Help buffer pattern - link insertion"
-    ;; Help buffer uses inhibit-read-only internally
-    (is true "PENDING: Help buffer pattern - needs E2E implementation")))
+  ;; SKIP: Tested in help_system_test.clj - Help uses inhibit-read-only internally
+  (testing "Help buffer pattern"
+    (is true "Tested via help system tests")))
 
 ;; =============================================================================
 ;; Query and Toggle

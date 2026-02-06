@@ -21,7 +21,8 @@
             [lexicon.core.api.message :as msg]
             [lexicon.core.db :as db]
             [lexicon.core.markers :as markers]
-            [lexicon.core.advanced-undo :as advanced-undo]))
+            [lexicon.core.advanced-undo :as advanced-undo]
+            [lexicon.core.dynamic :as dyn]))
 
 ;; Forward declarations for functions used before definition
 (declare goto-char line-beginning-position line-end-position current-buffer mark delete-region)
@@ -134,6 +135,33 @@
           (if (nil? result)
             nil  ; Stop and return nil on failure
             (recur (rest remaining) result)))))))
+
+;; =============================================================================
+;; inhibit-read-only Support
+;; =============================================================================
+
+(defn inhibit-read-only
+  "Get the current value of inhibit-read-only.
+
+  Returns: true if read-only is inhibited, false otherwise."
+  []
+  (dyn/inhibit-read-only?))
+
+(defn with-inhibit-read-only
+  "Execute BODY-FN with inhibit-read-only bound to true.
+
+  Allows modification of read-only buffers during the execution of BODY-FN.
+  Used by modes like Dired and Help to update their read-only buffers.
+
+  Usage: (with-inhibit-read-only (fn [] (insert \"text\")))
+  Returns: The result of BODY-FN"
+  [body-fn]
+  (binding [dyn/*inhibit-read-only* true]
+    (body-fn)))
+
+;; =============================================================================
+;; Global Variables (setq/symbol-value)
+;; =============================================================================
 
 (defn setq
   "Set variable VAR to VALUE.
@@ -925,7 +953,8 @@
   doesn't work when called from inside an event handler.
 
   Usage: (insert \"hello\")
-  Returns: nil (side effect only)"
+  Returns: nil (side effect only)
+  Throws: If buffer is read-only and inhibit-read-only is not set"
   [text]
   (let [text-str (str text)]
     (when (pos? (count text-str))
@@ -934,15 +963,19 @@
             active-window (db/find-window-in-tree (:window-tree db) active-window-id)
             buffer-id (:buffer-id active-window)
             buffer (get-in db [:buffers buffer-id])
-            wasm-instance (:wasm-instance buffer)
-            ;; Read position from current db state
-            pos (or (buf/point db) 0)
-            recording-enabled? (get-in db [:undo :recording-enabled?] true)
-            undo-enabled? (get-in db [:buffers buffer-id :undo-enabled?] true)]
-        ;; Run before-change-functions hook
-        (run-hook-with-args 'before-change-functions pos pos)
-        ;; Insert directly into WASM buffer
-        (when wasm-instance
+            is-read-only? (:is-read-only? buffer false)]
+        ;; Check read-only status
+        (when (and is-read-only? (not (dyn/inhibit-read-only?)))
+          (throw (js/Error. "Buffer is read-only")))
+        (let [wasm-instance (:wasm-instance buffer)
+              ;; Read position from current db state
+              pos (or (buf/point db) 0)
+              recording-enabled? (get-in db [:undo :recording-enabled?] true)
+              undo-enabled? (get-in db [:buffers buffer-id :undo-enabled?] true)]
+          ;; Run before-change-functions hook
+          (run-hook-with-args 'before-change-functions pos pos)
+          ;; Insert directly into WASM buffer
+          (when wasm-instance
           (.insert ^js wasm-instance pos text-str)
           ;; Update cache, point position, and undo stack
           (let [new-text (.getText ^js wasm-instance)
@@ -984,7 +1017,7 @@
             ;; Run after-change-functions hook: (beg end old-len)
             ;; For insert: old-len is 0, end is new position
             (run-hook-with-args 'after-change-functions pos new-pos 0))))))
-    nil))
+    nil)))
 
 (defn delete-region
   "Delete text between START and END.
@@ -2996,6 +3029,9 @@
    'run-hook-with-args run-hook-with-args
    'run-hook-with-args-until-success run-hook-with-args-until-success
    'run-hook-with-args-until-failure run-hook-with-args-until-failure
+   ;; inhibit-read-only
+   'inhibit-read-only inhibit-read-only
+   'with-inhibit-read-only with-inhibit-read-only
    ;; Additional buffer functions
    'get-buffer-create get-buffer-create
    'kill-buffer kill-buffer

@@ -17,7 +17,8 @@
             [lexicon.core.log :as log]
             [lexicon.core.api.message :refer [message]]
             [lexicon.core.dynamic :as dyn]
-            [lexicon.core.kmacro :as kmacro]))
+            [lexicon.core.kmacro :as kmacro]
+            [lexicon.lisp :as lisp]))
 
 ;; -- Helper Functions --
 
@@ -304,14 +305,19 @@
              :insert
              (let [text (:text operation)
                    ;; Use explicit position if provided (e.g., from yank), otherwise current cursor
-                   insert-pos (or (:position operation) current-cursor)]
+                   insert-pos (or (:position operation) current-cursor)
+                   new-pos (+ insert-pos (count text))]
                (println "🔧 INSERT - text:" (pr-str text) "position:" insert-pos)
+               ;; Run before-change-functions hook
+               (lisp/run-hook-with-args 'before-change-functions insert-pos insert-pos)
                (try
                  ;; Use gap buffer's direct insert API
                  (.insert ^js wasm-instance insert-pos text)
+                 ;; Run after-change-functions hook: (beg end old-len)
+                 (lisp/run-hook-with-args 'after-change-functions insert-pos new-pos 0)
                  (rf/dispatch [:editor/transaction-success
                               {:operation operation
-                               :new-cursor (+ insert-pos (count text))}])
+                               :new-cursor new-pos}])
                  (catch js/Error error
                    (println "❌ Insert error:" error)
                    (rf/dispatch [:editor/transaction-failure
@@ -320,14 +326,18 @@
 
              :delete-backward
              (if (> current-cursor 0)
-               (do
-                 (println "🔧 DELETE BACKWARD at position:" (dec current-cursor))
+               (let [delete-pos (dec current-cursor)]
+                 (println "🔧 DELETE BACKWARD at position:" delete-pos)
+                 ;; Run before-change-functions hook
+                 (lisp/run-hook-with-args 'before-change-functions delete-pos current-cursor)
                  (try
                    ;; Use gap buffer's direct delete API
-                   (.delete ^js wasm-instance (dec current-cursor) 1)
+                   (.delete ^js wasm-instance delete-pos 1)
+                   ;; Run after-change-functions hook: (beg end old-len)
+                   (lisp/run-hook-with-args 'after-change-functions delete-pos delete-pos 1)
                    (rf/dispatch [:editor/transaction-success
                                 {:operation operation
-                                 :new-cursor (dec current-cursor)}])
+                                 :new-cursor delete-pos}])
                    (catch js/Error error
                      (println "❌ Delete backward error:" error)
                      (rf/dispatch [:editor/transaction-failure
@@ -343,9 +353,13 @@
              :delete-forward
              (do
                (println "🔧 DELETE FORWARD at position:" current-cursor)
+               ;; Run before-change-functions hook
+               (lisp/run-hook-with-args 'before-change-functions current-cursor (inc current-cursor))
                (try
                  ;; Use gap buffer's direct delete API
                  (.delete ^js wasm-instance current-cursor 1)
+                 ;; Run after-change-functions hook: (beg end old-len)
+                 (lisp/run-hook-with-args 'after-change-functions current-cursor current-cursor 1)
                  (rf/dispatch [:editor/transaction-success
                               {:operation operation
                                :new-cursor current-cursor}])  ; Cursor stays same after delete forward
@@ -357,11 +371,16 @@
 
              :delete-range
              (let [start (:start operation)
-                   length (:length operation)]
+                   length (:length operation)
+                   end (+ start length)]
                (println "🔧 DELETE RANGE at position:" start "length:" length)
+               ;; Run before-change-functions hook
+               (lisp/run-hook-with-args 'before-change-functions start end)
                (try
                  ;; Use gap buffer's direct delete API
                  (.delete ^js wasm-instance start length)
+                 ;; Run after-change-functions hook: (beg end old-len)
+                 (lisp/run-hook-with-args 'after-change-functions start start length)
                  (rf/dispatch [:editor/transaction-success
                               {:operation operation
                                :new-cursor start}])  ; Cursor moves to start of deleted range
@@ -374,15 +393,20 @@
              :replace
              (let [start (:start operation)
                    length (:length operation)
-                   text (:text operation)]
+                   text (:text operation)
+                   old-end (+ start length)
+                   new-end (+ start (count text))]
                (println "🔧 REPLACE at position:" start "length:" length "with:" (pr-str text))
+               ;; Run before-change-functions hook
+               (lisp/run-hook-with-args 'before-change-functions start old-end)
                (try
                  ;; Use gap buffer's atomic replace API
                  (.replace ^js wasm-instance start length text)
-                 (let [new-cursor (+ start (count text))]
-                   (rf/dispatch [:editor/transaction-success
+                 ;; Run after-change-functions hook: (beg end old-len)
+                 (lisp/run-hook-with-args 'after-change-functions start new-end length)
+                 (rf/dispatch [:editor/transaction-success
                                 {:operation operation
-                                 :new-cursor new-cursor}]))  ; Cursor moves to end of replacement
+                                 :new-cursor new-end}])  ; Cursor moves to end of replacement
                  (catch js/Error error
                    (println "❌ Replace error:" error)
                    (rf/dispatch [:editor/transaction-failure

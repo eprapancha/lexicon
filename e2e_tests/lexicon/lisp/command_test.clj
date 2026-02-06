@@ -20,6 +20,8 @@
 ;; =============================================================================
 
 (deftest ^:skip test-defcommand-creates-command
+  ;; SKIP: defcommand registers command for M-x, doesn't create callable symbol
+  ;; Need to rewrite to use invoke-command or M-x
   (testing "defcommand creates callable command"
     (lisp/setup-test)
     (lisp/eval-lisp!
@@ -49,13 +51,14 @@
 ;; =============================================================================
 
 (deftest ^:skip test-prefix-arg-variable
+  ;; SKIP: *prefix-arg* is a special dynamic var, not settable via setq
   (testing "*prefix-arg* is accessible and settable"
     (lisp/setup-test)
     (lisp/eval-lisp! "(setq *prefix-arg* 7)")
     (let [result (lisp/eval-lisp! "*prefix-arg*")]
       (is (= 7 result)))))
 
-(deftest ^:skip test-current-buffer-variable
+(deftest test-current-buffer-variable
   (testing "*current-buffer* is accessible"
     (lisp/setup-test)
     (let [result (lisp/eval-lisp! "(current-buffer)")]

@@ -19,7 +19,7 @@
 ;; Minibuffer as Buffer
 ;; =============================================================================
 
-(deftest ^:skip test-minibuffer-is-real-buffer
+(deftest test-minibuffer-is-real-buffer
   (testing "minibuffer becomes visible on M-x"
     (h/setup-test*)
     (h/clear-buffer)
@@ -44,7 +44,7 @@
     (Thread/sleep 100)
 
     ;; Minibuffer should contain the typed text
-    (let [text (h/get-minibuffer-text)]
+    (let [text (h/get-minibuffer-input-value)]
       (is (str/includes? (str text) "test")
           "Minibuffer should contain typed text"))))
 
@@ -52,7 +52,7 @@
 ;; Completion Behavior (via M-x)
 ;; =============================================================================
 
-(deftest ^:skip test-mx-shows-completion
+(deftest test-mx-shows-completion
   (testing "M-x provides command completion"
     (h/setup-test*)
     (h/clear-buffer)

@@ -188,6 +188,37 @@
             (println "See: docs/ARCHITECTURE_BOUNDARY.md")
             (System/exit 1)))))
 
+    (defn lint-ui-lisp-isolation!
+      "Check that UI tests (lexicon.ui.*) don't import lexicon.lisp.helpers.
+
+       UI tests should ONLY use keyboard simulation via test-helpers.
+       Lisp API tests belong in lexicon.lisp.* namespace, not lexicon.ui.*."
+      []
+      (print-step "🔍" "Checking UI tests don't import lexicon.lisp.helpers...")
+      (let [ui-test-files (fs/glob "e2e_tests/lexicon/ui" "**/*.clj")
+            lisp-import-pat (re-pattern "\\[lexicon\\.lisp\\.helpers")
+            violations (atom [])]
+        (doseq [file ui-test-files]
+          (let [content (slurp (str file))]
+            (when (re-find lisp-import-pat content)
+              (swap! violations conj (str file)))))
+        (if (seq (deref violations))
+          (do
+            (println "\nERROR: UI tests must not import lexicon.lisp.helpers:\n")
+            (doseq [file (sort (deref violations))]
+              (println (str "  " file)))
+            (println "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            (println "UI tests (lexicon.ui.*) must ONLY use keyboard simulation:")
+            (println "")
+            (println "  - Use h/type-text, h/press-ctrl, h/press-key for user actions")
+            (println "  - Use h/get-buffer-text*, h/get-point* for state verification")
+            (println "")
+            (println "If you need to test Lisp API functions (eval-lisp, inhibit-read-only),")
+            (println "put those tests in e2e_tests/lexicon/lisp/ instead.")
+            (println "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+            (System/exit 1))
+          (print-step "✅" "UI tests don't import lexicon.lisp.helpers"))))
+
     (defn lint-e2e!
       "Check that E2E tests don't use evalLisp for user actions.
 
@@ -343,16 +374,21 @@
   {:doc "Check E2E tests don't use evalLisp (should simulate user interaction)"
    :task (lint-e2e!)}
 
+  lint:ui-isolation
+  {:doc "Check UI tests don't import lexicon.lisp.helpers (use keyboard simulation only)"
+   :task (lint-ui-lisp-isolation!)}
+
   lint:browser-tests
   {:doc "Check no browser-based tests in packages/editor-cljs/test/"
    :task (lint-browser-tests!)}
 
   lint
-  {:doc "Run all linters (architecture + clj-kondo + e2e + browser-tests)"
+  {:doc "Run all linters (architecture + clj-kondo + e2e + ui-isolation + browser-tests)"
    :task (do
            (lint-architecture!)
            (lint-kondo!)
            (lint-e2e!)
+           (lint-ui-lisp-isolation!)
            (lint-browser-tests!))}
 
   ;; Individual build tasks
