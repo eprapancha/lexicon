@@ -1,7 +1,7 @@
 # Lexicon Project Memory
 
-**Last Updated:** 2026-02-06
-**Status:** Phase 6.6 - Epic #145 Skipped E2E Tests Implementation
+**Last Updated:** 2026-02-07
+**Status:** Manual Testing Phase - Validating all interactive commands
 
 ---
 
@@ -441,6 +441,55 @@ e2e_tests/                            # E2E tests
 5. **Commit frequently** - After each green test
 6. **Zero warnings** - Fix all warnings before commit
 7. **Zero regressions** - All tests must pass
+
+---
+
+## Long-Term Project Plan
+
+### Phase: Manual Testing & Validation
+
+**Purpose:** Too much code has been written without manual testing. Regardless of what automated tests say, we need to verify that commands actually work.
+
+**Approach:**
+1. Create **Epic: Manual Testing** with a comprehensive list of all interactive commands
+2. For each command (batched in sets of 10-20), create a GitHub task with:
+   - Manual testing steps (with or without keybinding)
+   - Link to the E2E test that asserts this functionality
+   - Cross-reference review: Is the test mirroring manual behavior or is it superficial?
+   - Status: Works / Broken / No Real Test
+3. Track progress: How many commands work? How many have real tests?
+4. Fix or delete superficial tests that don't actually test behavior
+5. Once all commands are manually verified, move to review and refactoring
+
+### Phase: Review & Refactoring
+
+After manual testing is complete:
+1. Review codebase for patterns, duplication, and cleanup opportunities
+2. Refactor with confidence (manual testing provides ground truth)
+3. Run full regression test suite after each refactoring batch
+4. Ensure nothing is broken
+
+### Phase: Package Repository (Lexpa)
+
+**Strategy: Start simple, evolve as needed**
+
+**Initial approach (straight.el style):**
+- Packages like `vertico` live in their own repos: `lexicon-vertico`
+- Install directly from GitHub within Lexicon (no package index needed yet)
+- Packages are cloned/fetched at runtime
+- Organization: `eprapancha/lexicon-vertico`, `eprapancha/lexicon-evil`, etc.
+
+**Future evolution (when we have stable packages):**
+- Create `lexicon/lexpa` repo for versioned package distribution
+- Formal package manager with version resolution
+- Eventually CDN distribution for production performance
+- But we won't get there soon - focus on straight.el approach first
+
+**Key packages to prioritize:**
+1. `lexicon-vertico` - Vertical completion UI
+2. `lexicon-orderless` - Flexible matching
+3. `lexicon-consult` - Enhanced commands
+4. `lexicon-evil` - Vim emulation
 
 ---
 

@@ -535,36 +535,49 @@ lexicon/
 
 ## Roadmap
 
-**Current Phase:** 6.6 - Emacs Semantic Compatibility
+**Current Phase:** Manual Testing & Validation
 
-**Recently Completed:**
-- Text expansion: hippie-expand, abbrev-mode (#151)
-- Window extensions: tab-bar-mode, winner-mode integration (#152)
-- Grep search across open buffers with `*grep*` results buffer (#125)
-- Ediff buffer comparison, smerge-mode conflict resolution (#119)
-- Shell/Eshell with 12 built-in commands (#112)
-- Info documentation browser with menu/cross-reference navigation (#142)
-- Buffer name uniquification (#141)
-- ibuffer - advanced buffer management (#140)
-- Font-lock multiline patterns and JIT fontification (#143, #144)
-- Eldoc documentation in echo area (#124)
-- File persistence: recentf, saveplace, autorevert (#118)
-- Hi-lock interactive highlighting (#125)
-- Dired mode with file operations via FS Access API (#139)
-- Programming support: compile, flymake, imenu (#122)
-- File System Access API for Emacs-style find-file (#135)
-- occur-mode - List matching lines (#131)
-- Buffer menu with full functionality (#115)
-- Outline mode and code folding (#114)
-- Font-lock and which-function modes (#130)
-- Emacs completion framework (#136, #137, #138)
+### Next Steps
 
-**Partially Implemented (UI/command framework only, needs backend server for real functionality):**
-- Version control (#113) — `vc-dir`/`vc-diff`/`vc-log` create buffers with synthetic data, no actual git operations
-- Project/xref (#116) — xref text search across open buffers works, project root detection is heuristic, no filesystem access
-- Terminal emulation (#127) — shell built-in commands work, no real process spawning or terminal emulation
-- Remote files (#126) — TRAMP path parsing and method listing, no actual remote connections
-- LSP client (#129) — command registration and events buffer only, no LSP protocol implementation
+1. **Manual Testing Epic** - Comprehensive validation of all interactive commands
+   - Create GitHub tasks for each command (batched in sets of 10-20)
+   - Manual testing steps with keybinding verification
+   - Cross-reference with E2E tests to identify superficial tests
+   - Fix or delete tests that don't actually test behavior
+
+2. **Review & Refactoring** - After manual testing is complete
+   - Code review for patterns, duplication, cleanup
+   - Refactor with confidence (manual testing = ground truth)
+   - Full regression test suite after each batch
+
+3. **Package Repository (Lexpa)** - straight.el style approach
+   - Packages in their own repos: `eprapancha/lexicon-vertico`, etc.
+   - Direct GitHub installation (no package index needed yet)
+   - Future: `lexicon/lexpa` for versioned distribution
+
+**Priority Packages:**
+- `lexicon-vertico` - Vertical completion UI
+- `lexicon-orderless` - Flexible matching
+- `lexicon-consult` - Enhanced commands
+- `lexicon-evil` - Vim emulation
+
+### Completed
+
+- Core editing, kill ring, undo, prefix arguments
+- Buffer/window/frame management
+- Minibuffer completion system
+- Major/minor modes, hierarchical keymaps
+- File operations with FS Access API
+- Dired, ibuffer, occur, grep modes
+- Search: isearch, query-replace, occur, grep
+- Programming: compile, imenu, outline, folding
+- Help system: describe-key/function/variable, info browser
+- Diff/merge: diff-mode, ediff, smerge-mode
+- Shell with built-in commands
+- Font-lock syntax highlighting
+
+**Partially Implemented (needs backend server):**
+- Version control, project/xref, terminal emulation, remote files, LSP
 
 **See [GitHub Issues](https://github.com/eprapancha/lexicon/issues) for detailed status**
 
@@ -589,7 +602,7 @@ GNU General Public License v3.0 - See [LICENSE](./LICENSE)
 
 ---
 
-**Status:** Active Development
-**Last Updated:** 2026-02-06
+**Status:** Active Development - Manual Testing Phase
+**Last Updated:** 2026-02-07
 
 *Building Emacs for the web, one gap buffer at a time.*
