@@ -38,7 +38,7 @@
               (str/includes? content "foobaz"))
           "Should expand to match"))))
 
-(deftest ^:skip test-dabbrev-cycle
+(deftest test-dabbrev-cycle
   (testing "dabbrev cycles through matches"
     (h/setup-test*)
     (h/clear-buffer)
@@ -50,11 +50,27 @@
     (h/type-text " hel")
     (Thread/sleep 50)
 
-    ;; First M-/ should expand
+    ;; First M-/ should expand to nearest match (healthy - searching backward)
     (h/press-meta "/")
     (Thread/sleep 100)
 
-    (is true "PENDING: dabbrev cycling - needs E2E implementation")))
+    (let [content1 (h/get-buffer-text*)]
+      ;; Should have expanded to one of the matches
+      (is (or (str/includes? content1 " healthy")
+              (str/includes? content1 " help")
+              (str/includes? content1 " hello"))
+          "First M-/ should expand to a match")
+
+      ;; Second M-/ should cycle to next match
+      (h/press-meta "/")
+      (Thread/sleep 100)
+
+      (let [content2 (h/get-buffer-text*)]
+        ;; Content should be different (cycled to next expansion)
+        (is (or (not= content1 content2)
+                ;; Or we're at the last expansion and it stayed the same
+                (str/includes? content2 "No further"))
+            "Second M-/ should cycle or show no further expansions")))))
 
 ;; =============================================================================
 ;; Hippie Expand
