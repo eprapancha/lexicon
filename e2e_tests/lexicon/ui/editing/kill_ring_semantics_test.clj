@@ -52,8 +52,7 @@
       (is (.contains text-in-new-buffer "killed-text")
           (str "Killed text from buffer A should yank into buffer B, got: " text-in-new-buffer)))))
 
-(deftest ^:skip test-consecutive-kills-append
-  ;; SKIP: Requires last-command tracking across ALL commands to work correctly
+(deftest test-consecutive-kills-append
   (testing "Emacs invariant: Consecutive C-k kills append to single kill ring entry"
     (h/setup-test*)
     (h/clear-buffer)

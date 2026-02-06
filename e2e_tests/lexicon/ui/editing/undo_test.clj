@@ -134,6 +134,7 @@
 ;; =============================================================================
 
 (deftest ^:skip test-redo-restores-undone-change
+  ;; SKIP: Redo (C-g C-/) not fully implemented yet - undo tree manipulation needed
   (testing "Redo after undo restores text"
     (h/setup-test*)
     (h/clear-buffer)
@@ -157,7 +158,7 @@
     (is (= "Hello" (h/get-buffer-text*))
         "Redo should restore undone change")))
 
-(deftest ^:skip test-new-edit-clears-redo
+(deftest test-new-edit-clears-redo
   (testing "Edit after undo prevents redo"
     (h/setup-test*)
     (h/clear-buffer)
@@ -191,7 +192,7 @@
 ;; Edge Cases
 ;; =============================================================================
 
-(deftest ^:skip test-undo-empty-buffer-noop
+(deftest test-undo-empty-buffer-noop
   (testing "Undo on empty buffer is safe"
     (h/setup-test*)
     (h/clear-buffer)

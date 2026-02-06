@@ -65,7 +65,7 @@
     ;; Clean up
     (h/press-ctrl-x "C-q")))
 
-(deftest ^:skip test-read-only-blocks-user-delete-key
+(deftest test-read-only-blocks-user-delete-key
   (testing "Delete key is blocked in read-only buffer"
     (h/setup-test*)
     (h/clear-buffer)
@@ -96,7 +96,7 @@
     ;; Clean up
     (h/press-ctrl-x "C-q")))
 
-(deftest ^:skip test-read-only-allows-cursor-movement
+(deftest test-read-only-allows-cursor-movement
   (testing "Cursor movement works in read-only buffer"
     (h/setup-test*)
     (h/clear-buffer)

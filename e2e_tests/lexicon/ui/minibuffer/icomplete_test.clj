@@ -16,7 +16,7 @@
 ;; User-Visible Completion Behavior
 ;; =============================================================================
 
-(deftest ^:skip test-mx-shows-completion-candidates
+(deftest test-mx-shows-completion-candidates
   (testing "M-x shows completion candidates"
     (h/setup-test*)
     (h/clear-buffer)
@@ -36,7 +36,7 @@
     (h/press-ctrl "g")
     (Thread/sleep 100)))
 
-(deftest ^:skip test-tab-completion
+(deftest test-tab-completion
   (testing "Tab completes in minibuffer"
     (h/setup-test*)
     (h/clear-buffer)

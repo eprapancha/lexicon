@@ -17,7 +17,7 @@
 ;; Dabbrev - Dynamic Abbreviation
 ;; =============================================================================
 
-(deftest ^:skip test-dabbrev-expand
+(deftest test-dabbrev-expand
   (testing "dabbrev finds match in buffer"
     (h/setup-test*)
     (h/clear-buffer)
