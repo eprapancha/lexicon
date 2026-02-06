@@ -571,22 +571,23 @@
     (h/setup-test*)
     (h/clear-buffer)
 
-    ;; Create a couple of buffers first
+    ;; Create a couple of buffers first using C-x b (switch-to-buffer)
     (h/press-ctrl "x")
     (Thread/sleep 10)
     (h/press-key "b")
-    (Thread/sleep 30)
-    (h/type-text "buffer1")
-    (h/press-key "Enter")
-    (Thread/sleep 30)
+    (Thread/sleep 50)
+    ;; Must use minibuffer-specific helpers since minibuffer is now active
+    (h/type-in-minibuffer "buffer1")
+    (h/press-minibuffer-enter)
+    (Thread/sleep 100)
 
     (h/press-ctrl "x")
     (Thread/sleep 10)
     (h/press-key "b")
-    (Thread/sleep 30)
-    (h/type-text "buffer2")
-    (h/press-key "Enter")
-    (Thread/sleep 30)
+    (Thread/sleep 50)
+    (h/type-in-minibuffer "buffer2")
+    (h/press-minibuffer-enter)
+    (Thread/sleep 100)
 
     ;; Now list buffers with C-x C-b
     (h/press-ctrl "x")
