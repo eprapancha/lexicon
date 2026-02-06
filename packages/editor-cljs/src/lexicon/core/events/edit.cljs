@@ -719,23 +719,40 @@
 (rf/reg-event-fx
  :undo
  (fn [{:keys [db]} [_]]
-   "Undo the last command using advanced undo system (C-/ or C-_)"
+   "Undo the last command using advanced undo system (C-/ or C-_)
+
+   Emacs-style redo: After C-g breaks the undo chain, the next C-/ does redo."
    (let [active-window    (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          buffer-name      (get-in db [:buffers active-buffer-id :name])
          undo-stack       (get-in db [:buffers active-buffer-id :undo-stack] [])
+         redo-stack       (get-in db [:buffers active-buffer-id :redo-stack] [])
+         undo-chain-broken? (:undo-chain-broken db)
          stack-size       (count undo-stack)]
 
-     (if (seq undo-stack)
+     ;; Emacs-style redo: if chain was broken by C-g and redo-stack has content,
+     ;; do redo instead of undo
+     (if (and undo-chain-broken? (seq redo-stack))
        (do
-         ;; Disable undo recording during undo operation
+         ;; Clear the chain-broken flag and do redo
          (undo/with-undo-recording-disabled*
            (fn []
-             (undo/undo-to-boundary! active-buffer-id)))
-         {:db db
+             (undo/redo! active-buffer-id)))
+         {:db (dissoc db :undo-chain-broken)
           :fx [[:dispatch [:buffer/set-undo-in-progress active-buffer-id true]]
                [:dispatch-later [{:ms 50 :dispatch [:undo-complete active-buffer-id]}]]]})
-       {:db db}))))
+       ;; Normal undo
+       (if (seq undo-stack)
+         (do
+           ;; Disable undo recording during undo operation
+           ;; Clear chain-broken flag on any undo
+           (undo/with-undo-recording-disabled*
+             (fn []
+               (undo/undo-to-boundary! active-buffer-id)))
+           {:db (dissoc db :undo-chain-broken)
+            :fx [[:dispatch [:buffer/set-undo-in-progress active-buffer-id true]]
+                 [:dispatch-later [{:ms 50 :dispatch [:undo-complete active-buffer-id]}]]]})
+         {:db (dissoc db :undo-chain-broken)})))))
 
 (rf/reg-event-fx
  :redo
@@ -845,20 +862,24 @@
    "Cancel the current operation (equivalent to C-g in Emacs).
 
    - If minibuffer is active, cancels it and dispatches on-cancel callback
-   - Otherwise clears pending operations and shows 'Quit' message
+   - Sets :undo-chain-broken flag for Emacs-style redo
+   - Clears pending operations and shows 'Quit' message
 
-   Issue #67: Must show 'Quit' message in echo area"
+   Issue #67: Must show 'Quit' message in echo area
+   Issue #150: Breaks undo chain for Emacs-style redo (C-g C-/ = redo)"
    (let [minibuffer-active? (get-in db [:minibuffer :active?])
-         on-cancel (get-in db [:minibuffer :on-cancel] [:minibuffer/deactivate])]
+         on-cancel (get-in db [:minibuffer :on-cancel] [:minibuffer/deactivate])
+         ;; Mark that undo chain was broken - next undo should redo if available
+         db-with-chain-broken (assoc db :undo-chain-broken true)]
      (if minibuffer-active?
        ;; If minibuffer is active, cancel it and dispatch on-cancel
-       {:db (-> db
+       {:db (-> db-with-chain-broken
                 (assoc-in [:ui :selection] {:start 0 :end 0})
                 (assoc-in [:fsm :operator-pending] nil))
         :fx [[:dispatch on-cancel]
              [:dispatch [:echo/message "Quit"]]]}
        ;; Otherwise just clear pending operations and show quit message
-       {:db (-> db
+       {:db (-> db-with-chain-broken
                 (assoc-in [:ui :selection] {:start 0 :end 0})
                 (assoc-in [:fsm :operator-pending] nil))
         :fx [[:dispatch [:echo/message "Quit"]]]}))))

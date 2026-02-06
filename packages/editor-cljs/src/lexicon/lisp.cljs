@@ -3021,7 +3021,10 @@
    ;; Global variables (#106)
    'setq setq
    'symbol-value symbol-value
-   '*prefix-arg* (fn [] (get @global-vars '*prefix-arg*))
+   ;; Dynamic variables - initialized to nil, can be rebound via setq
+   '*prefix-arg* nil
+   '*last-command* nil
+   '*this-command* nil
    ;; Hooks (#106)
    'add-hook add-hook
    'remove-hook remove-hook

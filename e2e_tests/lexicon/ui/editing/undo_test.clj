@@ -133,8 +133,7 @@
 ;; Redo (Undo the Undo)
 ;; =============================================================================
 
-(deftest ^:skip test-redo-restores-undone-change
-  ;; SKIP: Redo (C-g C-/) not fully implemented yet - undo tree manipulation needed
+(deftest test-redo-restores-undone-change
   (testing "Redo after undo restores text"
     (h/setup-test*)
     (h/clear-buffer)

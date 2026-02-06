@@ -247,7 +247,7 @@
 (defn redo!
   "Redo the last undone command in BUFFER-ID."
   [buffer-id]
-  (rf/dispatch-sync [:undo/redo buffer-id]))
+  (rf/dispatch [:undo/redo buffer-id]))
 
 (rf/reg-event-fx
   :undo/redo
@@ -262,10 +262,11 @@
               ;; Apply in forward order (not reversed)
               marker-entry (last (filter #(= (:type %) :marker) redoable-entries))]
 
-          ;; Apply redo entries
+          ;; Apply redo entries - MUST INVERT because redo-stack stores what was
+          ;; done to undo (the inverse), we need to undo that inverse
           (doseq [entry redoable-entries]
             (case (:type entry)
-              :edit (apply-undo-entry buffer-state entry)
+              :edit (apply-undo-entry buffer-state (invert-undo-entry entry))
               :marker nil ;; Will be handled via cursor update
               nil))
 

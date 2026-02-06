@@ -1,7 +1,7 @@
 # Lexicon Project Memory
 
-**Last Updated:** 2026-02-04
-**Status:** Phase 6.6 - Epic #86 Emacs Semantic Compatibility
+**Last Updated:** 2026-02-06
+**Status:** Phase 6.6 - Epic #145 Skipped E2E Tests Implementation
 
 ---
 
@@ -444,54 +444,66 @@ e2e_tests/                            # E2E tests
 
 ---
 
-## Current Work Session (2026-02-04)
+## Issue Sweep Workflow
 
-**Active Issues (in priority order):**
-1. **#135** - File System Access API (Emacs-style minibuffer file operations)
-2. **#130** - Code Intelligence (font-lock.el, which-func.el) - Syntax highlighting
-3. **#139** - Interactive dired-mode (navigation, file operations)
-4. **#115** - Buffer Menu (ibuffer, buff-menu, uniquify) - COMPLETED
-5. **#109** - Help System (help.el, info.el) - COMPLETED
-6. **#114** - Outline & Folding (outline.el, hideshow.el) - COMPLETED
+**Name: `issue-sweep`** - Use this name to invoke this workflow in new sessions.
+
+**Purpose:** Systematically close all open issues by implementing missing features. This is TDD - tests expose gaps, we fill them.
+
+### Core Rules
+
+1. **Pick an issue, fix it completely** - Enhance core if required. No shortcuts.
+
+2. **Test preference:** UI tests > Lisp tests. Only use Lisp tests for package-developer APIs.
+
+3. **Never run full test suite** - Takes 30+ mins. Run specific test files only.
+
+4. **Always tee test output:** `bb test:e2e <pattern> 2>&1 | tee /tmp/e2e-<feature>.log`
+   - User runs `tail -f /tmp/e2e*.log` to monitor progress
+
+5. **New tests must pass 100%** - Skip only if truly blocked (backend dependencies like LSP).
+
+6. **Don't commit during sweep** - User will batch commits later. Avoids approval interruptions.
+
+7. **DO close issues immediately** when fully implemented (with comment citing what was done).
+
+8. **For large issues with 1-2 blockers:** Spawn new issue for blockers, close the main issue.
+
+9. **Keep README.md updated** - Check commits since last README update, document new features.
+
+10. **Respect linting rules** - Run `bb lint`, never modify lint rules.
+
+11. **Compilation is user's watch process** - Don't run build commands. If changes seem stale, check watch output but don't kill the process. 99% of the time it's logic issues, not compilation.
+
+12. **Avoid commands needing user input** - No commits (need approval), no interactive prompts.
+
+### Workflow Steps
+
+```
+1. gh issue list --state open          # See open issues
+2. Pick issue (priority: high > medium > low)
+3. Read issue, understand requirements
+4. Study Emacs source if needed (~/projects/emacs-source/)
+5. Implement feature in core
+6. Enable/write tests
+7. Run: bb test:e2e <pattern> 2>&1 | tee /tmp/e2e-<feature>.log
+8. Fix until tests pass
+9. Close issue: gh issue close <N> --comment "Implemented: ..."
+10. Move to next issue
+```
+
+### What to Skip (Defer to New Issues)
+
+- Features requiring backend not available in browser (LSP servers, shell, VC backends)
+- Features with deep infrastructure dependencies that would take days
+- When complexity is genuinely blocking other progress
+
+### What NOT to Skip
+
+- "Hard" implementations - that's the point of TDD
+- Tests that seem complicated - implement the feature
+- Anything that just needs code written
 
 ---
 
-## Bulk Implementation Rules
-
-**These rules ALWAYS apply during long coding runs to tackle big bucket lists:**
-
-1. **Every issue implemented in full** - Nothing is skipped. All functionalities listed in GitHub issues exist for a reason. We don't dilute our implementation.
-
-2. **Defer only when complexity is out of hand** - It's OK to defer a particular feature to move to other issues for functional coverage, but ONLY if that feature's complexity is getting slightly out of hand.
-
-3. **No commit after each feature** - Finish everything and commit at the end.
-
-4. **Every new feature needs E2E UI tests** - If the feature is an end-user feature, it MUST have a UI test. Only features targeted at package developers can be tested with lisp tests. Lisp tests are always the exception, never the rule.
-
-5. **All new tests must pass** - No exceptions.
-
-6. **No closing issues unless complete** - Don't close issues unless literally everything in the issue is covered.
-
-7. **Research Emacs source when required** - Use `~/projects/emacs-source/` for fidelity.
-
-8. **Never run full regression** - User will do that on GitHub and report failures.
-
-9. **Run `bb lint` and check for violations** - NEVER update linting rules. They exist for a reason.
-
-10. **Implementation Guidelines:**
-    - Full implementation without shortcuts or caveats
-    - UI tests preferred; lisp tests only for package-developer functionality
-    - Add periodic progress updates to GitHub issues
-    - Study Emacs source at `~/projects/emacs-source/` for fidelity
-
-**Workflow:**
-1. Deep dive Emacs source for each feature
-2. Implement the feature completely
-3. Write UI tests for user-facing functionality
-4. Run tests for the specific feature (not full regression)
-5. Move to next feature
-6. When ALL done, user will manually test before committing
-
----
-
-**This file survives conversation compactions. Updated 2026-02-04.**
+**This file survives conversation compactions. Updated 2026-02-06.**

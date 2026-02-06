@@ -19,29 +19,30 @@
 ;; Command Definition
 ;; =============================================================================
 
-(deftest ^:skip test-defcommand-creates-command
-  ;; SKIP: defcommand registers command for M-x, doesn't create callable symbol
-  ;; Need to rewrite to use invoke-command or M-x
+(deftest test-defcommand-creates-command
   (testing "defcommand creates callable command"
     (lisp/setup-test)
     (lisp/eval-lisp!
      "(defcommand 'test-cmd (fn [] (insert \"executed\")) \"A test command\")")
 
-    ;; Command should exist and be invokable
-    (lisp/eval-lisp! "(test-cmd)")
+    ;; Command should exist and be invokable via call-interactively
+    (lisp/eval-lisp! "(call-interactively 'test-cmd)")
+    (Thread/sleep 100) ;; Let async dispatch complete
     (is (= "executed" (lisp/eval-lisp! "(buffer-string)")))))
 
-(deftest ^:skip test-defcommand-with-prefix-arg
+(deftest test-defcommand-with-prefix-arg
   (testing "command can access prefix arg"
     (lisp/setup-test)
+    ;; Set prefix arg BEFORE defining command so it's available
+    (lisp/eval-lisp! "(setq *prefix-arg* 4)")
     (lisp/eval-lisp!
      "(defcommand 'test-prefix
-        (fn [] (insert (str *prefix-arg*)))
+        (fn [] (insert (str (symbol-value '*prefix-arg*))))
         \"Show prefix arg\")")
 
-    ;; Set prefix arg and invoke
-    (lisp/eval-lisp! "(setq *prefix-arg* 4)")
-    (lisp/eval-lisp! "(test-prefix)")
+    ;; Invoke via call-interactively
+    (lisp/eval-lisp! "(call-interactively 'test-prefix)")
+    (Thread/sleep 100) ;; Let async dispatch complete
 
     (is (= "4" (lisp/eval-lisp! "(buffer-string)"))
         "Should insert prefix arg value")))
@@ -50,8 +51,7 @@
 ;; Dynamic Variables
 ;; =============================================================================
 
-(deftest ^:skip test-prefix-arg-variable
-  ;; SKIP: *prefix-arg* is a special dynamic var, not settable via setq
+(deftest test-prefix-arg-variable
   (testing "*prefix-arg* is accessible and settable"
     (lisp/setup-test)
     (lisp/eval-lisp! "(setq *prefix-arg* 7)")
