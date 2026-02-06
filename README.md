@@ -58,6 +58,8 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `newline` | `RET` | Insert newline |
 | `delete-indentation` | `M-^` | Join line with previous |
 | `dabbrev-expand` | `M-/` | Dynamic abbreviation expansion |
+| `hippie-expand` | `M-x hippie-expand` | Try multiple expansion strategies |
+| `expand-abbrev` | `C-x a e` | Expand abbreviation before point |
 
 ### Mark and Region
 
@@ -119,6 +121,10 @@ Lexicon is **GNU Emacs running in the browser** - not Emacs-inspired, not Emacs-
 | `windmove-down` | `S-<down>` | Select window below |
 | `winner-undo` | `C-c <left>` | Undo window config (winner-mode) |
 | `winner-redo` | `C-c <right>` | Redo window config (winner-mode) |
+| `tab-bar-new-tab` | `M-x tab-bar-new-tab` | Create new tab |
+| `tab-close` | `M-x tab-close` | Close current tab |
+| `tab-next` | `M-x tab-next` | Switch to next tab |
+| `tab-previous` | `M-x tab-previous` | Switch to previous tab |
 
 ### File Operations
 
@@ -360,6 +366,8 @@ Includes built-in documentation: Lexicon manual (Getting Started, Key Bindings, 
 | `recentf-mode` | Track recently opened files |
 | `save-place-mode` | Remember cursor position per file |
 | `auto-revert-mode` | Auto-refresh when file changes on disk |
+| `abbrev-mode` | Expand abbreviations automatically |
+| `tab-bar-mode` | Tab-based workspace management |
 
 ---
 
@@ -530,6 +538,8 @@ lexicon/
 **Current Phase:** 6.6 - Emacs Semantic Compatibility
 
 **Recently Completed:**
+- Text expansion: hippie-expand, abbrev-mode (#151)
+- Window extensions: tab-bar-mode, winner-mode integration (#152)
 - Grep search across open buffers with `*grep*` results buffer (#125)
 - Ediff buffer comparison, smerge-mode conflict resolution (#119)
 - Shell/Eshell with 12 built-in commands (#112)
