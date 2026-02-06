@@ -9,6 +9,9 @@
             [clojure.string :as str]
             [etaoin.api :as e]))
 
+;; Forward declarations for functions used before they're defined
+(declare press-ctrl-x press-key)
+
 ;; =============================================================================
 ;; Message Buffer Helpers (Issue #84)
 ;; =============================================================================
@@ -220,10 +223,15 @@
   (Thread/sleep 200))
 
 (defn clear-buffer
-  "Clear buffer for a fresh test."
+  "Clear buffer for a fresh test using keyboard commands.
+   Uses C-x h (mark-whole-buffer) then Backspace to delete."
   []
-  (e/js-execute *driver* "window.evalLisp('(erase-buffer)')")
-  (e/js-execute *driver* "window.evalLisp('(set-buffer-modified-p nil)')"))
+  ;; C-x h: mark-whole-buffer (select all)
+  (press-ctrl-x "h")
+  (Thread/sleep 100)
+  ;; Backspace: delete selection (requires delete-selection-mode)
+  (press-key "Backspace")
+  (Thread/sleep 100))
 
 ;; =============================================================================
 ;; Keyboard Simulation (exact JS dispatch from basic_editing_test.clj)
