@@ -187,6 +187,89 @@
       (is (str/includes? text "Hello XWorld")
           "Cursor should be at position 6 after C-u 5 C-b"))))
 
+(deftest test-cu-next-line
+  (testing "C-u 3 Down moves down 3 lines"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type multiple lines - cursor ends at end of Line 5
+    (h/type-text "Line 1")
+    (h/press-key "Enter")
+    (h/type-text "Line 2")
+    (h/press-key "Enter")
+    (h/type-text "Line 3")
+    (h/press-key "Enter")
+    (h/type-text "Line 4")
+    (h/press-key "Enter")
+    (h/type-text "Line 5")
+    (Thread/sleep 100)
+
+    ;; Move to beginning of Line 1 using Up arrow repeatedly
+    (h/press-key "ArrowUp")
+    (Thread/sleep 50)
+    (h/press-key "ArrowUp")
+    (Thread/sleep 50)
+    (h/press-key "ArrowUp")
+    (Thread/sleep 50)
+    (h/press-key "ArrowUp")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+
+    ;; C-u 3 Down should move down 3 lines (to Line 4)
+    ;; Note: Using Down arrow instead of C-n because browsers intercept C-n
+    (h/press-ctrl "u")
+    (Thread/sleep 50)
+    (h/press-key "3")
+    (Thread/sleep 50)
+    (h/press-key "ArrowDown")
+    (Thread/sleep 100)
+
+    ;; Insert marker to verify position
+    (h/type-text "X")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      (is (str/includes? text "XLine 4")
+          "Cursor should be at beginning of Line 4 after C-u 3 C-n"))))
+
+(deftest test-cu-previous-line
+  (testing "C-u 2 Up moves up 2 lines"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type multiple lines
+    (h/type-text "Line 1")
+    (h/press-key "Enter")
+    (h/type-text "Line 2")
+    (h/press-key "Enter")
+    (h/type-text "Line 3")
+    (h/press-key "Enter")
+    (h/type-text "Line 4")
+    (Thread/sleep 100)
+
+    ;; Cursor is at end of Line 4
+    ;; Move to beginning of line
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+
+    ;; C-u 2 Up should move up 2 lines (to Line 2)
+    ;; Note: Using Up arrow instead of C-p for consistency with next-line test
+    (h/press-ctrl "u")
+    (Thread/sleep 50)
+    (h/press-key "2")
+    (Thread/sleep 50)
+    (h/press-key "ArrowUp")
+    (Thread/sleep 100)
+
+    ;; Insert marker to verify position
+    (h/type-text "X")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      (is (str/includes? text "XLine 2")
+          "Cursor should be at beginning of Line 2 after C-u 2 C-p"))))
+
 (deftest test-prefix-arg-cleared-after-command
   (testing "Prefix arg is cleared after command execution"
     (h/setup-test*)
