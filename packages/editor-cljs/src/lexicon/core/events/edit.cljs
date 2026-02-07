@@ -155,7 +155,8 @@
      (if wasm-instance
        (let [max-pos (.length wasm-instance)
              new-pos (min max-pos (+ current-pos n))]
-         {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+         {:db (assoc db :last-command :forward-char)
+          :fx [[:dispatch [:update-cursor-position new-pos]]]})
        {:db db}))))
 
 (rf/reg-event-fx
@@ -173,13 +174,15 @@
                :else 1)
              1)
          new-pos (max 0 (- current-pos n))]
-     {:fx [[:dispatch [:update-cursor-position new-pos]]]})))
+     {:db (assoc db :last-command :backward-char)
+      :fx [[:dispatch [:update-cursor-position new-pos]]]})))
 
 (rf/reg-event-fx
  :next-line
  (fn [{:keys [db]} [_ & args]]
    "Move cursor to next line(s) (C-n or Down arrow)
-    With prefix arg, moves that many lines."
+    With prefix arg, moves that many lines.
+    Preserves goal column across consecutive vertical moves."
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
@@ -191,26 +194,33 @@
                (number? prefix-arg) prefix-arg
                (list? prefix-arg) (first prefix-arg)
                :else 1)
-             1)]
+             1)
+         ;; Goal column handling: preserve across consecutive vertical moves
+         last-command (:last-command db)
+         vertical-commands #{:next-line :previous-line}]
      (if wasm-instance
        (let [text (.getText wasm-instance)
              {:keys [line column]} (linear-pos-to-line-col text current-pos)
+             ;; Set or preserve goal column
+             goal-column (if (vertical-commands last-command)
+                           (or (:temporary-goal-column db) column)
+                           column)
              lines (clojure.string/split text #"\n" -1)
-             next-line-num (+ line n)]
-         (if (< next-line-num (count lines))
-           (let [new-pos (buffer-events/line-col-to-linear-pos text next-line-num column)]
-             {:fx [[:dispatch [:update-cursor-position new-pos]]]})
-           ;; Move to last line if target exceeds buffer
-           (let [last-line (dec (count lines))
-                 new-pos (buffer-events/line-col-to-linear-pos text last-line column)]
-             {:fx [[:dispatch [:update-cursor-position new-pos]]]})))
+             next-line-num (+ line n)
+             target-line (min next-line-num (dec (count lines)))
+             new-pos (buffer-events/line-col-to-linear-pos text target-line goal-column)]
+         {:db (-> db
+                  (assoc :temporary-goal-column goal-column)
+                  (assoc :last-command :next-line))
+          :fx [[:dispatch [:update-cursor-position new-pos]]]})
        {:db db}))))
 
 (rf/reg-event-fx
  :previous-line
  (fn [{:keys [db]} [_ & args]]
    "Move cursor to previous line(s) (C-p or Up arrow)
-    With prefix arg, moves that many lines."
+    With prefix arg, moves that many lines.
+    Preserves goal column across consecutive vertical moves."
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
@@ -222,17 +232,24 @@
                (number? prefix-arg) prefix-arg
                (list? prefix-arg) (first prefix-arg)
                :else 1)
-             1)]
+             1)
+         ;; Goal column handling: preserve across consecutive vertical moves
+         last-command (:last-command db)
+         vertical-commands #{:next-line :previous-line}]
      (if wasm-instance
        (let [text (.getText wasm-instance)
              {:keys [line column]} (linear-pos-to-line-col text current-pos)
-             prev-line-num (- line n)]
-         (if (>= prev-line-num 0)
-           (let [new-pos (buffer-events/line-col-to-linear-pos text prev-line-num column)]
-             {:fx [[:dispatch [:update-cursor-position new-pos]]]})
-           ;; Move to first line if target is negative
-           (let [new-pos (buffer-events/line-col-to-linear-pos text 0 column)]
-             {:fx [[:dispatch [:update-cursor-position new-pos]]]})))
+             ;; Set or preserve goal column
+             goal-column (if (vertical-commands last-command)
+                           (or (:temporary-goal-column db) column)
+                           column)
+             prev-line-num (- line n)
+             target-line (max 0 prev-line-num)
+             new-pos (buffer-events/line-col-to-linear-pos text target-line goal-column)]
+         {:db (-> db
+                  (assoc :temporary-goal-column goal-column)
+                  (assoc :last-command :previous-line))
+          :fx [[:dispatch [:update-cursor-position new-pos]]]})
        {:db db}))))
 
 (rf/reg-event-fx
@@ -310,7 +327,8 @@
        (let [text (.getText wasm-instance)
              {:keys [line]} (linear-pos-to-line-col text current-pos)
              new-pos (buffer-events/line-col-to-linear-pos text line 0)]
-         {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+         {:db (assoc db :last-command :beginning-of-line)
+          :fx [[:dispatch [:update-cursor-position new-pos]]]})
        {:db db}))))
 
 (rf/reg-event-fx
@@ -327,7 +345,8 @@
              lines (clojure.string/split text #"\n" -1)
              line-length (count (nth lines line ""))
              new-pos (buffer-events/line-col-to-linear-pos text line line-length)]
-         {:fx [[:dispatch [:update-cursor-position new-pos]]]})
+         {:db (assoc db :last-command :end-of-line)
+          :fx [[:dispatch [:update-cursor-position new-pos]]]})
        {:db db}))))
 
 (rf/reg-event-fx

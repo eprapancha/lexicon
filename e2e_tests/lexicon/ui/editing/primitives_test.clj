@@ -450,3 +450,54 @@
     (let [text (h/get-buffer-text*)]
       (is (str/includes? text "bc") "Yanked rectangle should contain 'bc'")
       (is (str/includes? text "gh") "Yanked rectangle should contain 'gh'"))))
+
+;; =============================================================================
+;; Goal Column Tests
+;; =============================================================================
+
+(deftest test-goal-column-preserved
+  (testing "Goal column is preserved when moving through short lines"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type three lines with different lengths:
+    ;; Line 1: "Hello World!" (12 chars)
+    ;; Line 2: "Hi" (2 chars - short line)
+    ;; Line 3: "Hello World!" (12 chars)
+    (h/type-text "Hello World!")
+    (h/press-key "Enter")
+    (h/type-text "Hi")
+    (h/press-key "Enter")
+    (h/type-text "Hello World!")
+    (Thread/sleep 100)
+
+    ;; Move to beginning of buffer
+    (h/press-key "ArrowUp")
+    (Thread/sleep 50)
+    (h/press-key "ArrowUp")
+    (Thread/sleep 50)
+
+    ;; Move to column 8 (after "Hello Wo")
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+    (dotimes [_ 8]
+      (h/press-ctrl "f")
+      (Thread/sleep 30))
+
+    ;; Now at column 8 on line 1
+    ;; Move down to line 2 (short line "Hi") - cursor should go to end (col 2)
+    (h/press-key "ArrowDown")
+    (Thread/sleep 50)
+
+    ;; Move down to line 3 - cursor should return to column 8
+    (h/press-key "ArrowDown")
+    (Thread/sleep 50)
+
+    ;; Insert marker to verify position
+    (h/type-text "X")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      ;; If goal column works, X should be inserted at column 8: "Hello WoXrld!"
+      (is (str/includes? text "Hello WoXrld!")
+          "Goal column should be preserved - cursor should return to column 8"))))
