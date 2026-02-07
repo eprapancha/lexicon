@@ -14,6 +14,7 @@
   - Lazy evaluation (large candidate sets)"
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
+            [lexicon.core.minibuffer :as minibuffer]
             [lexicon.core.completion.metadata :as metadata]
             [lexicon.core.completion.styles :as styles]))
 
@@ -340,21 +341,21 @@
 (rf/reg-event-db
   :completion/set-table
   (fn [db [_ table]]
-    (assoc-in db [:minibuffer :completion-table] table)))
+    (minibuffer/set-completion-table db table)))
 
 ;; Get current completion table
 (rf/reg-sub
   :completion/table
   (fn [db _]
-    (get-in db [:minibuffer :completion-table])))
+    (minibuffer/get-completion-table db)))
 
 ;; Complete using current table
 (rf/reg-event-db
   :completion/complete-with-table
   (fn [db [_]]
-    (let [table (get-in db [:minibuffer :completion-table])
-          input (get-in db [:minibuffer :input] "")]
+    (let [table (minibuffer/get-completion-table db)
+          input (minibuffer/get-input db)]
       (if table
         (let [candidates (complete-with-table table input :db db)]
-          (assoc-in db [:minibuffer :filtered-completions] candidates))
+          (minibuffer/set-filtered-completions db candidates))
         db))))

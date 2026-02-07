@@ -76,11 +76,13 @@
 (defn pop-frame
   "Pop the current minibuffer frame from the stack.
    Returns updated db with frame removed.
-   If stack becomes empty, minibuffer is deactivated."
+   If stack becomes empty, minibuffer is deactivated.
+   Returns db unchanged if stack is already empty."
   [db]
-  (let [stack (:minibuffer-stack db)
-        new-stack (pop stack)]
-    (assoc db :minibuffer-stack new-stack)))
+  (let [stack (:minibuffer-stack db)]
+    (if (empty? stack)
+      db  ; Stack is already empty, nothing to pop
+      (assoc db :minibuffer-stack (pop stack)))))
 
 (defn replace-current-frame
   "Replace the current (topmost) frame with a new frame.
@@ -130,38 +132,7 @@
         (assoc db :minibuffer-stack new-stack)))))
 
 ;; =============================================================================
-;; Backward Compatibility Helpers
-;; =============================================================================
-
-(defn sync-to-legacy
-  "Sync the current frame to the legacy :minibuffer map for backward compatibility.
-   This allows old code to continue reading from :minibuffer while we migrate."
-  [db]
-  (if-let [frame (current-frame db)]
-    (assoc db :minibuffer (merge (:minibuffer db)
-                                  {:active? true
-                                   :prompt (:prompt frame)
-                                   :input (:input frame)
-                                   :on-confirm (:on-confirm frame)
-                                   :on-cancel (:on-cancel frame)
-                                   :completions (:completions frame)
-                                   :completion-index (:completion-index frame)
-                                   :completion-metadata (:metadata frame)
-                                   :persist? (:persist? frame)
-                                   :show-completions? (:show-completions? frame)
-                                   :filtered-completions (:filtered-completions frame)
-                                   :height-lines (:height-lines frame)
-                                   :custom-renderer (:custom-renderer frame)
-                                   :renderer-props (:renderer-props frame)
-                                   :last-tab-input (:last-tab-input frame)
-                                   :original-input (:original-input frame)
-                                   :cycling? (:cycling? frame)
-                                   :annotation-fn (:annotation-fn frame)}))
-    ;; No frame - mark as inactive
-    (assoc-in db [:minibuffer :active?] false)))
-
-;; =============================================================================
-;; Helper Functions for Event Handlers
+;; Accessor Functions - Read from current frame
 ;; =============================================================================
 
 (defn get-input
@@ -169,12 +140,151 @@
   [db]
   (:input (current-frame db) ""))
 
+(defn get-prompt
+  "Get prompt from current frame"
+  [db]
+  (:prompt (current-frame db) ""))
+
 (defn get-on-confirm
   "Get on-confirm handler from current frame"
   [db]
   (:on-confirm (current-frame db)))
 
+(defn get-on-cancel
+  "Get on-cancel handler from current frame"
+  [db]
+  (:on-cancel (current-frame db) [:minibuffer/deactivate]))
+
+(defn get-on-change
+  "Get on-change handler from current frame"
+  [db]
+  (:on-change (current-frame db)))
+
 (defn get-persist?
   "Get persist? flag from current frame"
   [db]
   (:persist? (current-frame db) false))
+
+(defn get-completions
+  "Get completions list from current frame"
+  [db]
+  (:completions (current-frame db) []))
+
+(defn get-completion-index
+  "Get completion-index from current frame"
+  [db]
+  (:completion-index (current-frame db) -1))
+
+(defn get-completion-metadata
+  "Get completion metadata from current frame"
+  [db]
+  (:metadata (current-frame db)))
+
+(defn get-filtered-completions
+  "Get filtered completions from current frame"
+  [db]
+  (:filtered-completions (current-frame db) []))
+
+(defn get-show-completions?
+  "Get show-completions? flag from current frame"
+  [db]
+  (:show-completions? (current-frame db) false))
+
+(defn get-height-lines
+  "Get height-lines from current frame"
+  [db]
+  (:height-lines (current-frame db) 1))
+
+(defn get-custom-renderer
+  "Get custom-renderer from current frame"
+  [db]
+  (:custom-renderer (current-frame db)))
+
+(defn get-renderer-props
+  "Get renderer-props from current frame"
+  [db]
+  (:renderer-props (current-frame db) {}))
+
+(defn get-last-tab-input
+  "Get last-tab-input from current frame"
+  [db]
+  (:last-tab-input (current-frame db)))
+
+(defn get-original-input
+  "Get original-input from current frame"
+  [db]
+  (:original-input (current-frame db) ""))
+
+(defn get-cycling?
+  "Get cycling? flag from current frame"
+  [db]
+  (:cycling? (current-frame db) false))
+
+(defn get-annotation-fn
+  "Get annotation-fn from current frame"
+  [db]
+  (:annotation-fn (current-frame db)))
+
+;; =============================================================================
+;; Setter Functions - Update current frame
+;; =============================================================================
+
+(defn set-input
+  "Set input in current frame"
+  [db value]
+  (update-current-frame db {:input value}))
+
+(defn set-completions
+  "Set completions in current frame"
+  [db value]
+  (update-current-frame db {:completions value}))
+
+(defn set-completion-index
+  "Set completion-index in current frame"
+  [db value]
+  (update-current-frame db {:completion-index value}))
+
+(defn set-filtered-completions
+  "Set filtered-completions in current frame"
+  [db value]
+  (update-current-frame db {:filtered-completions value}))
+
+(defn set-show-completions?
+  "Set show-completions? in current frame"
+  [db value]
+  (update-current-frame db {:show-completions? value}))
+
+(defn set-height-lines
+  "Set height-lines in current frame"
+  [db value]
+  (update-current-frame db {:height-lines value}))
+
+(defn set-last-tab-input
+  "Set last-tab-input in current frame"
+  [db value]
+  (update-current-frame db {:last-tab-input value}))
+
+(defn set-original-input
+  "Set original-input in current frame"
+  [db value]
+  (update-current-frame db {:original-input value}))
+
+(defn set-cycling?
+  "Set cycling? flag in current frame"
+  [db value]
+  (update-current-frame db {:cycling? value}))
+
+(defn set-metadata
+  "Set completion metadata in current frame"
+  [db value]
+  (update-current-frame db {:metadata value}))
+
+(defn get-completion-table
+  "Get completion-table from current frame"
+  [db]
+  (:completion-table (current-frame db)))
+
+(defn set-completion-table
+  "Set completion-table in current frame"
+  [db value]
+  (update-current-frame db {:completion-table value}))

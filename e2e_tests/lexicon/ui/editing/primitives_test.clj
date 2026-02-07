@@ -375,6 +375,41 @@
     (is (= "X World" (h/get-buffer-text*))
         "delete-selection-mode should replace selection with typed text")))
 
+(deftest test-delete-selection-mode-with-mark
+  (testing "delete-selection-mode replaces C-SPC selection when typing"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Enable delete-selection-mode
+    (h/execute-command "delete-selection-mode")
+    (Thread/sleep 100)
+
+    ;; Type initial text
+    (h/type-text "Hello World")
+    (Thread/sleep 50)
+
+    ;; Go to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 30)
+
+    ;; Set mark with C-SPC
+    (h/press-ctrl "SPC")
+    (Thread/sleep 50)
+
+    ;; Move forward 5 chars to select "Hello"
+    (dotimes [_ 5]
+      (h/press-ctrl "f")
+      (Thread/sleep 20))
+    (Thread/sleep 50)
+
+    ;; Type "X" - should replace the selection
+    (h/type-text "X")
+    (Thread/sleep 100)
+
+    ;; Should now have "X World" (not "XHello World")
+    (is (= "X World" (h/get-buffer-text*))
+        "delete-selection-mode should replace C-SPC selection with typed text")))
+
 ;; =============================================================================
 ;; Rectangle Operations
 ;; =============================================================================

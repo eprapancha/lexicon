@@ -9,6 +9,7 @@
   (:require [re-frame.core :as rf]
             [re-frame.db]
             [lexicon.core.db :as db]
+            [lexicon.core.minibuffer :as minibuffer]
             [lexicon.core.log :as log]
             [lexicon.core.api.message]
             [lexicon.core.completion.metadata :as completion-metadata]
@@ -832,7 +833,7 @@
          granted-dirs (get-in db [:fs-access :granted-directories] {})]
      (if (seq granted-dirs)
        (let [completions (file-completions-for-input dir-cache granted-dirs input)]
-         (assoc-in db [:minibuffer :completions] (vec completions)))
+         (minibuffer/set-completions db (vec completions)))
        db))))
 
 (rf/reg-fx

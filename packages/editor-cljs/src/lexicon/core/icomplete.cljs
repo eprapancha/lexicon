@@ -17,6 +17,7 @@
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
             [lexicon.core.db :as db]
+            [lexicon.core.minibuffer :as minibuffer]
             [lexicon.core.completion.styles :as styles]))
 
 ;; =============================================================================
@@ -142,7 +143,7 @@
          (swap! icomplete-index #(mod (inc %) n))
          ;; Update minibuffer input to selected completion
          (let [selected (nth @icomplete-cached-completions @icomplete-index)]
-           {:db (assoc-in db [:minibuffer :input] selected)}))))))
+           {:db (minibuffer/set-input db selected)}))))))
 
 (rf/reg-event-fx
  :icomplete/backward-completions
@@ -154,7 +155,7 @@
          (swap! icomplete-index #(mod (dec %) n))
          ;; Update minibuffer input to selected completion
          (let [selected (nth @icomplete-cached-completions @icomplete-index)]
-           {:db (assoc-in db [:minibuffer :input] selected)}))))))
+           {:db (minibuffer/set-input db selected)}))))))
 
 (rf/reg-event-fx
  :icomplete/update-completions

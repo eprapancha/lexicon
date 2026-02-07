@@ -396,6 +396,52 @@
       (is (= text "one two ")
           "C-u 2 M-DEL should kill 2 words, leaving 'one two '"))))
 
+(deftest test-cu-delete-backward-char
+  (testing "C-u 3 Backspace deletes 3 characters backward"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type some text
+    (h/type-text "Hello World")
+    (Thread/sleep 100)
+
+    ;; C-u 3 Backspace should delete 3 chars backward ("rld")
+    (h/press-ctrl "u")
+    (Thread/sleep 50)
+    (h/press-key "3")
+    (Thread/sleep 50)
+    (h/press-key "Backspace")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      (is (= text "Hello Wo")
+          "C-u 3 Backspace should delete 3 chars, leaving 'Hello Wo'"))))
+
+(deftest test-cu-delete-forward-char
+  (testing "C-u 3 Delete deletes 3 characters forward"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type some text
+    (h/type-text "Hello World")
+    (Thread/sleep 100)
+
+    ;; Move to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+
+    ;; C-u 3 Delete should delete 3 chars forward ("Hel")
+    (h/press-ctrl "u")
+    (Thread/sleep 50)
+    (h/press-key "3")
+    (Thread/sleep 50)
+    (h/press-key "Delete")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      (is (= text "lo World")
+          "C-u 3 Delete should delete 3 chars, leaving 'lo World'"))))
+
 (deftest test-prefix-arg-cleared-after-command
   (testing "Prefix arg is cleared after command execution"
     (h/setup-test*)

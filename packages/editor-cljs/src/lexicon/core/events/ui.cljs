@@ -334,13 +334,11 @@
        should-replace?
        {:db (-> db
                 (minibuffer/replace-current-frame config)
-                (minibuffer/sync-to-legacy)
                 (assoc :cursor-owner :minibuffer))}
        ;; Push new frame (normal activation or recursive)
        :else
        {:db (-> db
                 (minibuffer/push-frame config)
-                (minibuffer/sync-to-legacy)
                 (assoc :cursor-owner :minibuffer))}))))
 
 (rf/reg-event-fx
@@ -350,9 +348,7 @@
    Pops current frame from stack. If stack becomes empty, restores cursor to window.
    Also closes *Completions* buffer when fully deactivating (Emacs behavior)."
    (let [active-window-id (:active-window-id db)
-         db' (-> db
-                 minibuffer/pop-frame
-                 minibuffer/sync-to-legacy)
+         db' (minibuffer/pop-frame db)
          still-active? (minibuffer/minibuffer-active? db')
          ;; Close *Completions* buffer when fully deactivating
          db'' (if still-active?
@@ -373,8 +369,9 @@
    "Update the minibuffer input text.
    Also resets cycling state when user types (not during arrow cycling).
    For file completion, also updates completions based on new input."
-   (let [on-change (get-in db [:minibuffer :on-change])
-         category (get-in db [:minibuffer :completion-metadata :category])]
+   (let [on-change (minibuffer/get-on-change db)
+         metadata (minibuffer/get-completion-metadata db)
+         category (:category metadata)]
      (cond
        ;; Custom on-change handler exists (e.g., for isearch)
        on-change
@@ -383,20 +380,19 @@
        ;; File completion - update completions dynamically
        (= category :file)
        {:db (-> db
-                (assoc-in [:minibuffer :input] input-text)
-                (assoc-in [:minibuffer :cycling?] false)
-                (assoc-in [:minibuffer :completion-index] -1)
-                (assoc-in [:minibuffer :original-input] ""))
+                (minibuffer/set-input input-text)
+                (minibuffer/set-cycling? false)
+                (minibuffer/set-completion-index -1)
+                (minibuffer/set-original-input ""))
         :fx [[:dispatch [:find-file/update-completions input-text]]]}
 
        ;; Standard minibuffer - update input and reset cycling state
        :else
        {:db (-> db
-                (assoc-in [:minibuffer :input] input-text)
-                ;; Reset cycling state when user types
-                (assoc-in [:minibuffer :cycling?] false)
-                (assoc-in [:minibuffer :completion-index] -1)
-                (assoc-in [:minibuffer :original-input] ""))}))))
+                (minibuffer/set-input input-text)
+                (minibuffer/set-cycling? false)
+                (minibuffer/set-completion-index -1)
+                (minibuffer/set-original-input ""))}))))
 
 (rf/reg-event-fx
  :minibuffer/complete
@@ -415,9 +411,10 @@
    - TAB twice opens *Completions* buffer
 
    See Issue #136 for details."
-   (let [input (get-in db [:minibuffer :input] "")
-         category (get-in db [:minibuffer :completion-metadata :category])
-         last-tab-input (get-in db [:minibuffer :last-tab-input])
+   (let [input (minibuffer/get-input db)
+         metadata (minibuffer/get-completion-metadata db)
+         category (:category metadata)
+         last-tab-input (minibuffer/get-last-tab-input db)
          ;; For file completion, check if we need to descend into a directory
          is-file-completion? (= category :file)
          input-is-directory? (and is-file-completion?
@@ -444,9 +441,9 @@
                ;; Update completions for this directory
                (let [new-completions (buffer-events/file-completions-for-input
                                       dir-cache granted-dirs input)]
-                 (assoc-in db [:minibuffer :completions] (vec new-completions)))
+                 (minibuffer/set-completions db (vec new-completions)))
                db)
-         completions (get-in db' [:minibuffer :completions] [])
+         completions (minibuffer/get-completions db')
          ;; Get effective styles for current completion
          styles (or (get-in db' [:completion :styles]) [:basic :substring :flex])
          ;; Filter completions by input (standard prefix/substring matching)
@@ -461,7 +458,7 @@
      (cond
        ;; Directory not cached - trigger async caching
        (and input-is-directory? (not dir-is-cached?) matching-grant)
-       {:db (assoc-in db' [:minibuffer :last-tab-input] input)
+       {:db (minibuffer/set-last-tab-input db' input)
         :fx [[:fs-access/list-subdirectory-for-cache
               {:grant-handle (:handle matching-grant)
                :grant-path (:grant-path matching-grant)
@@ -474,17 +471,17 @@
 
        ;; Consecutive TAB - show *Completions* buffer
        consecutive-tab?
-       {:db (assoc-in db' [:minibuffer :last-tab-input] nil)  ; Reset for next cycle
+       {:db (minibuffer/set-last-tab-input db' nil)  ; Reset for next cycle
         :fx [[:dispatch [:minibuffer/completion-help matches]]]}
 
        ;; Single match - complete it fully
        (= (count matches) 1)
        {:db (-> db'
-                (assoc-in [:minibuffer :input] (first matches))
-                (assoc-in [:minibuffer :last-tab-input] (first matches))
-                (assoc-in [:minibuffer :show-completions?] false)
-                (assoc-in [:minibuffer :filtered-completions] [])
-                (assoc-in [:minibuffer :height-lines] 1))}
+                (minibuffer/set-input (first matches))
+                (minibuffer/set-last-tab-input (first matches))
+                (minibuffer/set-show-completions? false)
+                (minibuffer/set-filtered-completions [])
+                (minibuffer/set-height-lines 1))}
 
        ;; Multiple matches - complete common prefix only (first TAB)
        (> (count matches) 1)
@@ -501,16 +498,16 @@
                          common-prefix
                          input)]
          {:db (-> db'
-                  (assoc-in [:minibuffer :input] new-input)
-                  (assoc-in [:minibuffer :last-tab-input] new-input)
+                  (minibuffer/set-input new-input)
+                  (minibuffer/set-last-tab-input new-input)
                   ;; Don't show inline completions on first TAB (vanilla Emacs)
-                  (assoc-in [:minibuffer :show-completions?] false)
-                  (assoc-in [:minibuffer :filtered-completions] [])
-                  (assoc-in [:minibuffer :height-lines] 1))})
+                  (minibuffer/set-show-completions? false)
+                  (minibuffer/set-filtered-completions [])
+                  (minibuffer/set-height-lines 1))})
 
        ;; No matches
        :else
-       {:db (assoc-in db' [:minibuffer :last-tab-input] input)}))))
+       {:db (minibuffer/set-last-tab-input db' input)}))))
 
 (rf/reg-event-fx
  :minibuffer/confirm
@@ -518,10 +515,9 @@
    "Confirm minibuffer input.
    IMPORTANT: Does NOT auto-deactivate anymore! Commands must deactivate explicitly
    or use :replace? true to take over the minibuffer slot. This fixes Issue #72."
-   ;; Read directly from :minibuffer map (the single source of truth)
-   (let [input (get-in db [:minibuffer :input] "")
-         on-confirm (get-in db [:minibuffer :on-confirm])
-         persist? (get-in db [:minibuffer :persist?])]
+   (let [input (minibuffer/get-input db)
+         on-confirm (minibuffer/get-on-confirm db)
+         persist? (minibuffer/get-persist? db)]
      (if on-confirm
        (if persist?
          ;; Multi-step prompt - dispatch without deactivating
@@ -537,38 +533,38 @@
  :minibuffer/completion-next
  (fn [db [_]]
    "Move to next completion candidate (Arrow Down)"
-   (let [completion-index (get-in db [:minibuffer :completion-index] 0)
-         completions (get-in db [:minibuffer :filtered-completions] [])
+   (let [completion-index (minibuffer/get-completion-index db)
+         completions (minibuffer/get-filtered-completions db)
          num-completions (count completions)
          new-index (if (< completion-index (dec num-completions))
                      (inc completion-index)
                      0)]
-     (assoc-in db [:minibuffer :completion-index] new-index))))
+     (minibuffer/set-completion-index db new-index))))
 
 (rf/reg-event-db
  :minibuffer/completion-prev
  (fn [db [_]]
    "Move to previous completion candidate (Arrow Up)"
-   (let [completion-index (get-in db [:minibuffer :completion-index] 0)
-         completions (get-in db [:minibuffer :filtered-completions] [])
+   (let [completion-index (minibuffer/get-completion-index db)
+         completions (minibuffer/get-filtered-completions db)
          num-completions (count completions)
          new-index (if (> completion-index 0)
                      (dec completion-index)
                      (dec num-completions))]
-     (assoc-in db [:minibuffer :completion-index] new-index))))
+     (minibuffer/set-completion-index db new-index))))
 
 (rf/reg-event-db
  :minibuffer/select-completion
  (fn [db [_ index]]
    "Select a completion candidate (click or Enter on highlighted)"
-   (let [completions (get-in db [:minibuffer :filtered-completions] [])
+   (let [completions (minibuffer/get-filtered-completions db)
          selected-completion (nth completions index nil)]
      (if selected-completion
        (-> db
-           (assoc-in [:minibuffer :input] selected-completion)
-           (assoc-in [:minibuffer :show-completions?] false)
-           (assoc-in [:minibuffer :filtered-completions] [])
-           (assoc-in [:minibuffer :height-lines] 1))
+           (minibuffer/set-input selected-completion)
+           (minibuffer/set-show-completions? false)
+           (minibuffer/set-filtered-completions [])
+           (minibuffer/set-height-lines 1))
        db))))
 
 ;; =============================================================================
@@ -695,13 +691,13 @@
    - Subsequent: moves to next completion (wraps around)
    - Updates minibuffer input to show selected completion
    - Does NOT update *Completions* buffer (Emacs behavior: buffer is static)"
-   (let [cycling? (get-in db [:minibuffer :cycling?] false)
-         current-input (get-in db [:minibuffer :input] "")
+   (let [cycling? (minibuffer/get-cycling? db)
+         current-input (minibuffer/get-input db)
          ;; When cycling, use original-input for filtering (not the selected completion)
          original-input (if cycling?
-                          (get-in db [:minibuffer :original-input] "")
+                          (minibuffer/get-original-input db)
                           current-input)
-         completions (get-in db [:minibuffer :completions] [])
+         completions (minibuffer/get-completions db)
          ;; Filter completions by ORIGINAL input (case-insensitive substring match)
          matches (if (clojure.string/blank? original-input)
                    completions
@@ -713,17 +709,17 @@
          num-matches (count matches-vec)]
      (if (zero? num-matches)
        db  ; No matches to cycle through
-       (let [current-index (get-in db [:minibuffer :completion-index] -1)
+       (let [current-index (minibuffer/get-completion-index db)
              ;; Next index: -1 -> 0, then increment with wrap
              new-index (if (< current-index (dec num-matches))
                          (inc current-index)
                          0)
              selected (nth matches-vec new-index)]
          (-> db
-             (assoc-in [:minibuffer :cycling?] true)
-             (assoc-in [:minibuffer :original-input] original-input)
-             (assoc-in [:minibuffer :completion-index] new-index)
-             (assoc-in [:minibuffer :input] selected)))))))
+             (minibuffer/set-cycling? true)
+             (minibuffer/set-original-input original-input)
+             (minibuffer/set-completion-index new-index)
+             (minibuffer/set-input selected)))))))
 
 (rf/reg-event-db
  :minibuffer/cycle-prev
@@ -734,13 +730,13 @@
    - When at index 0 and pressing up: returns to original-input (index -1)
    - Otherwise: moves to previous completion (wraps around)
    - Updates minibuffer input to show selected completion"
-   (let [cycling? (get-in db [:minibuffer :cycling?] false)
-         current-input (get-in db [:minibuffer :input] "")
+   (let [cycling? (minibuffer/get-cycling? db)
+         current-input (minibuffer/get-input db)
          ;; When cycling, use original-input for filtering (not the selected completion)
          original-input (if cycling?
-                          (get-in db [:minibuffer :original-input] "")
+                          (minibuffer/get-original-input db)
                           current-input)
-         completions (get-in db [:minibuffer :completions] [])
+         completions (minibuffer/get-completions db)
          ;; Filter completions by ORIGINAL input (case-insensitive substring match)
          matches (if (clojure.string/blank? original-input)
                    completions
@@ -752,41 +748,41 @@
          num-matches (count matches-vec)]
      (if (zero? num-matches)
        db  ; No matches to cycle through
-       (let [current-index (get-in db [:minibuffer :completion-index] -1)]
+       (let [current-index (minibuffer/get-completion-index db)]
          (cond
            ;; Not yet cycling, Up goes to last match
            (not cycling?)
            (let [new-index (dec num-matches)
                  selected (nth matches-vec new-index)]
              (-> db
-                 (assoc-in [:minibuffer :cycling?] true)
-                 (assoc-in [:minibuffer :original-input] original-input)
-                 (assoc-in [:minibuffer :completion-index] new-index)
-                 (assoc-in [:minibuffer :input] selected)))
+                 (minibuffer/set-cycling? true)
+                 (minibuffer/set-original-input original-input)
+                 (minibuffer/set-completion-index new-index)
+                 (minibuffer/set-input selected)))
 
            ;; At index 0, go back to original input
            (= current-index 0)
            (-> db
-               (assoc-in [:minibuffer :cycling?] false)
-               (assoc-in [:minibuffer :completion-index] -1)
-               (assoc-in [:minibuffer :input] original-input))
+               (minibuffer/set-cycling? false)
+               (minibuffer/set-completion-index -1)
+               (minibuffer/set-input original-input))
 
            ;; At index -1 (showing original), wrap to last match
            (= current-index -1)
            (let [new-index (dec num-matches)
                  selected (nth matches-vec new-index)]
              (-> db
-                 (assoc-in [:minibuffer :cycling?] true)
-                 (assoc-in [:minibuffer :completion-index] new-index)
-                 (assoc-in [:minibuffer :input] selected)))
+                 (minibuffer/set-cycling? true)
+                 (minibuffer/set-completion-index new-index)
+                 (minibuffer/set-input selected)))
 
            ;; Otherwise, decrement index
            :else
            (let [new-index (dec current-index)
                  selected (nth matches-vec new-index)]
              (-> db
-                 (assoc-in [:minibuffer :completion-index] new-index)
-                 (assoc-in [:minibuffer :input] selected)))))))))
+                 (minibuffer/set-completion-index new-index)
+                 (minibuffer/set-input selected)))))))))
 
 ;; =============================================================================
 ;; Completion Help - *Completions* Buffer (Issue #136)
@@ -885,10 +881,11 @@
    (let [;; Get or create *Completions* buffer
          [db' buffer-id] (get-or-create-completions-buffer db)
          ;; Get annotation function from minibuffer state
-         annotation-fn (get-in db [:minibuffer :annotation-fn])
+         annotation-fn (minibuffer/get-annotation-fn db)
          ;; For file completion, strip directory prefix from display
-         category (get-in db [:minibuffer :completion-metadata :category])
-         input (get-in db [:minibuffer :input] "")
+         metadata (minibuffer/get-completion-metadata db)
+         category (:category metadata)
+         input (minibuffer/get-input db)
          strip-prefix (when (= category :file)
                         ;; Get directory part of input (up to and including last /)
                         (let [last-slash (clojure.string/last-index-of input "/")]
@@ -1000,27 +997,21 @@
    - For file completion with file: confirm selection (open file)
    - For other completions: insert into minibuffer and close *Completions*"
    (if (minibuffer/minibuffer-active? db)
-     (let [category (get-in db [:minibuffer :completion-metadata :category])
+     (let [metadata (minibuffer/get-completion-metadata db)
+           category (:category metadata)
            is-file-completion? (= category :file)
            is-directory? (and is-file-completion?
                               (clojure.string/ends-with? candidate "/"))]
        (cond
          ;; Directory in file completion: update path and refresh completions
          is-directory?
-         (let [;; Update BOTH minibuffer stack frame AND legacy map
-               ;; This ensures the change survives sync-to-legacy calls
-               new-db (-> db
-                          ;; Update stack frame first
+         (let [new-db (-> db
                           (minibuffer/update-current-frame
                            {:input candidate
                             :last-tab-input nil
                             :cycling? false
                             :completion-index -1})
-                          ;; Sync to legacy map
-                          minibuffer/sync-to-legacy
-                          ;; Delete completions window
                           delete-completions-window
-                          ;; Return cursor to minibuffer
                           (assoc :cursor-owner :minibuffer))]
            {:db new-db
             :fx [[:dom/focus-minibuffer nil]
@@ -1030,7 +1021,6 @@
          is-file-completion?
          {:db (-> db
                   (minibuffer/update-current-frame {:input candidate})
-                  minibuffer/sync-to-legacy
                   delete-completions-window
                   (assoc :cursor-owner :minibuffer))
           :fx [[:dispatch [:minibuffer/confirm]]]}
@@ -1041,7 +1031,6 @@
                   (minibuffer/update-current-frame
                    {:input candidate
                     :last-tab-input nil})
-                  minibuffer/sync-to-legacy
                   delete-completions-window
                   (assoc :cursor-owner :minibuffer))
           :fx [[:dom/focus-minibuffer nil]]}))

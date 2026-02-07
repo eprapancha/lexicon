@@ -10,7 +10,8 @@
 
   This enables packages like Marginalia and Vertico to display rich completions."
   (:require [re-frame.core :as rf]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [lexicon.core.minibuffer :as minibuffer]))
 
 ;; -- Completion Categories --
 
@@ -243,13 +244,13 @@
 (rf/reg-event-db
   :completion/set-metadata
   (fn [db [_ metadata]]
-    (assoc-in db [:minibuffer :completion-metadata] metadata)))
+    (minibuffer/set-metadata db metadata)))
 
 ;; Get current completion metadata
 (rf/reg-sub
   :completion/metadata
   (fn [db _]
-    (get-in db [:minibuffer :completion-metadata])))
+    (minibuffer/get-completion-metadata db)))
 
 ;; -- Helper: Enrich Candidates with Metadata --
 

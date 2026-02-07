@@ -8,6 +8,7 @@
   - Special key insertion (SPC, RET, TAB)"
   (:require [re-frame.core :as rf]
             [lexicon.core.db :as db]
+            [lexicon.core.minibuffer :as minibuffer]
             [lexicon.core.modes.electric-pair :as electric-pair]
             [lexicon.core.modes.delete-selection :as delete-selection]
             [lexicon.core.kmacro :as kmacro]))
@@ -275,14 +276,14 @@
        (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
              active-buffer (get (:buffers db) (:buffer-id active-window))
              in-completions? (= (:name active-buffer) "*Completions*")
-             minibuffer-active? (get-in db [:minibuffer :active?])
+             minibuffer-active-now? (minibuffer/minibuffer-active? db)
              is-printable? (and (= (count key-str) 1)
                                 (not prefix-state)
                                 (not (re-matches #"[CM]-." key-str))
                                 (>= (.charCodeAt key-str 0) 32))]
-         (and in-completions? minibuffer-active? is-printable?))
+         (and in-completions? minibuffer-active-now? is-printable?))
        ;; Route to minibuffer: use minibuffer/set-input which handles all completion types
-       (let [current-input (get-in db [:minibuffer :input] "")
+       (let [current-input (minibuffer/get-input db)
              new-input (str current-input key-str)]
          {:fx [[:dom/focus-minibuffer nil]
                [:dispatch [:minibuffer/set-input new-input]]]})

@@ -359,8 +359,14 @@
 (rf/reg-sub
  :minibuffer
  (fn [db _]
-   "Get the minibuffer state"
-   (:minibuffer db)))
+   "Get the minibuffer state from current stack frame.
+    Merges frame data with echo area fields (message, message-timeout-id)."
+   (let [frame (last (:minibuffer-stack db))
+         echo-area {:message (get-in db [:minibuffer :message])
+                    :message-timeout-id (get-in db [:minibuffer :message-timeout-id])}]
+     (if frame
+       (merge {:active? true} echo-area frame)
+       (merge {:active? false} echo-area)))))
 
 ;; -- Echo Area Subscriptions --
 

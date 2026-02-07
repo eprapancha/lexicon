@@ -101,7 +101,6 @@
          active-buffer-id (:buffer-id active-window)
          ;; Phase 6.5: Use new prefix-arg location
          prefix-arg (:prefix-arg db)
-         minibuffer-active? (get-in db [:minibuffer :active?])
 
          ;; Context for hooks
          context {:command-id command-name
@@ -1107,9 +1106,9 @@ Press 'q' in *Help* buffer to close it.
        (.insert wasm-instance point newlines))
      (assoc-in db [:buffers buffer-id :point] (+ point n)))))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :open-line
- (fn [db [_]]
+ (fn [{:keys [db]} [_]]
    "Insert newline(s) at point WITHOUT moving point.
 
    Contract: 4.2 (Point), 4.1 (Buffers)
@@ -1118,29 +1117,21 @@ Press 'q' in *Help* buffer to close it.
    Semantics:
    - Insert N newlines where N = prefix-arg (default 1)
    - Point stays BEFORE inserted newlines"
-   (let [prefix-arg (or (:current-prefix-arg db) 1)
-         n (if (number? prefix-arg) prefix-arg 1)
-         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-         buffer-id (:buffer-id active-window)
-         buffer (get-in db [:buffers buffer-id])
-         cursor-pos (:cursor-position active-window)
-         point (if cursor-pos
-                 (buffer-api/line-col-to-point buffer (:line cursor-pos) (:column cursor-pos))
-                 (get-in db [:buffers buffer-id :point] 0))
-         newlines (apply str (repeat n "\n"))
-         ^js wasm-instance (:wasm-instance buffer)]
-     (log/info (str "OPEN-LINE DEBUG: cursor-pos=" (pr-str cursor-pos)
-                    " point=" point
-                    " buffer-text=" (when wasm-instance (.getText wasm-instance))))
-     (when wasm-instance
-       (.insert wasm-instance point newlines)
-       (log/info (str "AFTER INSERT: " (.getText wasm-instance))))
-     ;; Point stays at original position
-     db)))
+   (let [prefix-arg (:prefix-arg db)
+         n (cond
+             (number? prefix-arg) prefix-arg
+             (sequential? prefix-arg) (first prefix-arg)
+             :else 1)
+         newlines (apply str (repeat n "\n"))]
+     ;; Use transaction queue with cursor-adjust to keep cursor in place
+     {:fx [[:dispatch [:editor/queue-transaction {:op :insert
+                                                   :text newlines
+                                                   :cursor-adjust (- n)}]]
+           [:dispatch [:clear-prefix-arg]]]})))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :delete-indentation
- (fn [db [_]]
+ (fn [{:keys [db]} [_]]
    "Join current line to previous line, removing whitespace between.
 
    Contract: 4.1 (Buffers), 4.2 (Point)
@@ -1150,18 +1141,16 @@ Press 'q' in *Help* buffer to close it.
    - Without prefix arg: Join current line to previous
    - With prefix arg: Join current line to following
    - Remove whitespace at join point, leave single space"
-   (let [prefix-arg (:current-prefix-arg db)
+   (let [prefix-arg (:prefix-arg db)
          join-following? (boolean prefix-arg)
          active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          buffer-id (:buffer-id active-window)
-         ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])]
+         ^js wasm-instance (get-in db [:buffers buffer-id :wasm-instance])
+         ;; Use actual cursor position
+         point (get-in db [:ui :cursor-position] 0)]
      (if-not wasm-instance
-       db
+       {:db db}
        (let [text (.getText wasm-instance)
-             point (get-in db [:buffers buffer-id :point] 0)
-             _ (log/info (str "DELETE-INDENTATION: text=" (pr-str text)
-                             " point=" point
-                             " join-following?" join-following?))
              ;; Find which newline to delete
              newline-pos (if join-following?
                            ;; Forward: find first \n at or after point
@@ -1176,30 +1165,44 @@ Press 'q' in *Help* buffer to close it.
                                (< i 0) nil
                                (= \newline (get text i)) i
                                :else (recur (dec i)))))]
-         (log/info (str "newline-pos=" newline-pos))
          (if-not newline-pos
-           db
+           {:db db
+            :fx [[:dispatch [:clear-prefix-arg]]]}
            ;; Delete whitespace around newline and add single space
-           (let [;; Find trailing whitespace before newline
+           (let [;; Find trailing whitespace before newline (but not newline itself)
                  ws-start (loop [i (dec newline-pos)]
-                            (if (and (>= i 0) (re-matches #"\s" (str (get text i))))
+                            (if (and (>= i 0)
+                                     (let [c (get text i)]
+                                       (and (not= c \newline)
+                                            (re-matches #"\s" (str c)))))
                               (recur (dec i))
                               (inc i)))
                  ;; Find leading whitespace after newline
                  ws-end (loop [i (inc newline-pos)]
-                          (if (and (< i (count text)) (re-matches #"\s" (str (get text i))))
+                          (if (and (< i (count text))
+                                   (let [c (get text i)]
+                                     (and (not= c \newline)
+                                          (re-matches #"\s" (str c)))))
                             (recur (inc i))
                             i))
                  ;; Need space between non-empty parts
-                 has-before (and (> ws-start 0) (not= ws-start newline-pos))
-                 has-after (and (< ws-end (count text)) (not= ws-end (inc newline-pos)))
+                 has-before (and (> ws-start 0)
+                                 (not (re-matches #"\s" (str (get text (dec ws-start))))))
+                 has-after (and (< ws-end (count text))
+                                (not (re-matches #"\s" (str (get text ws-end)))))
                  space (if (and has-before has-after) " " "")
-                 new-point (+ ws-start (count space))]
-             ;; Delete range and insert space
-             (.delete wasm-instance ws-start (- ws-end ws-start))
-             (when (not-empty space)
-               (.insert wasm-instance ws-start space))
-             (assoc-in db [:buffers buffer-id :point] new-point))))))))
+                 delete-length (- ws-end ws-start)
+                 new-point ws-start]
+             {:fx (cond-> [[:dispatch [:editor/queue-transaction {:op :delete-range
+                                                                  :start ws-start
+                                                                  :length delete-length}]]]
+                   (not-empty space)
+                   (conj [:dispatch [:editor/queue-transaction {:op :insert
+                                                                 :text space
+                                                                 :position ws-start}]])
+                   true
+                   (conj [:dispatch [:update-cursor-position new-point]]
+                         [:dispatch [:clear-prefix-arg]]))})))))))
 
 (defonce command-registry (atom {}))
 

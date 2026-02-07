@@ -85,27 +85,30 @@
   (testing "C-r initiates backward search"
     (h/setup-test*)
     (h/clear-buffer)
-    ;; User types text
-    (h/type-text "Hello World Hello")
+    ;; User types text with word appearing twice
+    (h/type-text "apple banana apple cherry")
     (Thread/sleep 50)
 
-    ;; Point is at end (17)
+    ;; Point is at end (25)
+    (let [pt-before (h/get-point*)]
+      (is (= 25 pt-before) "Point should be at end after typing"))
 
     ;; Start isearch backward with C-r
     (h/press-ctrl "r")
     (Thread/sleep 100)
 
     ;; Type search string
-    (h/type-text "Hello")
+    (h/type-text "apple")
     (Thread/sleep 100)
 
     ;; Exit isearch
     (h/press-key "Enter")
     (Thread/sleep 100)
 
-    ;; Point should be at/before last "Hello" (position 12)
+    ;; Point should be at second "apple" (position 13) - searching backward from end
+    ;; "apple banana apple cherry" - second apple starts at index 13
     (let [pt (h/get-point*)]
-      (is (< pt 17) "Point should have moved backward"))))
+      (is (= 13 pt) "Point should be at second 'apple' (position 13)"))))
 
 ;; =============================================================================
 ;; Search and Continue Editing

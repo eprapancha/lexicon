@@ -20,6 +20,7 @@
             [lexicon.core.api.buffer :as buf]
             [lexicon.core.api.message :as msg]
             [lexicon.core.db :as db]
+            [lexicon.core.minibuffer :as minibuffer]
             [lexicon.core.markers :as markers]
             [lexicon.core.advanced-undo :as advanced-undo]
             [lexicon.core.dynamic :as dyn]))
@@ -1965,7 +1966,7 @@
   Returns: List of strings or nil"
   []
   (let [db @rfdb/app-db]
-    (get-in db [:minibuffer :completions])))
+    (minibuffer/get-completions db)))
 
 (defn completion-metadata-get
   "Get metadata property PROP from current minibuffer completion.
@@ -1978,8 +1979,9 @@
   Usage: (completion-metadata-get :category)
   Returns: Property value or nil"
   [prop]
-  (let [db @rfdb/app-db]
-    (get-in db [:minibuffer :metadata prop])))
+  (let [db @rfdb/app-db
+        metadata (minibuffer/get-completion-metadata db)]
+    (get metadata prop)))
 
 (defn completing-read
   "Read a string from minibuffer with completion.

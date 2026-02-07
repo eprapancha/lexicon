@@ -12,6 +12,7 @@
   (:require [re-frame.core :as rf]
             [re-frame.db]
             [lexicon.core.db :as db]
+            [lexicon.core.minibuffer :as minibuffer]
             [lexicon.core.constants :as const]
             [lexicon.core.events.buffer :as buffer-events]
             [lexicon.core.api.message]
@@ -101,37 +102,62 @@
  :delete-backward-char
  (fn [{:keys [db]} [_]]
    "Delete character before cursor (backspace) - queue operation.
-    If region is active, deletes the entire region (delete-selection-mode)."
+    If region is active, deletes the entire region (delete-selection-mode).
+    Respects prefix argument: C-u N deletes N characters backward."
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          mark-pos (:mark-position active-window)
-         current-pos (get-in db [:ui :cursor-position] 0)]
+         current-pos (get-in db [:ui :cursor-position] 0)
+         ;; Get prefix argument for repeat count
+         prefix-arg (:prefix-arg db)
+         count (cond
+                 (number? prefix-arg) prefix-arg
+                 (sequential? prefix-arg) (first prefix-arg)
+                 :else 1)]
      ;; If region is active (mark is set and different from point), delete region
      (if (and mark-pos (not= mark-pos current-pos))
        (let [start (min mark-pos current-pos)
              end (max mark-pos current-pos)
              length (- end start)]
          {:fx [[:dispatch [:editor/queue-transaction {:op :delete-range :start start :length length}]]
-               [:dispatch [:deactivate-mark]]]})
-       ;; Otherwise, delete single character
-       {:fx [[:dispatch [:editor/queue-transaction {:op :delete-backward}]]]}))))
+               [:dispatch [:deactivate-mark]]
+               [:dispatch [:clear-prefix-arg]]]})
+       ;; Otherwise, delete N characters backward
+       (let [delete-count (min count current-pos)  ; Don't delete past start of buffer
+             start-pos (- current-pos delete-count)]
+         {:fx [[:dispatch [:editor/queue-transaction {:op :delete-range :start start-pos :length delete-count}]]
+               [:dispatch [:clear-prefix-arg]]]})))))
 
 (rf/reg-event-fx
  :delete-forward-char
  (fn [{:keys [db]} [_]]
    "Delete character after cursor (delete) - queue operation.
-    If region is active, deletes the entire region (delete-selection-mode)."
+    If region is active, deletes the entire region (delete-selection-mode).
+    Respects prefix argument: C-u N deletes N characters forward."
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
+         buffer-length (when wasm-instance (.length wasm-instance))
          mark-pos (:mark-position active-window)
-         current-pos (get-in db [:ui :cursor-position] 0)]
+         current-pos (get-in db [:ui :cursor-position] 0)
+         ;; Get prefix argument for repeat count
+         prefix-arg (:prefix-arg db)
+         n (cond
+             (number? prefix-arg) prefix-arg
+             (sequential? prefix-arg) (first prefix-arg)
+             :else 1)]
      ;; If region is active, delete region
      (if (and mark-pos (not= mark-pos current-pos))
        (let [start (min mark-pos current-pos)
              end (max mark-pos current-pos)
              length (- end start)]
          {:fx [[:dispatch [:editor/queue-transaction {:op :delete-range :start start :length length}]]
-               [:dispatch [:deactivate-mark]]]})
-       ;; Otherwise, delete single character
-       {:fx [[:dispatch [:editor/queue-transaction {:op :delete-forward}]]]}))))
+               [:dispatch [:deactivate-mark]]
+               [:dispatch [:clear-prefix-arg]]]})
+       ;; Otherwise, delete N characters forward
+       (when (and wasm-instance buffer-length)
+         (let [delete-count (min n (- buffer-length current-pos))]
+           {:fx [[:dispatch [:editor/queue-transaction {:op :delete-range :start current-pos :length delete-count}]]
+                 [:dispatch [:clear-prefix-arg]]]}))))))
 
 ;; -- Cursor Movement Commands --
 
@@ -949,11 +975,11 @@
    Issue #67: Must show 'Quit' message in echo area
    Issue #150: Breaks undo chain for Emacs-style redo (C-g C-/ = redo)
    Issue #173: Must deactivate mark to clear selection"
-   (let [minibuffer-active? (get-in db [:minibuffer :active?])
-         on-cancel (get-in db [:minibuffer :on-cancel] [:minibuffer/deactivate])
+   (let [minibuffer-active-now? (minibuffer/minibuffer-active? db)
+         on-cancel (minibuffer/get-on-cancel db)
          ;; Mark that undo chain was broken - next undo should redo if available
          db-with-chain-broken (assoc db :undo-chain-broken true)]
-     (if minibuffer-active?
+     (if minibuffer-active-now?
        ;; If minibuffer is active, cancel it and dispatch on-cancel
        {:db (-> db-with-chain-broken
                 (assoc-in [:ui :selection] {:start 0 :end 0})
