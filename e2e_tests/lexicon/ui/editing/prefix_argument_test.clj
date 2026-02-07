@@ -160,6 +160,33 @@
       (is (str/includes? text "HellXo World")
           "Cursor should be at position 4 after C-u 4 C-f"))))
 
+(deftest test-cu-backward-char
+  (testing "C-u 5 C-b moves backward 5 characters"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type some text
+    (h/type-text "Hello World")
+    (Thread/sleep 100)
+
+    ;; Cursor is at end (position 11)
+    ;; C-u 5 C-b should move backward 5 chars to position 6
+    (h/press-ctrl "u")
+    (Thread/sleep 50)
+    (h/press-key "5")
+    (Thread/sleep 50)
+    (h/press-ctrl "b")
+    (Thread/sleep 100)
+
+    ;; Cursor should be at position 6 (before "World")
+    ;; Insert a marker to verify position
+    (h/type-text "X")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      (is (str/includes? text "Hello XWorld")
+          "Cursor should be at position 6 after C-u 5 C-b"))))
+
 (deftest test-prefix-arg-cleared-after-command
   (testing "Prefix arg is cleared after command execution"
     (h/setup-test*)

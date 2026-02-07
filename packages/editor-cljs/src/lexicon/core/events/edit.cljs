@@ -160,10 +160,19 @@
 
 (rf/reg-event-fx
  :backward-char
- (fn [{:keys [db]} [_]]
-   "Move cursor backward one character (C-b or Left arrow)"
+ (fn [{:keys [db]} [_ & args]]
+   "Move cursor backward N characters (C-b or Left arrow)
+    With prefix arg, moves that many characters."
    (let [current-pos (get-in db [:ui :cursor-position] 0)
-         new-pos (max 0 (dec current-pos))]
+         ;; Use prefix-arg if available (Phase 6.5)
+         prefix-arg (:current-prefix-arg db)
+         n (if prefix-arg
+             (cond
+               (number? prefix-arg) prefix-arg
+               (list? prefix-arg) (first prefix-arg)
+               :else 1)
+             1)
+         new-pos (max 0 (- current-pos n))]
      {:fx [[:dispatch [:update-cursor-position new-pos]]]})))
 
 (rf/reg-event-fx
