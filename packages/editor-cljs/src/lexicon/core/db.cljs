@@ -214,6 +214,8 @@
                                  "ArrowLeft" :backward-char        ; Left arrow
                                  "ArrowDown" :next-line            ; Down arrow
                                  "ArrowUp" :previous-line          ; Up arrow
+                                 "Home" :beginning-of-line         ; Home key
+                                 "End" :end-of-line                ; End key
                                  ;; Shift+Arrow for selection (extends region)
                                  "S-ArrowRight" :forward-char-shift ; Select right
                                  "S-ArrowLeft" :backward-char-shift ; Select left
