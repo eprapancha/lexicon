@@ -47,6 +47,22 @@
               abs-end (+ abs-start (count search-string))]
           {:start abs-start :end abs-end})))))
 
+(defn find-all-matches
+  "Find all matches for search-string in text.
+   Returns vector of {:start pos :end pos} for lazy-highlight."
+  [text search-string case-fold?]
+  (when-not (str/blank? search-string)
+    (let [search-text (if case-fold? (str/lower-case text) text)
+          search-term (if case-fold? (str/lower-case search-string) search-string)
+          term-len (count search-string)]
+      (loop [pos 0
+             matches []]
+        (let [match-index (.indexOf search-text search-term pos)]
+          (if (>= match-index 0)
+            (recur (+ match-index term-len)
+                   (conj matches {:start match-index :end (+ match-index term-len)}))
+            matches))))))
+
 (defn find-prev-match
   "Find previous match for search-string in text before pos.
    Returns {:start pos :end pos} or nil if no match found."
@@ -127,26 +143,29 @@
          original-pos (:original-pos isearch-state)
          case-fold? (case-fold-search? new-input)
 
-         ;; Search from original position
+         ;; Find all matches for lazy-highlight
+         all-matches (find-all-matches full-text new-input case-fold?)
+
+         ;; Search from original position for current match
          match (if (= direction :forward)
                  (find-next-match full-text new-input original-pos case-fold?)
                  (find-prev-match full-text new-input original-pos case-fold?))]
 
      (if match
-       ;; Found match - move to it
+       ;; Found match - move to it and highlight all matches
        {:db (-> db
                 (assoc-in [:ui :isearch :search-string] new-input)
                 (assoc-in [:ui :isearch :current-match] match)
+                (assoc-in [:ui :isearch :all-matches] all-matches)
                 (assoc-in [:ui :isearch :failing?] false))
-        :fx [[:dispatch [:cursor/set-position (:start match)]]
-             [:dispatch [:minibuffer/set-input new-input]]
+        :fx [[:dispatch [:update-cursor-position (:start match)]]
              (isearch-echo-message new-input false false)]}
-       ;; No match - mark as failing
+       ;; No match - mark as failing, clear matches
        {:db (-> db
                 (assoc-in [:ui :isearch :search-string] new-input)
+                (assoc-in [:ui :isearch :all-matches] [])
                 (assoc-in [:ui :isearch :failing?] true))
-        :fx [[:dispatch [:minibuffer/set-input new-input]]
-             (isearch-echo-message new-input true false)]}))))
+        :fx [(isearch-echo-message new-input true false)]}))))
 
 (rf/reg-event-fx
  :isearch/handle-key
@@ -208,7 +227,7 @@
                 (assoc-in [:ui :isearch :search-string] new-search)
                 (assoc-in [:ui :isearch :current-match] match)
                 (assoc-in [:ui :isearch :failing?] false))
-        :fx [[:dispatch [:cursor/set-position (:start match)]]
+        :fx [[:dispatch [:update-cursor-position (:start match)]]
              (isearch-echo-message new-search false false)]}
        ;; No match - mark as failing
        {:db (-> db
@@ -251,7 +270,7 @@
                         (assoc-in [:ui :isearch :search-string] new-search)
                         (assoc-in [:ui :isearch :current-match] match)
                         (assoc-in [:ui :isearch :failing?] false))
-                :fx [[:dispatch [:cursor/set-position (:start match)]]
+                :fx [[:dispatch [:update-cursor-position (:start match)]]
                      (isearch-echo-message new-search false false)]}
                {:db (-> db
                         (assoc-in [:ui :isearch :search-string] new-search)
@@ -277,7 +296,7 @@
        {:db (-> db
                 (assoc-in [:ui :isearch :current-match] match)
                 (assoc-in [:ui :isearch :failing?] false))
-        :fx [[:dispatch [:cursor/set-position (:start match)]]
+        :fx [[:dispatch [:update-cursor-position (:start match)]]
              (isearch-echo-message search-string false false)]}
        ;; No match - try wrapping from beginning
        (let [wrapped-match (find-next-match full-text search-string 0 case-fold?)]
@@ -286,7 +305,7 @@
                     (assoc-in [:ui :isearch :current-match] wrapped-match)
                     (assoc-in [:ui :isearch :wrapped?] true)
                     (assoc-in [:ui :isearch :failing?] false))
-            :fx [[:dispatch [:cursor/set-position (:start wrapped-match)]]
+            :fx [[:dispatch [:update-cursor-position (:start wrapped-match)]]
                  (isearch-echo-message search-string false true)]}
            {:db (-> db
                     (assoc-in [:ui :isearch :failing?] true))
@@ -311,7 +330,7 @@
        {:db (-> db
                 (assoc-in [:ui :isearch :current-match] match)
                 (assoc-in [:ui :isearch :failing?] false))
-        :fx [[:dispatch [:cursor/set-position (:start match)]]
+        :fx [[:dispatch [:update-cursor-position (:start match)]]
              (isearch-echo-message search-string false false)]}
        ;; No match - try wrapping from end
        (let [text-length (count full-text)
@@ -321,7 +340,7 @@
                     (assoc-in [:ui :isearch :current-match] wrapped-match)
                     (assoc-in [:ui :isearch :wrapped?] true)
                     (assoc-in [:ui :isearch :failing?] false))
-            :fx [[:dispatch [:cursor/set-position (:start wrapped-match)]]
+            :fx [[:dispatch [:update-cursor-position (:start wrapped-match)]]
                  (isearch-echo-message search-string false true)]}
            {:db (-> db
                     (assoc-in [:ui :isearch :failing?] true))
@@ -346,7 +365,7 @@
       :fx (cond-> [[:dispatch [:minibuffer/deactivate]]
                    [:dispatch [:echo/clear]]]
             ;; Move cursor to appropriate position if we have a match
-            exit-pos (conj [:dispatch [:cursor/set-position exit-pos]]))})))
+            exit-pos (conj [:dispatch [:update-cursor-position exit-pos]]))})))
 
 (rf/reg-event-fx
  :isearch/abort
@@ -355,6 +374,6 @@
    (let [original-pos (get-in db [:ui :isearch :original-pos] 0)]
      {:db (-> db
               (update :ui dissoc :isearch))
-      :fx [[:dispatch [:cursor/set-position original-pos]]
+      :fx [[:dispatch [:update-cursor-position original-pos]]
            [:dispatch [:minibuffer/deactivate]]
            [:dispatch [:echo/clear]]]})))

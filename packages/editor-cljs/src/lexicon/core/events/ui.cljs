@@ -374,8 +374,14 @@
          category (:category metadata)]
      (cond
        ;; Custom on-change handler exists (e.g., for isearch)
+       ;; Still update the input in db, then notify the handler
        on-change
-       {:fx [[:dispatch (conj on-change input-text)]]}
+       {:db (-> db
+                (minibuffer/set-input input-text)
+                (minibuffer/set-cycling? false)
+                (minibuffer/set-completion-index -1)
+                (minibuffer/set-original-input ""))
+        :fx [[:dispatch (conj on-change input-text)]]}
 
        ;; File completion - update completions dynamically
        (= category :file)

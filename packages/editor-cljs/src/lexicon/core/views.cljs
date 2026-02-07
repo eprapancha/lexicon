@@ -353,6 +353,39 @@
         :class "show-paren-match"
         :type :paren}])))
 
+(defn create-isearch-decorations
+  "Create decorations for isearch matches.
+   All matches get lazy-highlight face, current match gets isearch face."
+  [isearch-matches text]
+  (when (and text (seq (:all-matches isearch-matches)))
+    (let [{:keys [all-matches current-match]} isearch-matches
+          current-start (:start current-match)]
+      (mapcat
+       (fn [{:keys [start end]}]
+         (let [start-coords (linear-to-line-col text start)
+               end-coords (linear-to-line-col text end)
+               is-current? (= start current-start)
+               ;; Handle single-line vs multi-line matches
+               start-line (:line start-coords)
+               end-line (:line end-coords)]
+           (if (= start-line end-line)
+             ;; Single line match
+             [{:from {:line start-line :column (:column start-coords)}
+               :to {:line end-line :column (:column end-coords)}
+               :class (if is-current? "isearch-current" "isearch-lazy-highlight")
+               :type :isearch}]
+             ;; Multi-line match - create decoration per line
+             (for [line-num (range start-line (inc end-line))]
+               (let [lines (clojure.string/split text #"\n" -1)
+                     line-text (nth lines line-num "")
+                     start-col (if (= line-num start-line) (:column start-coords) 0)
+                     end-col (if (= line-num end-line) (:column end-coords) (count line-text))]
+                 {:from {:line line-num :column start-col}
+                  :to {:line line-num :column end-col}
+                  :class (if is-current? "isearch-current" "isearch-lazy-highlight")
+                  :type :isearch})))))
+       all-matches))))
+
 (defn editor-gutter
   "IDE-style gutter with line numbers and diagnostic markers"
   []
@@ -463,9 +496,13 @@
         paren-match-info @(rf/subscribe [:show-paren/match-info])
         paren-decorations (when paren-match-info
                            (create-paren-decorations paren-match-info buffer-content))
+        ;; Add isearch match decorations
+        isearch-matches @(rf/subscribe [:isearch-matches])
+        isearch-decorations (create-isearch-decorations isearch-matches buffer-content)
         decorations (cond-> base-decorations
                       region-decorations (concat region-decorations)
-                      paren-decorations (concat paren-decorations))
+                      paren-decorations (concat paren-decorations)
+                      isearch-decorations (concat isearch-decorations))
         handle-click (fn [e]
                        (.stopPropagation e)  ; Stop event from bubbling to parent handlers
                        ;; Focus hidden input to receive keyboard events
@@ -645,9 +682,13 @@
                               (create-region-decorations mark-position cursor-pos buffer-content))
           paren-decorations (when paren-match-info
                               (create-paren-decorations paren-match-info buffer-content))
+          ;; Add isearch match decorations
+          isearch-matches @(rf/subscribe [:isearch-matches])
+          isearch-decorations (create-isearch-decorations isearch-matches buffer-content)
           decorations (cond-> base-decorations
                         region-decorations (concat region-decorations)
-                        paren-decorations (concat paren-decorations))
+                        paren-decorations (concat paren-decorations)
+                        isearch-decorations (concat isearch-decorations))
           ;; Calculate actual visible lines based on container height
           _ (when @container-ref
               (let [container @container-ref
@@ -1213,6 +1254,7 @@
           prefix-key-state @(rf/subscribe [:prefix-key-state])  ; Issue #137: Track prefix for C-x o
           cursor-owner @(rf/subscribe [:cursor-owner])  ; Issue #137: Check if minibuffer owns cursor
           owns-cursor? (= cursor-owner :minibuffer)
+          isearch-active? @(rf/subscribe [:isearch-active?])  ; Issue #193: Track isearch for C-s/C-r
           active? (:active? minibuffer)
           message (:message minibuffer)
           height-lines (:height-lines minibuffer 1)
@@ -1300,6 +1342,17 @@
                               (do
                                 (.preventDefault e)
                                 (rf/dispatch [:handle-key-sequence key-str]))
+
+                              ;; Issue #193: Handle C-s/C-r during isearch for repeat search
+                              (and isearch-active? ctrl? (= key "s"))
+                              (do
+                                (.preventDefault e)
+                                (rf/dispatch [:isearch/repeat-forward]))
+
+                              (and isearch-active? ctrl? (= key "r"))
+                              (do
+                                (.preventDefault e)
+                                (rf/dispatch [:isearch/repeat-backward]))
 
                               (= key "Enter")
                               (do

@@ -165,6 +165,20 @@
    (get-in db [:ui :ime-composition-text])))
 
 (rf/reg-sub
+ :isearch-active?
+ (fn [db _]
+   "Check if incremental search is currently active"
+   (get-in db [:ui :isearch :active?] false)))
+
+(rf/reg-sub
+ :isearch-matches
+ (fn [db _]
+   "Get all isearch matches and current match for highlighting"
+   (let [isearch (get-in db [:ui :isearch])]
+     {:all-matches (:all-matches isearch [])
+      :current-match (:current-match isearch)})))
+
+(rf/reg-sub
  :show-line-numbers?
  (fn [db _]
    "Check if line numbers should be shown in status bar (Phase 5)"
