@@ -235,11 +235,20 @@
             (or (= key-str "SPC")   ; Space
                 (= key-str "RET")   ; Enter/Return
                 (= key-str "TAB"))) ; Tab
-       (let [text-to-insert (case key-str
-                              "SPC" " "
-                              "RET" "\n"
-                              "TAB" "\t"
-                              key-str)
+       (let [;; Handle prefix argument for repeat count
+             prefix-arg (:prefix-arg db)
+             repeat-count (if prefix-arg
+                            (cond
+                              (number? prefix-arg) prefix-arg
+                              (list? prefix-arg) (first prefix-arg)
+                              :else 1)
+                            1)
+             base-text (case key-str
+                         "SPC" " "
+                         "RET" "\n"
+                         "TAB" "\t"
+                         key-str)
+             text-to-insert (apply str (repeat repeat-count base-text))
              ;; Delete-selection-mode: check if region should be deleted first
              delete-region? (and (delete-selection/delete-selection-enabled? db)
                                  (delete-selection/region-active? db))
@@ -257,7 +266,8 @@
                 ;; Then insert the text
                 true
                 (conj [:dispatch [:editor/queue-transaction {:op :insert :text text-to-insert}]]
-                      [:dispatch [:clear-prefix-key-state]]))})
+                      [:dispatch [:clear-prefix-key-state]]
+                      [:dispatch [:clear-prefix-arg]]))})
 
        ;; Issue #137: Route printable chars to minibuffer when *Completions* buffer is active
        ;; This is a user-friendly enhancement over Emacs (which just shows "read-only" error).

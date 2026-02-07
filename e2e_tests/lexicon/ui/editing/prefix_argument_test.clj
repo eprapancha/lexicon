@@ -325,6 +325,30 @@
       (is (str/includes? text "one two Xthree four")
           "Cursor should be before 'three' with C-u 2 M-b"))))
 
+(deftest test-cu-newline
+  (testing "C-u 3 RET inserts 3 newlines"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type some text
+    (h/type-text "Hello")
+    (Thread/sleep 100)
+
+    ;; C-u 3 Enter should insert 3 newlines
+    (h/press-ctrl "u")
+    (Thread/sleep 50)
+    (h/press-key "3")
+    (Thread/sleep 50)
+    (h/press-key "Enter")
+    (Thread/sleep 100)
+
+    (h/type-text "World")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      (is (= text "Hello\n\n\nWorld")
+          "C-u 3 RET should insert 3 newlines"))))
+
 (deftest test-cu-kill-word
   (testing "C-u 2 M-d kills 2 words forward"
     (h/setup-test*)
