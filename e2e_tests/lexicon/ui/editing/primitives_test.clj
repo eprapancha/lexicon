@@ -10,6 +10,7 @@
   Uses keyboard simulation for all editing actions."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
+            [etaoin.api :as e]
             [lexicon.test-helpers :as h]))
 
 (use-fixtures :once h/with-driver)
@@ -531,3 +532,60 @@
       ;; X should be after "hello", before comma: "helloX, world"
       (is (str/includes? text "helloX, world")
           "forward-word should stop at word boundary, not include punctuation"))))
+
+;; =============================================================================
+;; Selection / Region Tests
+;; =============================================================================
+
+(deftest test-shift-selection-cleared-by-keyboard-quit
+  (testing "C-g clears selection - subsequent arrow movement doesn't extend it"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type multiple lines
+    (h/type-text "AAAA")
+    (h/press-key "Enter")
+    (h/type-text "BBBB")
+    (h/press-key "Enter")
+    (h/type-text "CCCC")
+    (Thread/sleep 100)
+
+    ;; Move to beginning of Line 1
+    (h/press-key "ArrowUp")
+    (Thread/sleep 50)
+    (h/press-key "ArrowUp")
+    (Thread/sleep 50)
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+
+    ;; Press Shift+Down to select Line 1 (selection: "AAAA\n")
+    (h/press-shift "ArrowDown")
+    (Thread/sleep 100)
+
+    ;; Press C-g to clear selection
+    (h/press-ctrl "g")
+    (Thread/sleep 100)
+
+    ;; Now press Down arrow WITHOUT shift
+    ;; If C-g worked: cursor moves to Line 3, NO selection
+    ;; If C-g failed: selection extends to include Line 2 too
+    (h/press-key "ArrowDown")
+    (Thread/sleep 100)
+
+    ;; Now delete with Backspace
+    ;; If NO selection: deletes 1 char (last char of Line 2 since we're at start of Line 3)
+    ;; If selection persists: deletes entire selection (AAAA + BBBB + part of CCCC)
+    (h/press-key "Backspace")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      ;; If C-g cleared selection properly:
+      ;; - We were at start of Line 3 after ArrowDown
+      ;; - Backspace deleted the newline before Line 3, joining BBBB and CCCC
+      ;; - Result: "AAAA\nBBBBCCCC" (Line 1 intact)
+      ;;
+      ;; If selection persisted:
+      ;; - Backspace would delete the selection (AAAA\nBBBB\n or more)
+      ;; - Line 1 (AAAA) would be gone
+      (is (str/includes? text "AAAA")
+          "AAAA should exist - C-g should have cleared selection, Backspace only deleted 1 char"))))

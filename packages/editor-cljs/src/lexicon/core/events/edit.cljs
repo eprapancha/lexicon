@@ -916,11 +916,13 @@
    "Cancel the current operation (equivalent to C-g in Emacs).
 
    - If minibuffer is active, cancels it and dispatches on-cancel callback
+   - Deactivates mark (clears selection)
    - Sets :undo-chain-broken flag for Emacs-style redo
    - Clears pending operations and shows 'Quit' message
 
    Issue #67: Must show 'Quit' message in echo area
-   Issue #150: Breaks undo chain for Emacs-style redo (C-g C-/ = redo)"
+   Issue #150: Breaks undo chain for Emacs-style redo (C-g C-/ = redo)
+   Issue #173: Must deactivate mark to clear selection"
    (let [minibuffer-active? (get-in db [:minibuffer :active?])
          on-cancel (get-in db [:minibuffer :on-cancel] [:minibuffer/deactivate])
          ;; Mark that undo chain was broken - next undo should redo if available
@@ -931,12 +933,14 @@
                 (assoc-in [:ui :selection] {:start 0 :end 0})
                 (assoc-in [:fsm :operator-pending] nil))
         :fx [[:dispatch on-cancel]
+             [:dispatch [:deactivate-mark]]
              [:dispatch [:echo/message "Quit"]]]}
        ;; Otherwise just clear pending operations and show quit message
        {:db (-> db-with-chain-broken
                 (assoc-in [:ui :selection] {:start 0 :end 0})
                 (assoc-in [:fsm :operator-pending] nil))
-        :fx [[:dispatch [:echo/message "Quit"]]]}))))
+        :fx [[:dispatch [:deactivate-mark]]
+             [:dispatch [:echo/message "Quit"]]]}))))
 
 ;; -- Test API Events --
 ;; Simple buffer-specific versions for testing
