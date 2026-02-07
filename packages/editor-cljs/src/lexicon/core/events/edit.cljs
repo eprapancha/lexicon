@@ -370,28 +370,54 @@
 (rf/reg-event-fx
  :forward-word
  (fn [{:keys [db]} [_]]
-   "Move cursor forward one word (M-f)"
+   "Move cursor forward one or more words (M-f)
+    With prefix arg, moves that many words."
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
-         current-pos (get-in db [:ui :cursor-position] 0)]
+         current-pos (get-in db [:ui :cursor-position] 0)
+         prefix-arg (:current-prefix-arg db)
+         n (if prefix-arg
+             (cond
+               (number? prefix-arg) prefix-arg
+               (list? prefix-arg) (first prefix-arg)
+               :else 1)
+             1)]
      (if wasm-instance
        (let [text (.getText wasm-instance)
-             new-pos (find-forward-word-boundary text current-pos)]
+             ;; Apply forward-word n times
+             new-pos (loop [pos current-pos
+                            count n]
+                       (if (<= count 0)
+                         pos
+                         (recur (find-forward-word-boundary text pos) (dec count))))]
          {:fx [[:dispatch [:update-cursor-position new-pos]]]})
        {:db db}))))
 
 (rf/reg-event-fx
  :backward-word
  (fn [{:keys [db]} [_]]
-   "Move cursor backward one word (M-b)"
+   "Move cursor backward one or more words (M-b)
+    With prefix arg, moves that many words."
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
-         current-pos (get-in db [:ui :cursor-position] 0)]
+         current-pos (get-in db [:ui :cursor-position] 0)
+         prefix-arg (:current-prefix-arg db)
+         n (if prefix-arg
+             (cond
+               (number? prefix-arg) prefix-arg
+               (list? prefix-arg) (first prefix-arg)
+               :else 1)
+             1)]
      (if wasm-instance
        (let [text (.getText wasm-instance)
-             new-pos (find-backward-word-boundary text current-pos)]
+             ;; Apply backward-word n times
+             new-pos (loop [pos current-pos
+                            count n]
+                       (if (<= count 0)
+                         pos
+                         (recur (find-backward-word-boundary text pos) (dec count))))]
          {:fx [[:dispatch [:update-cursor-position new-pos]]]})
        {:db db}))))
 

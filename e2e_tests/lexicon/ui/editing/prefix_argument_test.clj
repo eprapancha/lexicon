@@ -270,6 +270,61 @@
       (is (str/includes? text "XLine 2")
           "Cursor should be at beginning of Line 2 after C-u 2 C-p"))))
 
+(deftest test-cu-forward-word
+  (testing "C-u 2 M-f moves forward 2 words"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type text with multiple words
+    (h/type-text "one two three four")
+    (Thread/sleep 100)
+
+    ;; Move to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+
+    ;; C-u 2 M-f should move forward 2 words (to end of "two")
+    (h/press-ctrl "u")
+    (Thread/sleep 50)
+    (h/press-key "2")
+    (Thread/sleep 50)
+    (h/press-meta "f")
+    (Thread/sleep 100)
+
+    ;; Insert marker to verify position
+    (h/type-text "X")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      (is (str/includes? text "one twoX three four")
+          "Cursor should be after 'two' with C-u 2 M-f"))))
+
+(deftest test-cu-backward-word
+  (testing "C-u 2 M-b moves backward 2 words"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type text with multiple words
+    (h/type-text "one two three four")
+    (Thread/sleep 100)
+
+    ;; Cursor is at end
+    ;; C-u 2 M-b should move backward 2 words (to beginning of "three")
+    (h/press-ctrl "u")
+    (Thread/sleep 50)
+    (h/press-key "2")
+    (Thread/sleep 50)
+    (h/press-meta "b")
+    (Thread/sleep 100)
+
+    ;; Insert marker to verify position
+    (h/type-text "X")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      (is (str/includes? text "one two Xthree four")
+          "Cursor should be before 'three' with C-u 2 M-b"))))
+
 (deftest test-prefix-arg-cleared-after-command
   (testing "Prefix arg is cleared after command execution"
     (h/setup-test*)
