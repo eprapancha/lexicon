@@ -473,14 +473,27 @@
 (rf/reg-event-fx
  :kill-word
  (fn [{:keys [db]} [_]]
-   "Kill from cursor to end of word (M-d)"
+   "Kill from cursor to end of word (M-d)
+    With prefix arg, kills that many words forward."
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
-         current-pos (get-in db [:ui :cursor-position] 0)]
+         current-pos (get-in db [:ui :cursor-position] 0)
+         prefix-arg (:current-prefix-arg db)
+         n (if prefix-arg
+             (cond
+               (number? prefix-arg) prefix-arg
+               (list? prefix-arg) (first prefix-arg)
+               :else 1)
+             1)]
      (if wasm-instance
        (let [text (.getText wasm-instance)
-             end-pos (find-forward-word-boundary text current-pos)
+             ;; Apply forward-word-boundary n times to find end position
+             end-pos (loop [pos current-pos
+                            count n]
+                       (if (<= count 0)
+                         pos
+                         (recur (find-forward-word-boundary text pos) (dec count))))
              length (- end-pos current-pos)]
          (if (> length 0)
            (let [killed-text (.getRange wasm-instance current-pos end-pos)
@@ -503,14 +516,27 @@
 (rf/reg-event-fx
  :backward-kill-word
  (fn [{:keys [db]} [_]]
-   "Kill from cursor backward to beginning of word (M-DEL)"
+   "Kill from cursor backward to beginning of word (M-DEL)
+    With prefix arg, kills that many words backward."
    (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
          active-buffer-id (:buffer-id active-window)
          ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])
-         current-pos (get-in db [:ui :cursor-position] 0)]
+         current-pos (get-in db [:ui :cursor-position] 0)
+         prefix-arg (:current-prefix-arg db)
+         n (if prefix-arg
+             (cond
+               (number? prefix-arg) prefix-arg
+               (list? prefix-arg) (first prefix-arg)
+               :else 1)
+             1)]
      (if wasm-instance
        (let [text (.getText wasm-instance)
-             start-pos (find-backward-word-boundary text current-pos)
+             ;; Apply backward-word-boundary n times to find start position
+             start-pos (loop [pos current-pos
+                              count n]
+                         (if (<= count 0)
+                           pos
+                           (recur (find-backward-word-boundary text pos) (dec count))))
              length (- current-pos start-pos)]
          (if (> length 0)
            (let [killed-text (.getRange wasm-instance start-pos current-pos)

@@ -325,6 +325,53 @@
       (is (str/includes? text "one two Xthree four")
           "Cursor should be before 'three' with C-u 2 M-b"))))
 
+(deftest test-cu-kill-word
+  (testing "C-u 2 M-d kills 2 words forward"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type text with multiple words
+    (h/type-text "one two three four")
+    (Thread/sleep 100)
+
+    ;; Move to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+
+    ;; C-u 2 M-d should kill 2 words forward ("one two")
+    (h/press-ctrl "u")
+    (Thread/sleep 50)
+    (h/press-key "2")
+    (Thread/sleep 50)
+    (h/press-meta "d")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      (is (= text " three four")
+          "C-u 2 M-d should kill 2 words, leaving ' three four'"))))
+
+(deftest test-cu-backward-kill-word
+  (testing "C-u 2 M-DEL kills 2 words backward"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type text with multiple words
+    (h/type-text "one two three four")
+    (Thread/sleep 100)
+
+    ;; Cursor is at end
+    ;; C-u 2 M-DEL should kill 2 words backward ("three four")
+    (h/press-ctrl "u")
+    (Thread/sleep 50)
+    (h/press-key "2")
+    (Thread/sleep 50)
+    (h/press-meta "Backspace")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      (is (= text "one two ")
+          "C-u 2 M-DEL should kill 2 words, leaving 'one two '"))))
+
 (deftest test-prefix-arg-cleared-after-command
   (testing "Prefix arg is cleared after command execution"
     (h/setup-test*)
