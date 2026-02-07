@@ -501,3 +501,33 @@
       ;; If goal column works, X should be inserted at column 8: "Hello WoXrld!"
       (is (str/includes? text "Hello WoXrld!")
           "Goal column should be preserved - cursor should return to column 8"))))
+
+;; =============================================================================
+;; Word Movement Tests
+;; =============================================================================
+
+(deftest test-forward-word-punctuation
+  (testing "M-f stops at punctuation, not after it"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type text with punctuation
+    (h/type-text "hello, world")
+    (Thread/sleep 100)
+
+    ;; Move to beginning
+    (h/press-ctrl "a")
+    (Thread/sleep 50)
+
+    ;; M-f should stop after "hello" (before comma)
+    (h/press-meta "f")
+    (Thread/sleep 100)
+
+    ;; Insert marker to verify position
+    (h/type-text "X")
+    (Thread/sleep 100)
+
+    (let [text (h/get-buffer-text*)]
+      ;; X should be after "hello", before comma: "helloX, world"
+      (is (str/includes? text "helloX, world")
+          "forward-word should stop at word boundary, not include punctuation"))))
