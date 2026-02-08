@@ -157,3 +157,179 @@
           "Should find foo789")
       (is (not (str/includes? buffer-text "bar456"))
           "Should NOT find bar456"))))
+
+;; =============================================================================
+;; Occur Mode Navigation - Issue #197
+;; =============================================================================
+
+(deftest test-occur-next-prev-navigation
+  (testing "n/p keys navigate between matches in *Occur* buffer"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Create content with multiple matches
+    (h/type-text "apple one")
+    (h/press-key "Enter")
+    (h/type-text "banana")
+    (h/press-key "Enter")
+    (h/type-text "apple two")
+    (h/press-key "Enter")
+    (h/type-text "cherry")
+    (h/press-key "Enter")
+    (h/type-text "apple three")
+    (Thread/sleep 50)
+
+    ;; Run M-x occur
+    (h/press-meta "x")
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "occur")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 200)
+
+    ;; Search for "apple"
+    (h/type-in-minibuffer "apple")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 300)
+
+    ;; Now in *Occur* buffer - verify we have 3 matches
+    (let [buffer-text (h/get-buffer-text*)]
+      (is (str/includes? buffer-text "3 matches")
+          (str "Should have 3 matches, got: " buffer-text)))
+
+    ;; Press 'n' to move to next match - should NOT insert 'n'
+    (h/press-key "n")
+    (Thread/sleep 100)
+    (let [buffer-text (h/get-buffer-text*)]
+      (is (not (str/includes? buffer-text "\nn\n"))
+          "Pressing 'n' should navigate, not insert character"))
+
+    ;; Press 'p' to move to previous match - should NOT insert 'p'
+    (h/press-key "p")
+    (Thread/sleep 100)
+    (let [buffer-text (h/get-buffer-text*)]
+      (is (not (str/includes? buffer-text "\np\n"))
+          "Pressing 'p' should navigate, not insert character"))))
+
+(deftest test-occur-navigation-skips-headers
+  (testing "n/p skip header lines and only navigate between match lines"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Create content - 3 matches on lines 1, 3, 5
+    (h/type-text "match one")
+    (h/press-key "Enter")
+    (h/type-text "other")
+    (h/press-key "Enter")
+    (h/type-text "match two")
+    (h/press-key "Enter")
+    (h/type-text "other")
+    (h/press-key "Enter")
+    (h/type-text "match three")
+    (Thread/sleep 50)
+
+    ;; Run M-x occur
+    (h/press-meta "x")
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "occur")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "match")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 300)
+
+    ;; Verify occur buffer has 3 matches
+    (let [buffer-text (h/get-buffer-text*)]
+      (is (str/includes? buffer-text "3 matches")
+          (str "Should have 3 matches, got: " buffer-text)))
+
+    ;; Press n/p multiple times - buffer should NOT be modified
+    ;; This verifies n/p are navigation commands, not inserting characters
+    (let [before-text (h/get-buffer-text*)]
+      (h/press-key "n")
+      (Thread/sleep 50)
+      (h/press-key "n")
+      (Thread/sleep 50)
+      (h/press-key "n")  ;; Should be at last match or past it
+      (Thread/sleep 50)
+      (h/press-key "p")
+      (Thread/sleep 50)
+      (h/press-key "p")
+      (Thread/sleep 100)
+      (let [after-text (h/get-buffer-text*)]
+        (is (= before-text after-text)
+            "Buffer should not change after n/p navigation")))))
+
+(deftest test-occur-enter-jumps-to-source
+  (testing "RET in *Occur* buffer jumps to match in source buffer"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Create content
+    (h/type-text "first line")
+    (h/press-key "Enter")
+    (h/type-text "target line here")
+    (h/press-key "Enter")
+    (h/type-text "third line")
+    (Thread/sleep 50)
+
+    ;; Run M-x occur
+    (h/press-meta "x")
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "occur")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 200)
+
+    ;; Search for "target"
+    (h/type-in-minibuffer "target")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 300)
+
+    ;; Verify we're in *Occur* buffer with a match
+    (let [buffer-text (h/get-buffer-text*)]
+      (is (str/includes? buffer-text "target line here")
+          (str "Occur buffer should show match, got: " buffer-text)))
+
+    ;; Press Enter to jump to source
+    (h/press-key "Enter")
+    (Thread/sleep 200)
+
+    ;; Should now be in the original buffer (not *Occur*)
+    ;; The buffer should contain the original content
+    (let [buffer-text (h/get-buffer-text*)]
+      ;; If we're in *Occur*, Enter would have inserted a newline
+      ;; If we jumped to source, we should see the original 3-line content
+      (is (str/includes? buffer-text "first line")
+          (str "Should have jumped to source buffer, got: " buffer-text))
+      (is (not (str/includes? buffer-text "matches for"))
+          "Should NOT be in *Occur* buffer anymore"))))
+
+(deftest test-occur-buffer-read-only
+  (testing "*Occur* buffer should be read-only"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "test content")
+    (Thread/sleep 50)
+
+    ;; Run M-x occur
+    (h/press-meta "x")
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "occur")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 200)
+
+    (h/type-in-minibuffer "test")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 300)
+
+    ;; Try to type in *Occur* buffer
+    (let [before-text (h/get-buffer-text*)]
+      (h/type-text "INSERTED")
+      (Thread/sleep 100)
+      (let [after-text (h/get-buffer-text*)]
+        (is (= before-text after-text)
+            (str "Buffer should be read-only. Before: " before-text " After: " after-text))))))

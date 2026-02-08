@@ -11,6 +11,7 @@
   - Undo operations (undo, redo)"
   (:require [re-frame.core :as rf]
             [re-frame.db]
+            [clojure.string :as str]
             [lexicon.core.db :as db]
             [lexicon.core.minibuffer :as minibuffer]
             [lexicon.core.constants :as const]
@@ -391,6 +392,23 @@
      (if wasm-instance
        (let [buffer-length (.length wasm-instance)]
          {:fx [[:dispatch [:update-cursor-position buffer-length]]]})
+       {:db db}))))
+
+(rf/reg-event-fx
+ :goto-line
+ (fn [{:keys [db]} [_ line-num]]
+   "Move cursor to beginning of specified line (1-indexed).
+    Like Emacs goto-line (M-g g)."
+   (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+         active-buffer-id (:buffer-id active-window)
+         ^js wasm-instance (get-in db [:buffers active-buffer-id :wasm-instance])]
+     (if wasm-instance
+       (let [text (.getText wasm-instance)
+             lines (str/split-lines text)
+             ;; Calculate position at start of target line (1-indexed)
+             target-line (max 1 (min line-num (count lines)))
+             pos (reduce + (map #(inc (count %)) (take (dec target-line) lines)))]
+         {:fx [[:dispatch [:update-cursor-position pos]]]})
        {:db db}))))
 
 (rf/reg-event-fx

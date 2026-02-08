@@ -62,7 +62,8 @@
   (let [keymaps (:keymaps db)
         transient-keymap (:transient-keymap db)
         minor-modes (get-active-minor-modes db)
-        major-mode (get-active-major-mode db)]
+        major-mode (get-active-major-mode db)
+        mode-binding (get-in keymaps [:mode (keyword major-mode) key-sequence-str])]
 
     ;; Emacs precedence order (Phase 6.5):
     ;; 0. Transient keymap (for C-u accumulation)
@@ -88,7 +89,7 @@
      ;; 2.5. Issue #139: Check mode-specific keymaps (from define-key-for-mode)
      ;; These are stored at [:keymaps :mode mode key-sequence]
      ;; Mode keymaps are stored with keyword keys, but major-mode may be symbol
-     (get-in keymaps [:mode (keyword major-mode) key-sequence-str])
+     mode-binding
 
      ;; 3. Check global keymap (with parent chain)
      (lookup-key-in-keymap keymaps [:global] key-sequence-str)

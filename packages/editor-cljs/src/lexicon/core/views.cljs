@@ -386,6 +386,21 @@
                   :type :isearch})))))
        all-matches))))
 
+(defn create-occur-decorations
+  "Create decorations for occur match highlights.
+   Each highlight has :line and :ranges (column ranges to highlight)."
+  [occur-highlights]
+  (when (seq occur-highlights)
+    (mapcat
+     (fn [{:keys [line ranges]}]
+       (map (fn [[start-col end-col]]
+              {:from {:line line :column start-col}
+               :to {:line line :column end-col}
+               :class "occur-match"
+               :type :occur})
+            ranges))
+     occur-highlights)))
+
 (defn editor-gutter
   "IDE-style gutter with line numbers and diagnostic markers"
   []
@@ -499,10 +514,14 @@
         ;; Add isearch match decorations
         isearch-matches @(rf/subscribe [:isearch-matches])
         isearch-decorations (create-isearch-decorations isearch-matches buffer-content)
+        ;; Add occur match decorations
+        occur-highlights @(rf/subscribe [:occur-highlights])
+        occur-decorations (create-occur-decorations occur-highlights)
         decorations (cond-> base-decorations
                       region-decorations (concat region-decorations)
                       paren-decorations (concat paren-decorations)
-                      isearch-decorations (concat isearch-decorations))
+                      isearch-decorations (concat isearch-decorations)
+                      occur-decorations (concat occur-decorations))
         handle-click (fn [e]
                        (.stopPropagation e)  ; Stop event from bubbling to parent handlers
                        ;; Focus hidden input to receive keyboard events
@@ -685,10 +704,14 @@
           ;; Add isearch match decorations
           isearch-matches @(rf/subscribe [:isearch-matches])
           isearch-decorations (create-isearch-decorations isearch-matches buffer-content)
+          ;; Add occur match decorations
+          occur-highlights @(rf/subscribe [:occur-highlights])
+          occur-decorations (create-occur-decorations occur-highlights)
           decorations (cond-> base-decorations
                         region-decorations (concat region-decorations)
                         paren-decorations (concat paren-decorations)
-                        isearch-decorations (concat isearch-decorations))
+                        isearch-decorations (concat isearch-decorations)
+                        occur-decorations (concat occur-decorations))
           ;; Calculate actual visible lines based on container height
           _ (when @container-ref
               (let [container @container-ref

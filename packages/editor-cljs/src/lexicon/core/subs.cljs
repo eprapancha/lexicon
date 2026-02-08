@@ -179,6 +179,20 @@
       :current-match (:current-match isearch)})))
 
 (rf/reg-sub
+ :occur-highlights
+ (fn [db _]
+   "Get occur match highlights for the current buffer.
+    Returns nil if not in an occur buffer."
+   (let [active-window-id (:active-window-id db)
+         active-window (when active-window-id
+                        (lexicon.core.db/find-window-in-tree
+                         (:window-tree db) active-window-id))
+         buffer-id (:buffer-id active-window)
+         buffer (get-in db [:buffers buffer-id])]
+     (when (= (:major-mode buffer) :occur-mode)
+       (:occur-highlights buffer)))))
+
+(rf/reg-sub
  :show-line-numbers?
  (fn [db _]
    "Check if line numbers should be shown in status bar (Phase 5)"
