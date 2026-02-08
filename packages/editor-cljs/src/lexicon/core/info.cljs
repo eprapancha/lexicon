@@ -41,6 +41,7 @@
   Based on Emacs lisp/info.el"
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
+            [lexicon.lisp :as lisp]
             [lexicon.core.db :as db]))
 
 ;; =============================================================================
@@ -152,7 +153,7 @@
         "In Lexicon, the extension language is ClojureScript rather than Elisp.\n\n")})
 
 ;; =============================================================================
-;; Info Navigation
+;; Info Navigation (Pure Functions)
 ;; =============================================================================
 
 (defn- parse-header
@@ -181,8 +182,25 @@
     ;; Relative reference - use current file
     (str "(" (or current-file "dir") ")" (or node-ref "Top"))))
 
+(defn- extract-menu-items
+  "Extract menu items from Info node content.
+   Menu items look like: * Name:: Description"
+  [content]
+  (let [lines (str/split content #"\n")]
+    (keep (fn [line]
+            (when-let [match (re-find #"^\*\s+(.+?)::" line)]
+              (str/trim (nth match 1))))
+          lines)))
+
+(defn- extract-cross-references
+  "Extract cross-references from Info node content.
+   References look like: *Note Name:: or *note Name::"
+  [content]
+  (let [matches (re-seq #"\*[Nn]ote\s+(.+?)::" content)]
+    (mapv (fn [match] (str/trim (nth match 1))) matches)))
+
 ;; =============================================================================
-;; Info Buffer Management
+;; Re-frame Events
 ;; =============================================================================
 
 (rf/reg-event-fx
@@ -191,23 +209,21 @@
    "Open Info browser or navigate to a node."
    (let [key (or node-key "(dir)Top")
          content (get info-nodes key info-directory-content)
-         ;; Check if *info* buffer exists
-         existing (first (filter #(= (:name (val %)) "*info*") (:buffers db)))]
-     (if existing
+         existing-id (lisp/get-buffer "*info*")]
+     (if existing-id
        ;; Update existing buffer
-       (let [buffer-id (key existing)
-             ^js wasm (get-in db [:buffers buffer-id :wasm-instance])]
+       (let [^js wasm (get-in db [:buffers existing-id :wasm-instance])]
          (when wasm
            (let [len (.-length wasm)]
              (.delete wasm 0 len)
              (.insert wasm 0 content)))
          {:db (-> db
-                  (assoc-in [:buffers buffer-id :cache :text] content)
-                  (assoc-in [:buffers buffer-id :cache :line-count]
+                  (assoc-in [:buffers existing-id :cache :text] content)
+                  (assoc-in [:buffers existing-id :cache :line-count]
                             (count (str/split content #"\n" -1)))
                   (update-in [:info :history] (fnil conj []) key)
                   (assoc-in [:info :current-node] key))
-          :fx [[:dispatch [:switch-buffer buffer-id]]]})
+          :fx [[:dispatch [:switch-buffer existing-id]]]})
        ;; Create new *info* buffer
        (let [buffers (:buffers db)
              buffer-id (db/next-buffer-id buffers)
@@ -342,7 +358,7 @@
 
 (rf/reg-event-fx
  :info/search-exec
- (fn [{:keys [db]} [_ query]]
+ (fn [{:keys [_db]} [_ query]]
    "Execute Info search."
    (let [results (filter (fn [[_ content]]
                            (str/includes? (str/lower-case content)
@@ -363,23 +379,6 @@
 ;; =============================================================================
 ;; Menu Navigation
 ;; =============================================================================
-
-(defn- extract-menu-items
-  "Extract menu items from Info node content.
-   Menu items look like: * Name:: Description"
-  [content]
-  (let [lines (str/split content #"\n")]
-    (keep (fn [line]
-            (when-let [match (re-find #"^\*\s+(.+?)::" line)]
-              (str/trim (nth match 1))))
-          lines)))
-
-(defn- extract-cross-references
-  "Extract cross-references from Info node content.
-   References look like: *Note Name:: or *note Name::"
-  [content]
-  (let [matches (re-seq #"\*[Nn]ote\s+(.+?)::" content)]
-    (mapv (fn [match] (str/trim (nth match 1))) matches)))
 
 (rf/reg-event-fx
  :info/menu

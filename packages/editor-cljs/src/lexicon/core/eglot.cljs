@@ -39,7 +39,8 @@
   Based on Emacs lisp/progmodes/eglot.el"
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
-            [lexicon.core.db :as db]))
+            [lexicon.core.db :as db]
+            [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
 ;; Server Programs Configuration
@@ -80,48 +81,65 @@
    :diagnosticProvider {:interFileDependencies true}})
 
 ;; =============================================================================
+;; State (Package-local)
+;; =============================================================================
+
+;; Eglot state: {:servers {buffer-id server-state}, :events [], :diagnostics {buffer-id []}}
+(defonce eglot-state
+  (atom {:servers {}
+         :events []
+         :diagnostics {}}))
+
+;; =============================================================================
 ;; Connection State
 ;; =============================================================================
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :eglot/set-server-state
- (fn [db [_ buffer-id state]]
-   (assoc-in db [:eglot :servers buffer-id] state)))
+ (fn [{:keys [_db]} [_ buffer-id state]]
+   (swap! eglot-state assoc-in [:servers buffer-id] state)
+   {}))
 
 (rf/reg-sub
  :eglot/server-state
- (fn [db [_ buffer-id]]
-   (get-in db [:eglot :servers buffer-id])))
+ (fn [_db [_ buffer-id]]
+   (get-in @eglot-state [:servers buffer-id])))
 
 (rf/reg-sub
  :eglot/active?
- (fn [db [_ buffer-id]]
-   (let [state (get-in db [:eglot :servers buffer-id])]
+ (fn [_db [_ buffer-id]]
+   (let [state (get-in @eglot-state [:servers buffer-id])]
      (= (:status state) :connected))))
 
 (rf/reg-sub
  :eglot/any-active?
- (fn [db _]
+ (fn [_db _]
    (some (fn [[_id state]] (= (:status state) :connected))
-         (get-in db [:eglot :servers] {}))))
+         (get @eglot-state :servers {}))))
 
 ;; =============================================================================
 ;; Events Log
 ;; =============================================================================
 
-(rf/reg-event-db
+(defn- log-eglot-event!
+  "Log an event to the eglot events buffer."
+  [event-type message]
+  (let [timestamp (.toISOString (js/Date.))
+        new-event {:timestamp timestamp
+                   :type event-type
+                   :message message}]
+    (swap! eglot-state update :events
+           (fn [events]
+             (let [events (or events [])]
+               (if (> (count events) 100)
+                 (conj (subvec events (- (count events) 99)) new-event)
+                 (conj events new-event)))))))
+
+(rf/reg-event-fx
  :eglot/log-event
- (fn [db [_ event-type message]]
-   (let [events (get-in db [:eglot :events] [])
-         timestamp (.toISOString (js/Date.))
-         new-event {:timestamp timestamp
-                    :type event-type
-                    :message message}
-         ;; Keep last 100 events
-         new-events (if (> (count events) 100)
-                      (conj (subvec events (- (count events) 99)) new-event)
-                      (conj events new-event))]
-     (assoc-in db [:eglot :events] new-events))))
+ (fn [{:keys [_db]} [_ event-type message]]
+   (log-eglot-event! event-type message)
+   {}))
 
 ;; =============================================================================
 ;; Eglot Commands
@@ -129,79 +147,67 @@
 
 (rf/reg-event-fx
  :eglot/start
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Start LSP server for current buffer's major mode."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         buffer (get-in db [:buffers buffer-id])
-         major-mode (:major-mode buffer)
+   (let [buffer-id (lisp/current-buffer)
+         buffer-info (lisp/buffer-info buffer-id)
+         major-mode (:major-mode buffer-info)
          server-config (get eglot-server-programs major-mode)]
      (if server-config
-       {:db (-> db
-                (assoc-in [:eglot :servers buffer-id]
-                          {:status :connecting
-                           :mode major-mode
-                           :language-id (:language-id server-config)
-                           :command (:command server-config)
-                           :capabilities default-capabilities
-                           :started-at (.now js/Date)})
-                (update-in [:eglot :events] (fnil conj [])
-                           {:timestamp (.toISOString (js/Date.))
-                            :type :lifecycle
-                            :message (str "[eglot] Starting "
-                                          (first (:command server-config))
-                                          " for " (name major-mode))}))
-        :fx [[:dispatch [:echo/message
-                         (str "Eglot: connecting to "
-                              (first (:command server-config))
-                              " for " (name major-mode)
-                              " (WebSocket bridge required)")]]]}
+       (do
+         (swap! eglot-state assoc-in [:servers buffer-id]
+                {:status :connecting
+                 :mode major-mode
+                 :language-id (:language-id server-config)
+                 :command (:command server-config)
+                 :capabilities default-capabilities
+                 :started-at (.now js/Date)})
+         (log-eglot-event! :lifecycle
+                           (str "[eglot] Starting "
+                                (first (:command server-config))
+                                " for " (name major-mode)))
+         {:fx [[:dispatch [:echo/message
+                           (str "Eglot: connecting to "
+                                (first (:command server-config))
+                                " for " (name major-mode)
+                                " (WebSocket bridge required)")]]]})
        {:fx [[:dispatch [:echo/message
                          (str "Eglot: no server configured for "
                               (name (or major-mode :fundamental-mode)))]]]}))))
 
 (rf/reg-event-fx
  :eglot/shutdown
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Shutdown LSP server for current buffer."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         server (get-in db [:eglot :servers buffer-id])]
+   (let [buffer-id (lisp/current-buffer)
+         server (get-in @eglot-state [:servers buffer-id])]
      (if server
-       {:db (-> db
-                (update-in [:eglot :servers] dissoc buffer-id)
-                (update-in [:eglot :events] (fnil conj [])
-                           {:timestamp (.toISOString (js/Date.))
-                            :type :lifecycle
-                            :message "[eglot] Server shutdown"}))
-        :fx [[:dispatch [:echo/message "Eglot: server shutdown"]]]}
+       (do
+         (swap! eglot-state update :servers dissoc buffer-id)
+         (log-eglot-event! :lifecycle "[eglot] Server shutdown")
+         {:fx [[:dispatch [:echo/message "Eglot: server shutdown"]]]})
        {:fx [[:dispatch [:echo/message "Eglot: no active server"]]]}))))
 
 (rf/reg-event-fx
  :eglot/shutdown-all
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Shutdown all active LSP servers."
-   (let [servers (get-in db [:eglot :servers] {})
-         count (count servers)]
-     {:db (-> db
-              (assoc-in [:eglot :servers] {})
-              (update-in [:eglot :events] (fnil conj [])
-                         {:timestamp (.toISOString (js/Date.))
-                          :type :lifecycle
-                          :message (str "[eglot] Shutdown all (" count " servers)")}))
-      :fx [[:dispatch [:echo/message
-                       (if (pos? count)
-                         (str "Eglot: shut down " count " server"
-                              (when (not= count 1) "s"))
+   (let [servers (get @eglot-state :servers {})
+         cnt (count servers)]
+     (swap! eglot-state assoc :servers {})
+     (log-eglot-event! :lifecycle (str "[eglot] Shutdown all (" cnt " servers)"))
+     {:fx [[:dispatch [:echo/message
+                       (if (pos? cnt)
+                         (str "Eglot: shut down " cnt " server"
+                              (when (not= cnt 1) "s"))
                          "Eglot: no active servers")]]]})))
 
 (rf/reg-event-fx
  :eglot/reconnect
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Reconnect to LSP server."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         server (get-in db [:eglot :servers buffer-id])]
+   (let [buffer-id (lisp/current-buffer)
+         server (get-in @eglot-state [:servers buffer-id])]
      (if server
        {:fx [[:dispatch [:eglot/shutdown]]
              [:dispatch [:eglot/start]]]}
@@ -209,14 +215,13 @@
 
 (rf/reg-event-fx
  :eglot/ensure
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Ensure eglot is active for the current buffer's mode.
     Auto-starts if the major mode has a configured server."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         buffer (get-in db [:buffers buffer-id])
-         major-mode (:major-mode buffer)
-         server (get-in db [:eglot :servers buffer-id])
+   (let [buffer-id (lisp/current-buffer)
+         buffer-info (lisp/buffer-info buffer-id)
+         major-mode (:major-mode buffer-info)
+         server (get-in @eglot-state [:servers buffer-id])
          has-config? (get eglot-server-programs major-mode)]
      (if (and has-config? (not server))
        {:fx [[:dispatch [:eglot/start]]]}
@@ -230,11 +235,10 @@
 
 (rf/reg-event-fx
  :eglot/rename
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Rename symbol at point via LSP."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         server (get-in db [:eglot :servers buffer-id])]
+   (let [buffer-id (lisp/current-buffer)
+         server (get-in @eglot-state [:servers buffer-id])]
      (if server
        {:fx [[:dispatch [:minibuffer/activate
                          {:prompt "Rename to: "
@@ -243,45 +247,36 @@
 
 (rf/reg-event-fx
  :eglot/rename-exec
- (fn [{:keys [db]} [_ new-name]]
-   {:db (update-in db [:eglot :events] (fnil conj [])
-                   {:timestamp (.toISOString (js/Date.))
-                    :type :request
-                    :message (str "[eglot] textDocument/rename -> " new-name)})
-    :fx [[:dispatch [:echo/message
+ (fn [{:keys [_db]} [_ new-name]]
+   (log-eglot-event! :request (str "[eglot] textDocument/rename -> " new-name))
+   {:fx [[:dispatch [:echo/message
                      (str "Eglot: rename to '" new-name
                           "' (requires active LSP connection)")]]]}))
 
 (rf/reg-event-fx
  :eglot/code-actions
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Show available code actions via LSP."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         server (get-in db [:eglot :servers buffer-id])]
+   (let [buffer-id (lisp/current-buffer)
+         server (get-in @eglot-state [:servers buffer-id])]
      (if server
-       {:db (update-in db [:eglot :events] (fnil conj [])
-                       {:timestamp (.toISOString (js/Date.))
-                        :type :request
-                        :message "[eglot] textDocument/codeAction"})
-        :fx [[:dispatch [:echo/message
-                         "Eglot: no code actions available (requires LSP connection)"]]]}
+       (do
+         (log-eglot-event! :request "[eglot] textDocument/codeAction")
+         {:fx [[:dispatch [:echo/message
+                           "Eglot: no code actions available (requires LSP connection)"]]]})
        {:fx [[:dispatch [:echo/message "Eglot: no active server"]]]}))))
 
 (rf/reg-event-fx
  :eglot/format-buffer
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Format current buffer via LSP."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         server (get-in db [:eglot :servers buffer-id])]
+   (let [buffer-id (lisp/current-buffer)
+         server (get-in @eglot-state [:servers buffer-id])]
      (if server
-       {:db (update-in db [:eglot :events] (fnil conj [])
-                       {:timestamp (.toISOString (js/Date.))
-                        :type :request
-                        :message "[eglot] textDocument/formatting"})
-        :fx [[:dispatch [:echo/message
-                         "Eglot: format buffer (requires active LSP connection)"]]]}
+       (do
+         (log-eglot-event! :request "[eglot] textDocument/formatting")
+         {:fx [[:dispatch [:echo/message
+                           "Eglot: format buffer (requires active LSP connection)"]]]})
        {:fx [[:dispatch [:echo/message "Eglot: no active server"]]]}))))
 
 ;; =============================================================================
@@ -290,57 +285,51 @@
 
 (rf/reg-event-fx
  :eglot/find-declaration
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Find declaration of symbol at point (delegates to xref)."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         server (get-in db [:eglot :servers buffer-id])]
+   (let [buffer-id (lisp/current-buffer)
+         server (get-in @eglot-state [:servers buffer-id])]
      (if server
-       {:db (update-in db [:eglot :events] (fnil conj [])
-                       {:timestamp (.toISOString (js/Date.))
-                        :type :request
-                        :message "[eglot] textDocument/declaration"})
-        :fx [[:dispatch [:xref/find-definitions]]]}
+       (do
+         (log-eglot-event! :request "[eglot] textDocument/declaration")
+         {:fx [[:dispatch [:xref/find-definitions]]]})
        {:fx [[:dispatch [:xref/find-definitions]]]}))))
 
 (rf/reg-event-fx
  :eglot/find-implementation
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Find implementation of symbol at point (delegates to xref)."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         server (get-in db [:eglot :servers buffer-id])]
+   (let [buffer-id (lisp/current-buffer)
+         server (get-in @eglot-state [:servers buffer-id])]
      (if server
-       {:db (update-in db [:eglot :events] (fnil conj [])
-                       {:timestamp (.toISOString (js/Date.))
-                        :type :request
-                        :message "[eglot] textDocument/implementation"})
-        :fx [[:dispatch [:xref/find-references]]]}
+       (do
+         (log-eglot-event! :request "[eglot] textDocument/implementation")
+         {:fx [[:dispatch [:xref/find-references]]]})
        {:fx [[:dispatch [:xref/find-references]]]}))))
 
 ;; =============================================================================
 ;; Diagnostics Display
 ;; =============================================================================
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :eglot/set-diagnostics
- (fn [db [_ buffer-id diagnostics]]
-   (assoc-in db [:eglot :diagnostics buffer-id] diagnostics)))
+ (fn [{:keys [_db]} [_ buffer-id diagnostics]]
+   (swap! eglot-state assoc-in [:diagnostics buffer-id] diagnostics)
+   {}))
 
 (rf/reg-sub
  :eglot/diagnostics
- (fn [db [_ buffer-id]]
-   (get-in db [:eglot :diagnostics buffer-id] [])))
+ (fn [_db [_ buffer-id]]
+   (get-in @eglot-state [:diagnostics buffer-id] [])))
 
 (rf/reg-event-fx
  :eglot/show-diagnostics
  (fn [{:keys [db]} [_]]
    "Show diagnostics for current buffer in a dedicated buffer."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         diagnostics (get-in db [:eglot :diagnostics buffer-id] [])
-         buffer (get-in db [:buffers buffer-id])
-         buffer-name (or (:name buffer) "unknown")]
+   (let [buffer-id (lisp/current-buffer)
+         diagnostics (get-in @eglot-state [:diagnostics buffer-id] [])
+         buffer-info (lisp/buffer-info buffer-id)
+         buffer-name (or (:name buffer-info) "unknown")]
      (if (seq diagnostics)
        (let [content (str "Diagnostics for: " buffer-name "\n"
                           (str/join "" (repeat 50 "=")) "\n\n"
@@ -398,18 +387,15 @@
 
 (rf/reg-event-fx
  :eglot/hover
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Show hover documentation for symbol at point."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         server (get-in db [:eglot :servers buffer-id])]
+   (let [buffer-id (lisp/current-buffer)
+         server (get-in @eglot-state [:servers buffer-id])]
      (if server
-       {:db (update-in db [:eglot :events] (fnil conj [])
-                       {:timestamp (.toISOString (js/Date.))
-                        :type :request
-                        :message "[eglot] textDocument/hover"})
-        :fx [[:dispatch [:echo/message
-                         "Eglot: hover documentation (requires active LSP connection)"]]]}
+       (do
+         (log-eglot-event! :request "[eglot] textDocument/hover")
+         {:fx [[:dispatch [:echo/message
+                           "Eglot: hover documentation (requires active LSP connection)"]]]})
        {:fx [[:dispatch [:echo/message "Eglot: no active server"]]]}))))
 
 ;; =============================================================================
@@ -426,12 +412,9 @@
 
 (rf/reg-event-fx
  :eglot/workspace-symbol-exec
- (fn [{:keys [db]} [_ query]]
-   {:db (update-in db [:eglot :events] (fnil conj [])
-                   {:timestamp (.toISOString (js/Date.))
-                    :type :request
-                    :message (str "[eglot] workspace/symbol -> " query)})
-    :fx [[:dispatch [:echo/message
+ (fn [{:keys [_db]} [_ query]]
+   (log-eglot-event! :request (str "[eglot] workspace/symbol -> " query))
+   {:fx [[:dispatch [:echo/message
                      (str "Eglot: workspace symbol '" query
                           "' (requires active LSP connection)")]]]}))
 
@@ -443,7 +426,8 @@
  :eglot/events-buffer
  (fn [{:keys [db]} [_]]
    "Show *EGLOT Events* buffer with protocol log."
-   (let [events (get-in db [:eglot :events] [])
+   (let [events (get @eglot-state :events [])
+         servers (get @eglot-state :servers {})
          content (str "*EGLOT Events*\n"
                       (str/join "" (repeat 50 "=")) "\n\n"
                       (if (seq events)
@@ -455,7 +439,7 @@
                                        events))
                         "(no events recorded)")
                       "\n\n"
-                      "Servers: " (count (get-in db [:eglot :servers] {})) " active\n"
+                      "Servers: " (count servers) " active\n"
                       "Configured modes: " (str/join ", " (map name (keys eglot-server-programs))) "\n")
          buffers (:buffers db)
          buffer-id (db/next-buffer-id buffers)

@@ -187,6 +187,31 @@
   [sym]
   (get @global-vars sym))
 
+(defn last-command
+  "Return the last command that was executed.
+
+  Usage: (last-command)
+  Returns: Command keyword or nil"
+  []
+  (get @global-vars '*last-command*))
+
+(defn this-command
+  "Return the command currently being executed.
+
+  Usage: (this-command)
+  Returns: Command keyword or nil"
+  []
+  (get @global-vars '*this-command*))
+
+(defn set-this-command!
+  "Set the current command (called by command system).
+   Also updates last-command to previous this-command."
+  [cmd]
+  (let [prev (get @global-vars '*this-command*)]
+    (swap! global-vars assoc
+           '*last-command* prev
+           '*this-command* cmd)))
+
 ;; =============================================================================
 ;; Buffer Query Functions (Read-Only)
 ;; =============================================================================
@@ -254,6 +279,25 @@
   Returns: String"
   [start end]
   (buffer-substring start end))
+
+(defn word-before-point
+  "Return the word before point and its start position.
+
+  Usage: (word-before-point)
+  Returns: {:word string :start position} or nil if no word"
+  []
+  (let [pos (point)
+        text (buffer-string)]
+    (when (and text (pos? pos) (<= pos (count text)))
+      (let [before-cursor (subs text 0 pos)]
+        (loop [idx (dec (count before-cursor))]
+          (if (neg? idx)
+            {:word before-cursor :start 0}
+            (let [ch (nth before-cursor idx)]
+              (if (re-matches #"[\w\-_]" (str ch))
+                (recur (dec idx))
+                {:word (subs before-cursor (inc idx))
+                 :start (inc idx)}))))))))
 
 (defn buffer-name
   "Return name of current buffer.
@@ -1106,6 +1150,74 @@
        (delete-region (+ pos n) pos)))
    nil))
 
+(defn insert-at
+  "Insert TEXT at specified position POS.
+
+  Usage: (insert-at 10 \"hello\")
+  Returns: nil (side effect only)"
+  [pos text]
+  (let [db @rfdb/app-db
+        active-window-id (:active-window-id db)
+        active-window (db/find-window-in-tree (:window-tree db) active-window-id)
+        buffer-id (:buffer-id active-window)
+        buffer (get-in db [:buffers buffer-id])
+        wasm-instance (:wasm-instance buffer)
+        text-str (str text)]
+    (when (and wasm-instance (pos? (count text-str)))
+      (.insert ^js wasm-instance pos text-str)
+      (let [new-text (.getText ^js wasm-instance)
+            lines (clojure.string/split new-text #"\n" -1)
+            line-count (count lines)
+            new-pos (+ pos (count text-str))
+            new-line-col (buf/point-to-line-col {:wasm-instance wasm-instance} new-pos)]
+        (swap! rfdb/app-db
+               (fn [current-db]
+                 (let [window-tree (:window-tree current-db)
+                       new-window-tree (db/update-window-in-tree window-tree active-window-id
+                                                                  #(assoc % :cursor-position new-line-col))]
+                   (-> current-db
+                       (assoc :window-tree new-window-tree)
+                       (assoc-in [:buffers buffer-id :cache :text] new-text)
+                       (assoc-in [:buffers buffer-id :cache :line-count] line-count)))))))
+    nil))
+
+(defn replace-text
+  "Replace text from START for LENGTH characters with NEW-TEXT.
+   This is an atomic delete+insert operation.
+
+  Usage: (replace-text 10 5 \"hello\")  ; Replace 5 chars at pos 10 with \"hello\"
+  Returns: nil (side effect only)"
+  [start length new-text]
+  (let [db @rfdb/app-db
+        active-window-id (:active-window-id db)
+        active-window (db/find-window-in-tree (:window-tree db) active-window-id)
+        buffer-id (:buffer-id active-window)
+        buffer (get-in db [:buffers buffer-id])
+        wasm-instance (:wasm-instance buffer)
+        text-str (str new-text)]
+    (when wasm-instance
+      ;; Delete then insert
+      (when (pos? length)
+        (.delete ^js wasm-instance start length))
+      (when (pos? (count text-str))
+        (.insert ^js wasm-instance start text-str))
+      ;; Update cache and cursor
+      (let [new-text (.getText ^js wasm-instance)
+            lines (clojure.string/split new-text #"\n" -1)
+            line-count (count lines)
+            new-pos (+ start (count text-str))
+            new-line-col (buf/point-to-line-col {:wasm-instance wasm-instance} new-pos)]
+        (swap! rfdb/app-db
+               (fn [current-db]
+                 (let [window-tree (:window-tree current-db)
+                       new-window-tree (db/update-window-in-tree window-tree active-window-id
+                                                                  #(assoc % :cursor-position new-line-col))]
+                   (-> current-db
+                       (assoc :window-tree new-window-tree)
+                       (assoc-in [:buffers buffer-id :cache :text] new-text)
+                       (assoc-in [:buffers buffer-id :cache :line-count] line-count)))))))
+    nil))
+
 (defn erase-buffer
   "Delete entire contents of current buffer.
 
@@ -1456,6 +1568,50 @@
         (swap! rfdb/app-db assoc-in [:buffers buffer-id] new-buffer)
         buffer-id))))
 
+(defn create-special-buffer
+  "Create a special buffer with NAME, initial CONTENT, and OPTIONS.
+
+  Options:
+  - :major-mode - Major mode keyword (default :fundamental-mode)
+  - :read-only - Whether buffer is read-only (default false)
+  - :properties - Map of additional buffer properties
+
+  Usage: (create-special-buffer \"*Occur*\" \"content\" {:major-mode :occur-mode :read-only true})
+  Returns: Buffer ID"
+  [name content options]
+  (let [WasmGapBuffer (get-in @rfdb/app-db [:system :wasm-constructor])
+        wasm-instance (when WasmGapBuffer (new WasmGapBuffer (or content "")))]
+    (when wasm-instance
+      (let [buffer-id (db/next-buffer-id (:buffers @rfdb/app-db))
+            base-buffer (db/create-buffer buffer-id name wasm-instance)
+            lines (str/split-lines (or content ""))
+            line-count (count lines)
+            enhanced-buffer (merge base-buffer
+                                   {:major-mode (or (:major-mode options) :fundamental-mode)
+                                    :is-read-only? (boolean (:read-only options))
+                                    :cache {:text (or content "")
+                                            :line-count line-count}}
+                                   (:properties options))]
+        (swap! rfdb/app-db assoc-in [:buffers buffer-id] enhanced-buffer)
+        buffer-id))))
+
+(defn set-buffer-property
+  "Set a property on a buffer.
+
+  Usage: (set-buffer-property buffer-id :occur-highlights [...])
+  Returns: nil"
+  [buffer-id prop value]
+  (swap! rfdb/app-db assoc-in [:buffers buffer-id prop] value)
+  nil)
+
+(defn get-buffer-property
+  "Get a property from a buffer.
+
+  Usage: (get-buffer-property buffer-id :occur-highlights)
+  Returns: Property value or nil"
+  [buffer-id prop]
+  (get-in @rfdb/app-db [:buffers buffer-id prop]))
+
 (defn- update-window-buffer
   "Update the buffer-id in the active window.
   Helper for switch-to-buffer that mimics :window/show-buffer event."
@@ -1465,24 +1621,32 @@
     (and (= (:type tree) :leaf)
          (= (:id tree) active-window-id))
     (assoc tree :buffer-id buffer-id)
-    (= (:type tree) :split)
+    ;; Split nodes can be :split, :hsplit, or :vsplit
+    (or (= (:type tree) :split)
+        (= (:type tree) :hsplit)
+        (= (:type tree) :vsplit))
     (assoc tree
            :first (update-window-buffer (:first tree) active-window-id buffer-id)
            :second (update-window-buffer (:second tree) active-window-id buffer-id))
     :else tree))
 
 (defn switch-to-buffer
-  "Switch to buffer NAME (create if doesn't exist).
+  "Switch to buffer NAME-OR-ID (create if doesn't exist).
 
   NOTE: Uses direct swap! to update app-db because dispatch-sync doesn't work
   when called from inside an event handler.
 
-  Usage: (switch-to-buffer \"*scratch*\")
+  Usage: (switch-to-buffer \"*scratch*\") or (switch-to-buffer 1)
   Returns: nil (side effect only)"
-  [name]
+  [name-or-id]
   (let [db @rfdb/app-db
-        existing-buffer (buf/get-buffer db name)
-        buffer-id (or (:id existing-buffer) (create-buffer name))]
+        ;; Handle both buffer names (strings) and buffer IDs (numbers)
+        buffer-id (if (number? name-or-id)
+                    ;; Direct buffer ID - verify it exists
+                    (when (get-in db [:buffers name-or-id]) name-or-id)
+                    ;; Buffer name - look up or create
+                    (let [existing-buffer (buf/get-buffer db name-or-id)]
+                      (or (:id existing-buffer) (create-buffer name-or-id))))]
     ;; Directly update window-tree to show buffer (same as :window/show-buffer)
     (when buffer-id
       (let [active-window-id (:active-window-id @rfdb/app-db)
@@ -1520,6 +1684,88 @@
   (let [db @rfdb/app-db
         buffers (:buffers db)]
     (vec (map :name (vals buffers)))))
+
+(defn buffer-list-ids
+  "Return list of all buffer IDs.
+
+  Usage: (buffer-list-ids)
+  Returns: Vector of integers"
+  []
+  (let [db @rfdb/app-db
+        buffers (:buffers db)]
+    (vec (keys buffers))))
+
+(defn buffer-size-of
+  "Return size of BUFFER-ID in characters.
+
+  Usage: (buffer-size-of buffer-id)
+  Returns: Integer"
+  [buffer-id]
+  (let [buffer (get-in @rfdb/app-db [:buffers buffer-id])
+        wasm (:wasm-instance buffer)]
+    (if wasm
+      (try (.-length wasm) (catch :default _ 0))
+      0)))
+
+(defn buffer-mode-of
+  "Return major mode of BUFFER-ID.
+
+  Usage: (buffer-mode-of buffer-id)
+  Returns: Keyword"
+  [buffer-id]
+  (get-in @rfdb/app-db [:buffers buffer-id :major-mode] :fundamental-mode))
+
+(defn buffer-modified-p-of
+  "Return non-nil if BUFFER-ID has been modified.
+
+  Usage: (buffer-modified-p-of buffer-id)
+  Returns: Boolean"
+  [buffer-id]
+  (get-in @rfdb/app-db [:buffers buffer-id :is-modified?] false))
+
+(defn buffer-read-only-p-of
+  "Return non-nil if BUFFER-ID is read-only.
+
+  Usage: (buffer-read-only-p-of buffer-id)
+  Returns: Boolean"
+  [buffer-id]
+  (get-in @rfdb/app-db [:buffers buffer-id :is-read-only?] false))
+
+(defn buffer-file-name-of
+  "Return file path of BUFFER-ID.
+
+  Usage: (buffer-file-name-of buffer-id)
+  Returns: String or nil"
+  [buffer-id]
+  (get-in @rfdb/app-db [:buffers buffer-id :file-path]))
+
+(defn buffer-info
+  "Return map with info about BUFFER-ID.
+
+  Usage: (buffer-info buffer-id)
+  Returns: {:id :name :size :mode :modified? :read-only? :file}"
+  [buffer-id]
+  (let [buffer (get-in @rfdb/app-db [:buffers buffer-id])]
+    (when buffer
+      {:id buffer-id
+       :name (:name buffer "")
+       :size (buffer-size-of buffer-id)
+       :mode (:major-mode buffer :fundamental-mode)
+       :modified? (:is-modified? buffer false)
+       :read-only? (:is-read-only? buffer false)
+       :file (or (:file-path buffer) "")})))
+
+(defn all-buffer-info
+  "Return list of buffer info maps for all buffers.
+
+  Usage: (all-buffer-info)
+  Returns: Vector of {:id :name :size :mode :modified? :read-only? :file}"
+  []
+  (let [db @rfdb/app-db
+        buffers (:buffers db)]
+    (vec (map (fn [[id _buffer]]
+                (buffer-info id))
+              buffers))))
 
 (defn buffer-live-p
   "Return non-nil if OBJECT is a buffer which has not been killed.
@@ -1621,6 +1867,7 @@
   Returns: nil (side effect only)"
   []
   (rf/dispatch-sync [:window/split :horizontal])
+  (run-hooks 'window-configuration-change-hook)
   nil)
 
 (defn split-window-vertically
@@ -1630,6 +1877,7 @@
   Returns: nil (side effect only)"
   []
   (rf/dispatch-sync [:window/split :vertical])
+  (run-hooks 'window-configuration-change-hook)
   nil)
 
 (defn delete-window
@@ -1639,6 +1887,7 @@
   Returns: nil (side effect only)"
   []
   (rf/dispatch-sync [:window/delete])
+  (run-hooks 'window-configuration-change-hook)
   nil)
 
 (defn delete-other-windows
@@ -1648,6 +1897,7 @@
   Returns: nil (side effect only)"
   []
   (rf/dispatch-sync [:window/delete-others])
+  (run-hooks 'window-configuration-change-hook)
   nil)
 
 (defn other-window
@@ -1678,6 +1928,186 @@
    (let [db @rfdb/app-db
          win (db/find-window-in-tree (:window-tree db) window)]
      (:buffer-id win))))
+
+(defn window-list
+  "Return list of all windows.
+
+  Usage: (window-list)
+  Returns: Vector of window maps with :id, :buffer-id, and :dimensions"
+  []
+  (let [db @rfdb/app-db]
+    (db/get-all-leaf-windows (:window-tree db))))
+
+(defn window-edges
+  "Return edges of WINDOW as (LEFT TOP RIGHT BOTTOM).
+
+  Usage: (window-edges)
+         (window-edges window-id)
+  Returns: Map with :left, :top, :right, :bottom coordinates"
+  ([] (window-edges (selected-window)))
+  ([window-id]
+   (let [db @rfdb/app-db
+         win (db/find-window-in-tree (:window-tree db) window-id)
+         dims (:dimensions win)]
+     (when dims
+       {:left (:x dims)
+        :top (:y dims)
+        :right (+ (:x dims) (:width dims))
+        :bottom (+ (:y dims) (:height dims))}))))
+
+(defn select-window
+  "Select WINDOW, making it the active window.
+
+  Usage: (select-window window-id)
+  Returns: nil (side effect only)"
+  [window-id]
+  (swap! rfdb/app-db assoc :active-window-id window-id :cursor-owner window-id)
+  nil)
+
+(defn windmove-find-window
+  "Find window in DIRECTION from current window.
+  DIRECTION is one of :left, :right, :up, :down.
+  Returns window map or nil."
+  [direction]
+  (let [all-windows (window-list)
+        current-window (first (filter #(= (:id %) (selected-window)) all-windows))
+        current-edges (window-edges (:id current-window))
+        ;; Helper to check overlap
+        overlaps-h? (fn [w]
+                      (let [e (window-edges (:id w))]
+                        (and (< (:left current-edges) (:right e))
+                             (< (:left e) (:right current-edges)))))
+        overlaps-v? (fn [w]
+                      (let [e (window-edges (:id w))]
+                        (and (< (:top current-edges) (:bottom e))
+                             (< (:top e) (:bottom current-edges)))))
+        candidates
+        (case direction
+          :left
+          (->> all-windows
+               (filter #(not= (:id %) (:id current-window)))
+               (filter #(< (:right (window-edges (:id %))) (:left current-edges)))
+               (filter overlaps-v?))
+          :right
+          (->> all-windows
+               (filter #(not= (:id %) (:id current-window)))
+               (filter #(> (:left (window-edges (:id %))) (:right current-edges)))
+               (filter overlaps-v?))
+          :up
+          (->> all-windows
+               (filter #(not= (:id %) (:id current-window)))
+               (filter #(< (:bottom (window-edges (:id %))) (:top current-edges)))
+               (filter overlaps-h?))
+          :down
+          (->> all-windows
+               (filter #(not= (:id %) (:id current-window)))
+               (filter #(> (:top (window-edges (:id %))) (:bottom current-edges)))
+               (filter overlaps-h?))
+          nil)]
+    (when (seq candidates)
+      (case direction
+        :left  (apply max-key #(:right (window-edges (:id %))) candidates)
+        :right (apply min-key #(:left (window-edges (:id %))) candidates)
+        :up    (apply max-key #(:bottom (window-edges (:id %))) candidates)
+        :down  (apply min-key #(:top (window-edges (:id %))) candidates)))))
+
+(defn windmove-left
+  "Select the window to the left of the current one.
+
+  Usage: (windmove-left)
+  Returns: nil (side effect only)"
+  []
+  (if-let [target (windmove-find-window :left)]
+    (select-window (:id target))
+    (message "No window left"))
+  nil)
+
+(defn windmove-right
+  "Select the window to the right of the current one.
+
+  Usage: (windmove-right)
+  Returns: nil (side effect only)"
+  []
+  (if-let [target (windmove-find-window :right)]
+    (select-window (:id target))
+    (message "No window right"))
+  nil)
+
+(defn windmove-up
+  "Select the window above the current one.
+
+  Usage: (windmove-up)
+  Returns: nil (side effect only)"
+  []
+  (if-let [target (windmove-find-window :up)]
+    (select-window (:id target))
+    (message "No window above"))
+  nil)
+
+(defn windmove-down
+  "Select the window below the current one.
+
+  Usage: (windmove-down)
+  Returns: nil (side effect only)"
+  []
+  (if-let [target (windmove-find-window :down)]
+    (select-window (:id target))
+    (message "No window below"))
+  nil)
+
+;; =============================================================================
+;; Window Configuration (for winner-mode)
+;; =============================================================================
+
+(defn current-window-configuration
+  "Return the current window configuration.
+
+  Usage: (current-window-configuration)
+  Returns: Window tree structure (opaque to packages)"
+  []
+  (:window-tree @rfdb/app-db))
+
+(defn set-window-configuration
+  "Restore a saved window configuration.
+
+  NOTE: Uses direct swap! to update app-db because dispatch-sync doesn't work
+  when called from inside an event handler.
+
+  Usage: (set-window-configuration config)
+  Returns: nil (side effect only)"
+  [config]
+  ;; Directly update db to bypass potential dispatch-sync issues
+  (let [current-active (:active-window-id @rfdb/app-db)
+        all-windows (db/get-all-leaf-windows config)
+        active-in-new? (some #(= (:id %) current-active) all-windows)
+        new-active-id (if active-in-new?
+                        current-active
+                        (:id (first all-windows)))]
+    (swap! rfdb/app-db
+           (fn [db]
+             (-> db
+                 (assoc :window-tree config)
+                 (assoc :active-window-id new-active-id)
+                 (assoc :cursor-owner new-active-id)))))
+  nil)
+
+(defn window-configuration-equal?
+  "Check if two window configurations are structurally equal.
+  Ignores cursor position and viewport, only compares structure and buffers.
+
+  Usage: (window-configuration-equal? config1 config2)
+  Returns: boolean"
+  [tree1 tree2]
+  (cond
+    (and (nil? tree1) (nil? tree2)) true
+    (or (nil? tree1) (nil? tree2)) false
+    (not= (:type tree1) (:type tree2)) false
+    (= (:type tree1) :leaf)
+    (and (= (:id tree1) (:id tree2))
+         (= (:buffer-id tree1) (:buffer-id tree2)))
+    :else
+    (and (window-configuration-equal? (:first tree1) (:first tree2))
+         (window-configuration-equal? (:second tree1) (:second tree2)))))
 
 ;; =============================================================================
 ;; Buffer-File Association
@@ -1859,10 +2289,10 @@
     ;; Store the callback
     (swap! minibuffer-callbacks assoc callback-id callback)
     ;; Activate minibuffer with our callback event
-    (rf/dispatch-sync [:minibuffer/activate
-                       {:prompt prompt
-                        :on-confirm [:lisp/minibuffer-callback callback-id]
-                        :on-cancel [:lisp/minibuffer-cancel callback-id]}])
+    (rf/dispatch [:minibuffer/activate
+                  {:prompt prompt
+                   :on-confirm [:lisp/minibuffer-callback callback-id]
+                   :on-cancel [:lisp/minibuffer-callback callback-id]}])
     nil))
 
 ;; Register the callback handler event
@@ -1873,8 +2303,11 @@
    (when-let [callback (get @minibuffer-callbacks callback-id)]
      (swap! minibuffer-callbacks dissoc callback-id)
      ;; Call the callback with the input
+     ;; NOTE: Callback may use swap! to update db, so we read fresh db afterwards
      (callback input))
-   {:db db
+   ;; Return fresh db state (callback may have modified it via swap!)
+   ;; Don't use the original db, as that would overwrite callback's changes
+   {:db @rfdb/app-db
     :fx [[:dispatch [:minibuffer/deactivate]]]}))
 
 (rf/reg-event-fx
@@ -2058,6 +2491,16 @@
         buffer-id (current-buffer)]
     (or (get-in db [:buffers buffer-id :local-keymap key-sequence])
         (get-in db [:keymaps :global :bindings key-sequence]))))
+
+(defn simulate-key
+  "Simulate a key press as if the user typed it.
+   Used for keyboard macro playback.
+
+  Usage: (simulate-key \"C-x C-s\")
+  Returns: nil"
+  [key-sequence]
+  (rf/dispatch-sync [:handle-key-sequence key-sequence])
+  nil)
 
 ;; =============================================================================
 ;; Commands
@@ -2838,6 +3281,220 @@
                remaining)
              (recur (dec remaining) pos-after-word))))))))
 
+;; =============================================================================
+;; Overlays (for highlighting, annotations)
+;; =============================================================================
+
+(defn make-overlay
+  "Create an overlay from START to END in current buffer.
+
+  Usage: (make-overlay start end)
+         (make-overlay start end &optional buffer front-advance rear-advance)
+  Returns: Overlay ID (integer)"
+  ([start end]
+   (make-overlay start end nil nil nil))
+  ([start end _buffer]
+   (make-overlay start end nil nil nil))
+  ([start end _buffer _front-advance]
+   (make-overlay start end nil nil nil))
+  ([start end _buffer _front-advance _rear-advance]
+   (let [buffer-id (current-buffer)
+         next-id (get-in @rfdb/app-db [:buffers buffer-id :next-overlay-id] 1)
+         overlay {:id next-id
+                  :start (min start end)
+                  :end (max start end)
+                  :face nil
+                  :priority 0
+                  :evaporate false}]
+     (swap! rfdb/app-db
+            (fn [db]
+              (-> db
+                  (assoc-in [:buffers buffer-id :overlays next-id] overlay)
+                  (update-in [:buffers buffer-id :next-overlay-id] (fnil inc 1)))))
+     next-id)))
+
+(defn delete-overlay
+  "Delete OVERLAY.
+
+  Usage: (delete-overlay overlay-id)
+  Returns: nil"
+  [overlay-id]
+  (let [buffer-id (current-buffer)]
+    (swap! rfdb/app-db update-in [:buffers buffer-id :overlays] dissoc overlay-id)
+    nil))
+
+(defn overlay-put
+  "Set property PROP to VALUE on OVERLAY.
+
+  Usage: (overlay-put overlay-id 'face 'hi-yellow)
+  Returns: VALUE"
+  [overlay-id prop value]
+  (let [buffer-id (current-buffer)
+        prop-key (if (symbol? prop) (keyword (name prop)) prop)]
+    (swap! rfdb/app-db assoc-in [:buffers buffer-id :overlays overlay-id prop-key] value)
+    value))
+
+(defn overlay-get
+  "Get property PROP from OVERLAY.
+
+  Usage: (overlay-get overlay-id 'face)
+  Returns: Property value or nil"
+  [overlay-id prop]
+  (let [buffer-id (current-buffer)
+        prop-key (if (symbol? prop) (keyword (name prop)) prop)]
+    (get-in @rfdb/app-db [:buffers buffer-id :overlays overlay-id prop-key])))
+
+(defn overlays-in
+  "Return list of overlays that overlap region START to END.
+
+  Usage: (overlays-in start end)
+  Returns: Vector of overlay IDs"
+  [start end]
+  (let [buffer-id (current-buffer)
+        overlays (get-in @rfdb/app-db [:buffers buffer-id :overlays] {})
+        actual-start (min start end)
+        actual-end (max start end)]
+    (vec (keep (fn [[id ov]]
+                 (when (and (< (:start ov) actual-end)
+                            (> (:end ov) actual-start))
+                   id))
+               overlays))))
+
+(defn remove-overlays
+  "Remove all overlays in region from START to END.
+
+  Usage: (remove-overlays start end)
+  Returns: nil"
+  ([start end]
+   (remove-overlays start end nil nil))
+  ([start end _name _value]
+   (let [buffer-id (current-buffer)
+         to-remove (overlays-in start end)]
+     (doseq [id to-remove]
+       (delete-overlay id))
+     nil)))
+
+(defn overlay-start
+  "Return start position of OVERLAY.
+
+  Usage: (overlay-start overlay-id)
+  Returns: Integer"
+  [overlay-id]
+  (let [buffer-id (current-buffer)]
+    (get-in @rfdb/app-db [:buffers buffer-id :overlays overlay-id :start])))
+
+(defn overlay-end
+  "Return end position of OVERLAY.
+
+  Usage: (overlay-end overlay-id)
+  Returns: Integer"
+  [overlay-id]
+  (let [buffer-id (current-buffer)]
+    (get-in @rfdb/app-db [:buffers buffer-id :overlays overlay-id :end])))
+
+;; =============================================================================
+;; Additional primitives for packages
+;; =============================================================================
+
+(defn goto-line
+  "Move cursor to LINE (1-indexed).
+
+  Usage: (goto-line 10)
+  Returns: nil"
+  [line-num]
+  (let [text (buffer-string)
+        lines (clojure.string/split-lines text)
+        target-line (max 1 (min line-num (count lines)))
+        pos (reduce + (map #(inc (count %)) (take (dec target-line) lines)))]
+    (goto-char pos)
+    nil))
+
+(defn symbol-at-point
+  "Return the symbol at point as a string.
+
+  Usage: (symbol-at-point)
+  Returns: String or nil"
+  []
+  (let [text (buffer-string)
+        pos (point)
+        text-len (count text)]
+    (when (and text (< pos text-len))
+      (let [;; Find start of symbol
+            start (loop [p pos]
+                    (if (and (> p 0)
+                             (let [ch (nth text (dec p))]
+                               (re-matches #"[\w_-]" (str ch))))
+                      (recur (dec p))
+                      p))
+            ;; Find end of symbol
+            end (loop [p pos]
+                  (if (and (< p text-len)
+                           (let [ch (nth text p)]
+                             (re-matches #"[\w_-]" (str ch))))
+                    (recur (inc p))
+                    p))
+            sym (subs text start end)]
+        (when (seq sym) sym)))))
+
+(defn buffer-text-of
+  "Return the text content of BUFFER-ID.
+
+  Usage: (buffer-text-of buffer-id)
+  Returns: String or nil"
+  [buffer-id]
+  (let [buffer (get-in @rfdb/app-db [:buffers buffer-id])
+        wasm (:wasm-instance buffer)]
+    (when wasm
+      (try (.getText ^js wasm) (catch :default _ nil)))))
+
+(defn split-window-below
+  "Split current window horizontally (new window below).
+
+  NOTE: Uses direct swap! to update app-db because dispatch-sync doesn't work
+  when called from inside an event handler.
+
+  Usage: (split-window-below)
+  Returns: nil"
+  []
+  (let [db @rfdb/app-db
+        active-window-id (:active-window-id db)
+        window-tree (:window-tree db)
+        active-window (db/find-window-in-tree window-tree active-window-id)
+        new-window-id (db/next-window-id db)
+        new-window (db/create-leaf-window new-window-id (:buffer-id active-window))
+        split-id (inc new-window-id)
+        split-node (db/create-split-window :hsplit split-id active-window new-window)
+        replace-fn (fn replace-fn [tree]
+                     (if (= (:id tree) active-window-id)
+                       split-node
+                       (cond
+                         (= (:type tree) :leaf) tree
+                         (or (= (:type tree) :hsplit) (= (:type tree) :vsplit))
+                         (assoc tree
+                                :first (replace-fn (:first tree))
+                                :second (replace-fn (:second tree)))
+                         :else tree)))
+        new-tree (replace-fn window-tree)]
+    (swap! rfdb/app-db
+           (fn [db]
+             (-> db
+                 (assoc :window-tree new-tree)
+                 (assoc :active-window-id new-window-id)
+                 (assoc :cursor-owner new-window-id)
+                 (assoc :next-window-id (+ new-window-id 2))))))
+  (run-hooks 'window-configuration-change-hook)
+  nil)
+
+(defn switch-to-buffer-other-window
+  "Display BUFFER in another window.
+
+  Usage: (switch-to-buffer-other-window buffer-id)
+  Returns: nil"
+  [buffer-id]
+  (rf/dispatch-sync [:window/split :vertical])
+  (rf/dispatch-sync [:switch-buffer buffer-id])
+  nil)
+
 (defn lisp-error
   "Signal an error with MESSAGE.
 
@@ -2906,6 +3563,14 @@
    'current-buffer current-buffer
    'buffer-name-from-id buffer-name-from-id
    'buffer-list buffer-list
+   'buffer-list-ids buffer-list-ids
+   'buffer-size-of buffer-size-of
+   'buffer-mode-of buffer-mode-of
+   'buffer-modified-p-of buffer-modified-p-of
+   'buffer-read-only-p-of buffer-read-only-p-of
+   'buffer-file-name-of buffer-file-name-of
+   'buffer-info buffer-info
+   'all-buffer-info all-buffer-info
    'buffer-live-p buffer-live-p
    'generate-new-buffer-name generate-new-buffer-name
    'get-buffer get-buffer
@@ -2939,6 +3604,21 @@
    'other-window other-window
    'selected-window selected-window
    'window-buffer window-buffer
+   'split-window-below split-window-below
+   'switch-to-buffer-other-window switch-to-buffer-other-window
+   ;; Overlays
+   'make-overlay make-overlay
+   'delete-overlay delete-overlay
+   'overlay-put overlay-put
+   'overlay-get overlay-get
+   'overlays-in overlays-in
+   'remove-overlays remove-overlays
+   'overlay-start overlay-start
+   'overlay-end overlay-end
+   ;; Additional primitives
+   'goto-line goto-line
+   'symbol-at-point symbol-at-point
+   'buffer-text-of buffer-text-of
    ;; Files
    'set-visited-file-name set-visited-file-name
    'buffer-file-name buffer-file-name

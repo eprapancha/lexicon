@@ -32,7 +32,17 @@
   Based on Emacs lisp/shell.el and lisp/eshell/"
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
+            [lexicon.lisp :as lisp]
             [lexicon.core.db :as db]))
+
+;; =============================================================================
+;; Shell State (Package-local)
+;; =============================================================================
+
+(defonce shell-state
+  (atom {:cwd "/"
+         :history []
+         :env {}}))
 
 ;; =============================================================================
 ;; Eshell Built-in Commands
@@ -48,9 +58,7 @@
 (defn- eshell-pwd
   "Print working directory."
   [_args]
-  (let [db @re-frame.db/app-db
-        cwd (get-in db [:shell :cwd] "/")]
-    cwd))
+  (:cwd @shell-state))
 
 (defn- eshell-date
   "Print current date/time."
@@ -86,8 +94,7 @@
 (defn- eshell-history
   "Show command history."
   [_args]
-  (let [db @re-frame.db/app-db
-        history (get-in db [:shell :history] [])]
+  (let [history (:history @shell-state)]
     (if (seq history)
       (str/join "\n" (map-indexed
                        (fn [i cmd] (str (inc i) "  " cmd))
@@ -98,14 +105,13 @@
   "Change directory."
   [args]
   (let [dir (or (first args) "/")]
-    (rf/dispatch [:shell/set-cwd dir])
+    (swap! shell-state assoc :cwd dir)
     (str "cd " dir)))
 
 (defn- eshell-ls
   "List directory contents (lists open buffers as files)."
   [_args]
-  (let [db @re-frame.db/app-db
-        buffers (vals (:buffers db))
+  (let [buffers (lisp/all-buffer-info)
         file-buffers (filter #(not (str/starts-with? (:name %) "*")) buffers)]
     (if (seq file-buffers)
       (str/join "\n" (map :name file-buffers))
@@ -116,21 +122,16 @@
   [args]
   (let [filename (first args)]
     (if filename
-      (let [db @re-frame.db/app-db
-            buffer (first (filter #(= (:name (val %)) filename) (:buffers db)))]
-        (if buffer
-          (let [wasm (:wasm-instance (val buffer))]
-            (if wasm
-              (try (.getText ^js wasm) (catch :default _ "Error reading buffer"))
-              "Buffer has no content"))
-          (str filename ": No such file or buffer")))
+      (if-let [buffer-id (lisp/get-buffer filename)]
+        (let [text (lisp/buffer-text-of buffer-id)]
+          (or text "Buffer has no content"))
+        (str filename ": No such file or buffer"))
       "cat: missing operand")))
 
 (defn- eshell-env
   "Display environment variables."
   [_args]
-  (let [db @re-frame.db/app-db
-        env (get-in db [:shell :env] {})]
+  (let [env (:env @shell-state)]
     (if (seq env)
       (str/join "\n" (map (fn [[k v]] (str k "=" v)) (sort env)))
       "TERM=xterm\nSHELL=/bin/eshell\nUSER=lexicon-user\nHOME=/\nPATH=/usr/bin")))
@@ -143,7 +144,7 @@
       (let [parts (str/split assignment #"=" 2)
             k (first parts)
             v (or (second parts) "")]
-        (rf/dispatch [:shell/set-env k v])
+        (swap! shell-state assoc-in [:env k] v)
         (str k "=" v))
       "export: usage: export NAME=VALUE")))
 
@@ -184,27 +185,13 @@
       (str cmd ": command not found"))))
 
 ;; =============================================================================
-;; Shell State Management
-;; =============================================================================
-
-(rf/reg-event-db
- :shell/set-cwd
- (fn [db [_ dir]]
-   (assoc-in db [:shell :cwd] dir)))
-
-(rf/reg-event-db
- :shell/set-env
- (fn [db [_ key val]]
-   (assoc-in db [:shell :env key] val)))
-
-;; =============================================================================
 ;; Shell Buffer Management
 ;; =============================================================================
 
 (defn- make-shell-prompt
   "Generate shell prompt string."
-  [db]
-  (let [cwd (get-in db [:shell :cwd] "/")]
+  []
+  (let [cwd (:cwd @shell-state)]
     (str "lexicon:" cwd " $ ")))
 
 (rf/reg-event-fx
@@ -212,11 +199,10 @@
  (fn [{:keys [db]} [_ shell-name]]
    "Open a shell buffer (M-x shell)."
    (let [name (or shell-name "*shell*")
-         ;; Check if shell buffer already exists
-         existing (first (filter #(= (:name (val %)) name) (:buffers db)))]
-     (if existing
-       {:fx [[:dispatch [:switch-buffer (key existing)]]]}
-       (let [prompt (make-shell-prompt db)
+         existing-id (lisp/get-buffer name)]
+     (if existing-id
+       {:fx [[:dispatch [:switch-buffer existing-id]]]}
+       (let [prompt (make-shell-prompt)
              content (str "Lexicon Shell\n"
                           "Type 'help' for available commands.\n\n"
                           prompt)
@@ -252,14 +238,12 @@
                                :overlays {}
                                :next-overlay-id 1
                                :cache {:text content
-                                       :line-count line-count}})
-                    (assoc-in [:shell :cwd] "/")
-                    (assoc-in [:shell :history] []))
+                                       :line-count line-count}}))
             :fx [[:dispatch [:switch-buffer buffer-id]]]}))))))
 
 (rf/reg-event-fx
  :eshell/open
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Open an eshell buffer (M-x eshell)."
    {:fx [[:dispatch [:shell/open "*eshell*"]]]}))
 
@@ -269,7 +253,7 @@
 
 (rf/reg-event-fx
  :shell-command
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Execute a shell command and display output (M-!)."
    {:fx [[:dispatch [:minibuffer/activate
                      {:prompt "Shell command: "
@@ -277,18 +261,18 @@
 
 (rf/reg-event-fx
  :shell-command/execute
- (fn [{:keys [db]} [_ command]]
+ (fn [{:keys [_db]} [_ command]]
    "Execute the shell command and show result."
    (let [output (execute-command command)]
      (if (= output :clear)
        {:fx [[:dispatch [:echo/message "clear: not applicable outside shell buffer"]]]}
-       ;; Add to history
-       {:db (update-in db [:shell :history] (fnil conj []) command)
-        :fx [[:dispatch [:echo/message output]]]}))))
+       (do
+         (swap! shell-state update :history conj command)
+         {:fx [[:dispatch [:echo/message output]]]})))))
 
 (rf/reg-event-fx
  :async-shell-command
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Execute an async shell command (M-&)."
    {:fx [[:dispatch [:minibuffer/activate
                      {:prompt "Async shell command: "
@@ -296,7 +280,7 @@
 
 (rf/reg-event-fx
  :shell-command-on-region
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Pipe region to shell command (M-|)."
    {:fx [[:dispatch [:minibuffer/activate
                      {:prompt "Shell command on region: "
@@ -315,8 +299,8 @@
      (when wasm
        (let [current-text (try (.getText wasm) (catch :default _ ""))
              new-output (if (= output :clear)
-                          (make-shell-prompt db)
-                          (str "\n" output "\n" (make-shell-prompt db)))
+                          (make-shell-prompt)
+                          (str "\n" output "\n" (make-shell-prompt)))
              new-text (if (= output :clear)
                         new-output
                         (str current-text new-output))
@@ -327,10 +311,10 @@
              (.delete wasm 0 len)))
          (when-not (= output :clear)
            (.insert wasm (.-length wasm) new-output))
+         (swap! shell-state update :history conj input)
          {:db (-> db
                   (assoc-in [:buffers buffer-id :cache :text] new-text)
-                  (assoc-in [:buffers buffer-id :cache :line-count] line-count)
-                  (update-in [:shell :history] (fnil conj []) input))})))))
+                  (assoc-in [:buffers buffer-id :cache :line-count] line-count))})))))
 
 ;; =============================================================================
 ;; Initialization

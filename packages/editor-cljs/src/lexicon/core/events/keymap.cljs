@@ -11,7 +11,7 @@
             [lexicon.core.minibuffer :as minibuffer]
             [lexicon.core.modes.electric-pair :as electric-pair]
             [lexicon.core.modes.delete-selection :as delete-selection]
-            [lexicon.core.kmacro :as kmacro]))
+            [lexicon.lisp :as lisp]))
 
 ;; -- Helper Functions --
 
@@ -190,9 +190,8 @@
        ;; Normal key handling
        :else
        (do
-         ;; Record key for keyboard macros if recording
-         (when (kmacro/recording?-fn)
-           (kmacro/record-key! key-str))
+         ;; Fire key-pressed hook for keyboard macros and other listeners
+         (lisp/run-hook-with-args 'key-pressed-hook key-str)
 
          (let [prefix-state (get-in db [:ui :prefix-key-state])
                full-sequence (if prefix-state

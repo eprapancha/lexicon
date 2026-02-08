@@ -17,7 +17,6 @@
             [lexicon.core.log :as log]
             [lexicon.core.api.message :refer [message]]
             [lexicon.core.dynamic :as dyn]
-            [lexicon.core.kmacro :as kmacro]
             [lexicon.lisp :as lisp]))
 
 ;; -- Helper Functions --
@@ -211,10 +210,10 @@
  :handle-text-input
  (fn [{:keys [db]} [_ {:keys [input-type data dom-cursor-pos]}]]
    "Handle text input events by queueing operations"
-   ;; Record for keyboard macros if recording
-   (when (and (kmacro/recording?-fn) (= input-type "insertText") data)
+   ;; Fire hook for text input (keyboard macros and other listeners)
+   (when (and (= input-type "insertText") data)
      (doseq [ch data]
-       (kmacro/record-key! (str ch))))
+       (lisp/run-hook-with-args 'key-pressed-hook (str ch))))
    (let [prefix-arg (get-in db [:ui :prefix-argument])
          prefix-active? (get-in db [:ui :prefix-argument-active?])
          repeat-count (if (and prefix-active? prefix-arg) prefix-arg 1)]

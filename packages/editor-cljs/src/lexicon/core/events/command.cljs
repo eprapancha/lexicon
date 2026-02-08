@@ -7,7 +7,8 @@
             [lexicon.core.context :as ctx]
             [lexicon.core.api.interactive :as interactive]
             [lexicon.core.api.buffer :as buffer-api]
-            [lexicon.core.log :as log]))
+            [lexicon.core.log :as log]
+            [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
 ;; Command Registry and Execution
@@ -132,6 +133,8 @@
              ;; Phase 6.5: Don't clear prefix-arg/transient-keymap for prefix argument accumulation commands
              should-clear-prefix? (not (#{:universal-argument :universal-argument-more
                                           :digit-argument :negative-argument} command-name))]
+         ;; Track command execution for packages that need last-command (e.g., dabbrev)
+         (lisp/set-this-command! command-name)
          ;; Execute command with undo boundaries
          {:db db'
           :fx (cond-> [[:dispatch-with-context {:event [:hook/run :before-command-hook context]

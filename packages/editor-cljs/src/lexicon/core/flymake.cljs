@@ -7,7 +7,8 @@
 
   Based on Emacs lisp/progmodes/flymake.el"
   (:require [re-frame.core :as rf]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
 ;; Diagnostic Types
@@ -196,8 +197,8 @@
 ;; Enable flymake-mode for current buffer
 (rf/reg-event-fx
  :flymake-mode
- (fn [{:keys [db]} [_ enable?]]
-   (let [buffer-id (get-in db [:editor :current-buffer-id])
+ (fn [{:keys [_db]} [_ enable?]]
+   (let [buffer-id (lisp/current-buffer)
          currently-enabled? (get-in @flymake-state [buffer-id :enabled?] false)
          new-enabled? (if (nil? enable?)
                         (not currently-enabled?)
@@ -212,12 +213,11 @@
 ;; Start flymake check
 (rf/reg-event-fx
  :flymake/start
- (fn [{:keys [db]} [_ buffer-id]]
-   (let [buffer-id (or buffer-id (get-in db [:editor :current-buffer-id]))
-         buffer (get-in db [:buffers buffer-id])
-         wasm (:wasm-instance buffer)
-         text (when wasm (try (.getText wasm) (catch js/Error _ "")))
-         mode (:major-mode buffer)
+ (fn [{:keys [_db]} [_ buffer-id]]
+   (let [buffer-id (or buffer-id (lisp/current-buffer))
+         buffer-info (lisp/buffer-info buffer-id)
+         text (lisp/buffer-text-of buffer-id)
+         mode (:major-mode buffer-info)
 
          ;; Select backends based on mode
          backends (case mode
@@ -239,38 +239,38 @@
            (catch js/Error e
              (js/console.warn "Flymake backend error:" backend-name e)))))
 
-     {:db db})))
+     {})))
 
 ;; Report diagnostics from backend
 (rf/reg-event-fx
  :flymake/report
- (fn [{:keys [db]} [_ buffer-id diagnostics]]
+ (fn [{:keys [_db]} [_ buffer-id diagnostics]]
    (swap! flymake-state assoc-in [buffer-id :running?] false)
    (swap! flymake-state update-in [buffer-id :diagnostics]
           (fn [existing]
             (sort-diagnostics (into (vec (or existing [])) diagnostics))))
-   {:db db}))
+   {}))
 
 ;; Clear diagnostics
-(rf/reg-event-db
+(rf/reg-event-fx
  :flymake/clear
- (fn [db [_ buffer-id]]
-   (let [buffer-id (or buffer-id (get-in db [:editor :current-buffer-id]))]
+ (fn [{:keys [_db]} [_ buffer-id]]
+   (let [buffer-id (or buffer-id (lisp/current-buffer))]
      (clear-diagnostics buffer-id)
-     db)))
+     {})))
 
 ;; Navigate to next diagnostic
 (rf/reg-event-fx
  :flymake-goto-next-error
- (fn [{:keys [db]} [_ _n filter-type]]
+ (fn [{:keys [_db]} [_ _n filter-type]]
    ;; TODO: Implement count argument (currently always moves by 1)
-   (let [buffer-id (get-in db [:editor :current-buffer-id])
+   (let [buffer-id (lisp/current-buffer)
          diagnostics (sort-diagnostics (get-diagnostics buffer-id))
          ;; Apply filter if specified
          diagnostics (if filter-type
                        (filter #(= (:type %) filter-type) diagnostics)
                        diagnostics)
-         cursor-line (get-in db [:buffers buffer-id :cursor-position :line] 0)
+         cursor-line (lisp/current-line)
          ;; Find next diagnostic after current line
          next-diag (first (filter #(> (:line %) cursor-line) diagnostics))]
      (if next-diag
@@ -281,14 +281,14 @@
 ;; Navigate to previous diagnostic
 (rf/reg-event-fx
  :flymake-goto-prev-error
- (fn [{:keys [db]} [_ _n filter-type]]
+ (fn [{:keys [_db]} [_ _n filter-type]]
    ;; TODO: Implement count argument (currently always moves by 1)
-   (let [buffer-id (get-in db [:editor :current-buffer-id])
+   (let [buffer-id (lisp/current-buffer)
          diagnostics (sort-diagnostics (get-diagnostics buffer-id))
          diagnostics (if filter-type
                        (filter #(= (:type %) filter-type) diagnostics)
                        diagnostics)
-         cursor-line (get-in db [:buffers buffer-id :cursor-position :line] 0)
+         cursor-line (lisp/current-line)
          ;; Find previous diagnostic before current line
          prev-diag (last (filter #(< (:line %) cursor-line) diagnostics))]
      (if prev-diag
@@ -299,8 +299,8 @@
 ;; Show buffer diagnostics
 (rf/reg-event-fx
  :flymake-show-buffer-diagnostics
- (fn [{:keys [db]} [_]]
-   (let [buffer-id (get-in db [:editor :current-buffer-id])
+ (fn [{:keys [_db]} [_]]
+   (let [buffer-id (lisp/current-buffer)
          diagnostics (sort-diagnostics (get-diagnostics buffer-id))]
      (if (empty? diagnostics)
        {:fx [[:dispatch [:echo/message "No diagnostics in buffer"]]]}

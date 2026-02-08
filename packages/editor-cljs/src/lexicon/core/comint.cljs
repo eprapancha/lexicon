@@ -39,61 +39,82 @@
   Based on Emacs lisp/comint.el and lisp/term.el"
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
+            [lexicon.lisp :as lisp]
             [lexicon.core.db :as db]))
+
+;; =============================================================================
+;; State (Package-local)
+;; =============================================================================
+
+(def default-ring-size 64)
+
+;; Comint state keyed by buffer-id
+;; {buffer-id {:history [] :history-index N :term-mode :line/:char}}
+(defonce comint-state (atom {}))
+
+(defn- get-buffer-history [buffer-id]
+  (get-in @comint-state [buffer-id :history] []))
+
+(defn- get-history-index [buffer-id]
+  (get-in @comint-state [buffer-id :history-index] 0))
+
+(defn- set-history-index! [buffer-id idx]
+  (swap! comint-state assoc-in [buffer-id :history-index] idx))
+
+(defn- add-to-history! [buffer-id input]
+  (let [history (get-buffer-history buffer-id)
+        max-size default-ring-size
+        new-history (if (and (seq input)
+                             (not= input (last history)))
+                      (let [h (conj history input)]
+                        (if (> (count h) max-size)
+                          (subvec h (- (count h) max-size))
+                          h))
+                      history)]
+    (swap! comint-state assoc-in [buffer-id :history] new-history)
+    (swap! comint-state assoc-in [buffer-id :history-index] (count new-history))))
 
 ;; =============================================================================
 ;; Input History Ring
 ;; =============================================================================
 
-(def default-ring-size 64)
-
-(rf/reg-event-db
+(rf/reg-event-fx
  :comint/add-to-history
- (fn [db [_ buffer-id input]]
-   (let [history (get-in db [:comint buffer-id :history] [])
-         max-size (get-in db [:comint buffer-id :ring-size] default-ring-size)
-         new-history (if (and (seq input)
-                              (not= input (last history)))
-                       (let [h (conj history input)]
-                         (if (> (count h) max-size)
-                           (subvec h (- (count h) max-size))
-                           h))
-                       history)]
-     (-> db
-         (assoc-in [:comint buffer-id :history] new-history)
-         (assoc-in [:comint buffer-id :history-index] (count new-history))))))
+ (fn [{:keys [_db]} [_ buffer-id input]]
+   (add-to-history! buffer-id input)
+   {}))
 
 (rf/reg-event-fx
  :comint/previous-input
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Cycle backward through input history (M-p)."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         history (get-in db [:comint buffer-id :history] [])
-         idx (get-in db [:comint buffer-id :history-index] (count history))
+   (let [buffer-id (lisp/current-buffer)
+         history (get-buffer-history buffer-id)
+         idx (get-history-index buffer-id)
          new-idx (max 0 (dec idx))]
      (if (and (seq history) (< new-idx (count history)))
-       {:db (assoc-in db [:comint buffer-id :history-index] new-idx)
-        :fx [[:dispatch [:echo/message (nth history new-idx)]]]}
+       (do
+         (set-history-index! buffer-id new-idx)
+         {:fx [[:dispatch [:echo/message (nth history new-idx)]]]})
        {:fx [[:dispatch [:echo/message "Beginning of history"]]]}))))
 
 (rf/reg-event-fx
  :comint/next-input
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Cycle forward through input history (M-n)."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         history (get-in db [:comint buffer-id :history] [])
-         idx (get-in db [:comint buffer-id :history-index] 0)
+   (let [buffer-id (lisp/current-buffer)
+         history (get-buffer-history buffer-id)
+         idx (get-history-index buffer-id)
          new-idx (min (count history) (inc idx))]
      (if (< new-idx (count history))
-       {:db (assoc-in db [:comint buffer-id :history-index] new-idx)
-        :fx [[:dispatch [:echo/message (nth history new-idx)]]]}
+       (do
+         (set-history-index! buffer-id new-idx)
+         {:fx [[:dispatch [:echo/message (nth history new-idx)]]]})
        {:fx [[:dispatch [:echo/message "End of history"]]]}))))
 
 (rf/reg-event-fx
  :comint/previous-matching-input
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Search backward through history for matching input (M-r)."
    {:fx [[:dispatch [:minibuffer/activate
                      {:prompt "History search: "
@@ -101,11 +122,10 @@
 
 (rf/reg-event-fx
  :comint/search-history-exec
- (fn [{:keys [db]} [_ pattern]]
+ (fn [{:keys [_db]} [_ pattern]]
    "Execute history search."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         history (get-in db [:comint buffer-id :history] [])
+   (let [buffer-id (lisp/current-buffer)
+         history (get-buffer-history buffer-id)
          re (try (js/RegExp. pattern "i") (catch :default _ nil))
          match (when re
                  (last (filter #(.test re %) history)))]
@@ -119,10 +139,9 @@
 
 (rf/reg-event-fx
  :comint/send-input
- (fn [{:keys [db]} [_ buffer-id input]]
+ (fn [{:keys [_db]} [_ buffer-id input]]
    "Send input to the process in buffer."
-   {:db db
-    :fx [[:dispatch [:comint/add-to-history buffer-id input]]
+   {:fx [[:dispatch [:comint/add-to-history buffer-id input]]
          [:dispatch [:shell/send-input buffer-id input]]]}))
 
 (rf/reg-event-fx
@@ -149,18 +168,15 @@
 
 (rf/reg-event-fx
  :comint/bol
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Move to beginning of input after prompt (C-c C-a).
     In shell-mode, moves to the position right after the prompt string."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         buffer (get-in db [:buffers buffer-id])
-         wasm (:wasm-instance buffer)
-         text (when wasm (try (.getText ^js wasm) (catch :default _ "")))
-         ;; Find the last prompt ($ ) in the text
-         last-prompt-idx (when text (str/last-index-of text "$ "))]
-     (if last-prompt-idx
-       {:fx [[:dispatch [:echo/message "Beginning of input"]]]}
+   (let [text (lisp/buffer-string)]
+     (if text
+       (let [last-prompt-idx (str/last-index-of text "$ ")]
+         (if last-prompt-idx
+           {:fx [[:dispatch [:echo/message "Beginning of input"]]]}
+           {:fx [[:dispatch [:echo/message "No prompt found"]]]}))
        {:fx [[:dispatch [:echo/message "No prompt found"]]]}))))
 
 (rf/reg-event-fx
@@ -168,8 +184,7 @@
  (fn [{:keys [db]} [_]]
    "Kill the current input line (C-c C-u).
     Clears text after the last prompt."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
+   (let [buffer-id (lisp/current-buffer)
          buffer (get-in db [:buffers buffer-id])
          wasm (:wasm-instance buffer)]
      (if (and wasm (= (:major-mode buffer) :shell-mode))
@@ -195,8 +210,7 @@
  (fn [{:keys [db]} [_]]
    "Delete last batch of process output (C-c C-o).
     Removes text between the second-to-last and last prompt."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
+   (let [buffer-id (lisp/current-buffer)
          buffer (get-in db [:buffers buffer-id])
          wasm (:wasm-instance buffer)]
      (if (and wasm (= (:major-mode buffer) :shell-mode))
@@ -231,9 +245,8 @@
  :comint/dynamic-list-input-ring
  (fn [{:keys [db]} [_]]
    "Display the input history in a buffer (C-c C-l)."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         history (get-in db [:comint buffer-id :history] [])
+   (let [buffer-id (lisp/current-buffer)
+         history (get-buffer-history buffer-id)
          content (str "Input History\n"
                       (str/join "" (repeat 40 "=")) "\n\n"
                       (if (seq history)
@@ -296,21 +309,19 @@
 
 (rf/reg-event-fx
  :term/char-mode
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Switch to character mode (C-c C-k)."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))]
-     {:db (assoc-in db [:comint buffer-id :term-mode] :char)
-      :fx [[:dispatch [:echo/message "Char mode"]]]})))
+   (let [buffer-id (lisp/current-buffer)]
+     (swap! comint-state assoc-in [buffer-id :term-mode] :char)
+     {:fx [[:dispatch [:echo/message "Char mode"]]]})))
 
 (rf/reg-event-fx
  :term/line-mode
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Switch to line mode (C-c C-j)."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))]
-     {:db (assoc-in db [:comint buffer-id :term-mode] :line)
-      :fx [[:dispatch [:echo/message "Line mode"]]]})))
+   (let [buffer-id (lisp/current-buffer)]
+     (swap! comint-state assoc-in [buffer-id :term-mode] :line)
+     {:fx [[:dispatch [:echo/message "Line mode"]]]})))
 
 ;; =============================================================================
 ;; Initialization

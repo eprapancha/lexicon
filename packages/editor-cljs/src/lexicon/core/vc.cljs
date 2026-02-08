@@ -42,7 +42,19 @@
   Based on Emacs lisp/vc/vc.el and lisp/vc/vc-git.el"
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
-            [lexicon.core.db :as db]))
+            [lexicon.core.db :as db]
+            [lexicon.lisp :as lisp]))
+
+;; =============================================================================
+;; State (Package-local)
+;; =============================================================================
+
+;; VC state: {:backend :git, :branch "main", :file-status {buffer-id {:state :edited ...}}, :dir-marks #{}}
+(defonce vc-state
+  (atom {:backend :git
+         :branch "main"
+         :file-status {}
+         :dir-marks #{}}))
 
 ;; =============================================================================
 ;; VC State & Backend Protocol
@@ -122,34 +134,37 @@
 ;; VC State Management
 ;; =============================================================================
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :vc/set-file-state
- (fn [db [_ buffer-id state-info]]
-   (assoc-in db [:vc :file-status buffer-id] state-info)))
+ (fn [{:keys [_db]} [_ buffer-id state-info]]
+   (swap! vc-state assoc-in [:file-status buffer-id] state-info)
+   {}))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :vc/set-backend
- (fn [db [_ backend]]
-   (assoc-in db [:vc :current-backend] backend)))
+ (fn [{:keys [_db]} [_ backend]]
+   (swap! vc-state assoc :backend backend)
+   {}))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  :vc/set-branch
- (fn [db [_ branch]]
-   (assoc-in db [:vc :current-branch] branch)))
+ (fn [{:keys [_db]} [_ branch]]
+   (swap! vc-state assoc :branch branch)
+   {}))
 
 (rf/reg-sub
  :vc/file-status
- (fn [db [_ buffer-id]]
-   (get-in db [:vc :file-status buffer-id])))
+ (fn [_db [_ buffer-id]]
+   (get-in @vc-state [:file-status buffer-id])))
 
 (rf/reg-sub
  :vc/mode-line-string
- (fn [db [_ buffer-id]]
-   (let [status (get-in db [:vc :file-status buffer-id])
-         backend (or (:backend status) (get-in db [:vc :current-backend]) :git)
+ (fn [_db [_ buffer-id]]
+   (let [status (get-in @vc-state [:file-status buffer-id])
+         backend (or (:backend status) (:backend @vc-state) :git)
          state (or (:state status) :up-to-date)
          revision (or (:revision status)
-                      (get-in db [:vc :current-branch])
+                      (:branch @vc-state)
                       "main")]
      (format-vc-mode-line backend state revision))))
 
@@ -159,31 +174,31 @@
 
 (rf/reg-event-fx
  :vc/next-action
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Smart VC action (C-x v v): commit, stage, or revert based on state."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         buffer (get-in db [:buffers buffer-id])
-         file-path (:file-name buffer)
-         status (get-in db [:vc :file-status buffer-id])
+   (let [buffer-id (lisp/current-buffer)
+         buffer-info (lisp/buffer-info buffer-id)
+         file-path (:file-name buffer-info)
+         buffer-name (:name buffer-info)
+         status (get-in @vc-state [:file-status buffer-id])
          state (:state status :unregistered)]
      (case state
        :unregistered
        {:fx [[:dispatch [:echo/message
                          (str "File not under version control: "
-                              (or file-path (:name buffer)))]]]}
+                              (or file-path buffer-name))]]]}
        :up-to-date
        {:fx [[:dispatch [:echo/message "File is up to date"]]]}
        :edited
        {:fx [[:dispatch [:echo/message
-                         (str "Modified: " (or file-path (:name buffer))
+                         (str "Modified: " (or file-path buffer-name)
                               " - use vc-diff to see changes")]]]}
        :added
        {:fx [[:dispatch [:echo/message
-                         (str "Added: " (or file-path (:name buffer)))]]]}
+                         (str "Added: " (or file-path buffer-name))]]]}
        :conflict
        {:fx [[:dispatch [:echo/message
-                         (str "Conflict in: " (or file-path (:name buffer))
+                         (str "Conflict in: " (or file-path buffer-name)
                               " - resolve before committing")]]]}
        {:fx [[:dispatch [:echo/message
                          (str "VC state: " (name state))]]]}))))
@@ -193,19 +208,17 @@
  (fn [{:keys [db]} [_]]
    "Show diff for current file (C-x v =).
     Creates a *vc-diff* buffer in diff-mode showing the file's modified state."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         buffer (get-in db [:buffers buffer-id])
-         file-path (or (:file-name buffer) (:name buffer))
-         modified? (:is-modified? buffer false)
-         wasm (:wasm-instance buffer)
-         text (when wasm (try (.getText ^js wasm) (catch :default _ "")))
+   (let [buffer-id (lisp/current-buffer)
+         buffer-info (lisp/buffer-info buffer-id)
+         file-path (or (:file-name buffer-info) (:name buffer-info))
+         modified? (:is-modified? buffer-info)
+         text (or (lisp/buffer-string) "")
          diff-content (str "diff --git a/" file-path " b/" file-path "\n"
                            "--- a/" file-path "\n"
                            "+++ b/" file-path "\n"
                            (if modified?
-                             (str "@@ -1,0 +1," (count (str/split (or text "") #"\n" -1)) " @@\n"
-                                  (str/join "\n" (map #(str "+" %) (str/split (or text "") #"\n" -1)))
+                             (str "@@ -1,0 +1," (count (str/split text #"\n" -1)) " @@\n"
+                                  (str/join "\n" (map #(str "+" %) (str/split text #"\n" -1)))
                                   "\n")
                              "No differences.\n"))
          result (make-buffer db "*vc-diff*" diff-content :diff-mode)]
@@ -218,11 +231,10 @@
  :vc/log
  (fn [{:keys [db]} [_]]
    "Show commit log for current file (C-x v l)."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         buffer (get-in db [:buffers buffer-id])
-         file-path (or (:file-name buffer) (:name buffer))
-         branch (get-in db [:vc :current-branch] "main")
+   (let [buffer-id (lisp/current-buffer)
+         buffer-info (lisp/buffer-info buffer-id)
+         file-path (or (:file-name buffer-info) (:name buffer-info))
+         branch (or (:branch @vc-state) "main")
          log-content (str "VC Log for: " (or file-path "unknown") "\n"
                           (str/join "" (repeat 60 "=")) "\n\n"
                           "commit abc1234 (HEAD -> " branch ")\n"
@@ -246,43 +258,45 @@
    "Revert file to last saved state (C-x v u).
     If the buffer has a file-handle (FS Access API), re-reads from disk.
     Otherwise clears the modified flag."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
+   (let [buffer-id (lisp/current-buffer)
+         buffer-info (lisp/buffer-info buffer-id)
+         file-path (:file-name buffer-info)
+         buffer-name (:name buffer-info)
+         ;; file-handle needs db access since it's not in buffer-info
          buffer (get-in db [:buffers buffer-id])
-         file-path (:file-name buffer)
          file-handle (:file-handle buffer)]
      (cond
        file-handle
        ;; Has file handle - dispatch revert-buffer to re-read
        {:fx [[:dispatch [:revert-buffer]]
-             [:dispatch [:echo/message (str "Reverted: " (or file-path (:name buffer)))]]]}
+             [:dispatch [:echo/message (str "Reverted: " (or file-path buffer-name))]]]}
 
-       (:is-modified? buffer)
+       (:is-modified? buffer-info)
        ;; No file handle but modified - just clear modified flag
        {:db (assoc-in db [:buffers buffer-id :is-modified?] false)
         :fx [[:dispatch [:echo/message
-                         (str "Cleared modified flag for " (or file-path (:name buffer)))]]]}
+                         (str "Cleared modified flag for " (or file-path buffer-name))]]]}
 
        :else
        {:fx [[:dispatch [:echo/message "Buffer is not modified"]]]}))))
 
 (rf/reg-event-fx
  :vc/register
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Register current file with version control (C-x v i).
     Marks the buffer's VC state as :added."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         buffer (get-in db [:buffers buffer-id])
-         file-path (or (:file-name buffer) (:name buffer))
-         branch (get-in db [:vc :current-branch] "main")]
+   (let [buffer-id (lisp/current-buffer)
+         buffer-info (lisp/buffer-info buffer-id)
+         file-path (or (:file-name buffer-info) (:name buffer-info))
+         branch (or (:branch @vc-state) "main")]
      (if buffer-id
-       {:db (assoc-in db [:vc :file-status buffer-id]
-                      {:state :added
-                       :backend :git
-                       :revision branch})
-        :fx [[:dispatch [:echo/message
-                         (str "Registered " file-path " under Git")]]]}
+       (do
+         (swap! vc-state assoc-in [:file-status buffer-id]
+                {:state :added
+                 :backend :git
+                 :revision branch})
+         {:fx [[:dispatch [:echo/message
+                           (str "Registered " file-path " under Git")]]]})
        {:fx [[:dispatch [:echo/message "No buffer to register"]]]}))))
 
 (rf/reg-event-fx
@@ -290,13 +304,11 @@
  (fn [{:keys [db]} [_]]
    "Show annotate/blame for current file (C-x v g).
     Creates a *vc-annotate* buffer with per-line annotation."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         buffer (get-in db [:buffers buffer-id])
-         file-path (or (:file-name buffer) (:name buffer))
-         wasm (:wasm-instance buffer)
-         text (when wasm (try (.getText ^js wasm) (catch :default _ "")))
-         branch (get-in db [:vc :current-branch] "main")
+   (let [buffer-id (lisp/current-buffer)
+         buffer-info (lisp/buffer-info buffer-id)
+         file-path (or (:file-name buffer-info) (:name buffer-info))
+         text (lisp/buffer-string)
+         branch (or (:branch @vc-state) "main")
          lines (when text (str/split text #"\n" -1))
          annotate-content
          (str "Annotations for: " (or file-path "unknown") "\n"
@@ -324,10 +336,10 @@
 
 (defn- get-buffer-vc-state
   "Get the VC state for a buffer, inferring from modified flag if not set."
-  [db buffer-id buffer]
-  (let [status (get-in db [:vc :file-status buffer-id])
+  [buffer-id buffer-info]
+  (let [status (get-in @vc-state [:file-status buffer-id])
         state (or (:state status)
-                  (if (:is-modified? buffer) :edited :up-to-date))]
+                  (if (:is-modified? buffer-info) :edited :up-to-date))]
     state))
 
 (defn- state-char
@@ -344,11 +356,11 @@
 
 (defn- format-vc-dir-entry
   "Format a single vc-dir entry line."
-  [db buffer-id buffer marked?]
-  (let [state (get-buffer-vc-state db buffer-id buffer)
+  [buffer-id buffer-info marked?]
+  (let [state (get-buffer-vc-state buffer-id buffer-info)
         mark-char (if marked? "*" " ")
         state-ch (state-char state)
-        name (or (:file-name buffer) (:name buffer))]
+        name (or (:file-name buffer-info) (:name buffer-info))]
     (str "  " mark-char " " state-ch "  " name)))
 
 (rf/reg-event-fx
@@ -356,55 +368,53 @@
  (fn [{:keys [db]} [_]]
    "Show VC directory status (C-x v d).
     Creates *vc-dir* buffer showing all open buffers with VC status."
-   (let [branch (get-in db [:vc :current-branch] "main")
-         buffers (:buffers db)
-         file-buffers (filter (fn [[_id buf]]
-                                (not (str/starts-with? (:name buf) "*")))
-                              buffers)
+   (let [branch (or (:branch @vc-state) "main")
+         all-buffers (lisp/all-buffer-info)
+         file-buffers (filter #(not (str/starts-with? (:name %) "*")) all-buffers)
          header (str "VC backend: Git\n"
                      "Working dir: /\n"
                      "Branch: " branch "\n\n"
                      "  M State  File\n"
                      "  - -----  ----\n")
          entries (str/join "\n"
-                           (map (fn [[bid buf]]
-                                  (format-vc-dir-entry db bid buf false))
-                                (sort-by (fn [[_id buf]] (:name buf)) file-buffers)))
+                           (map (fn [buf-info]
+                                  (format-vc-dir-entry (:id buf-info) buf-info false))
+                                (sort-by :name file-buffers)))
          content (str header
                       (if (seq file-buffers) entries "(no files)")
                       "\n")
          result (make-buffer db "*vc-dir*" content :vc-dir-mode)]
+     ;; Clear dir-marks in package-local state
+     (swap! vc-state assoc :dir-marks #{})
      (if result
-       {:db (-> db
-                (assoc-in [:buffers (:buffer-id result)] (:buffer result))
-                (assoc-in [:vc :dir-marks] #{}))
+       {:db (assoc-in db [:buffers (:buffer-id result)] (:buffer result))
         :fx [[:dispatch [:switch-buffer (:buffer-id result)]]]}
        {:fx [[:dispatch [:echo/message "Error: WASM not initialized"]]]}))))
 
 (rf/reg-event-fx
  :vc-dir/mark
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Mark file at point in vc-dir buffer."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         buffer (get-in db [:buffers buffer-id])
-         cursor-line (get-in buffer [:cursor-position :line] 0)]
-     (if (= (:major-mode buffer) :vc-dir-mode)
-       {:db (update-in db [:vc :dir-marks] (fnil conj #{}) cursor-line)
-        :fx [[:dispatch [:echo/message "Marked"]]]}
+   (let [buffer-id (lisp/current-buffer)
+         buffer-info (lisp/buffer-info buffer-id)
+         cursor-line (lisp/current-line)]
+     (if (= (:major-mode buffer-info) :vc-dir-mode)
+       (do
+         (swap! vc-state update :dir-marks (fnil conj #{}) cursor-line)
+         {:fx [[:dispatch [:echo/message "Marked"]]]})
        {:fx [[:dispatch [:echo/message "Not in vc-dir buffer"]]]}))))
 
 (rf/reg-event-fx
  :vc-dir/unmark
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Unmark file at point in vc-dir buffer."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         buffer (get-in db [:buffers buffer-id])
-         cursor-line (get-in buffer [:cursor-position :line] 0)]
-     (if (= (:major-mode buffer) :vc-dir-mode)
-       {:db (update-in db [:vc :dir-marks] (fnil disj #{}) cursor-line)
-        :fx [[:dispatch [:echo/message "Unmarked"]]]}
+   (let [buffer-id (lisp/current-buffer)
+         buffer-info (lisp/buffer-info buffer-id)
+         cursor-line (lisp/current-line)]
+     (if (= (:major-mode buffer-info) :vc-dir-mode)
+       (do
+         (swap! vc-state update :dir-marks (fnil disj #{}) cursor-line)
+         {:fx [[:dispatch [:echo/message "Unmarked"]]]})
        {:fx [[:dispatch [:echo/message "Not in vc-dir buffer"]]]}))))
 
 (rf/reg-event-fx
@@ -419,17 +429,17 @@
 
 (rf/reg-event-fx
  :vc/refresh
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Refresh VC state for current buffer."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         buffer (get-in db [:buffers buffer-id])
-         modified? (:is-modified? buffer false)
+   (let [buffer-id (lisp/current-buffer)
+         buffer-info (lisp/buffer-info buffer-id)
+         modified? (:is-modified? buffer-info)
          state (if modified? :edited :up-to-date)]
-     {:db (assoc-in db [:vc :file-status buffer-id]
-                    {:state state
-                     :backend :git
-                     :revision (get-in db [:vc :current-branch] "main")})})))
+     (swap! vc-state assoc-in [:file-status buffer-id]
+            {:state state
+             :backend :git
+             :revision (or (:branch @vc-state) "main")})
+     {})))
 
 ;; =============================================================================
 ;; Initialization

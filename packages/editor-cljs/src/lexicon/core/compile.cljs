@@ -9,7 +9,8 @@
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
             [lexicon.core.db :as db]
-            [lexicon.core.log :as log]))
+            [lexicon.core.log :as log]
+            [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
 ;; Error Regexp Patterns
@@ -211,7 +212,7 @@
    ;; Store the command for next time
    (swap! compilation-state assoc :last-command command)
    (log/debug (str "compile/run: checking WASM constructor"))
-   (swap! compilation-state assoc :source-buffer (get-in db [:editor :current-buffer-id]))
+   (swap! compilation-state assoc :source-buffer (lisp/current-buffer))
    (swap! compilation-state assoc :errors [])
    (swap! compilation-state assoc :error-index 0)
 
@@ -228,9 +229,9 @@
      (swap! compilation-state assoc :errors errors)
 
      ;; Create the *compilation* buffer
-     (let [buffers (:buffers db)
-           existing (first (filter #(= (:name %) "*compilation*") (vals buffers)))
-           buffer-id (or (:id existing) (db/next-buffer-id buffers))
+     (let [existing-id (lisp/get-buffer "*compilation*")
+           buffers (:buffers db)
+           buffer-id (or existing-id (db/next-buffer-id buffers))
            WasmGapBuffer (get-in db [:system :wasm-constructor])]
        (log/debug (str "compile/run: WasmGapBuffer=" (if WasmGapBuffer "available" "nil") ", buffer-id=" buffer-id))
        (if-not WasmGapBuffer
@@ -267,7 +268,7 @@
 ;; M-g n / C-x ` - Next error
 (rf/reg-event-fx
  :next-error
- (fn [{:keys [db]} [_ n]]
+ (fn [{:keys [_db]} [_ n]]
    (let [n (or n 1)
          errors (:errors @compilation-state)
          current-idx (:error-index @compilation-state)
@@ -283,7 +284,7 @@
 ;; M-g p - Previous error
 (rf/reg-event-fx
  :previous-error
- (fn [{:keys [db]} [_ n]]
+ (fn [{:keys [_db]} [_ n]]
    (let [n (or n 1)
          errors (:errors @compilation-state)
          current-idx (:error-index @compilation-state)
@@ -299,7 +300,7 @@
 ;; Go to error location
 (rf/reg-event-fx
  :compile/goto-error
- (fn [{:keys [db]} [_ error]]
+ (fn [{:keys [_db]} [_ error]]
    (let [{:keys [file line col]} error]
      ;; Display error info in echo area
      {:fx [[:dispatch [:echo/message (str file ":" line
@@ -309,8 +310,8 @@
 ;; RET in compilation buffer - go to error at point
 (rf/reg-event-fx
  :compile/goto-error-at-point
- (fn [{:keys [db]} [_]]
-   (let [cursor-pos (get-in db [:ui :cursor-position] 0)
+ (fn [{:keys [_db]} [_]]
+   (let [cursor-pos (lisp/point)
          errors (:errors @compilation-state)]
      ;; Find error closest to cursor position
      (if-let [error (first (filter #(<= (:buffer-pos %) cursor-pos) (reverse errors)))]
@@ -329,7 +330,7 @@
 ;; Kill compilation
 (rf/reg-event-fx
  :kill-compilation
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    ;; In real implementation, would kill the process
    {:fx [[:dispatch [:echo/message "Compilation process killed"]]]}))
 
@@ -359,30 +360,29 @@
 ;; Navigation within compilation buffer
 (rf/reg-event-fx
  :compilation-next-error
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    ;; Move to next error line in buffer
    {:fx [[:dispatch [:next-error 1]]]}))
 
 (rf/reg-event-fx
  :compilation-previous-error
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    {:fx [[:dispatch [:previous-error 1]]]}))
 
 ;; quit-window - Kill buffer and/or bury it
 (rf/reg-event-fx
  :quit-window
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    ;; Bury the current buffer (switch to previous buffer)
    ;; In Emacs, quit-window optionally kills the buffer for temp buffers
    (let [source-buffer (:source-buffer @compilation-state)
          ;; Find *scratch* buffer as fallback
-         scratch-buffer (first (filter #(= (:name %) "*scratch*")
-                                       (vals (:buffers db))))]
+         scratch-buffer-id (lisp/get-buffer "*scratch*")]
      (cond
        source-buffer
        {:fx [[:dispatch [:switch-buffer source-buffer]]]}
-       scratch-buffer
-       {:fx [[:dispatch [:switch-buffer (:id scratch-buffer)]]]}
+       scratch-buffer-id
+       {:fx [[:dispatch [:switch-buffer scratch-buffer-id]]]}
        :else
        {:fx [[:dispatch [:echo/message "No buffer to switch to"]]]}))))
 

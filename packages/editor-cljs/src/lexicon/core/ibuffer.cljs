@@ -20,6 +20,7 @@
   Based on Emacs lisp/ibuffer.el"
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
+            [lexicon.lisp :as lisp]
             [lexicon.core.db :as db]))
 
 ;; =============================================================================
@@ -44,34 +45,7 @@
 (defonce ibuffer-marks (atom {}))
 
 ;; =============================================================================
-;; Buffer Info Extraction
-;; =============================================================================
-
-(defn- buffer-size
-  "Get buffer size from WASM instance."
-  [buffer]
-  (if-let [wasm (:wasm-instance buffer)]
-    (try (.-length wasm) (catch :default _ 0))
-    0))
-
-(defn- buffer-file-name
-  "Get buffer file name or empty string."
-  [buffer]
-  (or (:file-path buffer) ""))
-
-(defn- buffer-info
-  "Extract display info from a buffer."
-  [[id buffer]]
-  {:id id
-   :name (:name buffer "")
-   :size (buffer-size buffer)
-   :mode (:major-mode buffer :fundamental-mode)
-   :modified? (:is-modified? buffer false)
-   :read-only? (:is-read-only? buffer false)
-   :file (buffer-file-name buffer)})
-
-;; =============================================================================
-;; Filtering
+;; Filtering (Pure Functions)
 ;; =============================================================================
 
 (defn- matches-filter?
@@ -100,7 +74,7 @@
             buf-infos)))
 
 ;; =============================================================================
-;; Sorting
+;; Sorting (Pure Functions)
 ;; =============================================================================
 
 (defn- sort-buffers
@@ -117,7 +91,7 @@
       sorted)))
 
 ;; =============================================================================
-;; Filter Groups
+;; Filter Groups (Pure Functions)
 ;; =============================================================================
 
 (def default-filter-groups
@@ -151,7 +125,7 @@
                    result)))))))
 
 ;; =============================================================================
-;; Display Formatting
+;; Display Formatting (Pure Functions)
 ;; =============================================================================
 
 (defn- pad-string
@@ -190,15 +164,11 @@
   (str "[ " group-name " ]"))
 
 (defn- generate-ibuffer-content
-  "Generate the complete ibuffer content."
-  [db]
-  (let [buffers (:buffers db)
-        sorting-mode (get-in db [:ibuffer :sorting-mode] :recency)
-        reversed? (get-in db [:ibuffer :sorting-reversed?] false)
-        filters (get-in db [:ibuffer :filters] [])
-        filter-groups (get-in db [:ibuffer :filter-groups] [])
-        ;; Build buffer info list
-        buf-infos (map buffer-info buffers)
+  "Generate the complete ibuffer content.
+   Uses lisp.cljs to get buffer info."
+  [sorting-mode reversed? filters filter-groups]
+  (let [;; Get buffer info from lisp.cljs
+        buf-infos (lisp/all-buffer-info)
         ;; Apply filters
         filtered (apply-filters buf-infos filters)
         ;; Sort
@@ -228,7 +198,11 @@
  :ibuffer/open
  (fn [{:keys [db]} [_]]
    "Open ibuffer interface."
-   (let [content (generate-ibuffer-content db)
+   (let [sorting-mode (get-in db [:ibuffer :sorting-mode] :recency)
+         reversed? (get-in db [:ibuffer :sorting-reversed?] false)
+         filters (get-in db [:ibuffer :filters] [])
+         filter-groups (get-in db [:ibuffer :filter-groups] [])
+         content (generate-ibuffer-content sorting-mode reversed? filters filter-groups)
          buffer-name "*Ibuffer*"
          buffers (:buffers db)
          existing-id (some (fn [[id buf]]
@@ -277,7 +251,11 @@
    (let [active-window (get-in db [:window-tree])
          buffer-id (when (= (:type active-window) :leaf)
                      (:buffer-id active-window))
-         content (generate-ibuffer-content db)
+         sorting-mode (get-in db [:ibuffer :sorting-mode] :recency)
+         reversed? (get-in db [:ibuffer :sorting-reversed?] false)
+         filters (get-in db [:ibuffer :filters] [])
+         filter-groups (get-in db [:ibuffer :filter-groups] [])
+         content (generate-ibuffer-content sorting-mode reversed? filters filter-groups)
          ^js wasm (get-in db [:buffers buffer-id :wasm-instance])]
      (when wasm
        (let [current-len (.-length wasm)]
@@ -380,21 +358,17 @@
 ;; -- Mark & Operation Events --
 
 (defn- get-ibuffer-line
-  "Get current line number in ibuffer."
-  [db]
-  (let [cursor-pos (get-in db [:ui :cursor-position] 0)
-        active-window (get-in db [:window-tree])
-        buffer-id (when (= (:type active-window) :leaf)
-                    (:buffer-id active-window))
-        wasm (get-in db [:buffers buffer-id :wasm-instance])
-        text (when wasm (try (.getText wasm) (catch :default _ "")))]
+  "Get current line number in ibuffer using lisp.cljs."
+  []
+  (let [pos (lisp/point)
+        text (lisp/buffer-string)]
     (when text
-      (count (filter #(= % \newline) (take cursor-pos text))))))
+      (count (filter #(= % \newline) (take pos text))))))
 
 (rf/reg-event-fx
  :ibuffer/mark-for-delete
- (fn [{:keys [db]} [_]]
-   (let [line (get-ibuffer-line db)]
+ (fn [{:keys [_db]} [_]]
+   (let [line (get-ibuffer-line)]
      (when (and line (>= line 2))
        (swap! ibuffer-marks assoc line "D")
        {:fx [[:dispatch [:echo/message "Marked for deletion"]]
@@ -402,8 +376,8 @@
 
 (rf/reg-event-fx
  :ibuffer/unmark
- (fn [{:keys [db]} [_]]
-   (let [line (get-ibuffer-line db)]
+ (fn [{:keys [_db]} [_]]
+   (let [line (get-ibuffer-line)]
      (when line
        (swap! ibuffer-marks dissoc line))
      {:fx [[:dispatch [:echo/message "Unmarked"]]
@@ -415,8 +389,11 @@
    "Execute deletion of marked buffers."
    (let [marks @ibuffer-marks
          delete-lines (keep (fn [[line mark]] (when (= mark "D") line)) marks)
-         ;; Map lines to buffer names
-         content (generate-ibuffer-content db)
+         sorting-mode (get-in db [:ibuffer :sorting-mode] :recency)
+         reversed? (get-in db [:ibuffer :sorting-reversed?] false)
+         filters (get-in db [:ibuffer :filters] [])
+         filter-groups (get-in db [:ibuffer :filter-groups] [])
+         content (generate-ibuffer-content sorting-mode reversed? filters filter-groups)
          lines (str/split content #"\n")
          buffer-names (keep (fn [line-num]
                               (when (< line-num (count lines))
@@ -439,16 +416,18 @@
  :ibuffer/select-buffer
  (fn [{:keys [db]} [_]]
    "Switch to buffer on current line."
-   (let [line (get-ibuffer-line db)
-         content (generate-ibuffer-content db)
+   (let [line (get-ibuffer-line)
+         sorting-mode (get-in db [:ibuffer :sorting-mode] :recency)
+         reversed? (get-in db [:ibuffer :sorting-reversed?] false)
+         filters (get-in db [:ibuffer :filters] [])
+         filter-groups (get-in db [:ibuffer :filter-groups] [])
+         content (generate-ibuffer-content sorting-mode reversed? filters filter-groups)
          lines (str/split content #"\n")]
      (when (and line (>= line 2) (< line (count lines)))
        (let [line-text (nth lines line)]
          (when (>= (count line-text) 4)
            (let [buffer-name (str/trim (subs line-text 4 (min 34 (count line-text))))
-                 target-id (some (fn [[id buf]]
-                                   (when (= (:name buf) buffer-name) id))
-                                 (:buffers db))]
+                 target-id (lisp/get-buffer buffer-name)]
              (when target-id
                {:fx [[:dispatch [:switch-buffer target-id]]]}))))))))
 

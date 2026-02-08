@@ -6,7 +6,8 @@
   - Windows are views into buffers (not copies)
   - Window deletion preserves buffers"
   (:require [re-frame.core :as rf]
-            [lexicon.core.db :as db]))
+            [lexicon.core.db :as db]
+            [lexicon.core.log :as log]))
 
 (defn- next-window-id
   "Get next available window ID from db."
@@ -121,3 +122,24 @@
                            :else tree))]
 
      (assoc db :window-tree (update-window window-tree)))))
+
+(rf/reg-event-fx
+ :window/set-configuration
+ (fn [{:keys [db]} [_ config]]
+   "Restore a complete window configuration.
+
+   Used by winner-mode to undo/redo window layouts.
+
+   Args:
+     config - Window tree configuration to restore"
+   (let [all-windows (db/get-all-leaf-windows config)
+         ;; Try to preserve active window if it exists in new config
+         current-active (:active-window-id db)
+         active-in-new? (some #(= (:id %) current-active) all-windows)
+         new-active-id (if active-in-new?
+                         current-active
+                         (:id (first all-windows)))]
+     {:db (-> db
+              (assoc :window-tree config)
+              (assoc :active-window-id new-active-id)
+              (assoc :cursor-owner new-active-id))})))

@@ -19,7 +19,8 @@
             [lexicon.core.events.buffer :as buffer-events]
             [lexicon.core.modes.special-mode :as special-mode]
             [lexicon.core.text-properties :as text-props]
-            [lexicon.core.log :as log]))
+            [lexicon.core.log :as log]
+            [lexicon.lisp :as lisp]))
 
 ;; Forward declarations for functions used in event handlers
 (declare delete-completions-window)
@@ -27,6 +28,13 @@
 ;; =============================================================================
 ;; Window Management Events
 ;; =============================================================================
+
+(rf/reg-event-fx
+ :winner/record-change
+ (fn [_ _]
+   "Run window-configuration-change-hook for winner-mode and other listeners"
+   (lisp/run-hooks 'window-configuration-change-hook)
+   {}))
 
 (rf/reg-event-fx
  :split-window-below
@@ -181,7 +189,8 @@
          {:db (-> db
                   (assoc :window-tree new-tree)
                   (assoc :active-window-id new-active-id)
-                  (assoc :cursor-owner new-active-id))})))))
+                  (assoc :cursor-owner new-active-id))
+          :fx [[:dispatch [:winner/record-change]]]})))))
 
 (rf/reg-event-fx
  :delete-other-windows
@@ -191,7 +200,8 @@
          active-window-id (:active-window-id db)
          active-window (db/find-window-in-tree window-tree active-window-id)]
 
-     {:db (assoc db :window-tree active-window)})))
+     {:db (assoc db :window-tree active-window)
+      :fx [[:dispatch [:winner/record-change]]]})))
 
 ;; =============================================================================
 ;; Window State Management Events (Issue #60: State Ownership)

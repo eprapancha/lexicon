@@ -29,7 +29,18 @@
   Based on Emacs lisp/vc/ediff.el and lisp/vc/smerge-mode.el"
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
-            [lexicon.core.db :as db]))
+            [lexicon.core.db :as db]
+            [lexicon.lisp :as lisp]))
+
+;; =============================================================================
+;; State (Package-local)
+;; =============================================================================
+
+;; Smerge state keyed by buffer-id: {buffer-id {:conflicts [] :current-index N}}
+(defonce smerge-state (atom {}))
+
+;; Ediff state: {:buffer-a-name str :diffs [] :diff-index N}
+(defonce ediff-state (atom {}))
 
 ;; =============================================================================
 ;; Conflict Detection (smerge)
@@ -123,77 +134,73 @@
  :smerge/enable
  (fn [{:keys [db]} [_]]
    "Enable smerge-mode for current buffer."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         buffer (get-in db [:buffers buffer-id])
-         wasm (:wasm-instance buffer)
-         text (when wasm (try (.getText ^js wasm) (catch :default _ "")))
+   (let [buffer-id (lisp/current-buffer)
+         text (lisp/buffer-string)
          conflicts (when text (parse-conflicts text))]
      (if (seq conflicts)
-       {:db (-> db
-                (update-in [:buffers buffer-id :minor-modes] (fnil conj #{}) :smerge-mode)
-                (assoc-in [:smerge buffer-id :conflicts] conflicts)
-                (assoc-in [:smerge buffer-id :current-index] 0))
-        :fx [[:dispatch [:echo/message
-                         (str "smerge-mode enabled: " (count conflicts) " conflict"
-                              (when (not= 1 (count conflicts)) "s") " found")]]]}
+       (do
+         (swap! smerge-state assoc buffer-id {:conflicts conflicts :current-index 0})
+         {:db (update-in db [:buffers buffer-id :minor-modes] (fnil conj #{}) :smerge-mode)
+          :fx [[:dispatch [:echo/message
+                           (str "smerge-mode enabled: " (count conflicts) " conflict"
+                                (when (not= 1 (count conflicts)) "s") " found")]]]})
        {:fx [[:dispatch [:echo/message "No conflict markers found"]]]}))))
 
 (rf/reg-event-fx
  :smerge/next
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Go to next conflict (C-c ^ n)."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         conflicts (get-in db [:smerge buffer-id :conflicts] [])
-         idx (get-in db [:smerge buffer-id :current-index] 0)
+   (let [buffer-id (lisp/current-buffer)
+         state (get @smerge-state buffer-id)
+         conflicts (or (:conflicts state) [])
+         idx (or (:current-index state) 0)
          new-idx (min (inc idx) (dec (max 1 (count conflicts))))]
      (if (seq conflicts)
        (let [conflict (nth conflicts new-idx)]
-         {:db (assoc-in db [:smerge buffer-id :current-index] new-idx)
-          :fx [[:dispatch [:echo/message
+         (swap! smerge-state assoc-in [buffer-id :current-index] new-idx)
+         {:fx [[:dispatch [:echo/message
                            (str "Conflict " (inc new-idx) "/" (count conflicts)
                                 " (line " (inc (:start-line conflict)) ")")]]]})
        {:fx [[:dispatch [:echo/message "No conflicts"]]]}))))
 
 (rf/reg-event-fx
  :smerge/prev
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Go to previous conflict (C-c ^ p)."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         conflicts (get-in db [:smerge buffer-id :conflicts] [])
-         idx (get-in db [:smerge buffer-id :current-index] 0)
+   (let [buffer-id (lisp/current-buffer)
+         state (get @smerge-state buffer-id)
+         conflicts (or (:conflicts state) [])
+         idx (or (:current-index state) 0)
          new-idx (max (dec idx) 0)]
      (if (seq conflicts)
        (let [conflict (nth conflicts new-idx)]
-         {:db (assoc-in db [:smerge buffer-id :current-index] new-idx)
-          :fx [[:dispatch [:echo/message
+         (swap! smerge-state assoc-in [buffer-id :current-index] new-idx)
+         {:fx [[:dispatch [:echo/message
                            (str "Conflict " (inc new-idx) "/" (count conflicts)
                                 " (line " (inc (:start-line conflict)) ")")]]]})
        {:fx [[:dispatch [:echo/message "No conflicts"]]]}))))
 
 (rf/reg-event-fx
  :smerge/keep-upper
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Keep upper (mine) version of current conflict (C-c ^ u)."
    {:fx [[:dispatch [:smerge/resolve-current :upper]]]}))
 
 (rf/reg-event-fx
  :smerge/keep-lower
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Keep lower (other) version of current conflict (C-c ^ l)."
    {:fx [[:dispatch [:smerge/resolve-current :lower]]]}))
 
 (rf/reg-event-fx
  :smerge/keep-base
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Keep base version of current conflict (C-c ^ b)."
    {:fx [[:dispatch [:smerge/resolve-current :base]]]}))
 
 (rf/reg-event-fx
  :smerge/keep-all
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Keep all versions of current conflict (C-c ^ a)."
    {:fx [[:dispatch [:smerge/resolve-current :all]]]}))
 
@@ -201,30 +208,32 @@
  :smerge/resolve-current
  (fn [{:keys [db]} [_ resolution]]
    "Resolve the current conflict with the given resolution."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when (= (:type window) :leaf) (:buffer-id window))
-         conflicts (get-in db [:smerge buffer-id :conflicts] [])
-         idx (get-in db [:smerge buffer-id :current-index] 0)]
+   (let [buffer-id (lisp/current-buffer)
+         state (get @smerge-state buffer-id)
+         conflicts (or (:conflicts state) [])
+         idx (or (:current-index state) 0)]
      (if (and (seq conflicts) (< idx (count conflicts)))
        (let [conflict (nth conflicts idx)
-             ^js wasm (get-in db [:buffers buffer-id :wasm-instance])
-             text (when wasm (try (.getText wasm) (catch :default _ "")))
+             text (lisp/buffer-string)
              new-text (when text (resolve-conflict text conflict resolution))]
-         (when (and wasm new-text)
-           (let [len (.-length wasm)]
-             (.delete wasm 0 len)
-             (.insert wasm 0 new-text))
-           ;; Re-parse conflicts after resolution
+         (when new-text
+           ;; Use transaction to update buffer content
            (let [remaining (parse-conflicts new-text)
                  lines (str/split new-text #"\n" -1)]
+             ;; Update package-local state
+             (swap! smerge-state assoc buffer-id
+                    {:conflicts remaining
+                     :current-index (min idx (dec (max 1 (count remaining))))})
              {:db (-> db
                       (assoc-in [:buffers buffer-id :cache :text] new-text)
                       (assoc-in [:buffers buffer-id :cache :line-count] (count lines))
-                      (assoc-in [:buffers buffer-id :is-modified?] true)
-                      (assoc-in [:smerge buffer-id :conflicts] remaining)
-                      (assoc-in [:smerge buffer-id :current-index]
-                                (min idx (dec (max 1 (count remaining))))))
-              :fx [[:dispatch [:echo/message
+                      (assoc-in [:buffers buffer-id :is-modified?] true))
+              :fx [[:dispatch [:editor/queue-transaction
+                               {:op :replace
+                                :start 0
+                                :length (count text)
+                                :text new-text}]]
+                   [:dispatch [:echo/message
                                (str "Conflict resolved (" (name resolution) "). "
                                     (count remaining) " remaining")]]]})))
        {:fx [[:dispatch [:echo/message "No conflict at point"]]]}))))
@@ -252,7 +261,7 @@
 
 (rf/reg-event-fx
  :ediff/buffers
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Compare two buffers (M-x ediff-buffers)."
    {:fx [[:dispatch [:minibuffer/activate
                      {:prompt "Ediff buffer A: "
@@ -260,10 +269,10 @@
 
 (rf/reg-event-fx
  :ediff/set-buffer-a
- (fn [{:keys [db]} [_ buf-name-a]]
+ (fn [{:keys [_db]} [_ buf-name-a]]
    "Set buffer A for ediff and prompt for buffer B."
-   {:db (assoc-in db [:ediff :buffer-a-name] buf-name-a)
-    :fx [[:dispatch [:minibuffer/activate
+   (swap! ediff-state assoc :buffer-a-name buf-name-a)
+   {:fx [[:dispatch [:minibuffer/activate
                      {:prompt "Ediff buffer B: "
                       :on-confirm [:ediff/run]}]]]}))
 
@@ -271,15 +280,13 @@
  :ediff/run
  (fn [{:keys [db]} [_ buf-name-b]]
    "Run ediff comparison between buffer A and B."
-   (let [buf-name-a (get-in db [:ediff :buffer-a-name])
-         buf-a (first (filter #(= (:name (val %)) buf-name-a) (:buffers db)))
-         buf-b (first (filter #(= (:name (val %)) buf-name-b) (:buffers db)))]
-     (if (and buf-a buf-b)
-       (let [wasm-a (:wasm-instance (val buf-a))
-             wasm-b (:wasm-instance (val buf-b))
-             text-a (when wasm-a (try (.getText ^js wasm-a) (catch :default _ "")))
-             text-b (when wasm-b (try (.getText ^js wasm-b) (catch :default _ "")))
-             diffs (compute-line-diff (or text-a "") (or text-b ""))
+   (let [buf-name-a (:buffer-a-name @ediff-state)
+         buf-id-a (lisp/get-buffer buf-name-a)
+         buf-id-b (lisp/get-buffer buf-name-b)]
+     (if (and buf-id-a buf-id-b)
+       (let [text-a (or (lisp/buffer-text-of buf-id-a) "")
+             text-b (or (lisp/buffer-text-of buf-id-b) "")
+             diffs (compute-line-diff text-a text-b)
              diff-count (count (filter #(not= :same (:type %)) diffs))
              output (str "Ediff: " buf-name-a " vs " buf-name-b "\n"
                          (str/join "" (repeat 60 "=")) "\n\n"
@@ -300,42 +307,41 @@
              wasm-instance (when WasmGapBuffer (WasmGapBuffer. output))
              lines (str/split output #"\n" -1)
              line-count (count lines)]
+         ;; Store diffs in package-local state
+         (swap! ediff-state assoc :diffs diffs :diff-index 0)
          (if-not wasm-instance
            {:fx [[:dispatch [:echo/message "Error: WASM not initialized"]]]}
-           {:db (-> db
-                    (assoc-in [:buffers buffer-id]
-                              {:id buffer-id
-                               :name "*ediff*"
-                               :wasm-instance wasm-instance
-                               :file-handle nil
-                               :major-mode :diff-mode
-                               :is-read-only? true
-                               :is-modified? false
-                               :mark-position nil
-                               :cursor-position {:line 0 :column 0}
-                               :selection-range nil
-                               :minor-modes #{}
-                               :buffer-local-vars {}
-                               :ast nil
-                               :language :text
-                               :diagnostics []
-                               :undo-stack []
-                               :undo-in-progress? false
-                               :editor-version 0
-                               :text-properties {}
-                               :overlays {}
-                               :next-overlay-id 1
-                               :cache {:text output
-                                       :line-count line-count}})
-                    (assoc-in [:ediff :diffs] diffs)
-                    (assoc-in [:ediff :diff-index] 0))
+           {:db (assoc-in db [:buffers buffer-id]
+                          {:id buffer-id
+                           :name "*ediff*"
+                           :wasm-instance wasm-instance
+                           :file-handle nil
+                           :major-mode :diff-mode
+                           :is-read-only? true
+                           :is-modified? false
+                           :mark-position nil
+                           :cursor-position {:line 0 :column 0}
+                           :selection-range nil
+                           :minor-modes #{}
+                           :buffer-local-vars {}
+                           :ast nil
+                           :language :text
+                           :diagnostics []
+                           :undo-stack []
+                           :undo-in-progress? false
+                           :editor-version 0
+                           :text-properties {}
+                           :overlays {}
+                           :next-overlay-id 1
+                           :cache {:text output
+                                   :line-count line-count}})
             :fx [[:dispatch [:switch-buffer buffer-id]]
                  [:dispatch [:echo/message
                              (str diff-count " difference"
                                   (when (not= 1 diff-count) "s") " found")]]]}))
        {:fx [[:dispatch [:echo/message
                          (str "Buffer not found: "
-                              (if buf-a buf-name-b buf-name-a))]]]}))))
+                              (if buf-id-a buf-name-b buf-name-a))]]]}))))
 
 ;; =============================================================================
 ;; Ediff Navigation
@@ -343,10 +349,10 @@
 
 (rf/reg-event-fx
  :ediff/next-diff
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Go to next difference."
-   (let [diffs (get-in db [:ediff :diffs] [])
-         idx (get-in db [:ediff :diff-index] 0)
+   (let [diffs (or (:diffs @ediff-state) [])
+         idx (or (:diff-index @ediff-state) 0)
          ;; Find next non-same diff
          remaining (drop (inc idx) diffs)
          next-diff-offset (first (keep-indexed
@@ -354,23 +360,24 @@
                                    remaining))]
      (if next-diff-offset
        (let [new-idx (+ (inc idx) next-diff-offset)]
-         {:db (assoc-in db [:ediff :diff-index] new-idx)
-          :fx [[:dispatch [:echo/message (str "Difference at line " new-idx)]]]})
+         (swap! ediff-state assoc :diff-index new-idx)
+         {:fx [[:dispatch [:echo/message (str "Difference at line " new-idx)]]]})
        {:fx [[:dispatch [:echo/message "No more differences"]]]}))))
 
 (rf/reg-event-fx
  :ediff/prev-diff
- (fn [{:keys [db]} [_]]
+ (fn [{:keys [_db]} [_]]
    "Go to previous difference."
-   (let [diffs (get-in db [:ediff :diffs] [])
-         idx (get-in db [:ediff :diff-index] 0)
+   (let [diffs (or (:diffs @ediff-state) [])
+         idx (or (:diff-index @ediff-state) 0)
          before (take idx diffs)
          prev-diff-offset (last (keep-indexed
                                   (fn [i d] (when (not= :same (:type d)) i))
                                   before))]
      (if prev-diff-offset
-       {:db (assoc-in db [:ediff :diff-index] prev-diff-offset)
-        :fx [[:dispatch [:echo/message (str "Difference at line " prev-diff-offset)]]]}
+       (do
+         (swap! ediff-state assoc :diff-index prev-diff-offset)
+         {:fx [[:dispatch [:echo/message (str "Difference at line " prev-diff-offset)]]]})
        {:fx [[:dispatch [:echo/message "No previous differences"]]]}))))
 
 (rf/reg-event-fx

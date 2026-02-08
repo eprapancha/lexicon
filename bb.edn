@@ -121,52 +121,67 @@
         (print-step "✅" "ClojureScript build complete!")))
 
     (defn lint-architecture!
-      "Check that packages only import from lexicon.lisp, not core internals."
+      "Check architecture boundaries:
+       1. Packages must only import from lexicon.lisp, not core internals
+       2. Core must never import from packages (except main.cljs)"
       []
       (print-step "🔍" "Checking architecture boundary...")
       (let [src-dir "packages/editor-cljs/src/lexicon"
-            ;; Find all .cljs files at top level (packages), excluding lisp.cljs
-            package-files (->> (fs/list-dir src-dir)
-                               (filter (fn [f] (and (fs/regular-file? f)
-                                                    (str/ends-with? (str f) ".cljs")
-                                                    (not= (fs/file-name f) "lisp.cljs"))))
-                               (map str))
             violations (atom 0)
-            ;; Regex patterns (can't use literals in EDN)
+            ;; Regex patterns
             core-import-pat (re-pattern "\\[lexicon\\.core\\.")
             reframe-import-pat (re-pattern "\\[re-frame\\.")
-            reframe-db-pat (re-pattern "re-frame\\.db")]
+            reframe-db-pat (re-pattern "re-frame\\.db")
+            packages-import-pat (re-pattern "\\[lexicon\\.packages\\.")]
 
-        (doseq [file package-files]
-          (let [filename (fs/file-name file)
-                content (slurp file)]
+        ;; CHECK 1: Packages must only use lexicon.lisp
+        (let [package-files (->> (fs/list-dir (str src-dir "/packages"))
+                                 (filter (fn [f] (and (fs/regular-file? f)
+                                                      (str/ends-with? (str f) ".cljs"))))
+                                 (map str))]
+          (doseq [file package-files]
+            (let [filename (fs/file-name file)
+                  content (slurp file)]
 
-            ;; Check for imports from lexicon.core.*
-            (when (re-find core-import-pat content)
-              (print-step "❌" (str "VIOLATION: " filename " imports from lexicon.core.*"))
-              (println "   Packages must ONLY import from lexicon.lisp")
-              (doseq [line (str/split-lines content)]
-                (when (re-find core-import-pat line)
-                  (println (str "   " (str/trim line)))))
-              (swap! violations inc))
+              (when (re-find core-import-pat content)
+                (print-step "❌" (str "VIOLATION: packages/" filename " imports from lexicon.core.*"))
+                (println "   Packages must ONLY import from lexicon.lisp")
+                (doseq [line (str/split-lines content)]
+                  (when (re-find core-import-pat line)
+                    (println (str "   " (str/trim line)))))
+                (swap! violations inc))
 
-            ;; Check for imports from re-frame.*
-            (when (re-find reframe-import-pat content)
-              (print-step "❌" (str "VIOLATION: " filename " imports from re-frame.*"))
-              (println "   Packages must ONLY import from lexicon.lisp")
-              (doseq [line (str/split-lines content)]
-                (when (re-find reframe-import-pat line)
-                  (println (str "   " (str/trim line)))))
-              (swap! violations inc))
+              (when (re-find reframe-import-pat content)
+                (print-step "❌" (str "VIOLATION: packages/" filename " imports from re-frame.*"))
+                (println "   Packages must ONLY import from lexicon.lisp")
+                (doseq [line (str/split-lines content)]
+                  (when (re-find reframe-import-pat line)
+                    (println (str "   " (str/trim line)))))
+                (swap! violations inc))
 
-            ;; Check for direct re-frame.db access
-            (when (re-find reframe-db-pat content)
-              (print-step "❌" (str "VIOLATION: " filename " accesses re-frame.db directly"))
-              (println "   Packages must ONLY use lexicon.lisp functions")
-              (doseq [line (str/split-lines content)]
-                (when (re-find reframe-db-pat line)
-                  (println (str "   " (str/trim line)))))
-              (swap! violations inc))))
+              (when (re-find reframe-db-pat content)
+                (print-step "❌" (str "VIOLATION: packages/" filename " accesses re-frame.db directly"))
+                (println "   Packages must ONLY use lexicon.lisp functions")
+                (doseq [line (str/split-lines content)]
+                  (when (re-find reframe-db-pat line)
+                    (println (str "   " (str/trim line)))))
+                (swap! violations inc)))))
+
+        ;; CHECK 2: Core must never import from packages (except main.cljs)
+        (let [core-files (->> (fs/glob (str src-dir "/core") "**/*.cljs")
+                              (map str)
+                              (remove (fn [f] (str/ends-with? f "main.cljs"))))]
+          (doseq [file core-files]
+            (let [rel-path (str/replace file (str src-dir "/") "")
+                  content (slurp file)]
+              (when (re-find packages-import-pat content)
+                (print-step "❌" (str "VIOLATION: " rel-path " imports from lexicon.packages.*"))
+                (println "   Core must NEVER import from packages!")
+                (println "   Use hooks if packages need to extend core behavior.")
+                (doseq [line (str/split-lines content)]
+                  (when (re-find packages-import-pat line)
+                    (println (str "   " (str/trim line)))))
+                (swap! violations inc)))))
 
         (if (zero? (deref violations))
           (do
@@ -176,14 +191,17 @@
             (println "")
             (print-step "❌" (str "Found " (deref violations) " architecture violation(s)"))
             (println "")
-            (println "ARCHITECTURE RULE:")
-            (println "  Packages (src/lexicon/*.cljs except lisp.cljs) must ONLY import:")
-            (println "    [lexicon.lisp :as lisp]")
+            (println "ARCHITECTURE RULES:")
             (println "")
-            (println "  They must NEVER import from:")
-            (println "    - lexicon.core.*")
-            (println "    - re-frame.*")
-            (println "    - re-frame.db")
+            (println "  1. Packages (src/lexicon/packages/*.cljs) must ONLY import:")
+            (println "       [lexicon.lisp :as lisp]")
+            (println "     They must NEVER import from:")
+            (println "       - lexicon.core.*")
+            (println "       - re-frame.*")
+            (println "")
+            (println "  2. Core (src/lexicon/core/**/*.cljs except main.cljs) must NEVER import:")
+            (println "       - lexicon.packages.*")
+            (println "     Core has no knowledge of packages - use hooks for extension points.")
             (println "")
             (println "See: docs/ARCHITECTURE_BOUNDARY.md")
             (System/exit 1)))))

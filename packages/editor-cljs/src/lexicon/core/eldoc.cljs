@@ -12,7 +12,8 @@
 
   Based on Emacs eldoc.el"
   (:require [re-frame.core :as rf]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
 ;; Configuration
@@ -60,16 +61,9 @@
 (defn- get-symbol-at-point
   "Extract the symbol at current point from buffer text.
    Returns {:symbol string :start pos :end pos} or nil."
-  [db]
-  (let [window (get-in db [:window-tree])
-        buffer-id (when window
-                    (if (= (:type window) :leaf)
-                      (:buffer-id window)
-                      nil))
-        buffer (get-in db [:buffers buffer-id])
-        wasm (:wasm-instance buffer)
-        text (when wasm (try (.getText wasm) (catch :default _ "")))
-        point (get-in db [:ui :cursor-position] 0)]
+  [_db]
+  (let [text (lisp/buffer-string)
+        point (lisp/point)]
     (when (and text (< point (count text)))
       (let [;; Find word boundaries
             before-text (subs text 0 (min point (count text)))
@@ -194,12 +188,10 @@
  :eldoc/display-documentation
  (fn [{:keys [db]} [_]]
    "Display documentation for symbol at point in echo area."
-   (let [window (get-in db [:window-tree])
-         buffer-id (when window
-                     (if (= (:type window) :leaf)
-                       (:buffer-id window)
-                       nil))
-         eldoc-enabled? (get-in db [:buffers buffer-id :minor-modes :eldoc-mode] false)
+   (let [buffer-id (lisp/current-buffer)
+         buffer-info (lisp/buffer-info buffer-id)
+         minor-modes (:minor-modes buffer-info)
+         eldoc-enabled? (contains? minor-modes :eldoc-mode)
          global-eldoc? (get-in db [:settings :global-eldoc-mode] false)]
      (when (or eldoc-enabled? global-eldoc?)
        (let [symbol-info (get-symbol-at-point db)
@@ -211,10 +203,7 @@
  :eldoc/toggle-mode
  (fn [db [_ buffer-id]]
    "Toggle eldoc-mode for a buffer."
-   (let [buffer-id (or buffer-id
-                       (let [window (get-in db [:window-tree])]
-                         (when (= (:type window) :leaf)
-                           (:buffer-id window))))]
+   (let [buffer-id (or buffer-id (lisp/current-buffer))]
      (if buffer-id
        (update-in db [:buffers buffer-id :minor-modes]
                   (fn [modes]
