@@ -1,4 +1,4 @@
-(ns lexicon.core.font-lock
+(ns lexicon.packages.font-lock
   "Emacs-compatible font-lock (syntax highlighting) system.
 
   Font-lock applies faces to buffer text based on mode-specific keywords.
@@ -24,6 +24,7 @@
   Issue #130"
   (:require [re-frame.core :as rf]
             [lexicon.core.text-properties :as text-props]
+            [lexicon.lisp :as lisp]
             [clojure.string :as str]))
 
 ;; =============================================================================
@@ -599,27 +600,20 @@
    (get-in db [:settings :global-font-lock-mode] true)))  ; Default to enabled
 
 ;; =============================================================================
-;; Command Registration
+;; Interactive Commands
 ;; =============================================================================
 
-(defn init-font-lock-commands!
-  "Register font-lock commands. Call from main.cljs."
+(defn font-lock-mode-toggle!
+  "Toggle syntax highlighting for current buffer."
   []
-  (rf/dispatch
-   [:register-command :font-lock-mode
-    {:docstring "Toggle syntax highlighting for current buffer"
-     :interactive nil
-     :handler (fn []
-                (let [buffer-id @(rf/subscribe [:active-buffer-id])]
-                  (rf/dispatch [:font-lock/toggle buffer-id])))}])
+  (let [buffer-id (lisp/current-buffer)]
+    (rf/dispatch [:font-lock/toggle buffer-id])))
 
-  (rf/dispatch
-   [:register-command :global-font-lock-mode
-    {:docstring "Toggle global syntax highlighting"
-     :interactive nil
-     :handler (fn []
-                (let [enabled? @(rf/subscribe [:font-lock/global-enabled?])]
-                  (rf/dispatch [:font-lock/set-global (not enabled?)])))}]))
+(defn global-font-lock-mode-toggle!
+  "Toggle global syntax highlighting."
+  []
+  (let [enabled? @(rf/subscribe [:font-lock/global-enabled?])]
+    (rf/dispatch [:font-lock/set-global (not enabled?)])))
 
 ;; =============================================================================
 ;; JIT Fontification (Issue #143)
@@ -730,3 +724,18 @@
                          (if props
                            (unfontify-region props region-start region-end)
                            {}))))}))
+
+;; =============================================================================
+;; Initialization
+;; =============================================================================
+
+(defn init-font-lock!
+  "Initialize font-lock module and register commands."
+  []
+  (lisp/define-command 'font-lock-mode
+    font-lock-mode-toggle!
+    "Toggle syntax highlighting for current buffer")
+
+  (lisp/define-command 'global-font-lock-mode
+    global-font-lock-mode-toggle!
+    "Toggle global syntax highlighting"))

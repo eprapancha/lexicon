@@ -1,4 +1,4 @@
-(ns lexicon.core.hi-lock
+(ns lexicon.packages.hi-lock
   "Hi-lock mode - Interactive regexp highlighting.
 
   Implements Emacs hi-lock.el functionality. Allows users to
@@ -13,10 +13,8 @@
 
   Based on Emacs hi-lock.el
 
-  NOTE: This package uses only lisp.cljs primitives, making it suitable
-  for extraction to an external package."
-  (:require [re-frame.core :as rf]
-            [clojure.string :as str]
+  This package uses only lisp.cljs primitives."
+  (:require [clojure.string :as str]
             [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
@@ -45,6 +43,9 @@
 ;; Store patterns in a package-local atom keyed by buffer-id
 ;; {buffer-id [{:regexp "..." :face :hi-yellow :id 1 :overlay-ids [...]} ...]}
 (defonce hi-lock-patterns (atom {}))
+
+;; Track hi-lock-mode enabled state per buffer
+(defonce hi-lock-mode-enabled (atom #{}))
 
 (defn get-patterns
   "Get hi-lock patterns for current buffer."
@@ -102,13 +103,13 @@
         face (:face pattern)]
     (if (seq matches)
       (let [overlay-ids (doall
-                         (map (fn [match]
-                                (let [ov-id (lisp/make-overlay (:start match) (:end match))]
-                                  (lisp/overlay-put ov-id :face face)
-                                  (lisp/overlay-put ov-id :priority 10)
-                                  (lisp/overlay-put ov-id :hi-lock-pattern-id (:id pattern))
-                                  ov-id))
-                              matches))]
+                          (map (fn [match]
+                                 (let [ov-id (lisp/make-overlay (:start match) (:end match))]
+                                   (lisp/overlay-put ov-id :face face)
+                                   (lisp/overlay-put ov-id :priority 10)
+                                   (lisp/overlay-put ov-id :hi-lock-pattern-id (:id pattern))
+                                   ov-id))
+                               matches))]
         ;; Store overlay IDs with the pattern
         (let [buffer-id (lisp/current-buffer)]
           (swap! hi-lock-patterns update buffer-id
@@ -128,7 +129,7 @@
     (lisp/delete-overlay ov-id)))
 
 ;; =============================================================================
-;; Hi-lock Commands (using lisp.cljs primitives)
+;; Hi-lock Commands
 ;; =============================================================================
 
 (defn highlight-regexp!
@@ -165,113 +166,75 @@
       (lisp/message (str "Highlighted symbol: " symbol)))
     (lisp/message "No symbol at point")))
 
+(defn hi-lock-mode!
+  "Toggle hi-lock-mode for current buffer."
+  []
+  (let [buffer-id (lisp/current-buffer)
+        enabled? (contains? @hi-lock-mode-enabled buffer-id)]
+    (if enabled?
+      (do
+        (swap! hi-lock-mode-enabled disj buffer-id)
+        (lisp/message "Hi-lock mode disabled"))
+      (do
+        (swap! hi-lock-mode-enabled conj buffer-id)
+        (lisp/message "Hi-lock mode enabled")))))
+
 ;; =============================================================================
-;; Re-frame Events (thin wrappers)
+;; Interactive Command Handlers
 ;; =============================================================================
 
-(rf/reg-event-fx
- :hi-lock/highlight-regexp
- (fn [{:keys [db]} [_ regexp face]]
-   (highlight-regexp! regexp face)
-   {:db db}))
+(defn highlight-regexp-interactive []
+  (lisp/read-from-minibuffer
+   "Regexp to highlight: "
+   (fn [regexp]
+     (when (not (str/blank? regexp))
+       (highlight-regexp! regexp nil)))))
 
-(rf/reg-event-fx
- :hi-lock/unhighlight-regexp
- (fn [{:keys [db]} [_ regexp-or-id]]
-   (unhighlight-regexp! regexp-or-id)
-   {:db db}))
+(defn unhighlight-regexp-interactive []
+  (let [patterns (get-patterns)]
+    (if (empty? patterns)
+      (lisp/message "No patterns to unhighlight")
+      (lisp/read-from-minibuffer
+       "Regexp to unhighlight: "
+       (fn [regexp]
+         (unhighlight-regexp! regexp))))))
 
-(rf/reg-event-fx
- :command/highlight-regexp
- (fn [{:keys [db]} [_]]
-   {:db db
-    :fx [[:dispatch [:minibuffer/activate
-                     {:prompt "Regexp to highlight: "
-                      :on-confirm [:hi-lock/highlight-regexp-confirm]}]]]}))
-
-(rf/reg-event-fx
- :hi-lock/highlight-regexp-confirm
- (fn [{:keys [db]} [_ regexp]]
-   (if (not (str/blank? regexp))
-     (do
-       (highlight-regexp! regexp nil)
-       {:db db
-        :fx [[:dispatch [:minibuffer/deactivate]]]})
-     {:db db
-      :fx [[:dispatch [:minibuffer/deactivate]]]})))
-
-(rf/reg-event-fx
- :command/unhighlight-regexp
- (fn [{:keys [db]} [_]]
-   (let [patterns (get-patterns)]
-     (if (empty? patterns)
-       {:db db
-        :fx [[:dispatch [:echo/message "No patterns to unhighlight"]]]}
-       {:db db
-        :fx [[:dispatch [:minibuffer/activate
-                         {:prompt "Regexp to unhighlight: "
-                          :completions (mapv :regexp patterns)
-                          :on-confirm [:hi-lock/unhighlight-regexp-confirm]}]]]}))))
-
-(rf/reg-event-fx
- :hi-lock/unhighlight-regexp-confirm
- (fn [{:keys [db]} [_ regexp]]
-   (unhighlight-regexp! regexp)
-   {:db db
-    :fx [[:dispatch [:minibuffer/deactivate]]]}))
-
-(rf/reg-event-fx
- :command/highlight-phrase
- (fn [{:keys [db]} [_]]
-   {:db db
-    :fx [[:dispatch [:minibuffer/activate
-                     {:prompt "Phrase to highlight: "
-                      :on-confirm [:hi-lock/highlight-phrase-confirm]}]]]}))
-
-(rf/reg-event-fx
- :hi-lock/highlight-phrase-confirm
- (fn [{:keys [db]} [_ phrase]]
-   (if (not (str/blank? phrase))
-     (do
-       (highlight-regexp! phrase nil)
-       {:db db
-        :fx [[:dispatch [:minibuffer/deactivate]]]})
-     {:db db
-      :fx [[:dispatch [:minibuffer/deactivate]]]})))
-
-(rf/reg-event-fx
- :command/highlight-symbol-at-point
- (fn [{:keys [db]} [_]]
-   (highlight-symbol-at-point!)
-   {:db db}))
+(defn highlight-phrase-interactive []
+  (lisp/read-from-minibuffer
+   "Phrase to highlight: "
+   (fn [phrase]
+     (when (not (str/blank? phrase))
+       (highlight-regexp! phrase nil)))))
 
 ;; =============================================================================
 ;; Initialization
 ;; =============================================================================
 
-(defn init!
+(defn init-hi-lock!
   "Initialize hi-lock module and register commands."
   []
-  ;; Register highlight-regexp command
-  (rf/dispatch [:register-command :highlight-regexp
-                {:docstring "Highlight text matching a regular expression"
-                 :interactive "sRegexp to highlight: "
-                 :handler [:command/highlight-regexp]}])
+  (lisp/define-command 'highlight-regexp
+    highlight-regexp-interactive
+    "Highlight text matching a regular expression")
 
-  ;; Register unhighlight-regexp command
-  (rf/dispatch [:register-command :unhighlight-regexp
-                {:docstring "Remove highlighting for a regular expression"
-                 :interactive nil
-                 :handler [:command/unhighlight-regexp]}])
+  (lisp/define-command 'unhighlight-regexp
+    unhighlight-regexp-interactive
+    "Remove highlighting for a regular expression")
 
-  ;; Register highlight-phrase command
-  (rf/dispatch [:register-command :highlight-phrase
-                {:docstring "Highlight a phrase with flexible whitespace matching"
-                 :interactive "sPhrase to highlight: "
-                 :handler [:command/highlight-phrase]}])
+  (lisp/define-command 'highlight-phrase
+    highlight-phrase-interactive
+    "Highlight a phrase with flexible whitespace matching")
 
-  ;; Register highlight-symbol-at-point command
-  (rf/dispatch [:register-command :highlight-symbol-at-point
-                {:docstring "Highlight the symbol at point"
-                 :interactive nil
-                 :handler [:command/highlight-symbol-at-point]}]))
+  (lisp/define-command 'highlight-symbol-at-point
+    highlight-symbol-at-point!
+    "Highlight the symbol at point")
+
+  (lisp/define-command 'hi-lock-mode
+    hi-lock-mode!
+    "Toggle hi-lock mode for current buffer")
+
+  ;; Register keybindings for hi-lock (M-s h prefix)
+  (lisp/global-set-key "M-s h r" :highlight-regexp)
+  (lisp/global-set-key "M-s h p" :highlight-phrase)
+  (lisp/global-set-key "M-s h u" :unhighlight-regexp)
+  (lisp/global-set-key "M-s h ." :highlight-symbol-at-point))

@@ -1,4 +1,4 @@
-(ns lexicon.core.eldoc
+(ns lexicon.packages.eldoc
   "Eldoc mode - show function arglist or variable docstring in echo area.
 
   Implements Emacs eldoc.el functionality. Shows documentation for
@@ -10,9 +10,10 @@
   - eldoc-documentation-functions: Hook for documentation providers
   - Shows function signatures and variable docstrings
 
-  Based on Emacs eldoc.el"
-  (:require [re-frame.core :as rf]
-            [clojure.string :as str]
+  Based on Emacs eldoc.el
+
+  This package uses only lisp.cljs primitives."
+  (:require [clojure.string :as str]
             [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
@@ -55,13 +56,26 @@
            (vec (remove #(= (:name %) name) fns)))))
 
 ;; =============================================================================
+;; State
+;; =============================================================================
+
+;; Whether eldoc-mode is enabled per buffer
+(defonce eldoc-mode-enabled (atom #{}))
+
+;; Whether global-eldoc-mode is enabled
+(defonce global-eldoc-mode-enabled? (atom false))
+
+;; Timer for idle delay
+(defonce eldoc-timer (atom nil))
+
+;; =============================================================================
 ;; Symbol at Point Detection
 ;; =============================================================================
 
 (defn- get-symbol-at-point
   "Extract the symbol at current point from buffer text.
    Returns {:symbol string :start pos :end pos} or nil."
-  [_db]
+  []
   (let [text (lisp/buffer-string)
         point (lisp/point)]
     (when (and text (< point (count text)))
@@ -83,14 +97,6 @@
 ;; =============================================================================
 ;; Documentation Lookup
 ;; =============================================================================
-
-(defn- get-command-doc
-  "Get documentation for a command by name."
-  [db cmd-name]
-  (let [cmd-keyword (keyword cmd-name)
-        cmd (get-in db [:commands cmd-keyword])]
-    (when cmd
-      (str cmd-name ": " (or (:docstring cmd) "No documentation")))))
 
 (defn- get-lisp-function-doc
   "Get documentation for a Lisp function.
@@ -133,35 +139,31 @@
 (defn- collect-documentation
   "Collect documentation from all registered providers.
    Returns first non-nil result."
-  [db]
+  []
   (let [fns (sort-by :priority > @documentation-functions)]
     (loop [remaining fns]
       (if (empty? remaining)
         nil
         (let [{:keys [fn]} (first remaining)
-              result (try (fn db) (catch :default _ nil))]
+              result (try (fn) (catch :default _ nil))]
           (if result
             result
             (recur (rest remaining))))))))
 
 (defn- get-documentation-for-symbol
   "Get documentation for a symbol, checking various sources."
-  [db symbol-info]
+  [symbol-info]
   (when symbol-info
     (let [sym (:symbol symbol-info)]
       (or
        ;; Check registered documentation functions first
-       (collect-documentation db)
-       ;; Check commands
-       (get-command-doc db sym)
+       (collect-documentation)
        ;; Check Lisp functions
        (get-lisp-function-doc sym)))))
 
 ;; =============================================================================
 ;; Timer Management
 ;; =============================================================================
-
-(defonce eldoc-timer (atom nil))
 
 (defn- cancel-eldoc-timer!
   "Cancel any pending eldoc timer."
@@ -170,72 +172,50 @@
     (js/clearTimeout t)
     (reset! eldoc-timer nil)))
 
+(defn- display-documentation!
+  "Display documentation for symbol at point in echo area."
+  []
+  (let [buffer-id (lisp/current-buffer)
+        eldoc-enabled? (contains? @eldoc-mode-enabled buffer-id)
+        global-eldoc? @global-eldoc-mode-enabled?]
+    (when (or eldoc-enabled? global-eldoc?)
+      (let [symbol-info (get-symbol-at-point)
+            doc (get-documentation-for-symbol symbol-info)]
+        (when doc
+          (lisp/message doc))))))
+
 (defn- schedule-eldoc-display!
   "Schedule eldoc display after idle delay."
   []
   (cancel-eldoc-timer!)
   (reset! eldoc-timer
-          (js/setTimeout
-           (fn []
-             (rf/dispatch [:eldoc/display-documentation]))
-           eldoc-idle-delay)))
+          (js/setTimeout display-documentation! eldoc-idle-delay)))
 
 ;; =============================================================================
-;; Re-frame Events
+;; Eldoc Commands
 ;; =============================================================================
 
-(rf/reg-event-fx
- :eldoc/display-documentation
- (fn [{:keys [db]} [_]]
-   "Display documentation for symbol at point in echo area."
-   (let [buffer-id (lisp/current-buffer)
-         buffer-info (lisp/buffer-info buffer-id)
-         minor-modes (:minor-modes buffer-info)
-         eldoc-enabled? (contains? minor-modes :eldoc-mode)
-         global-eldoc? (get-in db [:settings :global-eldoc-mode] false)]
-     (when (or eldoc-enabled? global-eldoc?)
-       (let [symbol-info (get-symbol-at-point db)
-             doc (get-documentation-for-symbol db symbol-info)]
-         (when doc
-           {:fx [[:dispatch [:echo/message doc]]]}))))))
+(defn eldoc-mode!
+  "Toggle eldoc-mode for current buffer."
+  []
+  (let [buffer-id (lisp/current-buffer)
+        enabled? (contains? @eldoc-mode-enabled buffer-id)]
+    (if enabled?
+      (do
+        (swap! eldoc-mode-enabled disj buffer-id)
+        (lisp/message "Eldoc mode disabled"))
+      (do
+        (swap! eldoc-mode-enabled conj buffer-id)
+        (lisp/message "Eldoc mode enabled")))))
 
-(rf/reg-event-db
- :eldoc/toggle-mode
- (fn [db [_ buffer-id]]
-   "Toggle eldoc-mode for a buffer."
-   (let [buffer-id (or buffer-id (lisp/current-buffer))]
-     (if buffer-id
-       (update-in db [:buffers buffer-id :minor-modes]
-                  (fn [modes]
-                    (let [modes (or modes #{})]
-                      (if (contains? modes :eldoc-mode)
-                        (disj modes :eldoc-mode)
-                        (conj modes :eldoc-mode)))))
-       db))))
-
-(rf/reg-event-db
- :eldoc/toggle-global-mode
- (fn [db [_]]
-   "Toggle global-eldoc-mode."
-   (update-in db [:settings :global-eldoc-mode] not)))
-
-;; =============================================================================
-;; Commands
-;; =============================================================================
-
-(rf/reg-event-fx
- :command/eldoc-mode
- (fn [{:keys [_db]} [_]]
-   "Toggle eldoc-mode in current buffer."
-   {:fx [[:dispatch [:eldoc/toggle-mode nil]]
-         [:dispatch [:echo/message "eldoc-mode toggled"]]]}))
-
-(rf/reg-event-fx
- :command/global-eldoc-mode
- (fn [{:keys [_db]} [_]]
-   "Toggle global-eldoc-mode."
-   {:fx [[:dispatch [:eldoc/toggle-global-mode]]
-         [:dispatch [:echo/message "global-eldoc-mode toggled"]]]}))
+(defn global-eldoc-mode!
+  "Toggle global-eldoc-mode."
+  []
+  (let [new-state (not @global-eldoc-mode-enabled?)]
+    (reset! global-eldoc-mode-enabled? new-state)
+    (lisp/message (if new-state
+                    "Global eldoc mode enabled"
+                    "Global eldoc mode disabled"))))
 
 ;; =============================================================================
 ;; Post-Command Hook Integration
@@ -254,23 +234,19 @@
 (defn init!
   "Initialize eldoc module and register commands."
   []
-  ;; Register eldoc-mode command
-  (rf/dispatch [:register-command :eldoc-mode
-                {:docstring "Toggle ElDoc mode - show documentation in echo area"
-                 :interactive nil
-                 :handler [:command/eldoc-mode]}])
+  (lisp/define-command 'eldoc-mode
+    eldoc-mode!
+    "Toggle ElDoc mode - show documentation in echo area")
 
-  ;; Register global-eldoc-mode command
-  (rf/dispatch [:register-command :global-eldoc-mode
-                {:docstring "Toggle global ElDoc mode for all supported buffers"
-                 :interactive nil
-                 :handler [:command/global-eldoc-mode]}])
+  (lisp/define-command 'global-eldoc-mode
+    global-eldoc-mode!
+    "Toggle global ElDoc mode for all supported buffers")
 
   ;; Register built-in documentation provider for Lisp
   (register-documentation-function!
    :elisp-basic
-   (fn [db]
-     (let [symbol-info (get-symbol-at-point db)]
+   (fn []
+     (let [symbol-info (get-symbol-at-point)]
        (when symbol-info
          (get-lisp-function-doc (:symbol symbol-info)))))
    :priority 0))

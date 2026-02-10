@@ -1,4 +1,4 @@
-(ns lexicon.core.grep
+(ns lexicon.packages.grep
   "Grep search integration (grep.el).
 
   Implements Emacs grep.el core functionality:
@@ -19,12 +19,9 @@
 
   Based on Emacs lisp/progmodes/grep.el
 
-  NOTE: This package uses lisp.cljs primitives where possible.
-  Buffer creation still requires re-frame for WASM setup."
-  (:require [re-frame.core :as rf]
-            [clojure.string :as str]
-            [lexicon.lisp :as lisp]
-            [lexicon.core.db :as db]))
+  This package uses only lisp.cljs primitives."
+  (:require [clojure.string :as str]
+            [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
 ;; State (package-local)
@@ -97,7 +94,35 @@
          :count (count all-matches)}))))
 
 ;; =============================================================================
-;; Grep Navigation (using lisp.cljs primitives)
+;; Grep Buffer Management
+;; =============================================================================
+
+(defn grep-run!
+  "Run grep and display results in *grep* buffer."
+  [pattern]
+  (let [{:keys [output matches count]} (run-grep pattern)
+        existing-id (lisp/get-buffer "*grep*")]
+    ;; Update grep state
+    (swap! grep-state assoc
+           :last-pattern pattern
+           :matches matches
+           :match-index 0)
+
+    ;; Kill existing buffer if any, then create new
+    (when existing-id
+      (lisp/kill-buffer existing-id))
+
+    ;; Create *grep* buffer
+    (let [_buffer-id (lisp/create-special-buffer "*grep*" output
+                                                  {:major-mode :grep-mode
+                                                   :read-only true})]
+      (lisp/split-window-below)
+      (lisp/switch-to-buffer "*grep*")
+      (lisp/message (str "Grep finished: " count " match"
+                        (when (not= 1 count) "es") " found")))))
+
+;; =============================================================================
+;; Grep Navigation
 ;; =============================================================================
 
 (defn grep-next-match!
@@ -149,175 +174,83 @@
   "Re-run the last grep."
   []
   (if-let [pattern (:last-pattern @grep-state)]
-    (rf/dispatch [:grep/run pattern])
+    (grep-run! pattern)
     (lisp/message "No previous grep to re-run")))
 
 (defn grep-quit!
   "Quit grep buffer."
   []
-  (rf/dispatch [:kill-buffer-by-name "*grep*"]))
+  (when-let [grep-id (lisp/get-buffer "*grep*")]
+    (lisp/delete-window)
+    (lisp/kill-buffer grep-id)))
 
 ;; =============================================================================
-;; Re-frame Events
+;; Interactive Commands
 ;; =============================================================================
 
-(rf/reg-event-fx
- :grep/run
- (fn [{:keys [db]} [_ pattern]]
-   "Run grep and display results in *grep* buffer."
-   (let [{:keys [output matches count]} (run-grep pattern)
-         existing (first (filter #(= (:name (val %)) "*grep*") (:buffers db)))]
-     ;; Update grep state
-     (swap! grep-state assoc
-            :last-pattern pattern
-            :matches matches
-            :match-index 0)
-     (if existing
-       ;; Update existing buffer
-       (let [buffer-id (key existing)
-             ^js wasm (get-in db [:buffers buffer-id :wasm-instance])]
-         (when wasm
-           (let [len (.-length wasm)]
-             (.delete wasm 0 len)
-             (.insert wasm 0 output)))
-         {:db (-> db
-                  (assoc-in [:buffers buffer-id :cache :text] output)
-                  (assoc-in [:buffers buffer-id :cache :line-count]
-                            (count (str/split output #"\n" -1))))
-          :fx [[:dispatch [:switch-buffer buffer-id]]
-               [:dispatch [:echo/message
-                           (str "Grep finished: " count " match"
-                                (when (not= 1 count) "es") " found")]]]})
-       ;; Create new *grep* buffer
-       (let [buffers (:buffers db)
-             buffer-id (db/next-buffer-id buffers)
-             WasmGapBuffer (get-in db [:system :wasm-constructor])
-             wasm-instance (when WasmGapBuffer (WasmGapBuffer. output))
-             lines (str/split output #"\n" -1)
-             line-count (count lines)]
-         (if-not wasm-instance
-           {:fx [[:dispatch [:echo/message "Error: WASM not initialized"]]]}
-           {:db (assoc-in db [:buffers buffer-id]
-                          {:id buffer-id
-                           :name "*grep*"
-                           :wasm-instance wasm-instance
-                           :file-handle nil
-                           :major-mode :grep-mode
-                           :is-read-only? true
-                           :is-modified? false
-                           :mark-position nil
-                           :cursor-position {:line 0 :column 0}
-                           :selection-range nil
-                           :minor-modes #{}
-                           :buffer-local-vars {}
-                           :ast nil
-                           :language :text
-                           :diagnostics []
-                           :undo-stack []
-                           :undo-in-progress? false
-                           :editor-version 0
-                           :text-properties {}
-                           :overlays {}
-                           :next-overlay-id 1
-                           :cache {:text output
-                                   :line-count line-count}})
-            :fx [[:dispatch [:switch-buffer buffer-id]]
-                 [:dispatch [:echo/message
-                             (str "Grep finished: " count " match"
-                                  (when (not= 1 count) "es") " found")]]]}))))))
+(defn grep-interactive []
+  (lisp/read-from-minibuffer
+   "Grep (regexp): "
+   grep-run!))
 
-(rf/reg-event-fx
- :grep/next-match
- (fn [{:keys [db]} [_]]
-   (grep-next-match!)
-   {:db db}))
+(defn lgrep-interactive []
+  (lisp/read-from-minibuffer
+   "Local grep (regexp): "
+   grep-run!))
 
-(rf/reg-event-fx
- :grep/prev-match
- (fn [{:keys [db]} [_]]
-   (grep-prev-match!)
-   {:db db}))
-
-(rf/reg-event-fx
- :grep/goto-match
- (fn [{:keys [db]} [_]]
-   (grep-goto-match!)
-   {:db db}))
-
-(rf/reg-event-fx
- :grep/rerun
- (fn [{:keys [db]} [_]]
-   (grep-rerun!)
-   {:db db}))
-
-(rf/reg-event-fx
- :grep/quit
- (fn [{:keys [db]} [_]]
-   (grep-quit!)
-   {:db db}))
-
-(rf/reg-event-fx
- :grep/prompt
- (fn [_ [_]]
-   {:fx [[:dispatch [:minibuffer/activate
-                     {:prompt "Grep (regexp): "
-                      :on-confirm [:grep/run]}]]]}))
-
-(rf/reg-event-fx
- :grep/lgrep
- (fn [_ [_]]
-   {:fx [[:dispatch [:minibuffer/activate
-                     {:prompt "Local grep (regexp): "
-                      :on-confirm [:grep/run]}]]]}))
-
-(rf/reg-event-fx
- :grep/rgrep
- (fn [_ [_]]
-   {:fx [[:dispatch [:minibuffer/activate
-                     {:prompt "Recursive grep (regexp): "
-                      :on-confirm [:grep/run]}]]]}))
+(defn rgrep-interactive []
+  (lisp/read-from-minibuffer
+   "Recursive grep (regexp): "
+   grep-run!))
 
 ;; =============================================================================
 ;; Initialization
 ;; =============================================================================
 
-(defn init!
+(defn init-grep!
   "Initialize grep module and register commands."
   []
-  (rf/dispatch [:register-command :grep
-                {:docstring "Run grep and display results in *grep* buffer"
-                 :interactive nil
-                 :handler [:grep/prompt]}])
+  (lisp/define-command 'grep
+    grep-interactive
+    "Run grep and display results in *grep* buffer")
 
-  (rf/dispatch [:register-command :lgrep
-                {:docstring "Local grep - search in open buffers"
-                 :interactive nil
-                 :handler [:grep/lgrep]}])
+  (lisp/define-command 'lgrep
+    lgrep-interactive
+    "Local grep - search in open buffers")
 
-  (rf/dispatch [:register-command :rgrep
-                {:docstring "Recursive grep - search all open buffers"
-                 :interactive nil
-                 :handler [:grep/rgrep]}])
+  (lisp/define-command 'rgrep
+    rgrep-interactive
+    "Recursive grep - search all open buffers")
 
-  (rf/dispatch [:register-command :grep-find
-                {:docstring "Run grep via find (searches open buffers)"
-                 :interactive nil
-                 :handler [:grep/prompt]}])
+  (lisp/define-command 'grep-find
+    grep-interactive
+    "Run grep via find (searches open buffers)")
+
+  ;; Navigation commands
+  (lisp/define-command 'next-error
+    grep-next-match!
+    "Go to next grep/compilation match")
+
+  (lisp/define-command 'previous-error
+    grep-prev-match!
+    "Go to previous grep/compilation match")
 
   ;; grep-mode keybindings
-  (rf/dispatch [:keymap/set-mode-key :grep-mode "n" :grep/next-match])
-  (rf/dispatch [:keymap/set-mode-key :grep-mode "p" :grep/prev-match])
-  (rf/dispatch [:keymap/set-mode-key :grep-mode "Enter" :grep/goto-match])
-  (rf/dispatch [:keymap/set-mode-key :grep-mode "g" :grep/rerun])
-  (rf/dispatch [:keymap/set-mode-key :grep-mode "q" :grep/quit])
+  (lisp/define-key-for-mode :grep-mode "n" :next-error)
+  (lisp/define-key-for-mode :grep-mode "p" :previous-error)
+  (lisp/define-key-for-mode :grep-mode "RET" :grep-goto-match)
+  (lisp/define-key-for-mode :grep-mode "g" :grep-rerun)
+  (lisp/define-key-for-mode :grep-mode "q" :grep-quit)
 
-  ;; Register navigation commands for M-x access
-  (rf/dispatch [:register-command :next-error
-                {:docstring "Go to next grep/compilation match"
-                 :interactive nil
-                 :handler [:grep/next-match]}])
+  ;; Register additional commands for mode
+  (lisp/define-command 'grep-goto-match
+    grep-goto-match!
+    "Jump to current grep match")
 
-  (rf/dispatch [:register-command :previous-error
-                {:docstring "Go to previous grep/compilation match"
-                 :interactive nil
-                 :handler [:grep/prev-match]}]))
+  (lisp/define-command 'grep-rerun
+    grep-rerun!
+    "Re-run the last grep")
+
+  (lisp/define-command 'grep-quit
+    grep-quit!
+    "Quit grep buffer"))

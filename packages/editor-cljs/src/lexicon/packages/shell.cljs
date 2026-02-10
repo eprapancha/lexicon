@@ -1,4 +1,4 @@
-(ns lexicon.core.shell
+(ns lexicon.packages.shell
   "Shell and Eshell integration (shell.el, eshell/).
 
   Implements Emacs shell mode core functionality:
@@ -29,11 +29,11 @@
   - M-& : async-shell-command
   - M-| : shell-command-on-region
 
-  Based on Emacs lisp/shell.el and lisp/eshell/"
-  (:require [re-frame.core :as rf]
-            [clojure.string :as str]
-            [lexicon.lisp :as lisp]
-            [lexicon.core.db :as db]))
+  Based on Emacs lisp/shell.el and lisp/eshell/
+
+  This package uses only lisp.cljs primitives."
+  (:require [clojure.string :as str]
+            [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
 ;; Shell State (Package-local)
@@ -194,127 +194,71 @@
   (let [cwd (:cwd @shell-state)]
     (str "lexicon:" cwd " $ ")))
 
-(rf/reg-event-fx
- :shell/open
- (fn [{:keys [db]} [_ shell-name]]
-   "Open a shell buffer (M-x shell)."
-   (let [name (or shell-name "*shell*")
-         existing-id (lisp/get-buffer name)]
-     (if existing-id
-       {:fx [[:dispatch [:switch-buffer existing-id]]]}
-       (let [prompt (make-shell-prompt)
-             content (str "Lexicon Shell\n"
-                          "Type 'help' for available commands.\n\n"
-                          prompt)
-             buffers (:buffers db)
-             buffer-id (db/next-buffer-id buffers)
-             WasmGapBuffer (get-in db [:system :wasm-constructor])
-             wasm-instance (when WasmGapBuffer (WasmGapBuffer. content))
-             lines (str/split content #"\n" -1)
-             line-count (count lines)]
-         (if-not wasm-instance
-           {:fx [[:dispatch [:echo/message "Error: WASM not initialized"]]]}
-           {:db (-> db
-                    (assoc-in [:buffers buffer-id]
-                              {:id buffer-id
-                               :name name
-                               :wasm-instance wasm-instance
-                               :file-handle nil
-                               :major-mode :shell-mode
-                               :is-read-only? false
-                               :is-modified? false
-                               :mark-position nil
-                               :cursor-position {:line 0 :column 0}
-                               :selection-range nil
-                               :minor-modes #{}
-                               :buffer-local-vars {}
-                               :ast nil
-                               :language :text
-                               :diagnostics []
-                               :undo-stack []
-                               :undo-in-progress? false
-                               :editor-version 0
-                               :text-properties {}
-                               :overlays {}
-                               :next-overlay-id 1
-                               :cache {:text content
-                                       :line-count line-count}}))
-            :fx [[:dispatch [:switch-buffer buffer-id]]]}))))))
-
-(rf/reg-event-fx
- :eshell/open
- (fn [{:keys [_db]} [_]]
-   "Open an eshell buffer (M-x eshell)."
-   {:fx [[:dispatch [:shell/open "*eshell*"]]]}))
+(defn- open-shell-buffer!
+  "Open a shell buffer with the given name."
+  [shell-name]
+  (let [name (or shell-name "*shell*")
+        existing-id (lisp/get-buffer name)]
+    (if existing-id
+      (lisp/switch-to-buffer existing-id)
+      (let [prompt (make-shell-prompt)
+            content (str "Lexicon Shell\n"
+                         "Type 'help' for available commands.\n\n"
+                         prompt)
+            buffer-id (lisp/create-special-buffer name content
+                                                  {:major-mode :shell-mode
+                                                   :read-only false})]
+        (when buffer-id
+          (lisp/switch-to-buffer buffer-id))))))
 
 ;; =============================================================================
 ;; Shell Command Execution (M-! and M-&)
 ;; =============================================================================
 
-(rf/reg-event-fx
- :shell-command
- (fn [{:keys [_db]} [_]]
-   "Execute a shell command and display output (M-!)."
-   {:fx [[:dispatch [:minibuffer/activate
-                     {:prompt "Shell command: "
-                      :on-confirm [:shell-command/execute]}]]]}))
-
-(rf/reg-event-fx
- :shell-command/execute
- (fn [{:keys [_db]} [_ command]]
-   "Execute the shell command and show result."
-   (let [output (execute-command command)]
-     (if (= output :clear)
-       {:fx [[:dispatch [:echo/message "clear: not applicable outside shell buffer"]]]}
-       (do
-         (swap! shell-state update :history conj command)
-         {:fx [[:dispatch [:echo/message output]]]})))))
-
-(rf/reg-event-fx
- :async-shell-command
- (fn [{:keys [_db]} [_]]
-   "Execute an async shell command (M-&)."
-   {:fx [[:dispatch [:minibuffer/activate
-                     {:prompt "Async shell command: "
-                      :on-confirm [:shell-command/execute]}]]]}))
-
-(rf/reg-event-fx
- :shell-command-on-region
- (fn [{:keys [_db]} [_]]
-   "Pipe region to shell command (M-|)."
-   {:fx [[:dispatch [:minibuffer/activate
-                     {:prompt "Shell command on region: "
-                      :on-confirm [:shell-command/execute]}]]]}))
+(defn- execute-shell-command!
+  "Execute the shell command and show result."
+  [command]
+  (let [output (execute-command command)]
+    (if (= output :clear)
+      (lisp/message "clear: not applicable outside shell buffer")
+      (do
+        (swap! shell-state update :history conj command)
+        (lisp/message output)))))
 
 ;; =============================================================================
-;; Shell Input Processing
+;; Interactive Commands
 ;; =============================================================================
 
-(rf/reg-event-fx
- :shell/send-input
- (fn [{:keys [db]} [_ buffer-id input]]
-   "Process input in shell buffer."
-   (let [output (execute-command input)
-         ^js wasm (get-in db [:buffers buffer-id :wasm-instance])]
-     (when wasm
-       (let [current-text (try (.getText wasm) (catch :default _ ""))
-             new-output (if (= output :clear)
-                          (make-shell-prompt)
-                          (str "\n" output "\n" (make-shell-prompt)))
-             new-text (if (= output :clear)
-                        new-output
-                        (str current-text new-output))
-             lines (str/split new-text #"\n" -1)
-             line-count (count lines)]
-         (when (= output :clear)
-           (let [len (.-length wasm)]
-             (.delete wasm 0 len)))
-         (when-not (= output :clear)
-           (.insert wasm (.-length wasm) new-output))
-         (swap! shell-state update :history conj input)
-         {:db (-> db
-                  (assoc-in [:buffers buffer-id :cache :text] new-text)
-                  (assoc-in [:buffers buffer-id :cache :line-count] line-count))})))))
+(defn shell-interactive
+  "Open a shell buffer."
+  []
+  (open-shell-buffer! "*shell*"))
+
+(defn eshell-interactive
+  "Open an eshell buffer."
+  []
+  (open-shell-buffer! "*eshell*"))
+
+(defn shell-command-interactive
+  "Execute a shell command and display output (M-!)."
+  []
+  (lisp/read-from-minibuffer
+   "Shell command: "
+   execute-shell-command!))
+
+(defn async-shell-command-interactive
+  "Execute an async shell command (M-&)."
+  []
+  (lisp/read-from-minibuffer
+   "Async shell command: "
+   execute-shell-command!))
+
+(defn shell-command-on-region-interactive
+  "Pipe region to shell command (M-|)."
+  []
+  (lisp/read-from-minibuffer
+   "Shell command on region: "
+   execute-shell-command!))
 
 ;; =============================================================================
 ;; Initialization
@@ -324,27 +268,22 @@
   "Initialize shell/eshell module and register commands."
   []
   ;; Shell commands
-  (rf/dispatch [:register-command :shell
-                {:docstring "Open a shell buffer"
-                 :interactive nil
-                 :handler [:shell/open]}])
+  (lisp/define-command 'shell
+    shell-interactive
+    "Open a shell buffer")
 
-  (rf/dispatch [:register-command :eshell
-                {:docstring "Open an Emacs shell (eshell) buffer"
-                 :interactive nil
-                 :handler [:eshell/open]}])
+  (lisp/define-command 'eshell
+    eshell-interactive
+    "Open an Emacs shell (eshell) buffer")
 
-  (rf/dispatch [:register-command :shell-command
-                {:docstring "Execute a shell command and display output (M-!)"
-                 :interactive nil
-                 :handler [:shell-command]}])
+  (lisp/define-command 'shell-command
+    shell-command-interactive
+    "Execute a shell command and display output (M-!)")
 
-  (rf/dispatch [:register-command :async-shell-command
-                {:docstring "Execute an async shell command (M-&)"
-                 :interactive nil
-                 :handler [:async-shell-command]}])
+  (lisp/define-command 'async-shell-command
+    async-shell-command-interactive
+    "Execute an async shell command (M-&)")
 
-  (rf/dispatch [:register-command :shell-command-on-region
-                {:docstring "Pipe region to shell command (M-|)"
-                 :interactive nil
-                 :handler [:shell-command-on-region]}]))
+  (lisp/define-command 'shell-command-on-region
+    shell-command-on-region-interactive
+    "Pipe region to shell command (M-|)"))

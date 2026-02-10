@@ -1,4 +1,4 @@
-(ns lexicon.core.icomplete
+(ns lexicon.packages.icomplete
   "Incremental completion feedback in the minibuffer (icomplete).
 
   When icomplete-mode is enabled, prospective completions are shown
@@ -13,12 +13,14 @@
   - C-. : icomplete-forward-completions (cycle to next)
   - C-, : icomplete-backward-completions (cycle to previous)
 
-  Based on Emacs lisp/icomplete.el"
+  Based on Emacs lisp/icomplete.el
+
+  NOTE: This package requires re-frame integration for the minibuffer
+  subscription. Uses lisp.cljs primitives where possible."
   (:require [re-frame.core :as rf]
+            [re-frame.db :as rfdb]
             [clojure.string :as str]
-            [lexicon.core.db :as db]
-            [lexicon.core.minibuffer :as minibuffer]
-            [lexicon.core.completion.styles :as styles]))
+            [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
 ;; Configuration
@@ -45,6 +47,40 @@
 (defonce icomplete-last-input (atom nil))
 
 ;; =============================================================================
+;; Completion Styles (inlined to avoid core dependency)
+;; =============================================================================
+
+(defn- basic-style-match?
+  "Basic completion style - prefix matching."
+  [input candidate]
+  (str/starts-with? (str/lower-case candidate) (str/lower-case input)))
+
+(defn- substring-style-match?
+  "Substring completion style - match anywhere in string."
+  [input candidate]
+  (str/includes? (str/lower-case candidate) (str/lower-case input)))
+
+(defn- flex-style-match?
+  "Flex completion style - characters must appear in order."
+  [input candidate]
+  (let [input-lower (str/lower-case input)
+        candidate-lower (str/lower-case candidate)]
+    (loop [i 0
+           c 0]
+      (cond
+        (>= i (count input-lower)) true
+        (>= c (count candidate-lower)) false
+        (= (nth input-lower i) (nth candidate-lower c))
+        (recur (inc i) (inc c))
+        :else
+        (recur i (inc c))))))
+
+(def ^:private completion-styles
+  {:basic basic-style-match?
+   :substring substring-style-match?
+   :flex flex-style-match?})
+
+;; =============================================================================
 ;; Helper Functions
 ;; =============================================================================
 
@@ -61,7 +97,7 @@
                     (if (empty? fns)
                       []
                       (let [style (first fns)
-                            style-fn (get styles/completion-styles style)
+                            style-fn (get completion-styles style)
                             results (when style-fn
                                       (filter #(style-fn input %) all-completions))]
                         (if (seq results)
@@ -103,7 +139,7 @@
   (reset! icomplete-last-input nil))
 
 ;; =============================================================================
-;; Re-frame Subscriptions
+;; Re-frame Subscriptions (required for minibuffer UI)
 ;; =============================================================================
 
 (rf/reg-sub
@@ -130,7 +166,7 @@
             true)))))))
 
 ;; =============================================================================
-;; Re-frame Events
+;; Re-frame Events (required for minibuffer integration)
 ;; =============================================================================
 
 (rf/reg-event-fx
@@ -143,7 +179,7 @@
          (swap! icomplete-index #(mod (inc %) n))
          ;; Update minibuffer input to selected completion
          (let [selected (nth @icomplete-cached-completions @icomplete-index)]
-           {:db (minibuffer/set-input db selected)}))))))
+           {:db (assoc-in db [:minibuffer :input] selected)}))))))
 
 (rf/reg-event-fx
  :icomplete/backward-completions
@@ -155,7 +191,7 @@
          (swap! icomplete-index #(mod (dec %) n))
          ;; Update minibuffer input to selected completion
          (let [selected (nth @icomplete-cached-completions @icomplete-index)]
-           {:db (minibuffer/set-input db selected)}))))))
+           {:db (assoc-in db [:minibuffer :input] selected)}))))))
 
 (rf/reg-event-fx
  :icomplete/update-completions
@@ -187,10 +223,6 @@
                                        "Icomplete mode enabled"
                                        "Icomplete mode disabled")]]]})))
 
-;; =============================================================================
-;; Minibuffer Integration
-;; =============================================================================
-
 ;; Hook into minibuffer activation to reset state
 (rf/reg-event-fx
  :icomplete/minibuffer-setup
@@ -200,27 +232,61 @@
    {:db db}))
 
 ;; =============================================================================
+;; Commands
+;; =============================================================================
+
+(defn icomplete-mode!
+  "Toggle icomplete mode."
+  []
+  (let [new-state (not @icomplete-mode-enabled?)]
+    (reset! icomplete-mode-enabled? new-state)
+    (when new-state
+      (reset-icomplete-state!))
+    (lisp/message (if new-state
+                    "Icomplete mode enabled"
+                    "Icomplete mode disabled"))))
+
+(defn icomplete-forward!
+  "Cycle forward through icomplete candidates."
+  []
+  (when @icomplete-mode-enabled?
+    (let [n (count @icomplete-cached-completions)]
+      (when (pos? n)
+        (swap! icomplete-index #(mod (inc %) n))
+        (let [selected (nth @icomplete-cached-completions @icomplete-index)]
+          (swap! rfdb/app-db assoc-in [:minibuffer :input] selected))))))
+
+(defn icomplete-backward!
+  "Cycle backward through icomplete candidates."
+  []
+  (when @icomplete-mode-enabled?
+    (let [n (count @icomplete-cached-completions)]
+      (when (pos? n)
+        (swap! icomplete-index #(mod (dec %) n))
+        (let [selected (nth @icomplete-cached-completions @icomplete-index)]
+          (swap! rfdb/app-db assoc-in [:minibuffer :input] selected))))))
+
+;; =============================================================================
 ;; Initialization
 ;; =============================================================================
 
-(defn init-icomplete!
+(defn init!
   "Initialize icomplete mode commands and keybindings."
   []
   ;; Register icomplete-mode command
-  (rf/dispatch [:register-command :icomplete-mode
-                {:docstring "Toggle incremental completion feedback in minibuffer"
-                 :handler [:icomplete-mode nil]}])
+  (lisp/define-command 'icomplete-mode
+    icomplete-mode!
+    "Toggle incremental completion feedback in minibuffer")
 
   ;; Register cycling commands
-  (rf/dispatch [:register-command :icomplete-forward-completions
-                {:docstring "Cycle forward through icomplete candidates (C-.)"
-                 :handler [:icomplete/forward-completions]}])
+  (lisp/define-command 'icomplete-forward-completions
+    icomplete-forward!
+    "Cycle forward through icomplete candidates (C-.)")
 
-  (rf/dispatch [:register-command :icomplete-backward-completions
-                {:docstring "Cycle backward through icomplete candidates (C-,)"
-                 :handler [:icomplete/backward-completions]}])
+  (lisp/define-command 'icomplete-backward-completions
+    icomplete-backward!
+    "Cycle backward through icomplete candidates (C-,)")
 
   ;; Set up key bindings (these are active when minibuffer is active)
-  ;; Note: These need to be handled specially in the minibuffer keymap
-  (rf/dispatch [:keymap/set-global "C-." :icomplete-forward-completions])
-  (rf/dispatch [:keymap/set-global "C-," :icomplete-backward-completions]))
+  (lisp/global-set-key "C-." :icomplete-forward-completions)
+  (lisp/global-set-key "C-," :icomplete-backward-completions))

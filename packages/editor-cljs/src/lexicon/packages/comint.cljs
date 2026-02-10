@@ -1,4 +1,4 @@
-(ns lexicon.core.comint
+(ns lexicon.packages.comint
   "Comint mode and terminal emulation (comint.el, term.el).
 
   Implements Emacs comint.el base mode for interactive processes:
@@ -36,7 +36,9 @@
   In browser context, provides the UI framework for interactive
   command buffers. Actual process spawning requires a backend.
 
-  Based on Emacs lisp/comint.el and lisp/term.el"
+  Based on Emacs lisp/comint.el and lisp/term.el
+
+  This package uses only lisp.cljs primitives."
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
             [lexicon.lisp :as lisp]
@@ -75,7 +77,7 @@
     (swap! comint-state assoc-in [buffer-id :history-index] (count new-history))))
 
 ;; =============================================================================
-;; Input History Ring
+;; Input History Ring - Internal Events
 ;; =============================================================================
 
 (rf/reg-event-fx
@@ -134,7 +136,7 @@
        {:fx [[:dispatch [:echo/message (str "No match for: " pattern)]]]}))))
 
 ;; =============================================================================
-;; Comint Process Interaction
+;; Comint Process Interaction - Internal Events
 ;; =============================================================================
 
 (rf/reg-event-fx
@@ -163,7 +165,7 @@
    {:fx [[:dispatch [:echo/message "EOF (no subprocess in browser)"]]]}))
 
 ;; =============================================================================
-;; Comint Line Editing
+;; Comint Line Editing - Internal Events
 ;; =============================================================================
 
 (rf/reg-event-fx
@@ -291,7 +293,7 @@
        {:fx [[:dispatch [:echo/message "Error: WASM not initialized"]]]}))))
 
 ;; =============================================================================
-;; Term Mode
+;; Term Mode - Internal Events
 ;; =============================================================================
 
 (rf/reg-event-fx
@@ -324,6 +326,55 @@
      {:fx [[:dispatch [:echo/message "Line mode"]]]})))
 
 ;; =============================================================================
+;; Command Handler Functions
+;; =============================================================================
+
+(defn comint-previous-input! []
+  (rf/dispatch [:comint/previous-input]))
+
+(defn comint-next-input! []
+  (rf/dispatch [:comint/next-input]))
+
+(defn comint-previous-matching-input! []
+  (rf/dispatch [:comint/previous-matching-input]))
+
+(defn comint-interrupt-subjob! []
+  (rf/dispatch [:comint/interrupt]))
+
+(defn comint-stop-subjob! []
+  (rf/dispatch [:comint/stop]))
+
+(defn comint-send-eof! []
+  (rf/dispatch [:comint/eof]))
+
+(defn comint-bol! []
+  (rf/dispatch [:comint/bol]))
+
+(defn comint-kill-input! []
+  (rf/dispatch [:comint/kill-input]))
+
+(defn comint-delete-output! []
+  (rf/dispatch [:comint/delete-output]))
+
+(defn comint-show-output! []
+  (rf/dispatch [:comint/show-output]))
+
+(defn comint-dynamic-list-input-ring! []
+  (rf/dispatch [:comint/dynamic-list-input-ring]))
+
+(defn term! []
+  (rf/dispatch [:term/open]))
+
+(defn ansi-term! []
+  (rf/dispatch [:term/ansi-term]))
+
+(defn term-char-mode! []
+  (rf/dispatch [:term/char-mode]))
+
+(defn term-line-mode! []
+  (rf/dispatch [:term/line-mode]))
+
+;; =============================================================================
 ;; Initialization
 ;; =============================================================================
 
@@ -331,82 +382,67 @@
   "Initialize comint and term modules."
   []
   ;; Comint commands
-  (rf/dispatch [:register-command :comint-previous-input
-                {:docstring "Cycle backward through input history (M-p)"
-                 :interactive nil
-                 :handler [:comint/previous-input]}])
+  (lisp/define-command 'comint-previous-input
+    comint-previous-input!
+    "Cycle backward through input history (M-p)")
 
-  (rf/dispatch [:register-command :comint-next-input
-                {:docstring "Cycle forward through input history (M-n)"
-                 :interactive nil
-                 :handler [:comint/next-input]}])
+  (lisp/define-command 'comint-next-input
+    comint-next-input!
+    "Cycle forward through input history (M-n)")
 
-  (rf/dispatch [:register-command :comint-previous-matching-input
-                {:docstring "Search backward through history (M-r)"
-                 :interactive nil
-                 :handler [:comint/previous-matching-input]}])
+  (lisp/define-command 'comint-previous-matching-input
+    comint-previous-matching-input!
+    "Search backward through history (M-r)")
 
-  (rf/dispatch [:register-command :comint-interrupt-subjob
-                {:docstring "Interrupt subprocess (C-c C-c)"
-                 :interactive nil
-                 :handler [:comint/interrupt]}])
+  (lisp/define-command 'comint-interrupt-subjob
+    comint-interrupt-subjob!
+    "Interrupt subprocess (C-c C-c)")
 
-  (rf/dispatch [:register-command :comint-stop-subjob
-                {:docstring "Stop subprocess (C-c C-z)"
-                 :interactive nil
-                 :handler [:comint/stop]}])
+  (lisp/define-command 'comint-stop-subjob
+    comint-stop-subjob!
+    "Stop subprocess (C-c C-z)")
 
-  (rf/dispatch [:register-command :comint-send-eof
-                {:docstring "Send EOF to subprocess (C-c C-d)"
-                 :interactive nil
-                 :handler [:comint/eof]}])
+  (lisp/define-command 'comint-send-eof
+    comint-send-eof!
+    "Send EOF to subprocess (C-c C-d)")
 
-  (rf/dispatch [:register-command :comint-bol
-                {:docstring "Move to beginning of input after prompt (C-c C-a)"
-                 :interactive nil
-                 :handler [:comint/bol]}])
+  (lisp/define-command 'comint-bol
+    comint-bol!
+    "Move to beginning of input after prompt (C-c C-a)")
 
-  (rf/dispatch [:register-command :comint-kill-input
-                {:docstring "Kill current input (C-c C-u)"
-                 :interactive nil
-                 :handler [:comint/kill-input]}])
+  (lisp/define-command 'comint-kill-input
+    comint-kill-input!
+    "Kill current input (C-c C-u)")
 
-  (rf/dispatch [:register-command :comint-delete-output
-                {:docstring "Delete last output (C-c C-o)"
-                 :interactive nil
-                 :handler [:comint/delete-output]}])
+  (lisp/define-command 'comint-delete-output
+    comint-delete-output!
+    "Delete last output (C-c C-o)")
 
-  (rf/dispatch [:register-command :comint-show-output
-                {:docstring "Show last output (C-c C-r)"
-                 :interactive nil
-                 :handler [:comint/show-output]}])
+  (lisp/define-command 'comint-show-output
+    comint-show-output!
+    "Show last output (C-c C-r)")
 
-  (rf/dispatch [:register-command :comint-dynamic-list-input-ring
-                {:docstring "Display input history (C-c C-l)"
-                 :interactive nil
-                 :handler [:comint/dynamic-list-input-ring]}])
+  (lisp/define-command 'comint-dynamic-list-input-ring
+    comint-dynamic-list-input-ring!
+    "Display input history (C-c C-l)")
 
   ;; Term commands
-  (rf/dispatch [:register-command :term
-                {:docstring "Open a terminal emulator"
-                 :interactive nil
-                 :handler [:term/open]}])
+  (lisp/define-command 'term
+    term!
+    "Open a terminal emulator")
 
-  (rf/dispatch [:register-command :ansi-term
-                {:docstring "Open an ANSI terminal"
-                 :interactive nil
-                 :handler [:term/ansi-term]}])
+  (lisp/define-command 'ansi-term
+    ansi-term!
+    "Open an ANSI terminal")
 
-  (rf/dispatch [:register-command :term-char-mode
-                {:docstring "Switch to character mode (C-c C-k)"
-                 :interactive nil
-                 :handler [:term/char-mode]}])
+  (lisp/define-command 'term-char-mode
+    term-char-mode!
+    "Switch to character mode (C-c C-k)")
 
-  (rf/dispatch [:register-command :term-line-mode
-                {:docstring "Switch to line mode (C-c C-j)"
-                 :interactive nil
-                 :handler [:term/line-mode]}])
+  (lisp/define-command 'term-line-mode
+    term-line-mode!
+    "Switch to line mode (C-c C-j)")
 
   ;; Shell-mode keybindings for comint
-  (rf/dispatch [:keymap/set-mode-key :shell-mode "M-p" :comint-previous-input])
-  (rf/dispatch [:keymap/set-mode-key :shell-mode "M-n" :comint-next-input]))
+  (lisp/define-key-for-mode :shell-mode "M-p" :comint-previous-input)
+  (lisp/define-key-for-mode :shell-mode "M-n" :comint-next-input))

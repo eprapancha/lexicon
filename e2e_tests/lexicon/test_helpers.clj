@@ -180,7 +180,7 @@
   Test files using with-driver fixture don't need their own *driver*."
   nil)
 
-(def default-app-url "http://localhost:8080")
+(def default-app-url "http://localhost:8080/index.html")
 
 (defn with-driver
   "Simplified E2E test fixture. Manages driver internally.

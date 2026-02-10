@@ -1,13 +1,14 @@
-(ns lexicon.core.flymake
+(ns lexicon.packages.flymake
   "Flymake - on-the-fly syntax checking.
 
   flymake-mode runs syntax checkers asynchronously and displays
   diagnostics inline in the buffer. Supports multiple backends
   and provides navigation with flymake-goto-next-error/prev-error.
 
-  Based on Emacs lisp/progmodes/flymake.el"
-  (:require [re-frame.core :as rf]
-            [clojure.string :as str]
+  Based on Emacs lisp/progmodes/flymake.el
+
+  This package uses only lisp.cljs primitives."
+  (:require [clojure.string :as str]
             [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
@@ -30,6 +31,14 @@
 ;;             :backends #{:backend-name}
 ;;             :running? bool}}
 (defonce flymake-state (atom {}))
+
+;; Registry of backend functions
+;; Each backend is a function: (fn [buffer-id buffer-text report-fn] ...)
+;; report-fn is called with list of diagnostics
+(defonce flymake-backends (atom {}))
+
+;; Forward declarations
+(declare flymake-start!)
 
 ;; =============================================================================
 ;; Diagnostic Management
@@ -54,7 +63,7 @@
    :message message
    :backend backend})
 
-(defn add-diagnostics
+(defn add-diagnostics!
   "Add diagnostics for a buffer from a backend."
   [buffer-id backend diagnostics]
   (swap! flymake-state update-in [buffer-id :diagnostics]
@@ -63,7 +72,7 @@
            (let [without-backend (remove #(= (:backend %) backend) existing)]
              (into (vec without-backend) diagnostics)))))
 
-(defn clear-diagnostics
+(defn clear-diagnostics!
   "Clear all diagnostics for a buffer."
   [buffer-id]
   (swap! flymake-state assoc-in [buffer-id :diagnostics] []))
@@ -87,12 +96,7 @@
 ;; Backend System
 ;; =============================================================================
 
-;; Registry of backend functions
-;; Each backend is a function: (fn [buffer-id buffer-text report-fn] ...)
-;; report-fn is called with list of diagnostics
-(defonce flymake-backends (atom {}))
-
-(defn register-backend
+(defn register-backend!
   "Register a flymake backend.
 
   Args:
@@ -102,7 +106,7 @@
   [name backend-fn]
   (swap! flymake-backends assoc name backend-fn))
 
-(defn unregister-backend
+(defn unregister-backend!
   "Unregister a flymake backend."
   [name]
   (swap! flymake-backends dissoc name))
@@ -111,10 +115,10 @@
 ;; Built-in Backends
 ;; =============================================================================
 
-(defn clojure-syntax-backend
+(defn- clojure-syntax-backend
   "Simple Clojure syntax checker backend.
    Checks for unbalanced parens and basic issues."
-  [_buffer-id buffer-text report-fn]
+  [buffer-id buffer-text report-fn]
   (let [diagnostics (atom [])
         lines (str/split-lines buffer-text)]
 
@@ -145,9 +149,9 @@
     ;; Report findings
     (report-fn @diagnostics)))
 
-(defn javascript-syntax-backend
+(defn- javascript-syntax-backend
   "Simple JavaScript syntax checker backend."
-  [_buffer-id buffer-text report-fn]
+  [buffer-id buffer-text report-fn]
   (let [diagnostics (atom [])
         lines (str/split-lines buffer-text)]
 
@@ -163,10 +167,6 @@
                  :backend :javascript-syntax}))))
 
     (report-fn @diagnostics)))
-
-;; Register built-in backends
-(register-backend :clojure-syntax clojure-syntax-backend)
-(register-backend :javascript-syntax javascript-syntax-backend)
 
 ;; =============================================================================
 ;; Mode-line Integration
@@ -191,31 +191,29 @@
              "]")))))
 
 ;; =============================================================================
-;; Re-frame Events
+;; Flymake Commands
 ;; =============================================================================
 
-;; Enable flymake-mode for current buffer
-(rf/reg-event-fx
- :flymake-mode
- (fn [{:keys [_db]} [_ enable?]]
-   (let [buffer-id (lisp/current-buffer)
-         currently-enabled? (get-in @flymake-state [buffer-id :enabled?] false)
-         new-enabled? (if (nil? enable?)
-                        (not currently-enabled?)
-                        enable?)]
-     (swap! flymake-state assoc-in [buffer-id :enabled?] new-enabled?)
-     (if new-enabled?
-       {:fx [[:dispatch [:flymake/start buffer-id]]
-             [:dispatch [:echo/message "Flymake mode enabled"]]]}
-       {:fx [[:dispatch [:flymake/clear buffer-id]]
-             [:dispatch [:echo/message "Flymake mode disabled"]]]}))))
+(defn flymake-mode!
+  "Toggle flymake-mode for current buffer."
+  []
+  (let [buffer-id (lisp/current-buffer)
+        currently-enabled? (get-in @flymake-state [buffer-id :enabled?] false)
+        new-enabled? (not currently-enabled?)]
+    (swap! flymake-state assoc-in [buffer-id :enabled?] new-enabled?)
+    (if new-enabled?
+      (do
+        (flymake-start! buffer-id)
+        (lisp/message "Flymake mode enabled"))
+      (do
+        (clear-diagnostics! buffer-id)
+        (lisp/message "Flymake mode disabled")))))
 
-;; Start flymake check
-(rf/reg-event-fx
- :flymake/start
- (fn [{:keys [_db]} [_ buffer-id]]
-   (let [buffer-id (or buffer-id (lisp/current-buffer))
-         buffer-info (lisp/buffer-info buffer-id)
+(defn flymake-start!
+  "Start flymake check for a buffer."
+  ([] (flymake-start! (lisp/current-buffer)))
+  ([buffer-id]
+   (let [buffer-info (lisp/buffer-info buffer-id)
          text (lisp/buffer-text-of buffer-id)
          mode (:major-mode buffer-info)
 
@@ -226,7 +224,10 @@
                     [:clojure-syntax])  ; Default
 
          report-fn (fn [diagnostics]
-                    (rf/dispatch [:flymake/report buffer-id diagnostics]))]
+                     (swap! flymake-state assoc-in [buffer-id :running?] false)
+                     (swap! flymake-state update-in [buffer-id :diagnostics]
+                            (fn [existing]
+                              (sort-diagnostics (into (vec (or existing [])) diagnostics)))))]
 
      ;; Mark as running
      (swap! flymake-state assoc-in [buffer-id :running?] true)
@@ -237,120 +238,86 @@
          (try
            (backend-fn buffer-id text report-fn)
            (catch js/Error e
-             (js/console.warn "Flymake backend error:" backend-name e)))))
+             (js/console.warn "Flymake backend error:" backend-name e))))))))
 
-     {})))
+(defn flymake-goto-next-error!
+  "Navigate to next diagnostic."
+  []
+  (let [buffer-id (lisp/current-buffer)
+        diagnostics (sort-diagnostics (get-diagnostics buffer-id))
+        cursor-line (lisp/current-line)
+        ;; Find next diagnostic after current line
+        next-diag (first (filter #(> (:line %) cursor-line) diagnostics))]
+    (if next-diag
+      (do
+        (lisp/goto-line (:line next-diag))
+        (lisp/message (:message next-diag)))
+      (lisp/message "No more diagnostics"))))
 
-;; Report diagnostics from backend
-(rf/reg-event-fx
- :flymake/report
- (fn [{:keys [_db]} [_ buffer-id diagnostics]]
-   (swap! flymake-state assoc-in [buffer-id :running?] false)
-   (swap! flymake-state update-in [buffer-id :diagnostics]
-          (fn [existing]
-            (sort-diagnostics (into (vec (or existing [])) diagnostics))))
-   {}))
+(defn flymake-goto-prev-error!
+  "Navigate to previous diagnostic."
+  []
+  (let [buffer-id (lisp/current-buffer)
+        diagnostics (sort-diagnostics (get-diagnostics buffer-id))
+        cursor-line (lisp/current-line)
+        ;; Find previous diagnostic before current line
+        prev-diag (last (filter #(< (:line %) cursor-line) diagnostics))]
+    (if prev-diag
+      (do
+        (lisp/goto-line (:line prev-diag))
+        (lisp/message (:message prev-diag)))
+      (lisp/message "No more diagnostics"))))
 
-;; Clear diagnostics
-(rf/reg-event-fx
- :flymake/clear
- (fn [{:keys [_db]} [_ buffer-id]]
-   (let [buffer-id (or buffer-id (lisp/current-buffer))]
-     (clear-diagnostics buffer-id)
-     {})))
-
-;; Navigate to next diagnostic
-(rf/reg-event-fx
- :flymake-goto-next-error
- (fn [{:keys [_db]} [_ _n filter-type]]
-   ;; TODO: Implement count argument (currently always moves by 1)
-   (let [buffer-id (lisp/current-buffer)
-         diagnostics (sort-diagnostics (get-diagnostics buffer-id))
-         ;; Apply filter if specified
-         diagnostics (if filter-type
-                       (filter #(= (:type %) filter-type) diagnostics)
-                       diagnostics)
-         cursor-line (lisp/current-line)
-         ;; Find next diagnostic after current line
-         next-diag (first (filter #(> (:line %) cursor-line) diagnostics))]
-     (if next-diag
-       {:fx [[:dispatch [:goto-line (:line next-diag)]]
-             [:dispatch [:echo/message (:message next-diag)]]]}
-       {:fx [[:dispatch [:echo/message "No more diagnostics"]]]}))))
-
-;; Navigate to previous diagnostic
-(rf/reg-event-fx
- :flymake-goto-prev-error
- (fn [{:keys [_db]} [_ _n filter-type]]
-   ;; TODO: Implement count argument (currently always moves by 1)
-   (let [buffer-id (lisp/current-buffer)
-         diagnostics (sort-diagnostics (get-diagnostics buffer-id))
-         diagnostics (if filter-type
-                       (filter #(= (:type %) filter-type) diagnostics)
-                       diagnostics)
-         cursor-line (lisp/current-line)
-         ;; Find previous diagnostic before current line
-         prev-diag (last (filter #(< (:line %) cursor-line) diagnostics))]
-     (if prev-diag
-       {:fx [[:dispatch [:goto-line (:line prev-diag)]]
-             [:dispatch [:echo/message (:message prev-diag)]]]}
-       {:fx [[:dispatch [:echo/message "No more diagnostics"]]]}))))
-
-;; Show buffer diagnostics
-(rf/reg-event-fx
- :flymake-show-buffer-diagnostics
- (fn [{:keys [_db]} [_]]
-   (let [buffer-id (lisp/current-buffer)
-         diagnostics (sort-diagnostics (get-diagnostics buffer-id))]
-     (if (empty? diagnostics)
-       {:fx [[:dispatch [:echo/message "No diagnostics in buffer"]]]}
-       ;; Create diagnostics buffer
-       (let [content (str "Flymake diagnostics:\n\n"
-                          (str/join "\n"
-                                    (map (fn [d]
-                                           (str (:line d) ":"
-                                                (:col d) " "
-                                                (get-in diagnostic-types [(:type d) :prefix] "?")
-                                                " " (:message d)))
-                                         diagnostics)))]
-         {:fx [[:dispatch [:create-special-buffer
-                           {:name "*Flymake diagnostics*"
-                            :content content
-                            :mode :special-mode}]]]})))))
-
-;; =============================================================================
-;; Command Registration
-;; =============================================================================
-
-(defn register-flymake-commands! []
-  (rf/dispatch-sync
-   [:register-command :flymake-mode
-    {:docstring "Toggle Flymake mode for on-the-fly syntax checking"
-     :handler [:flymake-mode]}])
-
-  (rf/dispatch-sync
-   [:register-command :flymake-start
-    {:docstring "Start a Flymake syntax check"
-     :handler [:flymake/start]}])
-
-  (rf/dispatch-sync
-   [:register-command :flymake-goto-next-error
-    {:docstring "Go to next Flymake diagnostic"
-     :handler [:flymake-goto-next-error]}])
-
-  (rf/dispatch-sync
-   [:register-command :flymake-goto-prev-error
-    {:docstring "Go to previous Flymake diagnostic"
-     :handler [:flymake-goto-prev-error]}])
-
-  (rf/dispatch-sync
-   [:register-command :flymake-show-buffer-diagnostics
-    {:docstring "Show Flymake diagnostics for current buffer"
-     :handler [:flymake-show-buffer-diagnostics]}]))
+(defn flymake-show-buffer-diagnostics!
+  "Show buffer diagnostics in a special buffer."
+  []
+  (let [buffer-id (lisp/current-buffer)
+        diagnostics (sort-diagnostics (get-diagnostics buffer-id))]
+    (if (empty? diagnostics)
+      (lisp/message "No diagnostics in buffer")
+      ;; Create diagnostics buffer
+      (let [content (str "Flymake diagnostics:\n\n"
+                         (str/join "\n"
+                                   (map (fn [d]
+                                          (str (:line d) ":"
+                                               (:col d) " "
+                                               (get-in diagnostic-types [(:type d) :prefix] "?")
+                                               " " (:message d)))
+                                        diagnostics)))]
+        (lisp/create-special-buffer "*Flymake diagnostics*" content
+                                     {:major-mode :special-mode
+                                      :read-only true})
+        (lisp/split-window-below)
+        (lisp/switch-to-buffer "*Flymake diagnostics*")))))
 
 ;; =============================================================================
 ;; Initialization
 ;; =============================================================================
 
-(defn init-flymake! []
-  (register-flymake-commands!))
+(defn init!
+  "Initialize flymake module."
+  []
+  ;; Register built-in backends
+  (register-backend! :clojure-syntax clojure-syntax-backend)
+  (register-backend! :javascript-syntax javascript-syntax-backend)
+
+  ;; Register commands
+  (lisp/define-command 'flymake-mode
+    flymake-mode!
+    "Toggle Flymake mode for on-the-fly syntax checking")
+
+  (lisp/define-command 'flymake-start
+    flymake-start!
+    "Start a Flymake syntax check")
+
+  (lisp/define-command 'flymake-goto-next-error
+    flymake-goto-next-error!
+    "Go to next Flymake diagnostic")
+
+  (lisp/define-command 'flymake-goto-prev-error
+    flymake-goto-prev-error!
+    "Go to previous Flymake diagnostic")
+
+  (lisp/define-command 'flymake-show-buffer-diagnostics
+    flymake-show-buffer-diagnostics!
+    "Show Flymake diagnostics for current buffer"))

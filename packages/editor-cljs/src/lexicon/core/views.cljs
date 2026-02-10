@@ -948,8 +948,9 @@
         buffer-id-style @(rf/subscribe [:theme-face :mode-line-buffer-id])
         effective-style (if is-active? mode-line-style mode-line-inactive-style)
         buffer-modified? (:is-modified? buffer false)
-        ;; Issue #130: Which-func display
-        which-func-display @(rf/subscribe [:which-func/mode-line-display buffer-id])]
+        ;; Issue #130: Which-func display - read directly from buffer data
+        ;; (packages write to buffer, core reads from buffer - no package subscriptions)
+        which-func-display (:which-func-format buffer)]
     [:div.window-mode-line.status-bar  ; Add .status-bar for E2E test compatibility (Issue #66)
      {:style (merge effective-style
                     {:height "24px"
