@@ -177,21 +177,17 @@
    "Check if incremental search is currently active"
    (get-in db [:ui :isearch :active?] false)))
 
-(rf/reg-sub
- :isearch-matches
- (fn [db _]
-   "Get all isearch matches and current match for highlighting"
-   (let [isearch (get-in db [:ui :isearch])]
-     {:all-matches (:all-matches isearch [])
-      :current-match (:current-match isearch)})))
+;; =============================================================================
+;; Generic Match Highlighting (used by isearch, occur, etc.)
+;; =============================================================================
 
 (rf/reg-sub
- :occur-source-matches
+ :match-highlights
  (fn [db _]
-   "Get occur source buffer matches for highlighting.
-    Returns {:all-matches [...] :current-match {...} :buffer-id ...}
-    This is used to highlight matches in the source buffer (not the *Occur* buffer)."
-   (get-in db [:ui :occur-source])))
+   "Get secondary match highlights for rendering.
+    Returns {:buffer-id id :all-matches [...] :current-match {...} :source :isearch|:occur}
+    This is the unified subscription for all match highlighting."
+   (get-in db [:ui :match-highlights])))
 
 (rf/reg-sub
  :occur-highlights

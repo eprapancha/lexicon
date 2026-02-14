@@ -346,62 +346,25 @@
         :class "show-paren-match"
         :type :paren}])))
 
-(defn create-isearch-decorations
-  "Create decorations for isearch matches.
-   All matches get lazy-highlight face, current match gets isearch face."
-  [isearch-matches text]
-  (when (and text (seq (:all-matches isearch-matches)))
-    (let [{:keys [all-matches current-match]} isearch-matches
-          current-start (:start current-match)]
-      (mapcat
-       (fn [{:keys [start end]}]
-         (let [start-coords (linear-to-line-col text start)
-               end-coords (linear-to-line-col text end)
-               is-current? (= start current-start)
-               ;; Handle single-line vs multi-line matches
-               start-line (:line start-coords)
-               end-line (:line end-coords)]
-           (if (= start-line end-line)
-             ;; Single line match
-             [{:from {:line start-line :column (:column start-coords)}
-               :to {:line end-line :column (:column end-coords)}
-               :class (if is-current? "isearch-current" "isearch-lazy-highlight")
-               :type :isearch}]
-             ;; Multi-line match - create decoration per line
-             (for [line-num (range start-line (inc end-line))]
-               (let [lines (clojure.string/split text #"\n" -1)
-                     line-text (nth lines line-num "")
-                     start-col (if (= line-num start-line) (:column start-coords) 0)
-                     end-col (if (= line-num end-line) (:column end-coords) (count line-text))]
-                 {:from {:line line-num :column start-col}
-                  :to {:line line-num :column end-col}
-                  :class (if is-current? "isearch-current" "isearch-lazy-highlight")
-                  :type :isearch})))))
-       all-matches))))
+;; =============================================================================
+;; Generic Match Highlighting (used by isearch, occur, etc.)
+;; =============================================================================
 
-(defn create-occur-decorations
-  "Create decorations for occur match highlights.
-   Each highlight has :line and :ranges (column ranges to highlight)."
-  [occur-highlights]
-  (when (seq occur-highlights)
-    (mapcat
-     (fn [{:keys [line ranges]}]
-       (map (fn [[start-col end-col]]
-              {:from {:line line :column start-col}
-               :to {:line line :column end-col}
-               :class "occur-match"
-               :type :occur})
-            ranges))
-     occur-highlights)))
+(defn create-match-decorations
+  "Create decorations for match highlighting in a buffer.
+   This is the unified function for isearch, occur, and any future match highlighting.
 
-(defn create-occur-source-decorations
-  "Create decorations for occur source buffer highlighting.
-   This highlights matches in the source buffer (not the *Occur* buffer).
-   Uses the same pattern as isearch: all matches get lazy-highlight,
-   current match gets a different highlight."
-  [occur-source buffer-id text]
-  (when (and occur-source text (= buffer-id (:buffer-id occur-source)))
-    (let [{:keys [all-matches current-match]} occur-source
+   Args:
+     match-highlights - {:buffer-id id :all-matches [...] :current-match {...} :source :isearch|:occur}
+     buffer-id - The buffer ID this window is showing
+     text - The buffer content
+
+   Returns decorations with CSS classes:
+     - 'match-current' for the current match
+     - 'match-lazy' for other matches"
+  [match-highlights buffer-id text]
+  (when (and match-highlights text (= buffer-id (:buffer-id match-highlights)))
+    (let [{:keys [all-matches current-match]} match-highlights
           current-start (:start current-match)]
       (when (seq all-matches)
         (mapcat
@@ -415,9 +378,9 @@
                ;; Single line match
                [{:from {:line start-line :column (:column start-coords)}
                  :to {:line end-line :column (:column end-coords)}
-                 :class (if is-current? "occur-source-current" "occur-source-lazy")
-                 :type :occur-source}]
-               ;; Multi-line match
+                 :class (if is-current? "match-current" "match-lazy")
+                 :type :match-highlight}]
+               ;; Multi-line match - create decoration per line
                (for [line-num (range start-line (inc end-line))]
                  (let [lines (clojure.string/split text #"\n" -1)
                        line-text (nth lines line-num "")
@@ -425,9 +388,25 @@
                        end-col (if (= line-num end-line) (:column end-coords) (count line-text))]
                    {:from {:line line-num :column start-col}
                     :to {:line line-num :column end-col}
-                    :class (if is-current? "occur-source-current" "occur-source-lazy")
-                    :type :occur-source})))))
+                    :class (if is-current? "match-current" "match-lazy")
+                    :type :match-highlight})))))
          all-matches)))))
+
+(defn create-occur-decorations
+  "Create decorations for occur match highlights in the *Occur* buffer itself.
+   Each highlight has :line and :ranges (column ranges to highlight).
+   Note: This is separate from create-match-decorations which handles source buffer highlighting."
+  [occur-highlights]
+  (when (seq occur-highlights)
+    (mapcat
+     (fn [{:keys [line ranges]}]
+       (map (fn [[start-col end-col]]
+              {:from {:line line :column start-col}
+               :to {:line line :column end-col}
+               :class "occur-match"
+               :type :occur})
+            ranges))
+     occur-highlights)))
 
 (defn editor-gutter
   "IDE-style gutter with line numbers and diagnostic markers"
@@ -539,19 +518,20 @@
         paren-match-info @(rf/subscribe [:show-paren/match-info])
         paren-decorations (when paren-match-info
                            (create-paren-decorations paren-match-info buffer-content))
-        ;; Add isearch match decorations
-        isearch-matches @(rf/subscribe [:isearch-matches])
-        isearch-decorations (create-isearch-decorations isearch-matches buffer-content)
         ;; Add occur match decorations - only for *Occur* buffer
         buffer-name @(rf/subscribe [:active-buffer-name])
         is-occur-buffer? (= buffer-name "*Occur*")
         occur-highlights (when is-occur-buffer? @(rf/subscribe [:occur-highlights]))
         occur-decorations (when is-occur-buffer? (create-occur-decorations occur-highlights))
+        ;; Unified match highlighting (isearch, occur source, etc.)
+        active-buffer-id @(rf/subscribe [:active-buffer-id])
+        match-highlights @(rf/subscribe [:match-highlights])
+        match-decorations (create-match-decorations match-highlights active-buffer-id buffer-content)
         decorations (cond-> base-decorations
                       region-decorations (concat region-decorations)
                       paren-decorations (concat paren-decorations)
-                      isearch-decorations (concat isearch-decorations)
-                      occur-decorations (concat occur-decorations))
+                      occur-decorations (concat occur-decorations)
+                      match-decorations (concat match-decorations))
         handle-click (fn [e]
                        (.stopPropagation e)  ; Stop event from bubbling to parent handlers
                        ;; Focus hidden input to receive keyboard events
@@ -731,22 +711,18 @@
                               (create-region-decorations mark-position cursor-pos buffer-content))
           paren-decorations (when paren-match-info
                               (create-paren-decorations paren-match-info buffer-content))
-          ;; Add isearch match decorations
-          isearch-matches @(rf/subscribe [:isearch-matches])
-          isearch-decorations (create-isearch-decorations isearch-matches buffer-content)
-          ;; Add occur match decorations - use window-specific subscription
+          ;; Add occur match decorations for *Occur* buffer itself
           occur-highlights @(rf/subscribe [:lexicon.core.subs/window-occur-highlights window-id])
           occur-decorations (create-occur-decorations occur-highlights)
-          ;; Add occur source buffer decorations - highlights in source buffer (not *Occur*)
-          occur-source @(rf/subscribe [:occur-source-matches])
+          ;; Unified match highlighting (isearch, occur source, etc.)
           buffer-id @(rf/subscribe [:lexicon.core.subs/window-buffer-id window-id])
-          occur-source-decorations (create-occur-source-decorations occur-source buffer-id buffer-content)
+          match-highlights @(rf/subscribe [:match-highlights])
+          match-decorations (create-match-decorations match-highlights buffer-id buffer-content)
           decorations (cond-> base-decorations
                         region-decorations (concat region-decorations)
                         paren-decorations (concat paren-decorations)
-                        isearch-decorations (concat isearch-decorations)
                         occur-decorations (concat occur-decorations)
-                        occur-source-decorations (concat occur-source-decorations))
+                        match-decorations (concat match-decorations))
           ;; Calculate actual visible lines based on container height
           _ (when @container-ref
               (let [container @container-ref

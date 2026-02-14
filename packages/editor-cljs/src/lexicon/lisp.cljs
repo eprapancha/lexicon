@@ -3489,44 +3489,55 @@
   nil)
 
 ;; =============================================================================
-;; Occur Source Highlighting - follows isearch pattern
+;; Secondary Match Highlighting - Generic infrastructure for isearch, occur, etc.
 ;; =============================================================================
+;;
+;; This provides a unified system for highlighting matches in buffers.
+;; Both isearch and occur use this same infrastructure.
+;;
+;; State structure: [:ui :match-highlights]
+;; {:buffer-id <id>
+;;  :all-matches [{:start n :end n} ...]
+;;  :current-match {:start n :end n}
+;;  :source :isearch|:occur|...}
 
-(defn set-occur-source-highlights
-  "Set all match positions for occur source buffer highlighting.
-   This enables highlighting matches in the source buffer (like isearch).
+(defn set-match-highlights
+  "Set all match positions for secondary buffer highlighting.
+   This enables highlighting matches in a buffer (used by isearch, occur, etc.).
 
-   matches should be a vector of {:start pos :end pos} for each match.
-   buffer-id is the source buffer being searched.
+   buffer-id - The buffer to highlight matches in
+   matches - Vector of {:start pos :end pos} for each match
+   source - Keyword identifying the caller (e.g., :isearch, :occur)
 
-   Usage: (set-occur-source-highlights buffer-id matches)
+   Usage: (set-match-highlights buffer-id matches :occur)
    Returns: nil"
-  [buffer-id matches]
-  (swap! rfdb/app-db assoc-in [:ui :occur-source]
+  [buffer-id matches source]
+  (swap! rfdb/app-db assoc-in [:ui :match-highlights]
          {:buffer-id buffer-id
           :all-matches matches
-          :current-match (first matches)})
+          :current-match (first matches)
+          :source source})
   nil)
 
-(defn set-occur-current-match
-  "Set the current match for occur source highlighting.
-   This highlights the specified match differently (like isearch current match).
+(defn set-current-match
+  "Set the current match for secondary highlighting.
+   This highlights the specified match differently (current vs lazy).
 
    match should be {:start pos :end pos}.
 
-   Usage: (set-occur-current-match match)
+   Usage: (set-current-match {:start 10 :end 15})
    Returns: nil"
   [match]
-  (swap! rfdb/app-db assoc-in [:ui :occur-source :current-match] match)
+  (swap! rfdb/app-db assoc-in [:ui :match-highlights :current-match] match)
   nil)
 
-(defn clear-occur-source-highlights
-  "Clear occur source buffer highlighting.
+(defn clear-match-highlights
+  "Clear secondary buffer match highlighting.
 
-   Usage: (clear-occur-source-highlights)
+   Usage: (clear-match-highlights)
    Returns: nil"
   []
-  (swap! rfdb/app-db update :ui dissoc :occur-source)
+  (swap! rfdb/app-db update :ui dissoc :match-highlights)
   nil)
 
 (defn symbol-at-point

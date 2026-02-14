@@ -140,6 +140,7 @@
    (let [isearch-state (get-in db [:ui :isearch])
          direction (:direction isearch-state)
          full-text (lisp/buffer-string)
+         buffer-id (lisp/current-buffer)
          original-pos (:original-pos isearch-state)
          case-fold? (case-fold-search? new-input)
 
@@ -155,16 +156,21 @@
        ;; Found match - move to it and highlight all matches
        {:db (-> db
                 (assoc-in [:ui :isearch :search-string] new-input)
-                (assoc-in [:ui :isearch :current-match] match)
-                (assoc-in [:ui :isearch :all-matches] all-matches)
-                (assoc-in [:ui :isearch :failing?] false))
+                (assoc-in [:ui :isearch :failing?] false)
+                ;; Populate generic match-highlights for unified rendering
+                (assoc-in [:ui :match-highlights]
+                          {:buffer-id buffer-id
+                           :all-matches all-matches
+                           :current-match match
+                           :source :isearch}))
         :fx [[:dispatch [:update-cursor-position (:start match)]]
              (isearch-echo-message new-input false false)]}
        ;; No match - mark as failing, clear matches
        {:db (-> db
                 (assoc-in [:ui :isearch :search-string] new-input)
-                (assoc-in [:ui :isearch :all-matches] [])
-                (assoc-in [:ui :isearch :failing?] true))
+                (assoc-in [:ui :isearch :failing?] true)
+                ;; Clear highlights when no match
+                (update :ui dissoc :match-highlights))
         :fx [(isearch-echo-message new-input true false)]}))))
 
 (rf/reg-event-fx
@@ -213,8 +219,10 @@
          direction (:direction isearch-state)
          new-search (str search-string char)
          full-text (lisp/buffer-string)
+         buffer-id (lisp/current-buffer)
          current-pos (lisp/point)
          case-fold? (case-fold-search? new-search)
+         all-matches (find-all-matches full-text new-search case-fold?)
 
          ;; Search from current position
          match (if (= direction :forward)
@@ -225,14 +233,19 @@
        ;; Found match - move to it
        {:db (-> db
                 (assoc-in [:ui :isearch :search-string] new-search)
-                (assoc-in [:ui :isearch :current-match] match)
-                (assoc-in [:ui :isearch :failing?] false))
+                (assoc-in [:ui :isearch :failing?] false)
+                (assoc-in [:ui :match-highlights]
+                          {:buffer-id buffer-id
+                           :all-matches all-matches
+                           :current-match match
+                           :source :isearch}))
         :fx [[:dispatch [:update-cursor-position (:start match)]]
              (isearch-echo-message new-search false false)]}
        ;; No match - mark as failing
        {:db (-> db
                 (assoc-in [:ui :isearch :search-string] new-search)
-                (assoc-in [:ui :isearch :failing?] true))
+                (assoc-in [:ui :isearch :failing?] true)
+                (update :ui dissoc :match-highlights))
         :fx [(isearch-echo-message new-search true false)]}))))
 
 (rf/reg-event-fx
@@ -250,15 +263,17 @@
            ;; Removed all characters - reset to beginning
            {:db (-> db
                     (assoc-in [:ui :isearch :search-string] "")
-                    (assoc-in [:ui :isearch :current-match] nil)
                     (assoc-in [:ui :isearch :failing?] false)
-                    (assoc-in [:ui :isearch :wrapped?] false))
+                    (assoc-in [:ui :isearch :wrapped?] false)
+                    (update :ui dissoc :match-highlights))
             :fx [(isearch-echo-message "" false false)]}
            ;; Re-search with shorter string
            (let [full-text (lisp/buffer-string)
+                 buffer-id (lisp/current-buffer)
                  original-pos (:original-pos isearch-state)
                  direction (:direction isearch-state)
                  case-fold? (case-fold-search? new-search)
+                 all-matches (find-all-matches full-text new-search case-fold?)
 
                  ;; Search from original position
                  match (if (= direction :forward)
@@ -268,13 +283,18 @@
              (if match
                {:db (-> db
                         (assoc-in [:ui :isearch :search-string] new-search)
-                        (assoc-in [:ui :isearch :current-match] match)
-                        (assoc-in [:ui :isearch :failing?] false))
+                        (assoc-in [:ui :isearch :failing?] false)
+                        (assoc-in [:ui :match-highlights]
+                                  {:buffer-id buffer-id
+                                   :all-matches all-matches
+                                   :current-match match
+                                   :source :isearch}))
                 :fx [[:dispatch [:update-cursor-position (:start match)]]
                      (isearch-echo-message new-search false false)]}
                {:db (-> db
                         (assoc-in [:ui :isearch :search-string] new-search)
-                        (assoc-in [:ui :isearch :failing?] true))
+                        (assoc-in [:ui :isearch :failing?] true)
+                        (update :ui dissoc :match-highlights))
                 :fx [(isearch-echo-message new-search true false)]}))))))))
 
 (rf/reg-event-fx
@@ -283,7 +303,7 @@
    "Find next occurrence (C-s during isearch)"
    (let [isearch-state (get-in db [:ui :isearch])
          search-string (:search-string isearch-state)
-         current-match (:current-match isearch-state)
+         current-match (get-in db [:ui :match-highlights :current-match])
          full-text (lisp/buffer-string)
          case-fold? (case-fold-search? search-string)
 
@@ -292,19 +312,19 @@
          match (find-next-match full-text search-string search-pos case-fold?)]
 
      (if match
-       ;; Found next match
+       ;; Found next match - update both isearch state and match-highlights
        {:db (-> db
-                (assoc-in [:ui :isearch :current-match] match)
-                (assoc-in [:ui :isearch :failing?] false))
+                (assoc-in [:ui :isearch :failing?] false)
+                (assoc-in [:ui :match-highlights :current-match] match))
         :fx [[:dispatch [:update-cursor-position (:start match)]]
              (isearch-echo-message search-string false false)]}
        ;; No match - try wrapping from beginning
        (let [wrapped-match (find-next-match full-text search-string 0 case-fold?)]
          (if wrapped-match
            {:db (-> db
-                    (assoc-in [:ui :isearch :current-match] wrapped-match)
                     (assoc-in [:ui :isearch :wrapped?] true)
-                    (assoc-in [:ui :isearch :failing?] false))
+                    (assoc-in [:ui :isearch :failing?] false)
+                    (assoc-in [:ui :match-highlights :current-match] wrapped-match))
             :fx [[:dispatch [:update-cursor-position (:start wrapped-match)]]
                  (isearch-echo-message search-string false true)]}
            {:db (-> db
@@ -317,7 +337,7 @@
    "Find previous occurrence (C-r during isearch)"
    (let [isearch-state (get-in db [:ui :isearch])
          search-string (:search-string isearch-state)
-         current-match (:current-match isearch-state)
+         current-match (get-in db [:ui :match-highlights :current-match])
          full-text (lisp/buffer-string)
          case-fold? (case-fold-search? search-string)
 
@@ -326,10 +346,10 @@
          match (find-prev-match full-text search-string search-pos case-fold?)]
 
      (if match
-       ;; Found previous match
+       ;; Found previous match - update match-highlights
        {:db (-> db
-                (assoc-in [:ui :isearch :current-match] match)
-                (assoc-in [:ui :isearch :failing?] false))
+                (assoc-in [:ui :isearch :failing?] false)
+                (assoc-in [:ui :match-highlights :current-match] match))
         :fx [[:dispatch [:update-cursor-position (:start match)]]
              (isearch-echo-message search-string false false)]}
        ;; No match - try wrapping from end
@@ -337,9 +357,9 @@
              wrapped-match (find-prev-match full-text search-string text-length case-fold?)]
          (if wrapped-match
            {:db (-> db
-                    (assoc-in [:ui :isearch :current-match] wrapped-match)
                     (assoc-in [:ui :isearch :wrapped?] true)
-                    (assoc-in [:ui :isearch :failing?] false))
+                    (assoc-in [:ui :isearch :failing?] false)
+                    (assoc-in [:ui :match-highlights :current-match] wrapped-match))
             :fx [[:dispatch [:update-cursor-position (:start wrapped-match)]]
                  (isearch-echo-message search-string false true)]}
            {:db (-> db
@@ -353,7 +373,7 @@
     Emacs behavior:
     - Forward search (C-s): cursor at END of match
     - Backward search (C-r): cursor at START of match"
-   (let [current-match (get-in db [:ui :isearch :current-match])
+   (let [current-match (get-in db [:ui :match-highlights :current-match])
          direction (get-in db [:ui :isearch :direction] :forward)
          ;; Position cursor based on search direction
          exit-pos (when current-match
@@ -361,7 +381,8 @@
                       (:end current-match)    ; Forward: end of match
                       (:start current-match)))] ; Backward: start of match
      {:db (-> db
-              (update :ui dissoc :isearch))
+              (update :ui dissoc :isearch)
+              (update :ui dissoc :match-highlights))
       :fx (cond-> [[:dispatch [:minibuffer/deactivate]]
                    [:dispatch [:echo/clear]]]
             ;; Move cursor to appropriate position if we have a match
@@ -373,7 +394,8 @@
    "Abort isearch and return to original position (C-g)"
    (let [original-pos (get-in db [:ui :isearch :original-pos] 0)]
      {:db (-> db
-              (update :ui dissoc :isearch))
+              (update :ui dissoc :isearch)
+              (update :ui dissoc :match-highlights))
       :fx [[:dispatch [:update-cursor-position original-pos]]
            [:dispatch [:minibuffer/deactivate]]
            [:dispatch [:echo/clear]]]})))

@@ -95,32 +95,21 @@
             font-weight: bold;
         }
 
-        /* Isearch highlighting - current match (isearch face) */
-        .isearch-current {
+        /* Unified match highlighting - current match (used by isearch, occur, etc.) */
+        .match-current {
             background-color: rgba(255, 200, 0, 0.6) !important;
             color: #000000;
         }
 
-        /* Isearch highlighting - other matches (lazy-highlight face) */
-        .isearch-lazy-highlight {
+        /* Unified match highlighting - other matches (lazy-highlight) */
+        .match-lazy {
             background-color: rgba(175, 238, 238, 0.5) !important;
         }
 
-        /* Occur mode match highlighting (in *Occur* buffer) */
+        /* Occur mode match highlighting (in *Occur* buffer itself) */
         .occur-match {
             background-color: rgba(255, 255, 0, 0.4) !important;
             font-weight: bold;
-        }
-
-        /* Occur source buffer highlighting - current match */
-        .occur-source-current {
-            background-color: rgba(255, 200, 0, 0.6) !important;
-            color: #000000;
-        }
-
-        /* Occur source buffer highlighting - other matches (lazy) */
-        .occur-source-lazy {
-            background-color: rgba(175, 238, 238, 0.5) !important;
         }
 
         /* Cursor blink animation */

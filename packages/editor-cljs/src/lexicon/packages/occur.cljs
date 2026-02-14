@@ -145,7 +145,7 @@
               first-linear-match (first linear-matches)]
           (lisp/goto-char pos)
           (when first-linear-match
-            (lisp/set-occur-current-match first-linear-match)))))))
+            (lisp/set-current-match first-linear-match)))))))
 
 (defn occur-goto-match! [line-num]
   "Jump to match in source buffer.
@@ -175,7 +175,7 @@
           (lisp/goto-char pos)
           ;; Update current match highlighting in source buffer
           (when current-match
-            (lisp/set-occur-current-match current-match))
+            (lisp/set-current-match current-match))
           ;; Preview in source buffer (without switching focus)
           (when source-line-num
             (lisp/preview-line-other-window (:buffer-id source) source-line-num)))
@@ -202,7 +202,7 @@
           (lisp/goto-char pos)
           ;; Update current match highlighting in source buffer
           (when current-match
-            (lisp/set-occur-current-match current-match))
+            (lisp/set-current-match current-match))
           ;; Preview in source buffer (without switching focus)
           (when source-line-num
             (lisp/preview-line-other-window (:buffer-id source) source-line-num)))
@@ -213,7 +213,7 @@
   (if-let [source @occur-source-buffer]
     (do
       ;; Clear source buffer highlighting
-      (lisp/clear-occur-source-highlights)
+      (lisp/clear-match-highlights)
       (reset! occur-source-buffer nil)
       (lisp/delete-window)
       (lisp/switch-to-buffer (:buffer-id source)))
@@ -268,8 +268,8 @@
                                      :match-lines match-lines
                                      :linear-matches linear-matches})
 
-        ;; Set up source buffer highlighting (like isearch)
-        (lisp/set-occur-source-highlights source-buffer-id linear-matches)
+        ;; Set up source buffer highlighting (using generic match-highlights)
+        (lisp/set-match-highlights source-buffer-id linear-matches :occur)
 
         (lisp/split-window-below)
         (lisp/switch-to-buffer "*Occur*")
