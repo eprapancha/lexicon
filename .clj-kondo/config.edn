@@ -14,12 +14,12 @@
   :unused-value {:level :off}}  ;; Docstrings in let blocks
 
  :lint-as
- {;; re-frame macros
-  re-frame.core/reg-event-db clojure.core/defn
-  re-frame.core/reg-event-fx clojure.core/defn
-  re-frame.core/reg-sub clojure.core/defn
-  re-frame.core/reg-fx clojure.core/defn
-  re-frame.core/reg-cofx clojure.core/defn}
+ {;; re-frame macros - use 'def' not 'defn' since event names are keywords
+  re-frame.core/reg-event-db clojure.core/def
+  re-frame.core/reg-event-fx clojure.core/def
+  re-frame.core/reg-sub clojure.core/def
+  re-frame.core/reg-fx clojure.core/def
+  re-frame.core/reg-cofx clojure.core/def}
 
  :output
  {:progress true}}

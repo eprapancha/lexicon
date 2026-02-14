@@ -499,7 +499,7 @@
                 (minibuffer/set-filtered-completions [])
                 (minibuffer/set-height-lines 1))}
 
-       ;; Multiple matches - complete common prefix only (first TAB)
+       ;; Multiple matches - complete common prefix, show *Completions* if nothing to add
        (> (count matches) 1)
        (let [common-prefix (reduce (fn [prefix candidate]
                                      (loop [i 0]
@@ -510,16 +510,19 @@
                                          (subs prefix 0 i))))
                                    (first matches)
                                    (rest matches))
-             new-input (if (> (count common-prefix) (count input))
-                         common-prefix
-                         input)]
-         {:db (-> db'
-                  (minibuffer/set-input new-input)
-                  (minibuffer/set-last-tab-input new-input)
-                  ;; Don't show inline completions on first TAB (vanilla Emacs)
-                  (minibuffer/set-show-completions? false)
-                  (minibuffer/set-filtered-completions [])
-                  (minibuffer/set-height-lines 1))})
+             can-complete? (> (count common-prefix) (count input))
+             new-input (if can-complete? common-prefix input)]
+         (if can-complete?
+           ;; Extended the input - set new input and wait for second TAB
+           {:db (-> db'
+                    (minibuffer/set-input new-input)
+                    (minibuffer/set-last-tab-input new-input)
+                    (minibuffer/set-show-completions? false)
+                    (minibuffer/set-filtered-completions [])
+                    (minibuffer/set-height-lines 1))}
+           ;; Nothing to complete - show *Completions* immediately (Emacs behavior)
+           {:db (minibuffer/set-last-tab-input db' nil)
+            :fx [[:dispatch [:minibuffer/completion-help matches]]]}))
 
        ;; No matches
        :else
@@ -1090,14 +1093,18 @@
            {:fx [[:dispatch [:completion-list/choose prev-value]]]}
            {:fx [[:dispatch [:echo/message "No completion at point"]]]}))))))
 
-(rf/reg-event-fx
+(rf/reg-event-db
  :completion-list/next-completion
- (fn [{:keys [db]} [_]]
+ (fn [db [_]]
    "Move to next completion in *Completions* buffer.
 
    Issue #138: Uses text properties for navigation.
    Jumps to the start of the next completion entry (skips non-completion text).
-   Uses :mouse-face property to detect completion boundaries."
+   Uses :mouse-face property to detect completion boundaries.
+
+   NOTE: Directly updates [:ui :cursor-position] because :update-cursor-position
+   uses the active buffer, but *Completions* navigation happens while focus is
+   on minibuffer (active buffer is NOT *Completions*)."
    (let [buffer-id (get-in db [:completion-help :buffer-id])
          text-props (get-in db [:buffers buffer-id :text-properties] {})
          ;; Get current cursor position (linear)
@@ -1110,67 +1117,58 @@
                                  cursor-pos)
                              cursor-pos)
          ;; Now find start of next completion
-         next-start (text-props/next-single-property-change text-props pos-after-current :mouse-face)]
-     (if next-start
-       {:fx [[:dispatch [:update-cursor-position next-start]]]}
-       ;; No next completion - wrap to first completion
-       (let [first-completion (text-props/next-single-property-change text-props 0 :mouse-face)]
-         (if first-completion
-           {:fx [[:dispatch [:update-cursor-position first-completion]]]}
-           {:db db}))))))
+         next-start (text-props/next-single-property-change text-props pos-after-current :mouse-face)
+         ;; If no next, wrap to first
+         target-pos (or next-start
+                        (text-props/next-single-property-change text-props 0 :mouse-face))]
+     (if target-pos
+       (assoc-in db [:ui :cursor-position] target-pos)
+       db))))
 
-(rf/reg-event-fx
+(rf/reg-event-db
  :completion-list/previous-completion
- (fn [{:keys [db]} [_]]
+ (fn [db [_]]
    "Move to previous completion in *Completions* buffer.
 
    Issue #138: Uses text properties for navigation.
    Jumps to the start of the previous completion entry.
-   Uses :mouse-face property to detect completion boundaries."
+   Uses :mouse-face property to detect completion boundaries.
+
+   NOTE: Directly updates [:ui :cursor-position] - see :completion-list/next-completion note."
    (let [buffer-id (get-in db [:completion-help :buffer-id])
          text-props (get-in db [:buffers buffer-id :text-properties] {})
-         ;; Get current cursor position (linear)
          cursor-pos (get-in db [:ui :cursor-position] 0)
-         ;; Find the start of the current completion (if on one)
          current-has-mouse-face? (text-props/get-text-property text-props cursor-pos :mouse-face)
-         ;; If we're at the start of a completion, we need to go before it
          start-of-current (when current-has-mouse-face?
                             (or (text-props/previous-single-property-change text-props cursor-pos :mouse-face)
                                 0))
          search-from (if (and start-of-current (= start-of-current cursor-pos))
-                       ;; At start of completion, search from before
                        (dec cursor-pos)
-                       ;; In middle or not on completion, search from current
                        (if current-has-mouse-face?
                          start-of-current
                          cursor-pos))
-         ;; Find previous completion boundary (could be end of prev completion)
          prev-boundary (when (> search-from 0)
-                         (text-props/previous-single-property-change text-props search-from :mouse-face))]
-     (if prev-boundary
-       ;; prev-boundary might be end of a completion or start of a gap
-       ;; We need to find the START of the completion at or before prev-boundary
-       (let [has-mouse-face-at-prev? (text-props/get-text-property text-props prev-boundary :mouse-face)
-             target-pos (if has-mouse-face-at-prev?
-                          ;; prev-boundary is inside a completion, find its start
+                         (text-props/previous-single-property-change text-props search-from :mouse-face))
+         target-pos (cond
+                      ;; Found a boundary
+                      prev-boundary
+                      (let [has-mouse-face-at-prev? (text-props/get-text-property text-props prev-boundary :mouse-face)]
+                        (if has-mouse-face-at-prev?
                           (or (text-props/previous-single-property-change text-props prev-boundary :mouse-face)
                               prev-boundary)
-                          ;; prev-boundary is at boundary, check one before
                           (when (> prev-boundary 0)
                             (let [pos-before (dec prev-boundary)]
                               (when (text-props/get-text-property text-props pos-before :mouse-face)
                                 (or (text-props/previous-single-property-change text-props pos-before :mouse-face)
-                                    prev-boundary)))))]
-         (if target-pos
-           {:fx [[:dispatch [:update-cursor-position target-pos]]]}
-           {:db db}))
-       ;; No previous completion - wrap to last
-       (let [;; Find last completion by iterating (not ideal but works)
-             entries (get-in db [:completion-help :entries] [])
-             last-entry (last entries)]
-         (if last-entry
-           {:fx [[:dispatch [:update-cursor-position (:start last-entry)]]]}
-           {:db db}))))))
+                                    prev-boundary))))))
+                      ;; No previous - wrap to last
+                      :else
+                      (let [entries (get-in db [:completion-help :entries] [])
+                            last-entry (last entries)]
+                        (:start last-entry)))]
+     (if target-pos
+       (assoc-in db [:ui :cursor-position] target-pos)
+       db))))
 
 (rf/reg-event-fx
  :completion-list/first-completion

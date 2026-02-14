@@ -52,6 +52,7 @@
             [lexicon.packages.hippie-expand :as hippie-expand]  ; Load hippie-expand framework (#151)
             [lexicon.packages.abbrev :as abbrev]             ; Load abbrev-mode (#151)
             [lexicon.packages.tab-bar :as tab-bar]               ; Load tab-bar-mode (#152)
+            [lexicon.core.events.icomplete]  ; Load icomplete core events
             [lexicon.packages.icomplete :as icomplete]  ; Load icomplete incremental completion (#128)
             [lexicon.packages.windmove]        ; Load windmove S-arrow navigation (#117)
             [lexicon.packages.winner]          ; Load winner window config undo (#117)
@@ -73,7 +74,7 @@
             [lexicon.packages.comint :as comint]       ; Load comint/term (#127)
             [lexicon.packages.tramp :as tramp]         ; Load TRAMP remote access (#126)
             [lexicon.core.events.ui :as ui-events]  ; Load UI events for command init (#138)
-            [lexicon.packages.font-lock :as font-lock]  ; Load font-lock syntax highlighting (#130)
+            [lexicon.core.packages.font-lock :as font-lock]  ; Load font-lock syntax highlighting (#130)
             [lexicon.packages.which-func :as which-func]  ; Load which-func mode (#130)
             [lexicon.packages.compile :as compile]   ; Load compile.el (#122)
             [lexicon.packages.flymake :as flymake]  ; Load flymake.el (#122)

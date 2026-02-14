@@ -1,4 +1,4 @@
-(ns lexicon.packages.font-lock
+(ns lexicon.core.packages.font-lock
   "Emacs-compatible font-lock (syntax highlighting) system.
 
   Font-lock applies faces to buffer text based on mode-specific keywords.

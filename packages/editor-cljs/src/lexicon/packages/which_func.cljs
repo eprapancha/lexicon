@@ -7,16 +7,14 @@
   Based on Emacs lisp/which-func.el
 
   This package uses only lisp.cljs primitives."
-  (:require [lexicon.lisp :as lisp]
-            [lexicon.core.packages.imenu :as imenu]
-            [re-frame.db :as rfdb]
-            [lexicon.core.db :as db]))
+  (:require [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
 ;; State (package-local)
 ;; =============================================================================
 
 (defonce which-func-enabled? (atom false))
+(defonce which-func-cache (atom {}))  ;; {buffer-id {:format "string", :cursor-pos N}}
 
 ;; =============================================================================
 ;; Function Detection
@@ -40,17 +38,34 @@
       (:name current-fn))))
 
 (defn update-which-func!
-  "Update which-func display for a buffer."
+  "Update which-func display for current buffer."
   []
   (when @which-func-enabled?
-    (let [db @rfdb/app-db
-          buffer-id (lisp/current-buffer)
+    (let [buffer-id (lisp/current-buffer)
           cursor-pos (lisp/point)
-          index (imenu/create-imenu-index db buffer-id)
-          flat-index (when index (imenu/flatten-imenu-index index))
-          current-fn (find-current-function flat-index cursor-pos)]
-      (swap! rfdb/app-db assoc-in [:buffers buffer-id :which-func-format]
-             (when current-fn (str "[" current-fn "]"))))))
+          ;; Check cache to avoid unnecessary imenu computation
+          cached (get @which-func-cache buffer-id)
+          cached-pos (:cursor-pos cached)]
+      ;; Only recompute if cursor moved significantly
+      (when (or (nil? cached)
+                (nil? cached-pos)
+                (> (abs (- cursor-pos cached-pos)) 50))
+        (let [index (lisp/imenu-create-index-for buffer-id)
+              flat-index (when index (lisp/imenu-flatten-index index))
+              current-fn (find-current-function flat-index cursor-pos)
+              format-str (when current-fn (str "[" current-fn "]"))]
+          (swap! which-func-cache assoc buffer-id
+                 {:format format-str
+                  :cursor-pos cursor-pos})
+          ;; Store which-func-format as buffer-local variable
+          (lisp/setq-local 'which-func-format format-str))))))
+
+(defn get-which-func-format
+  "Get the which-func format string for current buffer."
+  []
+  (let [buffer-id (lisp/current-buffer)]
+    (or (get-in @which-func-cache [buffer-id :format])
+        (lisp/buffer-local-value 'which-func-format buffer-id))))
 
 ;; =============================================================================
 ;; Commands
@@ -67,23 +82,8 @@
       (lisp/message "Which-func-mode enabled"))
     (do
       (lisp/remove-hook 'post-command-hook update-which-func!)
+      (reset! which-func-cache {})
       (lisp/message "Which-func-mode disabled"))))
-
-;; =============================================================================
-;; Integration with Cursor Movement
-;; =============================================================================
-
-(defn on-cursor-move
-  "Called when cursor moves to update which-func display.
-   Should be called from cursor/set-position event."
-  [db buffer-id cursor-pos]
-  (if @which-func-enabled?
-    (let [index (imenu/create-imenu-index db buffer-id)
-          flat-index (when index (imenu/flatten-imenu-index index))
-          current-fn (find-current-function flat-index cursor-pos)]
-      (assoc-in db [:buffers buffer-id :which-func-format]
-                (when current-fn (str "[" current-fn "]"))))
-    db))
 
 ;; =============================================================================
 ;; Initialization

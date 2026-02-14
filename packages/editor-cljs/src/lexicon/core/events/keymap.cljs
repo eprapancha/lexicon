@@ -172,7 +172,9 @@
    (let [awaiting-key? (get-in db [:help :awaiting-key?])
          help-callback (get-in db [:help :callback])
          query-replace-active? (get-in db [:ui :query-replace :active?])
-         isearch-active? (get-in db [:ui :isearch :active?])]
+         isearch-active? (get-in db [:ui :isearch :active?])
+         ;; Check if *Completions* buffer is visible for arrow key routing
+         completions-visible? (some? (get-in db [:completion-help :buffer-id]))]
 
      (cond
        ;; If we're in isearch mode, intercept keys
@@ -186,6 +188,17 @@
        ;; If we're waiting for a key press for C-h k, handle it specially
        awaiting-key?
        {:fx [[:dispatch (conj help-callback key-str)]]}
+
+       ;; Route arrow keys to *Completions* navigation when visible
+       ;; This allows navigating completions without switching windows
+       (and completions-visible? (= key-str "ArrowDown"))
+       {:fx [[:dispatch [:completion-list/next-completion]]]}
+
+       (and completions-visible? (= key-str "ArrowUp"))
+       {:fx [[:dispatch [:completion-list/previous-completion]]]}
+
+       (and completions-visible? (= key-str "RET"))
+       {:fx [[:dispatch [:completion-list/choose-at-point]]]}
 
        ;; Normal key handling
        :else

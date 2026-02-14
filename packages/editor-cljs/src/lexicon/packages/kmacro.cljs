@@ -19,7 +19,7 @@
 
 (defonce recording? (atom false))
 (defonce current-macro (atom []))
-(defonce macro-ring (atom []))
+(defonce macro-ring (atom (lisp/make-ring 16)))
 (defonce kmacro-counter (atom 0))
 (defonce kmacro-counter-format (atom "%d"))
 (defonce executing? (atom false))
@@ -47,11 +47,12 @@
     (let [macro @current-macro]
       (if (seq macro)
         (do
-          (swap! macro-ring #(vec (cons macro (take 15 %))))
+          (swap! macro-ring #(lisp/ring-insert % macro))
           (lisp/message (str "Keyboard macro defined (" (count macro) " keys)")))
         (lisp/message "Empty keyboard macro not added to ring")))))
 
-(defn- get-last-macro [] (first @macro-ring))
+(defn- get-last-macro []
+  (lisp/ring-ref @macro-ring 0))
 
 (defn- insert-counter! [increment]
   (let [value @kmacro-counter

@@ -68,9 +68,9 @@
 
 ;; -- SCI Context --
 
+;; SCI evaluation context for external packages.
+;; Initialized once with Core API bindings and ClojureScript stdlib.
 (defonce ^:private sci-ctx
-  "SCI evaluation context for external packages.
-  Initialized once with Core API bindings and ClojureScript stdlib."
   (delay
     (sci/init
       {:namespaces (make-api-namespace)

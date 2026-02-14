@@ -39,10 +39,8 @@
   Based on Emacs lisp/comint.el and lisp/term.el
 
   This package uses only lisp.cljs primitives."
-  (:require [re-frame.core :as rf]
-            [clojure.string :as str]
-            [lexicon.lisp :as lisp]
-            [lexicon.core.db :as db]))
+  (:require [clojure.string :as str]
+            [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
 ;; State (Package-local)
@@ -51,11 +49,23 @@
 (def default-ring-size 64)
 
 ;; Comint state keyed by buffer-id
-;; {buffer-id {:history [] :history-index N :term-mode :line/:char}}
+;; {buffer-id {:history <ring>, :history-index N, :term-mode :line/:char}}
 (defonce comint-state (atom {}))
 
-(defn- get-buffer-history [buffer-id]
-  (get-in @comint-state [buffer-id :history] []))
+(defn- ensure-buffer-state!
+  "Ensure comint state exists for buffer."
+  [buffer-id]
+  (when-not (get @comint-state buffer-id)
+    (swap! comint-state assoc buffer-id
+           {:history (lisp/make-ring default-ring-size)
+            :history-index 0
+            :term-mode :line})))
+
+(defn- get-buffer-history
+  "Get the history ring for a buffer."
+  [buffer-id]
+  (ensure-buffer-state! buffer-id)
+  (get-in @comint-state [buffer-id :history]))
 
 (defn- get-history-index [buffer-id]
   (get-in @comint-state [buffer-id :history-index] 0))
@@ -63,316 +73,201 @@
 (defn- set-history-index! [buffer-id idx]
   (swap! comint-state assoc-in [buffer-id :history-index] idx))
 
-(defn- add-to-history! [buffer-id input]
-  (let [history (get-buffer-history buffer-id)
-        max-size default-ring-size
-        new-history (if (and (seq input)
-                             (not= input (last history)))
-                      (let [h (conj history input)]
-                        (if (> (count h) max-size)
-                          (subvec h (- (count h) max-size))
-                          h))
-                      history)]
-    (swap! comint-state assoc-in [buffer-id :history] new-history)
-    (swap! comint-state assoc-in [buffer-id :history-index] (count new-history))))
+(defn- add-to-history!
+  "Add input to the history ring for a buffer."
+  [buffer-id input]
+  (ensure-buffer-state! buffer-id)
+  (when (seq input)
+    (swap! comint-state update-in [buffer-id :history]
+           (fn [ring]
+             (lisp/ring-insert-no-dup ring input)))
+    (let [new-length (lisp/ring-length (get-buffer-history buffer-id))]
+      (set-history-index! buffer-id new-length))))
 
 ;; =============================================================================
-;; Input History Ring - Internal Events
+;; Input History Navigation
 ;; =============================================================================
 
-(rf/reg-event-fx
- :comint/add-to-history
- (fn [{:keys [_db]} [_ buffer-id input]]
-   (add-to-history! buffer-id input)
-   {}))
+(defn comint-previous-input!
+  "Cycle backward through input history (M-p)."
+  []
+  (let [buffer-id (lisp/current-buffer)
+        history (get-buffer-history buffer-id)
+        idx (get-history-index buffer-id)
+        new-idx (max 0 (dec idx))
+        length (lisp/ring-length history)]
+    (if (and (pos? length) (< new-idx length))
+      (do
+        (set-history-index! buffer-id new-idx)
+        (lisp/message (lisp/ring-ref history new-idx)))
+      (lisp/message "Beginning of history"))))
 
-(rf/reg-event-fx
- :comint/previous-input
- (fn [{:keys [_db]} [_]]
-   "Cycle backward through input history (M-p)."
-   (let [buffer-id (lisp/current-buffer)
-         history (get-buffer-history buffer-id)
-         idx (get-history-index buffer-id)
-         new-idx (max 0 (dec idx))]
-     (if (and (seq history) (< new-idx (count history)))
-       (do
-         (set-history-index! buffer-id new-idx)
-         {:fx [[:dispatch [:echo/message (nth history new-idx)]]]})
-       {:fx [[:dispatch [:echo/message "Beginning of history"]]]}))))
+(defn comint-next-input!
+  "Cycle forward through input history (M-n)."
+  []
+  (let [buffer-id (lisp/current-buffer)
+        history (get-buffer-history buffer-id)
+        idx (get-history-index buffer-id)
+        length (lisp/ring-length history)
+        new-idx (min length (inc idx))]
+    (if (< new-idx length)
+      (do
+        (set-history-index! buffer-id new-idx)
+        (lisp/message (lisp/ring-ref history new-idx)))
+      (lisp/message "End of history"))))
 
-(rf/reg-event-fx
- :comint/next-input
- (fn [{:keys [_db]} [_]]
-   "Cycle forward through input history (M-n)."
-   (let [buffer-id (lisp/current-buffer)
-         history (get-buffer-history buffer-id)
-         idx (get-history-index buffer-id)
-         new-idx (min (count history) (inc idx))]
-     (if (< new-idx (count history))
-       (do
-         (set-history-index! buffer-id new-idx)
-         {:fx [[:dispatch [:echo/message (nth history new-idx)]]]})
-       {:fx [[:dispatch [:echo/message "End of history"]]]}))))
-
-(rf/reg-event-fx
- :comint/previous-matching-input
- (fn [{:keys [_db]} [_]]
-   "Search backward through history for matching input (M-r)."
-   {:fx [[:dispatch [:minibuffer/activate
-                     {:prompt "History search: "
-                      :on-confirm [:comint/search-history-exec]}]]]}))
-
-(rf/reg-event-fx
- :comint/search-history-exec
- (fn [{:keys [_db]} [_ pattern]]
-   "Execute history search."
-   (let [buffer-id (lisp/current-buffer)
-         history (get-buffer-history buffer-id)
-         re (try (js/RegExp. pattern "i") (catch :default _ nil))
-         match (when re
-                 (last (filter #(.test re %) history)))]
-     (if match
-       {:fx [[:dispatch [:echo/message (str "Found: " match)]]]}
-       {:fx [[:dispatch [:echo/message (str "No match for: " pattern)]]]}))))
+(defn comint-previous-matching-input!
+  "Search backward through history for matching input (M-r)."
+  []
+  (lisp/read-from-minibuffer
+   "History search: "
+   (fn [pattern]
+     (let [buffer-id (lisp/current-buffer)
+           history (get-buffer-history buffer-id)
+           elements (lisp/ring-elements history)
+           re (try (js/RegExp. pattern "i") (catch :default _ nil))
+           match (when re
+                   (last (filter #(.test re %) elements)))]
+       (if match
+         (lisp/message (str "Found: " match))
+         (lisp/message (str "No match for: " pattern)))))))
 
 ;; =============================================================================
-;; Comint Process Interaction - Internal Events
+;; Process Interaction
 ;; =============================================================================
 
-(rf/reg-event-fx
- :comint/send-input
- (fn [{:keys [_db]} [_ buffer-id input]]
-   "Send input to the process in buffer."
-   {:fx [[:dispatch [:comint/add-to-history buffer-id input]]
-         [:dispatch [:shell/send-input buffer-id input]]]}))
+(defn comint-send-input!
+  "Send input to the process in buffer."
+  [buffer-id input]
+  (add-to-history! buffer-id input)
+  ;; In browser context, shell command execution is simulated
+  (lisp/message (str "Input: " input)))
 
-(rf/reg-event-fx
- :comint/interrupt
- (fn [_ [_]]
-   "Interrupt the subprocess (C-c C-c)."
-   {:fx [[:dispatch [:echo/message "Interrupt (no subprocess in browser)"]]]}))
+(defn comint-interrupt-subjob!
+  "Interrupt the subprocess (C-c C-c)."
+  []
+  (lisp/message "Interrupt (no subprocess in browser)"))
 
-(rf/reg-event-fx
- :comint/stop
- (fn [_ [_]]
-   "Stop the subprocess (C-c C-z)."
-   {:fx [[:dispatch [:echo/message "Stop (no subprocess in browser)"]]]}))
+(defn comint-stop-subjob!
+  "Stop the subprocess (C-c C-z)."
+  []
+  (lisp/message "Stop (no subprocess in browser)"))
 
-(rf/reg-event-fx
- :comint/eof
- (fn [_ [_]]
-   "Send EOF to subprocess (C-c C-d)."
-   {:fx [[:dispatch [:echo/message "EOF (no subprocess in browser)"]]]}))
+(defn comint-send-eof!
+  "Send EOF to subprocess (C-c C-d)."
+  []
+  (lisp/message "EOF (no subprocess in browser)"))
 
 ;; =============================================================================
-;; Comint Line Editing - Internal Events
+;; Line Editing
 ;; =============================================================================
 
-(rf/reg-event-fx
- :comint/bol
- (fn [{:keys [_db]} [_]]
-   "Move to beginning of input after prompt (C-c C-a).
-    In shell-mode, moves to the position right after the prompt string."
-   (let [text (lisp/buffer-string)]
-     (if text
-       (let [last-prompt-idx (str/last-index-of text "$ ")]
-         (if last-prompt-idx
-           {:fx [[:dispatch [:echo/message "Beginning of input"]]]}
-           {:fx [[:dispatch [:echo/message "No prompt found"]]]}))
-       {:fx [[:dispatch [:echo/message "No prompt found"]]]}))))
+(defn comint-bol!
+  "Move to beginning of input after prompt (C-c C-a)."
+  []
+  (let [text (lisp/buffer-string)]
+    (if text
+      (let [last-prompt-idx (str/last-index-of text "$ ")]
+        (if last-prompt-idx
+          (lisp/message "Beginning of input")
+          (lisp/message "No prompt found")))
+      (lisp/message "No prompt found"))))
 
-(rf/reg-event-fx
- :comint/kill-input
- (fn [{:keys [db]} [_]]
-   "Kill the current input line (C-c C-u).
-    Clears text after the last prompt."
-   (let [buffer-id (lisp/current-buffer)
-         buffer (get-in db [:buffers buffer-id])
-         wasm (:wasm-instance buffer)]
-     (if (and wasm (= (:major-mode buffer) :shell-mode))
-       (let [text (try (.getText ^js wasm) (catch :default _ ""))
-             last-prompt-idx (str/last-index-of text "$ ")]
-         (if last-prompt-idx
-           (let [input-start (+ last-prompt-idx 2)
-                 len (.-length wasm)
-                 to-delete (- len input-start)]
-             (when (pos? to-delete)
-               (.delete ^js wasm input-start to-delete))
-             (let [new-text (try (.getText ^js wasm) (catch :default _ ""))
-                   lines (str/split new-text #"\n" -1)]
-               {:db (-> db
-                        (assoc-in [:buffers buffer-id :cache :text] new-text)
-                        (assoc-in [:buffers buffer-id :cache :line-count] (count lines)))
-                :fx [[:dispatch [:echo/message "Input killed"]]]}))
-           {:fx [[:dispatch [:echo/message "No input to kill"]]]}))
-       {:fx [[:dispatch [:echo/message "Not in a shell buffer"]]]}))))
+(defn comint-kill-input!
+  "Kill the current input line (C-c C-u)."
+  []
+  (let [text (lisp/buffer-string)]
+    (if text
+      (let [last-prompt-idx (str/last-index-of text "$ ")]
+        (if last-prompt-idx
+          (let [input-start (+ last-prompt-idx 2)
+                len (lisp/buffer-size)]
+            (when (> len input-start)
+              (lisp/delete-region input-start len))
+            (lisp/message "Input killed"))
+          (lisp/message "No input to kill")))
+      (lisp/message "Not in a shell buffer"))))
 
-(rf/reg-event-fx
- :comint/delete-output
- (fn [{:keys [db]} [_]]
-   "Delete last batch of process output (C-c C-o).
-    Removes text between the second-to-last and last prompt."
-   (let [buffer-id (lisp/current-buffer)
-         buffer (get-in db [:buffers buffer-id])
-         wasm (:wasm-instance buffer)]
-     (if (and wasm (= (:major-mode buffer) :shell-mode))
-       (let [text (try (.getText ^js wasm) (catch :default _ ""))
-             ;; Find last two prompts
-             last-prompt (str/last-index-of text "$ ")
-             prev-prompt (when last-prompt
-                           (str/last-index-of text "$ " (dec last-prompt)))]
-         (if (and last-prompt prev-prompt)
-           (let [;; Delete from end of prev input to start of last prompt
-                 delete-start (+ prev-prompt 2)
-                 delete-end last-prompt
-                 to-delete (- delete-end delete-start)]
-             (when (pos? to-delete)
-               (.delete ^js wasm delete-start to-delete))
-             (let [new-text (try (.getText ^js wasm) (catch :default _ ""))
-                   lines (str/split new-text #"\n" -1)]
-               {:db (-> db
-                        (assoc-in [:buffers buffer-id :cache :text] new-text)
-                        (assoc-in [:buffers buffer-id :cache :line-count] (count lines)))
-                :fx [[:dispatch [:echo/message "Output deleted"]]]}))
-           {:fx [[:dispatch [:echo/message "*** output flushed ***"]]]}))
-       {:fx [[:dispatch [:echo/message "Not in a shell buffer"]]]}))))
+(defn comint-delete-output!
+  "Delete last batch of process output (C-c C-o)."
+  []
+  (let [text (lisp/buffer-string)]
+    (if text
+      (let [last-prompt (str/last-index-of text "$ ")
+            prev-prompt (when last-prompt
+                          (str/last-index-of text "$ " (dec last-prompt)))]
+        (if (and last-prompt prev-prompt)
+          (let [delete-start (+ prev-prompt 2)
+                delete-end last-prompt
+                to-delete (- delete-end delete-start)]
+            (when (pos? to-delete)
+              (lisp/delete-region delete-start delete-end))
+            (lisp/message "Output deleted"))
+          (lisp/message "*** output flushed ***")))
+      (lisp/message "Not in a shell buffer"))))
 
-(rf/reg-event-fx
- :comint/show-output
- (fn [_ [_]]
-   "Show beginning of last output group (C-c C-r)."
-   {:fx [[:dispatch [:echo/message "Show output (scroll to last output)"]]]}))
+(defn comint-show-output!
+  "Show beginning of last output group (C-c C-r)."
+  []
+  (lisp/message "Show output (scroll to last output)"))
 
-(rf/reg-event-fx
- :comint/dynamic-list-input-ring
- (fn [{:keys [db]} [_]]
-   "Display the input history in a buffer (C-c C-l)."
-   (let [buffer-id (lisp/current-buffer)
-         history (get-buffer-history buffer-id)
-         content (str "Input History\n"
-                      (str/join "" (repeat 40 "=")) "\n\n"
-                      (if (seq history)
-                        (str/join "\n"
-                                  (map-indexed
-                                   (fn [i cmd] (str "  " (inc i) "  " cmd))
-                                   history))
-                        "(empty history)")
-                      "\n")
-         buffers (:buffers db)
-         new-buffer-id (db/next-buffer-id buffers)
-         WasmGapBuffer (get-in db [:system :wasm-constructor])
-         wasm-instance (when WasmGapBuffer (WasmGapBuffer. content))
-         lines (str/split content #"\n" -1)
-         line-count (count lines)]
-     (if wasm-instance
-       {:db (assoc-in db [:buffers new-buffer-id]
-                      {:id new-buffer-id
-                       :name "*Input History*"
-                       :wasm-instance wasm-instance
-                       :file-handle nil
-                       :major-mode :special-mode
-                       :is-read-only? true
-                       :is-modified? false
-                       :mark-position nil
-                       :cursor-position {:line 0 :column 0}
-                       :selection-range nil
-                       :minor-modes #{}
-                       :buffer-local-vars {}
-                       :ast nil
-                       :language :text
-                       :diagnostics []
-                       :undo-stack []
-                       :undo-in-progress? false
-                       :editor-version 0
-                       :text-properties {}
-                       :overlays {}
-                       :next-overlay-id 1
-                       :cache {:text content
-                               :line-count line-count}})
-        :fx [[:dispatch [:switch-buffer new-buffer-id]]]}
-       {:fx [[:dispatch [:echo/message "Error: WASM not initialized"]]]}))))
+(defn comint-dynamic-list-input-ring!
+  "Display the input history in a buffer (C-c C-l)."
+  []
+  (let [buffer-id (lisp/current-buffer)
+        history (get-buffer-history buffer-id)
+        elements (lisp/ring-elements history)
+        content (str "Input History\n"
+                     (str/join "" (repeat 40 "=")) "\n\n"
+                     (if (seq elements)
+                       (str/join "\n"
+                                 (map-indexed
+                                  (fn [i cmd] (str "  " (inc i) "  " cmd))
+                                  elements))
+                       "(empty history)")
+                     "\n")]
+    (lisp/create-special-buffer
+     "*Input History*"
+     content
+     {:major-mode :special-mode
+      :read-only true})
+    (lisp/switch-to-buffer (lisp/get-buffer "*Input History*"))))
 
 ;; =============================================================================
-;; Term Mode - Internal Events
+;; Term Mode
 ;; =============================================================================
 
-(rf/reg-event-fx
- :term/open
- (fn [_ [_ term-name]]
-   "Open a terminal buffer (M-x term)."
-   (let [name (or term-name "*terminal*")]
-     {:fx [[:dispatch [:shell/open name]]]})))
+(defn term!
+  "Open a terminal buffer (M-x term)."
+  []
+  (let [buffer-id (lisp/create-special-buffer
+                   "*terminal*"
+                   "Terminal emulator\n$ "
+                   {:major-mode :shell-mode})]
+    (lisp/switch-to-buffer buffer-id)))
 
-(rf/reg-event-fx
- :term/ansi-term
- (fn [_ [_]]
-   "Open an ANSI terminal (M-x ansi-term)."
-   {:fx [[:dispatch [:term/open "*ansi-term*"]]]}))
+(defn ansi-term!
+  "Open an ANSI terminal (M-x ansi-term)."
+  []
+  (let [buffer-id (lisp/create-special-buffer
+                   "*ansi-term*"
+                   "ANSI Terminal\n$ "
+                   {:major-mode :shell-mode})]
+    (lisp/switch-to-buffer buffer-id)))
 
-(rf/reg-event-fx
- :term/char-mode
- (fn [{:keys [_db]} [_]]
-   "Switch to character mode (C-c C-k)."
-   (let [buffer-id (lisp/current-buffer)]
-     (swap! comint-state assoc-in [buffer-id :term-mode] :char)
-     {:fx [[:dispatch [:echo/message "Char mode"]]]})))
+(defn term-char-mode!
+  "Switch to character mode (C-c C-k)."
+  []
+  (let [buffer-id (lisp/current-buffer)]
+    (swap! comint-state assoc-in [buffer-id :term-mode] :char)
+    (lisp/message "Char mode")))
 
-(rf/reg-event-fx
- :term/line-mode
- (fn [{:keys [_db]} [_]]
-   "Switch to line mode (C-c C-j)."
-   (let [buffer-id (lisp/current-buffer)]
-     (swap! comint-state assoc-in [buffer-id :term-mode] :line)
-     {:fx [[:dispatch [:echo/message "Line mode"]]]})))
-
-;; =============================================================================
-;; Command Handler Functions
-;; =============================================================================
-
-(defn comint-previous-input! []
-  (rf/dispatch [:comint/previous-input]))
-
-(defn comint-next-input! []
-  (rf/dispatch [:comint/next-input]))
-
-(defn comint-previous-matching-input! []
-  (rf/dispatch [:comint/previous-matching-input]))
-
-(defn comint-interrupt-subjob! []
-  (rf/dispatch [:comint/interrupt]))
-
-(defn comint-stop-subjob! []
-  (rf/dispatch [:comint/stop]))
-
-(defn comint-send-eof! []
-  (rf/dispatch [:comint/eof]))
-
-(defn comint-bol! []
-  (rf/dispatch [:comint/bol]))
-
-(defn comint-kill-input! []
-  (rf/dispatch [:comint/kill-input]))
-
-(defn comint-delete-output! []
-  (rf/dispatch [:comint/delete-output]))
-
-(defn comint-show-output! []
-  (rf/dispatch [:comint/show-output]))
-
-(defn comint-dynamic-list-input-ring! []
-  (rf/dispatch [:comint/dynamic-list-input-ring]))
-
-(defn term! []
-  (rf/dispatch [:term/open]))
-
-(defn ansi-term! []
-  (rf/dispatch [:term/ansi-term]))
-
-(defn term-char-mode! []
-  (rf/dispatch [:term/char-mode]))
-
-(defn term-line-mode! []
-  (rf/dispatch [:term/line-mode]))
+(defn term-line-mode!
+  "Switch to line mode (C-c C-j)."
+  []
+  (let [buffer-id (lisp/current-buffer)]
+    (swap! comint-state assoc-in [buffer-id :term-mode] :line)
+    (lisp/message "Line mode")))
 
 ;; =============================================================================
 ;; Initialization

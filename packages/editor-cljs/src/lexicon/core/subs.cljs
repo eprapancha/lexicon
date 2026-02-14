@@ -721,3 +721,9 @@
  (fn [buffer _]
    "Check if font-lock mode is enabled for this buffer"
    (get buffer :font-lock-mode false)))
+
+;; Issue #138: Track if *Completions* buffer is visible
+(rf/reg-sub
+ :completions-visible?
+ (fn [db _]
+   (some? (get-in db [:completion-help :buffer-id]))))

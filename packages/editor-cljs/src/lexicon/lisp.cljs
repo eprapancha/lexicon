@@ -23,7 +23,9 @@
             [lexicon.core.minibuffer :as minibuffer]
             [lexicon.core.markers :as markers]
             [lexicon.core.advanced-undo :as advanced-undo]
-            [lexicon.core.dynamic :as dyn]))
+            [lexicon.core.dynamic :as dyn]
+            [lexicon.core.ring :as ring]
+            [lexicon.core.packages.imenu :as imenu]))
 
 ;; Forward declarations for functions used before definition
 (declare goto-char line-beginning-position line-end-position current-buffer mark delete-region)
@@ -1029,6 +1031,7 @@
                 new-pos (+ pos (count text-str))
                 ;; Calculate line/col for window cursor
                 new-line-col (buf/point-to-line-col {:wasm-instance wasm-instance} new-pos)]
+            #_{:clj-kondo/ignore [:invalid-arity]}
             (swap! rfdb/app-db
                    (fn [current-db]
                      (let [;; Update window-tree cursor position
@@ -2318,6 +2321,51 @@
    {:db db
     :fx [[:dispatch [:minibuffer/deactivate]]
          [:dispatch [:echo/message "Cancelled"]]]}))
+
+;; =============================================================================
+;; Minibuffer Accessors (for package integration)
+;; =============================================================================
+
+(defn minibuffer-input
+  "Get the current minibuffer input text.
+
+  Usage: (minibuffer-input)
+  Returns: String or nil if minibuffer not active"
+  []
+  (get-in @rfdb/app-db [:minibuffer :input]))
+
+(defn set-minibuffer-input
+  "Set the current minibuffer input text.
+
+  Usage: (set-minibuffer-input \"new-text\")
+  Returns: nil"
+  [text]
+  (swap! rfdb/app-db assoc-in [:minibuffer :input] text)
+  nil)
+
+(defn minibuffer-contents
+  "Get the current minibuffer contents (alias for minibuffer-input).
+
+  Usage: (minibuffer-contents)
+  Returns: String or nil"
+  []
+  (minibuffer-input))
+
+(defn minibuffer-completions
+  "Get the list of completions for current minibuffer.
+
+  Usage: (minibuffer-completions)
+  Returns: Vector of completion strings or nil"
+  []
+  (get-in @rfdb/app-db [:minibuffer :completions]))
+
+(defn minibuffer-active-p
+  "Return t if minibuffer is currently active.
+
+  Usage: (minibuffer-active-p)
+  Returns: Boolean"
+  []
+  (boolean (get-in @rfdb/app-db [:minibuffer :active])))
 
 ;; =============================================================================
 ;; Completion System (Issue #108 - Vertico Prerequisites)
@@ -3635,6 +3683,103 @@
   (throw (js/Error. (apply str args))))
 
 ;; =============================================================================
+;; Ring Data Structure (Emacs ring.el)
+;; =============================================================================
+
+;; Expose core ring functions directly - they're pure and need no wrapping
+(def make-ring ring/make-ring)
+(def ring-size ring/ring-size)
+(def ring-length ring/ring-length)
+(def ring-empty-p ring/ring-empty-p)
+(def ring-elements ring/ring-elements)
+(def ring-ref ring/ring-ref)
+(def ring-insert ring/ring-insert)
+(def ring-insert-at-beginning ring/ring-insert-at-beginning)
+(def ring-remove ring/ring-remove)
+(def ring-member ring/ring-member)
+(def ring-contains? ring/ring-contains?)
+(def ring->list ring/ring->list)
+(def list->ring ring/list->ring)
+(def ring-insert-no-dup ring/ring-insert-no-dup)
+
+;; =============================================================================
+;; Imenu (Buffer Structure Navigation)
+;; =============================================================================
+
+(defn imenu-create-index
+  "Create imenu index for current buffer.
+
+  Returns a vector of {:name :position} maps representing navigable
+  items in the buffer (functions, headings, etc.).
+
+  Usage: (imenu-create-index)
+  Returns: Vector of imenu items or nil"
+  []
+  (let [db @rfdb/app-db
+        buffer-id (get-in db [:editor :current-buffer-id])]
+    (imenu/create-imenu-index db buffer-id)))
+
+(defn imenu-create-index-for
+  "Create imenu index for specified buffer.
+
+  Usage: (imenu-create-index-for buffer-id)
+  Returns: Vector of imenu items or nil"
+  [buffer-id]
+  (let [db @rfdb/app-db]
+    (imenu/create-imenu-index db buffer-id)))
+
+(def imenu-flatten-index
+  "Flatten nested imenu index into flat list.
+
+  Usage: (imenu-flatten-index index)
+  Returns: Flat vector of {:name :position} maps"
+  imenu/flatten-imenu-index)
+
+;; =============================================================================
+;; Event Dispatch (for package integration)
+;; =============================================================================
+
+(defn dispatch-event
+  "Dispatch a re-frame event.
+
+  This provides packages a way to trigger core events without
+  importing re-frame directly.
+
+  Usage: (dispatch-event :icomplete/enable true)
+         (dispatch-event :echo/message \"Hello\")
+  Returns: nil"
+  ([event-id]
+   (rf/dispatch [event-id])
+   nil)
+  ([event-id & args]
+   (rf/dispatch (vec (cons event-id args)))
+   nil))
+
+(defn dispatch-sync-event
+  "Dispatch a re-frame event synchronously.
+
+  Usage: (dispatch-sync-event :buffer/goto-char 100)
+  Returns: nil"
+  ([event-id]
+   (rf/dispatch-sync [event-id])
+   nil)
+  ([event-id & args]
+   (rf/dispatch-sync (vec (cons event-id args)))
+   nil))
+
+;; =============================================================================
+;; Icomplete Integration
+;; =============================================================================
+
+(defn icomplete-enabled?
+  "Return whether icomplete-mode is enabled.
+
+  Usage: (icomplete-enabled?)
+  Returns: Boolean"
+  []
+  (boolean (get-in @rfdb/app-db [:icomplete :enabled?])))
+
+;; =============================================================================
 ;; Export for SCI
 ;; =============================================================================
 
@@ -3767,6 +3912,11 @@
    ;; Minibuffer
    'read-string read-string
    'read-from-minibuffer read-from-minibuffer
+   'minibuffer-input minibuffer-input
+   'set-minibuffer-input set-minibuffer-input
+   'minibuffer-contents minibuffer-contents
+   'minibuffer-completions minibuffer-completions
+   'minibuffer-active-p minibuffer-active-p
    ;; Completion (Issue #108)
    'all-completions all-completions
    'try-completion try-completion
@@ -3856,4 +4006,28 @@
    'make-indirect-buffer make-indirect-buffer
    'looking-at looking-at
    'forward-word forward-word
-   'error lisp-error})
+   'error lisp-error
+   ;; Ring data structure (ring.el)
+   'make-ring make-ring
+   'ring-size ring-size
+   'ring-length ring-length
+   'ring-empty-p ring-empty-p
+   'ring-elements ring-elements
+   'ring-ref ring-ref
+   'ring-insert ring-insert
+   'ring-insert-at-beginning ring-insert-at-beginning
+   'ring-remove ring-remove
+   'ring-member ring-member
+   'ring-contains? ring-contains?
+   'ring->list ring->list
+   'list->ring list->ring
+   'ring-insert-no-dup ring-insert-no-dup
+   ;; Imenu (buffer structure navigation)
+   'imenu-create-index imenu-create-index
+   'imenu-create-index-for imenu-create-index-for
+   'imenu-flatten-index imenu-flatten-index
+   ;; Event dispatch (for packages)
+   'dispatch-event dispatch-event
+   'dispatch-sync-event dispatch-sync-event
+   ;; Icomplete
+   'icomplete-enabled? icomplete-enabled?})

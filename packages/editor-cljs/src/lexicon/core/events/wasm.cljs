@@ -209,48 +209,70 @@
 (rf/reg-event-fx
  :handle-text-input
  (fn [{:keys [db]} [_ {:keys [input-type data dom-cursor-pos]}]]
-   "Handle text input events by queueing operations"
-   ;; Fire hook for text input (keyboard macros and other listeners)
-   (when (and (= input-type "insertText") data)
-     (doseq [ch data]
-       (lisp/run-hook-with-args 'key-pressed-hook (str ch))))
-   (let [prefix-arg (get-in db [:ui :prefix-argument])
-         prefix-active? (get-in db [:ui :prefix-argument-active?])
-         repeat-count (if (and prefix-active? prefix-arg) prefix-arg 1)]
-     (println "🔢 handle-text-input - prefix-arg:" prefix-arg "active?:" prefix-active? "repeat:" repeat-count "data:" data)
-     (let [operation (case input-type
-                       "insertText"
-                       (when data
-                         ;; Repeat the text based on prefix-argument
-                         (let [text (apply str (repeat repeat-count data))]
-                           (println "📝 Inserting text:" text "(repeat" repeat-count "times)")
-                           {:op :insert :text text}))
+   "Handle text input events by queueing operations.
 
-                       "insertCompositionText"
-                       (when data
-                         ;; Handle IME composition
-                         (rf/dispatch [:ime-composition-update data])
-                         nil)
+   This handles `beforeinput` events (from form inputs, mobile keyboards, IME).
+   Must check for modal states like isearch/query-replace and route appropriately,
+   since these inputs bypass the `keydown` → `:handle-key-sequence` path."
+   (let [isearch-active? (get-in db [:ui :isearch :active?])
+         query-replace-active? (get-in db [:ui :query-replace :active?])]
 
-                       "deleteContentBackward"
-                       {:op :delete-backward}
+     (cond
+       ;; If isearch is active, route each character to isearch handler
+       ;; This ensures both keydown and beforeinput paths work consistently
+       (and isearch-active? (= input-type "insertText") data)
+       {:fx (vec (for [ch data]
+                   [:dispatch [:isearch/handle-key (str ch)]]))}
 
-                       "deleteContentForward"
-                       {:op :delete-forward}
+       ;; If query-replace is active, route to query-replace handler
+       (and query-replace-active? (= input-type "insertText") data)
+       {:fx (vec (for [ch data]
+                   [:dispatch [:query-replace/handle-key (str ch)]]))}
 
-                       "insertFromPaste"
-                       (when data
-                         {:op :insert :text data})
+       ;; Normal text input - insert into buffer
+       :else
+       (do
+         ;; Fire hook for text input (keyboard macros and other listeners)
+         (when (and (= input-type "insertText") data)
+           (doseq [ch data]
+             (lisp/run-hook-with-args 'key-pressed-hook (str ch))))
+         (let [prefix-arg (get-in db [:ui :prefix-argument])
+               prefix-active? (get-in db [:ui :prefix-argument-active?])
+               repeat-count (if (and prefix-active? prefix-arg) prefix-arg 1)]
+           (println "🔢 handle-text-input - prefix-arg:" prefix-arg "active?:" prefix-active? "repeat:" repeat-count "data:" data)
+           (let [operation (case input-type
+                             "insertText"
+                             (when data
+                               ;; Repeat the text based on prefix-argument
+                               (let [text (apply str (repeat repeat-count data))]
+                                 (println "📝 Inserting text:" text "(repeat" repeat-count "times)")
+                                 {:op :insert :text text}))
 
-                       ;; Log unhandled input types
-                       (do (println "Unhandled input type:" input-type) nil))]
+                             "insertCompositionText"
+                             (when data
+                               ;; Handle IME composition
+                               (rf/dispatch [:ime-composition-update data])
+                               nil)
 
-       (if operation
-         {:fx [[:dispatch [:editor/queue-transaction operation]]
-               ;; Clear prefix argument after using it for text insertion
-               (when (and prefix-active? (= input-type "insertText"))
-                 [:dispatch [:clear-prefix-argument]])]}
-         {:db db})))))
+                             "deleteContentBackward"
+                             {:op :delete-backward}
+
+                             "deleteContentForward"
+                             {:op :delete-forward}
+
+                             "insertFromPaste"
+                             (when data
+                               {:op :insert :text data})
+
+                             ;; Log unhandled input types
+                             (do (println "Unhandled input type:" input-type) nil))]
+
+             (if operation
+               {:fx [[:dispatch [:editor/queue-transaction operation]]
+                     ;; Clear prefix argument after using it for text insertion
+                     (when (and prefix-active? (= input-type "insertText"))
+                       [:dispatch [:clear-prefix-argument]])]}
+               {:db db}))))))))
 
 ;; Event handler to trigger queue processing (called via dispatch)
 (rf/reg-event-fx

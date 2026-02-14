@@ -1290,6 +1290,7 @@
           cursor-owner @(rf/subscribe [:cursor-owner])  ; Issue #137: Check if minibuffer owns cursor
           owns-cursor? (= cursor-owner :minibuffer)
           isearch-active? @(rf/subscribe [:isearch-active?])  ; Issue #193: Track isearch for C-s/C-r
+          completions-visible? @(rf/subscribe [:completions-visible?])  ; Issue #138: Track *Completions* buffer
           active? (:active? minibuffer)
           message (:message minibuffer)
           height-lines (:height-lines minibuffer 1)
@@ -1402,14 +1403,18 @@
                               (= key "ArrowDown")
                               (do
                                 (.preventDefault e)
-                                ;; Use cycling events for arrow navigation
-                                ;; Works with or without *Completions* buffer shown
-                                (rf/dispatch [:minibuffer/cycle-next]))
+                                ;; Issue #138: Route to *Completions* navigation when visible
+                                (if completions-visible?
+                                  (rf/dispatch [:completion-list/next-completion])
+                                  (rf/dispatch [:minibuffer/cycle-next])))
 
                               (= key "ArrowUp")
                               (do
                                 (.preventDefault e)
-                                (rf/dispatch [:minibuffer/cycle-prev]))
+                                ;; Issue #138: Route to *Completions* navigation when visible
+                                (if completions-visible?
+                                  (rf/dispatch [:completion-list/previous-completion])
+                                  (rf/dispatch [:minibuffer/cycle-prev])))
 
                               (or (= key "Escape")
                                   (and ctrl? (= key "g")))

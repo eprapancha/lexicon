@@ -239,39 +239,61 @@
 ;; =============================================================================
 
 (defn type-text
-  "Type text by sending keys to the hidden-input.
+  "Type text by sending keys to the appropriate input element.
+   When minibuffer is active (e.g., during isearch), types into #minibuffer-input.
+   Otherwise types into .hidden-input for normal buffer editing.
    Carefully manages focus and state to ensure all characters are delivered."
   [text]
   ;; Ensure app is ready after previous operations
   (Thread/sleep 50)
-  ;; Focus and clear the hidden-input
-  (e/js-execute *driver* "
-    const input = document.querySelector('.hidden-input');
-    input.focus();
-    input.value = '';
-    input.selectionStart = 0;
-    input.selectionEnd = 0;
+  ;; Check if minibuffer is active (has visible input)
+  (let [minibuffer-active? (e/js-execute *driver* "
+    const mb = document.querySelector('#minibuffer-input');
+    return mb !== null && mb.offsetParent !== null;
   ")
-  (Thread/sleep 50)
-  ;; Type each character with focus refresh
-  (doseq [ch text]
-    (e/js-execute *driver* "document.querySelector('.hidden-input').focus()")
-    (Thread/sleep 10)
-    (e/fill-active *driver* (str ch))
-    (Thread/sleep 20)))
+        target-selector (if minibuffer-active? "#minibuffer-input" ".hidden-input")]
+    ;; Focus and clear the target input
+    (e/js-execute *driver* (str "
+      const input = document.querySelector('" target-selector "');
+      if (input) {
+        input.focus();
+        if (input.tagName === 'TEXTAREA') {
+          input.value = '';
+          input.selectionStart = 0;
+          input.selectionEnd = 0;
+        }
+      }
+    "))
+    (Thread/sleep 50)
+    ;; Type each character with focus refresh
+    (doseq [ch text]
+      (e/js-execute *driver* (str "document.querySelector('" target-selector "').focus()"))
+      (Thread/sleep 10)
+      (e/fill-active *driver* (str ch))
+      (Thread/sleep 20))))
 
 (defn press-key
-  "Press a special key (Enter, Backspace, ArrowLeft, etc.)"
+  "Press a special key (Enter, Backspace, ArrowLeft, etc.)
+   When minibuffer is active, dispatches to #minibuffer-input.
+   Otherwise dispatches to .hidden-input for normal buffer editing."
   [key-name]
-  (let [script (str "
-    const input = document.querySelector('.hidden-input');
-    input.focus();
-    const event = new KeyboardEvent('keydown', {
-      key: '" key-name "',
-      code: '" key-name "',
-      bubbles: true
-    });
-    input.dispatchEvent(event);
+  ;; Check if minibuffer is active
+  (let [minibuffer-active? (e/js-execute *driver* "
+    const mb = document.querySelector('#minibuffer-input');
+    return mb !== null && mb.offsetParent !== null;
+  ")
+        target-selector (if minibuffer-active? "#minibuffer-input" ".hidden-input")
+        script (str "
+    const input = document.querySelector('" target-selector "');
+    if (input) {
+      input.focus();
+      const event = new KeyboardEvent('keydown', {
+        key: '" key-name "',
+        code: '" key-name "',
+        bubbles: true
+      });
+      input.dispatchEvent(event);
+    }
   ")]
     (e/js-execute *driver* script))
   (Thread/sleep 10))

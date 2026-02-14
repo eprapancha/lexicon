@@ -16,10 +16,11 @@
 ;; Package-local State
 ;; =============================================================================
 
+(def default-history-size 50)
+
 (defonce winner-mode-enabled? (atom false))
-(defonce winner-history (atom []))
+(defonce winner-history (atom (lisp/make-ring default-history-size)))
 (defonce winner-redo-stack (atom []))
-(defonce winner-history-max (atom 50))
 (defonce winner-last-config (atom nil))
 
 ;; =============================================================================
@@ -34,17 +35,14 @@
           changed? (not (lisp/window-configuration-equal? current-config @winner-last-config))]
       (when changed?
         (when @winner-last-config
-          (swap! winner-history
-                 (fn [history]
-                   (vec (take @winner-history-max
-                              (cons @winner-last-config history))))))
+          (swap! winner-history #(lisp/ring-insert % @winner-last-config)))
         (reset! winner-redo-stack [])
         (reset! winner-last-config current-config)))))
 
 (defn reset-winner-state!
   "Reset winner state."
   []
-  (reset! winner-history [])
+  (reset! winner-history (lisp/make-ring default-history-size))
   (reset! winner-redo-stack [])
   (reset! winner-last-config nil))
 
@@ -53,14 +51,16 @@
   []
   (if-not @winner-mode-enabled?
     (lisp/message "Winner mode is not enabled")
-    (do
-      (lisp/message (str "Winner: undo called, history-size=" (count @winner-history)))
-      (if (empty? @winner-history)
+    (let [history @winner-history
+          length (lisp/ring-length history)]
+      (lisp/message (str "Winner: undo called, history-size=" length))
+      (if (zero? length)
         (lisp/message "No previous window configuration")
         (let [current-config (lisp/current-window-configuration)
-              previous-config (first @winner-history)]
+              previous-config (lisp/ring-ref history 0)
+              [_ new-history] (lisp/ring-remove history 0)]
           (swap! winner-redo-stack conj current-config)
-          (swap! winner-history rest)
+          (reset! winner-history new-history)
           (reset! winner-last-config previous-config)
           (lisp/set-window-configuration previous-config)
           (lisp/message "Winner: restored previous configuration"))))))
@@ -74,7 +74,7 @@
       (lisp/message "No configuration to redo")
       (let [current-config (lisp/current-window-configuration)
             redo-config (peek @winner-redo-stack)]
-        (swap! winner-history #(cons current-config %))
+        (swap! winner-history #(lisp/ring-insert % current-config))
         (swap! winner-redo-stack pop)
         (reset! winner-last-config redo-config)
         (lisp/set-window-configuration redo-config)

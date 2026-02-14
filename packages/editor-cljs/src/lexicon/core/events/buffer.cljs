@@ -884,11 +884,11 @@
  :insert-file
  (fn [{:keys [db]} [_]]
    "Insert contents of a file at point (C-x i)"
-   {:db (assoc db :minibuffer {:active? true
-                                 :prompt "Insert file: "
-                                 :input ""
-                                 :on-confirm [:insert-file/confirm]
-                                 :on-cancel [:minibuffer/deactivate]})}))
+   {:fx [[:dispatch [:minibuffer/activate
+                     {:prompt "Insert file: "
+                      :input ""
+                      :on-confirm [:insert-file/confirm]
+                      :on-cancel [:minibuffer/deactivate]}]]]}))
 
 (rf/reg-event-fx
  :insert-file/confirm
