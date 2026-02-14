@@ -200,7 +200,9 @@
                                                                         (catch :default _ "")))]
                                                         [id {:name (:name buf)
                                                              :readOnly (:read-only buf)
-                                                             :text (or text "")}]))
+                                                             :text (or text "")
+                                                             ;; Expose occur highlights for E2E tests (Issue #197)
+                                                             :occurHighlights (:occur-highlights buf)}]))
                                                     (:buffers app-db)))]
                         #js {:point cursor-pos
                              :buffer (or buffer-text "")

@@ -65,6 +65,13 @@
    (:buffer-id active-window)))
 
 (rf/reg-sub
+ :active-buffer-name
+ :<- [:active-buffer]
+ (fn [active-buffer _]
+   "Get the name of the currently active buffer"
+   (:name active-buffer)))
+
+(rf/reg-sub
  :active-wasm-instance
  :<- [:active-buffer]
  (fn [active-buffer _]
@@ -179,6 +186,14 @@
       :current-match (:current-match isearch)})))
 
 (rf/reg-sub
+ :occur-source-matches
+ (fn [db _]
+   "Get occur source buffer matches for highlighting.
+    Returns {:all-matches [...] :current-match {...} :buffer-id ...}
+    This is used to highlight matches in the source buffer (not the *Occur* buffer)."
+   (get-in db [:ui :occur-source])))
+
+(rf/reg-sub
  :occur-highlights
  (fn [db _]
    "Get occur match highlights for the current buffer.
@@ -188,6 +203,17 @@
                         (lexicon.core.db/find-window-in-tree
                          (:window-tree db) active-window-id))
          buffer-id (:buffer-id active-window)
+         buffer (get-in db [:buffers buffer-id])]
+     (when (= (:major-mode buffer) :occur-mode)
+       (:occur-highlights buffer)))))
+
+(rf/reg-sub
+ :lexicon.core.subs/window-occur-highlights
+ (fn [db [_ window-id]]
+   "Get occur highlights for a specific window's buffer.
+    Returns nil if the window's buffer is not in occur-mode."
+   (let [window (lexicon.core.db/find-window-in-tree (:window-tree db) window-id)
+         buffer-id (:buffer-id window)
          buffer (get-in db [:buffers buffer-id])]
      (when (= (:major-mode buffer) :occur-mode)
        (:occur-highlights buffer)))))
@@ -596,6 +622,14 @@
  (fn [buffer _]
    "Get buffer name for a specific window"
    (:name buffer)))
+
+(rf/reg-sub
+ ::window-buffer-id
+ (fn [[_ window-id]]
+   (rf/subscribe [::window-by-id window-id]))
+ (fn [window _]
+   "Get buffer ID for a specific window"
+   (:buffer-id window)))
 
 (rf/reg-sub
  ::window-decorations

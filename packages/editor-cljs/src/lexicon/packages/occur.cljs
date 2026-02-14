@@ -26,9 +26,19 @@
 ;; Helper Functions
 ;; =============================================================================
 
-(defn- format-line-num [fmt & args]
+(defn- format-line-num
+  "Format line numbers with padding similar to printf %Nd.
+   E.g., (format-line-num \"%6d: \" 1) => \"     1: \" (6 char field width)"
+  [fmt & args]
   (reduce (fn [s arg]
-            (str/replace-first s #"%\d*d" (str arg)))
+            (str/replace-first
+             s
+             #"%(\d*)d"
+             (fn [[_ width-str]]
+               (let [width (if (seq width-str) (js/parseInt width-str 10) 0)
+                     num-str (str arg)
+                     padding (max 0 (- width (count num-str)))]
+                 (str (apply str (repeat padding " ")) num-str)))))
           fmt args))
 
 (defn- find-matching-lines [text regexp-str]
@@ -94,6 +104,24 @@
       0
       (reduce + (map #(inc (count %)) (take line-num lines))))))
 
+(defn- matches-to-linear-positions
+  "Convert line-based matches to linear position format for source highlighting.
+   Input: [{:line-num n :match-ranges [[start-col end-col] ...]} ...]
+   Output: [{:start pos :end pos} ...] (linear positions)"
+  [matches text]
+  (let [lines (str/split-lines text)
+        line-starts (reductions + 0 (map #(inc (count %)) lines))]
+    (vec
+     (mapcat
+      (fn [{:keys [line-num match-ranges]}]
+        (let [line-start (nth line-starts (dec line-num) 0)]
+          (map (fn [[start-col end-col]]
+                 {:start (+ line-start start-col)
+                  :end (+ line-start end-col)
+                  :line-num line-num})  ; Keep line-num for current match lookup
+               match-ranges)))
+      matches))))
+
 (defn- get-source-line-at-occur-line [occur-line]
   (when-let [source @occur-source-buffer]
     (let [matches (:matches source)
@@ -107,46 +135,86 @@
 
 (defn occur-goto-first-match! []
   (when-let [source @occur-source-buffer]
-    (let [match-lines (:match-lines source)]
+    (let [match-lines (:match-lines source)
+          linear-matches (:linear-matches source)]
       (when (seq match-lines)
         (let [text (lisp/buffer-string)
               first-match-line (first match-lines)
-              pos (line-start-position text first-match-line)]
-          (lisp/goto-char pos))))))
+              pos (line-start-position text first-match-line)
+              ;; Set first match as current
+              first-linear-match (first linear-matches)]
+          (lisp/goto-char pos)
+          (when first-linear-match
+            (lisp/set-occur-current-match first-linear-match)))))))
 
 (defn occur-goto-match! [line-num]
+  "Jump to match in source buffer.
+   Switches to the other window (which should have source buffer) and goes to line.
+   Uses lisp/goto-line-other-window to avoid dispatch-sync issues within event handlers."
   (when-let [source @occur-source-buffer]
     (let [buffer-id (:buffer-id source)]
-      (lisp/switch-to-buffer buffer-id)
-      (lisp/goto-line line-num))))
+      (lisp/goto-line-other-window buffer-id line-num))))
 
 (defn occur-next-line! []
   (if-let [source @occur-source-buffer]
     (let [match-lines (:match-lines source)
+          matches (:matches source)
+          linear-matches (:linear-matches source)
           current-line (get-current-occur-line)
           next-line (find-next-match-line match-lines current-line)]
       (if next-line
         (let [text (lisp/buffer-string)
-              pos (line-start-position text next-line)]
-          (lisp/goto-char pos))
+              pos (line-start-position text next-line)
+              ;; Find the source line number for this occur line
+              match-idx (- next-line 2)
+              source-line-num (when (and (>= match-idx 0) (< match-idx (count matches)))
+                                (:line-num (nth matches match-idx)))
+              ;; Find the linear match for this line (first match on this line)
+              current-match (first (filter #(= (:line-num %) source-line-num) linear-matches))]
+          ;; Move cursor in *Occur* buffer
+          (lisp/goto-char pos)
+          ;; Update current match highlighting in source buffer
+          (when current-match
+            (lisp/set-occur-current-match current-match))
+          ;; Preview in source buffer (without switching focus)
+          (when source-line-num
+            (lisp/preview-line-other-window (:buffer-id source) source-line-num)))
         (lisp/message "No more matches")))
     nil))
 
 (defn occur-prev-line! []
   (if-let [source @occur-source-buffer]
     (let [match-lines (:match-lines source)
+          matches (:matches source)
+          linear-matches (:linear-matches source)
           current-line (get-current-occur-line)
           prev-line (find-prev-match-line match-lines current-line)]
       (if prev-line
         (let [text (lisp/buffer-string)
-              pos (line-start-position text prev-line)]
-          (lisp/goto-char pos))
+              pos (line-start-position text prev-line)
+              ;; Find the source line number for this occur line
+              match-idx (- prev-line 2)
+              source-line-num (when (and (>= match-idx 0) (< match-idx (count matches)))
+                                (:line-num (nth matches match-idx)))
+              ;; Find the linear match for this line (first match on this line)
+              current-match (first (filter #(= (:line-num %) source-line-num) linear-matches))]
+          ;; Move cursor in *Occur* buffer
+          (lisp/goto-char pos)
+          ;; Update current match highlighting in source buffer
+          (when current-match
+            (lisp/set-occur-current-match current-match))
+          ;; Preview in source buffer (without switching focus)
+          (when source-line-num
+            (lisp/preview-line-other-window (:buffer-id source) source-line-num)))
         (lisp/message "No previous matches")))
     nil))
 
 (defn occur-quit! []
   (if-let [source @occur-source-buffer]
     (do
+      ;; Clear source buffer highlighting
+      (lisp/clear-occur-source-highlights)
+      (reset! occur-source-buffer nil)
       (lisp/delete-window)
       (lisp/switch-to-buffer (:buffer-id source)))
     (lisp/delete-window)))
@@ -175,6 +243,8 @@
             enhanced-matches (map-indexed
                               (fn [idx m] (assoc m :occur-line (+ 2 idx)))
                               matches)
+            ;; Convert matches to linear positions for source buffer highlighting
+            linear-matches (matches-to-linear-positions matches (or text ""))
 
             ;; Create or reuse *Occur* buffer
             existing-id (lisp/get-buffer "*Occur*")
@@ -195,7 +265,11 @@
                                      :window-id source-window-id
                                      :regexp regexp
                                      :matches (vec enhanced-matches)
-                                     :match-lines match-lines})
+                                     :match-lines match-lines
+                                     :linear-matches linear-matches})
+
+        ;; Set up source buffer highlighting (like isearch)
+        (lisp/set-occur-source-highlights source-buffer-id linear-matches)
 
         (lisp/split-window-below)
         (lisp/switch-to-buffer "*Occur*")

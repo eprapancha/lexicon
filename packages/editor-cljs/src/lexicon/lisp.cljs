@@ -3409,6 +3409,126 @@
     (goto-char pos)
     nil))
 
+(defn goto-line-other-window
+  "Switch to other window and go to LINE in BUFFER-ID.
+
+  This is used by occur-mode to jump to matches without dispatch-sync issues.
+  Uses swap! directly to update all cursor state atomically.
+
+  Usage: (goto-line-other-window buffer-id line-num)
+  Returns: nil"
+  [buffer-id line-num]
+  (swap! rfdb/app-db
+         (fn [db]
+           (let [window-tree (:window-tree db)
+                 all-windows (db/get-all-leaf-windows window-tree)
+                 window-ids (mapv :id all-windows)
+                 current-id (:active-window-id db)
+                 current-idx (.indexOf window-ids current-id)
+                 ;; Find other window
+                 next-idx (if (or (neg? current-idx) (>= (inc current-idx) (count window-ids)))
+                            0
+                            (inc current-idx))
+                 other-window-id (get window-ids next-idx)]
+             (if other-window-id
+               (let [;; Get buffer and calculate line position
+                     buffer (get-in db [:buffers buffer-id])
+                     text (get-in buffer [:cache :text] "")
+                     lines (clojure.string/split-lines text)
+                     target-line (max 1 (min line-num (count lines)))
+                     ;; Calculate character position for start of line
+                     line-start-pos (reduce + 0 (map #(inc (count %)) (take (dec target-line) lines)))
+                     line-col {:line (dec target-line) :column 0}
+                     ;; Update window tree: set buffer-id and cursor position in other window
+                     new-tree (db/update-window-in-tree window-tree other-window-id
+                                                        #(-> %
+                                                             (assoc :buffer-id buffer-id)
+                                                             (assoc :cursor-position line-col)))]
+                 (-> db
+                     (assoc :window-tree new-tree)
+                     (assoc :active-window-id other-window-id)
+                     (assoc :cursor-owner other-window-id)
+                     (assoc-in [:buffers buffer-id :point] line-start-pos)
+                     (assoc-in [:ui :cursor-position] line-start-pos)))
+               db))))
+  nil)
+
+(defn preview-line-other-window
+  "Show LINE in BUFFER-ID in other window WITHOUT switching focus.
+
+  Used for occur-mode n/p preview - updates cursor in other window
+  but keeps focus in current window.
+
+  Usage: (preview-line-other-window buffer-id line-num)
+  Returns: nil"
+  [buffer-id line-num]
+  (swap! rfdb/app-db
+         (fn [db]
+           (let [window-tree (:window-tree db)
+                 all-windows (db/get-all-leaf-windows window-tree)
+                 window-ids (mapv :id all-windows)
+                 current-id (:active-window-id db)
+                 current-idx (.indexOf window-ids current-id)
+                 ;; Find other window
+                 next-idx (if (or (neg? current-idx) (>= (inc current-idx) (count window-ids)))
+                            0
+                            (inc current-idx))
+                 other-window-id (get window-ids next-idx)]
+             (if other-window-id
+               (let [;; Get buffer and calculate line position
+                     buffer (get-in db [:buffers buffer-id])
+                     text (get-in buffer [:cache :text] "")
+                     lines (clojure.string/split-lines text)
+                     target-line (max 1 (min line-num (count lines)))
+                     line-col {:line (dec target-line) :column 0}
+                     ;; Update ONLY the other window's cursor - keep focus in current window
+                     new-tree (db/update-window-in-tree window-tree other-window-id
+                                                        #(assoc % :cursor-position line-col))]
+                 (assoc db :window-tree new-tree))
+               db))))
+  nil)
+
+;; =============================================================================
+;; Occur Source Highlighting - follows isearch pattern
+;; =============================================================================
+
+(defn set-occur-source-highlights
+  "Set all match positions for occur source buffer highlighting.
+   This enables highlighting matches in the source buffer (like isearch).
+
+   matches should be a vector of {:start pos :end pos} for each match.
+   buffer-id is the source buffer being searched.
+
+   Usage: (set-occur-source-highlights buffer-id matches)
+   Returns: nil"
+  [buffer-id matches]
+  (swap! rfdb/app-db assoc-in [:ui :occur-source]
+         {:buffer-id buffer-id
+          :all-matches matches
+          :current-match (first matches)})
+  nil)
+
+(defn set-occur-current-match
+  "Set the current match for occur source highlighting.
+   This highlights the specified match differently (like isearch current match).
+
+   match should be {:start pos :end pos}.
+
+   Usage: (set-occur-current-match match)
+   Returns: nil"
+  [match]
+  (swap! rfdb/app-db assoc-in [:ui :occur-source :current-match] match)
+  nil)
+
+(defn clear-occur-source-highlights
+  "Clear occur source buffer highlighting.
+
+   Usage: (clear-occur-source-highlights)
+   Returns: nil"
+  []
+  (swap! rfdb/app-db update :ui dissoc :occur-source)
+  nil)
+
 (defn symbol-at-point
   "Return the symbol at point as a string.
 

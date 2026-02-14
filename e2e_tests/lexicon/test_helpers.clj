@@ -7,7 +7,8 @@
   - State inspection"
   (:require [clojure.test :refer [is]]
             [clojure.string :as str]
-            [etaoin.api :as e]))
+            [etaoin.api :as e]
+            [cheshire.core :as json]))
 
 ;; Forward declarations for functions used before they're defined
 (declare press-ctrl-x press-key)
@@ -765,3 +766,59 @@
     ")
     (Thread/sleep 50)
     (catch Exception _ nil)))
+
+(defn get-occur-highlights
+  "Get occur highlight data from the current *Occur* buffer.
+   Returns a vector of highlight maps with :line and :ranges.
+   Each range is [start-col end-col] in the occur buffer.
+   Returns nil if not in an *Occur* buffer or no highlights."
+  []
+  (try
+    (let [script "
+      const state = window.editorState;
+      if (!state || !state.buffers) return null;
+      // Find the *Occur* buffer
+      for (const [id, buf] of Object.entries(state.buffers)) {
+        if (buf.name === '*Occur*' && buf.occurHighlights) {
+          return JSON.stringify(buf.occurHighlights);
+        }
+      }
+      return null;
+    "
+          result (e/js-execute *driver* script)]
+      (when result
+        (json/parse-string result true)))
+    (catch Exception _ nil)))
+
+(defn get-occur-match-elements
+  "Get all DOM elements with the 'occur-match' CSS class.
+   Returns a vector of maps with :text (the element's text content).
+   This tests the rendering layer to verify CSS classes are applied."
+  []
+  (try
+    (let [script "
+      const elements = document.querySelectorAll('.occur-match');
+      return Array.from(elements).map(el => ({
+        text: el.textContent,
+        tagName: el.tagName.toLowerCase()
+      }));
+    "
+          result (e/js-execute *driver* script)]
+      (vec result))
+    (catch Exception _ [])))
+
+(defn buffer-exists?
+  "Check if a buffer with the given name exists.
+   Returns true if the buffer exists, false otherwise."
+  [buffer-name]
+  (try
+    (let [script (str "
+      const state = window.editorState;
+      if (!state || !state.buffers) return false;
+      for (const buf of Object.values(state.buffers)) {
+        if (buf.name === '" buffer-name "') return true;
+      }
+      return false;
+    ")]
+      (e/js-execute *driver* script))
+    (catch Exception _ false)))

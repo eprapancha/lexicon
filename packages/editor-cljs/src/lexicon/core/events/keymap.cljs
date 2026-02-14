@@ -270,18 +270,14 @@
                       [:dispatch [:clear-prefix-key-state]]
                       [:dispatch [:clear-prefix-arg]]))})
 
-       ;; Issue #137: Route printable chars to minibuffer when *Completions* buffer is active
-       ;; This is a user-friendly enhancement over Emacs (which just shows "read-only" error).
-       ;; Allows typing to continue filtering completions even when focus is in the completions window.
-       (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
-             active-buffer (get (:buffers db) (:buffer-id active-window))
-             in-completions? (= (:name active-buffer) "*Completions*")
-             minibuffer-active-now? (minibuffer/minibuffer-active? db)
+       ;; Route printable chars to minibuffer when it's active
+       ;; This ensures keyboard input goes to the minibuffer, not the main buffer
+       (let [minibuffer-active-now? (minibuffer/minibuffer-active? db)
              is-printable? (and (= (count key-str) 1)
                                 (not prefix-state)
                                 (not (re-matches #"[CM]-." key-str))
                                 (>= (.charCodeAt key-str 0) 32))]
-         (and in-completions? minibuffer-active-now? is-printable?))
+         (and minibuffer-active-now? is-printable?))
        ;; Route to minibuffer: use minibuffer/set-input which handles all completion types
        (let [current-input (minibuffer/get-input db)
              new-input (str current-input key-str)]

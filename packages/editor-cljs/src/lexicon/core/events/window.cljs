@@ -143,3 +143,41 @@
               (assoc :window-tree config)
               (assoc :active-window-id new-active-id)
               (assoc :cursor-owner new-active-id))})))
+
+(rf/reg-event-db
+ :window/select
+ (fn [db [_ window-id]]
+   "Select a specific window by ID, making it the active window.
+
+   Args:
+     window-id - ID of the window to select"
+   (let [window-tree (:window-tree db)
+         all-windows (db/get-all-leaf-windows window-tree)
+         window-exists? (some #(= (:id %) window-id) all-windows)]
+     (if window-exists?
+       (-> db
+           (assoc :active-window-id window-id)
+           (assoc :cursor-owner window-id))
+       db))))
+
+(rf/reg-event-db
+ :window/next-window
+ (fn [db [_]]
+   "Cycle to the next window in the window tree.
+
+   Windows are traversed in tree order (depth-first, left-to-right)."
+   (let [window-tree (:window-tree db)
+         all-windows (db/get-all-leaf-windows window-tree)
+         window-ids (mapv :id all-windows)
+         current-id (:active-window-id db)
+         current-idx (.indexOf window-ids current-id)
+         next-idx (if (or (neg? current-idx) (>= (inc current-idx) (count window-ids)))
+                    0
+                    (inc current-idx))
+         next-id (get window-ids next-idx)]
+     (if next-id
+       (-> db
+           (assoc :active-window-id next-id)
+           (assoc :cursor-owner next-id))
+       db))))
+

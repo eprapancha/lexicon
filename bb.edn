@@ -377,7 +377,52 @@
               (do
                 ;; Warn only for now - too many false positives from re-frame patterns
                 (print-step "⚠️" "clj-kondo found issues (warn-only, not blocking)")
-                true)))))))
+                true))))))
+
+    (defn lint-fill!
+      "Check that E2E tests don't use e/fill or e/fill-active.
+
+       These functions bypass the keyboard event system entirely, making tests
+       pass even when real user input is broken. Tests should simulate real
+       keyboard input via h/type-text or dispatch keyboard events."
+      []
+      (print-step "🔍" "Checking E2E tests don't use e/fill (bypasses keyboard)...")
+      (let [;; test_helpers.clj needs to define type-in-minibuffer but it should be fixed too
+            ;; For now, we flag ALL usages including test_helpers.clj
+            bad-patterns [[(re-pattern "e/fill\\s") "uses e/fill (bypasses keyboard event system)"]
+                         [(re-pattern "e/fill-active") "uses e/fill-active (bypasses keyboard event system)"]]
+            test-files (fs/glob "e2e_tests" "**/*.clj")
+            violations (atom [])]
+        (doseq [file test-files]
+          (let [filepath (str file)
+                content (slurp filepath)
+                file-violations (atom [])]
+            ;; Check each bad pattern
+            (doseq [[pat desc] bad-patterns]
+              (when (re-find pat content)
+                (swap! file-violations conj desc)))
+            (when (seq (deref file-violations))
+              (swap! violations conj {:file filepath
+                                     :issues (deref file-violations)}))))
+        (if (seq (deref violations))
+          (do
+            (println "\nERROR: E2E tests should not use e/fill or e/fill-active:\n")
+            (doseq [{:keys [file issues]} (sort-by :file (deref violations))]
+              (println (str "  " file))
+              (doseq [issue issues]
+                (println (str "    - " issue))))
+            (println "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            (println "e/fill bypasses the keyboard event system entirely!")
+            (println "Tests pass but real user input may be broken.")
+            (println "")
+            (println "  BAD:  (e/fill driver {:css \".minibuffer-input\"} \"text\")")
+            (println "  BAD:  (e/fill-active driver \"text\")")
+            (println "")
+            (println "  GOOD: Simulate keyboard events that go through handle-keydown")
+            (println "        (see h/type-text for buffer input)")
+            (println "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+            (System/exit 1))
+          (print-step "✅" "E2E tests don't use e/fill")))))
 
   ;; Linting tasks
   lint:arch
@@ -400,14 +445,19 @@
   {:doc "Check no browser-based tests in packages/editor-cljs/test/"
    :task (lint-browser-tests!)}
 
+  lint:fill
+  {:doc "Check E2E tests don't use e/fill (bypasses keyboard event system)"
+   :task (lint-fill!)}
+
   lint
-  {:doc "Run all linters (architecture + clj-kondo + e2e + ui-isolation + browser-tests)"
+  {:doc "Run all linters (architecture + clj-kondo + e2e + ui-isolation + browser-tests + fill)"
    :task (do
            (lint-architecture!)
            (lint-kondo!)
            (lint-e2e!)
            (lint-ui-lisp-isolation!)
-           (lint-browser-tests!))}
+           (lint-browser-tests!)
+           (lint-fill!))}
 
   ;; Individual build tasks
   build-wasm

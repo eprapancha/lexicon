@@ -292,19 +292,31 @@
       (is (str/includes? buffer-text "target line here")
           (str "Occur buffer should show match, got: " buffer-text)))
 
+    ;; Verify we have 2 windows before pressing Enter
+    (let [window-count-before (h/get-window-count)]
+      (is (= 2 window-count-before)
+          (str "Should have 2 windows before Enter, got: " window-count-before)))
+
     ;; Press Enter to jump to source
     (h/press-key "Enter")
     (Thread/sleep 200)
 
+    ;; CRITICAL: Should still have 2 windows - *Occur* should NOT be replaced
+    (let [window-count-after (h/get-window-count)]
+      (is (= 2 window-count-after)
+          (str "Should still have 2 windows after Enter (Occur must not be replaced), got: " window-count-after)))
+
     ;; Should now be in the original buffer (not *Occur*)
-    ;; The buffer should contain the original content
     (let [buffer-text (h/get-buffer-text*)]
-      ;; If we're in *Occur*, Enter would have inserted a newline
-      ;; If we jumped to source, we should see the original 3-line content
       (is (str/includes? buffer-text "first line")
           (str "Should have jumped to source buffer, got: " buffer-text))
       (is (not (str/includes? buffer-text "matches for"))
-          "Should NOT be in *Occur* buffer anymore"))))
+          "Should NOT be in *Occur* buffer anymore"))
+
+    ;; CRITICAL: *Occur* buffer should still exist
+    (let [occur-exists? (h/buffer-exists? "*Occur*")]
+      (is occur-exists?
+          "*Occur* buffer should still exist after jumping to source"))))
 
 (deftest test-occur-buffer-read-only
   (testing "*Occur* buffer should be read-only"
@@ -333,3 +345,223 @@
       (let [after-text (h/get-buffer-text*)]
         (is (= before-text after-text)
             (str "Buffer should be read-only. Before: " before-text " After: " after-text))))))
+
+;; =============================================================================
+;; Occur Highlighting Tests - Issue #197
+;; These tests verify that match highlight DATA is correct in buffer state.
+;; This tests the data layer, not the rendering layer.
+;; =============================================================================
+
+(deftest test-occur-highlight-data-exists
+  (testing "Occur stores highlight data in buffer state"
+    (h/setup-test*)
+    (h/clear-buffer)
+    (h/type-text "hello world")
+    (h/press-key "Enter")
+    (h/type-text "hello again")
+    (Thread/sleep 50)
+
+    ;; Run M-x occur for "hello"
+    (h/press-meta "x")
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "occur")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "hello")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 500)
+
+    ;; Check that highlight data exists
+    (let [highlights (h/get-occur-highlights)]
+      (is (some? highlights)
+          "Occur buffer should have highlight data")
+      (is (seq highlights)
+          (str "Highlights should not be empty, got: " highlights)))))
+
+(deftest test-occur-highlight-ranges-for-pattern-at-start
+  (testing "Occur highlight ranges are correct for pattern at start of line"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; "hello one" - "hello" is at position 0-5 in original line
+    ;; In occur buffer: "     1: hello one"
+    ;; prefix is 8 chars ("     1: "), so highlight should be [8, 13]
+    (h/type-text "hello one")
+    (Thread/sleep 50)
+
+    (h/press-meta "x")
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "occur")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "hello")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 500)
+
+    (let [highlights (h/get-occur-highlights)]
+      (is (= 1 (count highlights))
+          (str "Should have 1 highlight entry, got: " (count highlights)))
+      (when (seq highlights)
+        (let [first-highlight (first highlights)
+              ranges (:ranges first-highlight)]
+          (is (= 1 (count ranges))
+              (str "Should have 1 range, got: " ranges))
+          (when (seq ranges)
+            (let [[start end] (first ranges)]
+              ;; "hello" is 5 chars, prefix is 8 chars
+              ;; So highlight should be at columns 8-13
+              (is (= 8 start)
+                  (str "Highlight should start at column 8 (after prefix), got: " start))
+              (is (= 13 end)
+                  (str "Highlight should end at column 13 (8 + 5), got: " end)))))))))
+
+(deftest test-occur-highlight-ranges-for-pattern-at-end
+  (testing "Occur highlight ranges are correct for pattern at end of line"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; "one hello" - "hello" is at position 4-9 in original line
+    ;; In occur buffer: "     1: one hello"
+    ;; prefix is 8 chars, so highlight should be [8+4, 8+9] = [12, 17]
+    (h/type-text "one hello")
+    (Thread/sleep 50)
+
+    (h/press-meta "x")
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "occur")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "hello")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 500)
+
+    (let [highlights (h/get-occur-highlights)]
+      (is (= 1 (count highlights))
+          (str "Should have 1 highlight entry, got: " (count highlights)))
+      (when (seq highlights)
+        (let [first-highlight (first highlights)
+              ranges (:ranges first-highlight)]
+          (is (= 1 (count ranges))
+              (str "Should have 1 range, got: " ranges))
+          (when (seq ranges)
+            (let [[start end] (first ranges)]
+              ;; "hello" starts at position 4 in "one hello"
+              ;; prefix is 8 chars, so highlight should be at columns 12-17
+              (is (= 12 start)
+                  (str "Highlight should start at column 12 (8 + 4), got: " start))
+              (is (= 17 end)
+                  (str "Highlight should end at column 17 (8 + 9), got: " end)))))))))
+
+(deftest test-occur-highlight-multiple-matches-per-line
+  (testing "Occur highlight data includes ALL matches on same line"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; "cat dog cat" - two "cat" matches at positions 0-3 and 8-11
+    (h/type-text "cat dog cat")
+    (Thread/sleep 50)
+
+    (h/press-meta "x")
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "occur")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "cat")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 500)
+
+    (let [highlights (h/get-occur-highlights)]
+      (is (= 1 (count highlights))
+          (str "Should have 1 highlight entry (one line), got: " (count highlights)))
+      (when (seq highlights)
+        (let [first-highlight (first highlights)
+              ranges (:ranges first-highlight)]
+          (is (= 2 (count ranges))
+              (str "Should have 2 ranges (two 'cat' matches), got: " ranges))
+          (when (= 2 (count ranges))
+            (let [[start1 end1] (first ranges)
+                  [start2 end2] (second ranges)]
+              ;; First "cat" at position 0: [8, 11]
+              (is (= 8 start1) (str "First match should start at 8, got: " start1))
+              (is (= 11 end1) (str "First match should end at 11, got: " end1))
+              ;; Second "cat" at position 8: [16, 19]
+              (is (= 16 start2) (str "Second match should start at 16, got: " start2))
+              (is (= 19 end2) (str "Second match should end at 19, got: " end2)))))))))
+
+(deftest test-occur-highlight-line-numbers-correct
+  (testing "Occur highlight data has correct line numbers"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Create 3 lines, matches on lines 1 and 3 only
+    ;; Use a pattern that doesn't appear in middle line
+    (h/type-text "apple one")
+    (h/press-key "Enter")
+    (h/type-text "banana")
+    (h/press-key "Enter")
+    (h/type-text "apple two")
+    (Thread/sleep 50)
+
+    (h/press-meta "x")
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "occur")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "apple")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 500)
+
+    (let [highlights (h/get-occur-highlights)]
+      (is (= 2 (count highlights))
+          (str "Should have 2 highlight entries (two matching lines), got: " (count highlights)))
+      (when (= 2 (count highlights))
+        ;; Occur buffer format:
+        ;; Line 0: "2 matches for..."
+        ;; Line 1: (blank from \n in header)
+        ;; Line 2: "     1: apple one"  <- first match
+        ;; Line 3: "     3: apple two"  <- second match (skipping line 2 "banana")
+        (let [line1 (:line (first highlights))
+              line2 (:line (second highlights))]
+          (is (= 2 line1)
+              (str "First highlight should be on occur-line 2, got: " line1))
+          (is (= 3 line2)
+              (str "Second highlight should be on occur-line 3, got: " line2)))))))
+
+;; =============================================================================
+;; Occur Rendering Tests - Issue #197
+;; These tests verify that the occur-match CSS class is applied correctly in DOM.
+;; =============================================================================
+
+(deftest test-occur-match-class-in-dom
+  (testing "DOM elements have occur-match class with correct text"
+    (h/setup-test*)
+    (h/clear-buffer)
+    ;; Simple case: "hello world" with search for "hello"
+    (h/type-text "hello world")
+    (Thread/sleep 50)
+
+    (h/press-meta "x")
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "occur")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 200)
+    (h/type-in-minibuffer "hello")
+    (Thread/sleep 100)
+    (h/press-minibuffer-enter)
+    (Thread/sleep 500)
+
+    ;; Verify DOM has occur-match elements
+    (let [match-elements (h/get-occur-match-elements)]
+      (is (seq match-elements)
+          (str "Should have DOM elements with occur-match class, got: " match-elements))
+      (when (seq match-elements)
+        (let [texts (mapv :text match-elements)]
+          (is (some #(= % "hello") texts)
+              (str "One occur-match element should contain 'hello', got: " texts)))))))
