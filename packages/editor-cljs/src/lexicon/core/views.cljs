@@ -846,8 +846,10 @@
                   is-completion-entry? (and is-completions-buffer? (> line-number 0))
                   ;; Issue #138: Check if this line contains the current completion span
                   ;; Count newlines before entry start to determine which line it's on
+                  ;; NOTE: Don't check owns-cursor? because cursor is always in minibuffer
+                  ;; during completions. current-entry only returns non-nil when user has
+                  ;; explicitly navigated (M-up/M-down) or clicked on a completion.
                   entry-on-this-line? (and is-completions-buffer?
-                                           owns-cursor?
                                            current-entry
                                            (= line-number (count (filter #(= % \newline)
                                                                          (take (:start current-entry)
@@ -1364,6 +1366,8 @@
            :on-key-down (fn [e]
                           (let [key (.-key e)
                                 ctrl? (.-ctrlKey e)
+                                ;; Alt key is Meta in browsers (macOS uses metaKey for Cmd)
+                                meta? (.-altKey e)
                                 ;; Convert key to key-str for keybinding system
                                 key-str (cond
                                           (and ctrl? (= (count key) 1))
@@ -1393,7 +1397,10 @@
                               (= key "Enter")
                               (do
                                 (.preventDefault e)
-                                (rf/dispatch [:minibuffer/confirm]))
+                                ;; Issue #138: When *Completions* visible, select completion
+                                (if completions-visible?
+                                  (rf/dispatch [:completion-list/choose-at-point])
+                                  (rf/dispatch [:minibuffer/confirm])))
 
                               (= key "Tab")
                               (do
@@ -1415,6 +1422,18 @@
                                 (if completions-visible?
                                   (rf/dispatch [:completion-list/previous-completion])
                                   (rf/dispatch [:minibuffer/cycle-prev])))
+
+                              ;; M-down or M-n: Navigate to next completion (Emacs-style)
+                              (and meta? completions-visible? (or (= key "ArrowDown") (= key "n")))
+                              (do
+                                (.preventDefault e)
+                                (rf/dispatch [:completion-list/next-completion]))
+
+                              ;; M-up or M-p: Navigate to previous completion (Emacs-style)
+                              (and meta? completions-visible? (or (= key "ArrowUp") (= key "p")))
+                              (do
+                                (.preventDefault e)
+                                (rf/dispatch [:completion-list/previous-completion]))
 
                               (or (= key "Escape")
                                   (and ctrl? (= key "g")))

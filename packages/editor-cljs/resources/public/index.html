@@ -118,13 +118,12 @@
             50%, 100% { opacity: 0; }
         }
 
-        /* Issue #137: Completion entry hover highlighting */
+        /* Issue #137: Completion entries are clickable */
         .completion-entry {
             cursor: pointer;
         }
-        .completion-entry:hover {
-            background-color: rgba(80, 80, 120, 0.5) !important;
-        }
+        /* Note: Hover highlighting removed - whole row hover was confusing.
+           Selection highlighting is handled by :completion-help :selected-pos */
     </style>
 </head>
 <body>

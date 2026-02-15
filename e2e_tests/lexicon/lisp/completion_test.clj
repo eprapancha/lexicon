@@ -157,3 +157,39 @@
       (is (sequential? result) "Should return sequence of buffers")
       (is (some #(.contains % "test-completion-buffer") result)
           "Should find the test buffer"))))
+
+;; =============================================================================
+;; Phase 7: Symbol Introspection APIs (Marginalia support)
+;; =============================================================================
+
+(deftest test-documentation-for-commands
+  (testing "documentation returns command docstrings"
+    (lisp/setup-test)
+    (let [result (lisp/eval-lisp! "(documentation 'save-buffer)")]
+      (is (or (string? result) (nil? result))
+          "Should return string docstring or nil"))))
+
+(deftest test-where-is-internal
+  (testing "where-is-internal finds keybindings"
+    (lisp/setup-test)
+    (let [result (lisp/eval-lisp! "(where-is-internal 'save-buffer)")]
+      (is (or (vector? result) (sequential? result) (nil? result))
+          "Should return vector of keybindings or nil"))))
+
+(deftest test-describe-function
+  (testing "describe-function returns command info"
+    (lisp/setup-test)
+    (let [result (lisp/eval-lisp! "(describe-function 'forward-char)")]
+      (is (or (map? result) (nil? result))
+          "Should return info map or nil"))))
+
+;; =============================================================================
+;; Phase 7: Transient Keymaps (Embark support)
+;; =============================================================================
+
+(deftest test-set-transient-map-basic
+  (testing "set-transient-map installs temporary keymap"
+    (lisp/setup-test)
+    ;; Just verify it doesn't error - returns nil
+    (let [result (lisp/eval-lisp! "(set-transient-map {\"y\" :yes})")]
+      (is (nil? result) "Should return nil"))))

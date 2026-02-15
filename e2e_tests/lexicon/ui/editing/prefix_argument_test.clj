@@ -20,9 +20,41 @@
 
 ;; Helper functions (test-specific)
 (defn press-minus
-  "Press the minus key"
+  "Press the minus key using keyboard event simulation"
   []
-  (e/fill h/*driver* {:css ".hidden-input"} "-")
+  (let [script "
+    const input = document.querySelector('.hidden-input');
+    if (input) {
+      input.focus();
+      const keydownEvent = new KeyboardEvent('keydown', {
+        key: '-',
+        code: 'Minus',
+        bubbles: true,
+        cancelable: true
+      });
+      input.dispatchEvent(keydownEvent);
+      // Update input value and dispatch input event
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value'
+      ).set || Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, 'value'
+      ).set;
+      if (nativeInputValueSetter) {
+        nativeInputValueSetter.call(input, input.value + '-');
+      } else {
+        input.value = input.value + '-';
+      }
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+      const keyupEvent = new KeyboardEvent('keyup', {
+        key: '-',
+        code: 'Minus',
+        bubbles: true,
+        cancelable: true
+      });
+      input.dispatchEvent(keyupEvent);
+    }
+  "]
+    (e/js-execute h/*driver* script))
   (Thread/sleep 50))
 
 (defn get-prefix-arg

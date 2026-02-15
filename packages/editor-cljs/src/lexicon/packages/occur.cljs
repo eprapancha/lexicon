@@ -64,13 +64,16 @@
     (catch :default _ [])))
 
 (defn- format-occur-buffer [matches regexp source-buffer-name]
-  (let [header (str (count matches) " matches for \"" regexp "\" in buffer: " source-buffer-name "\n")
-        match-lines (vec (range 2 (+ 2 (count matches))))
+  ;; Header includes keybinding hints (Emacs-style)
+  ;; Note: match lines start at line 3 (0: header, 1: hints, 2: blank)
+  (let [header (str (count matches) " matches for \"" regexp "\" in buffer: " source-buffer-name "\n"
+                    "[n/p: navigate, RET: goto match, q: quit]\n")
+        match-lines (vec (range 3 (+ 3 (count matches))))
         prefix-len 8
         formatted-lines (map-indexed
                          (fn [idx {:keys [line-num text match-ranges]}]
                            {:formatted (str (format-line-num "%6d: " line-num) text)
-                            :occur-line (+ 2 idx)
+                            :occur-line (+ 3 idx)
                             :ranges (mapv (fn [[start end]]
                                            [(+ prefix-len start) (+ prefix-len end)])
                                          match-ranges)})
@@ -125,7 +128,9 @@
 (defn- get-source-line-at-occur-line [occur-line]
   (when-let [source @occur-source-buffer]
     (let [matches (:matches source)
-          match-index (- occur-line 2)]
+          match-lines (:match-lines source)
+          ;; Find index by looking up occur-line in match-lines (robust against header changes)
+          match-index (.indexOf match-lines occur-line)]
       (when (and (>= match-index 0) (< match-index (count matches)))
         (:line-num (nth matches match-index))))))
 
@@ -165,8 +170,8 @@
       (if next-line
         (let [text (lisp/buffer-string)
               pos (line-start-position text next-line)
-              ;; Find the source line number for this occur line
-              match-idx (- next-line 2)
+              ;; Find the source line number by looking up next-line in match-lines
+              match-idx (.indexOf match-lines next-line)
               source-line-num (when (and (>= match-idx 0) (< match-idx (count matches)))
                                 (:line-num (nth matches match-idx)))
               ;; Find the linear match for this line (first match on this line)
@@ -192,8 +197,8 @@
       (if prev-line
         (let [text (lisp/buffer-string)
               pos (line-start-position text prev-line)
-              ;; Find the source line number for this occur line
-              match-idx (- prev-line 2)
+              ;; Find the source line number by looking up prev-line in match-lines
+              match-idx (.indexOf match-lines prev-line)
               source-line-num (when (and (>= match-idx 0) (< match-idx (count matches)))
                                 (:line-num (nth matches match-idx)))
               ;; Find the linear match for this line (first match on this line)
@@ -240,8 +245,10 @@
       (lisp/message (str "No matches for \"" regexp "\""))
 
       (let [{:keys [content match-lines highlights]} (format-occur-buffer matches regexp buffer-name)
+            ;; Use match-lines as single source of truth for occur-line values
+            ;; This avoids duplicating the header offset calculation
             enhanced-matches (map-indexed
-                              (fn [idx m] (assoc m :occur-line (+ 2 idx)))
+                              (fn [idx m] (assoc m :occur-line (nth match-lines idx)))
                               matches)
             ;; Convert matches to linear positions for source buffer highlighting
             linear-matches (matches-to-linear-positions matches (or text ""))

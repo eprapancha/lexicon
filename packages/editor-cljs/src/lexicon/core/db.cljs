@@ -107,6 +107,9 @@
            :after-change-hook []                     ; Run after buffer text changes
            :buffer-switch-hook []                    ; Run when switching buffers
            :mode-hook []                             ; Run when modes are enabled/disabled
+           ;; Minibuffer hooks (Phase 7: Vertico ecosystem support)
+           :minibuffer-setup-hook []                 ; Run when minibuffer is activated
+           :minibuffer-exit-hook []                  ; Run when minibuffer is deactivated
            ;; Legacy hooks (to be migrated to new system)
            :before-save-hook []                      ; Run before saving
            :after-save-hook []                       ; Run after saving
@@ -122,6 +125,12 @@
         :scroll-position 0                             ; Current scroll position
         :show-line-numbers? true                       ; Show line numbers in status bar (Phase 5)
         :show-column-number? true}                     ; Show column number in status bar (Phase 5)
+   ;; Icomplete and Fido mode state (Phase 7: Vertico ecosystem support)
+   :icomplete {:enabled? false                        ; Whether icomplete-mode is active
+               :index 0                               ; Current completion index for cycling
+               :cached-completions []                 ; Filtered completions for current input
+               :last-input nil}                       ; Last input we computed completions for
+   :fido {:enabled? false}                            ; Whether fido-mode is active
    :editor {:mode :emacs                              ; Editor mode - simple Emacs mode for now
             :keymap :emacs                             ; Active keymap
             :commands {}}                              ; Available commands

@@ -265,12 +265,45 @@
       }
     "))
     (Thread/sleep 50)
-    ;; Type each character with focus refresh
+    ;; Type each character with keyboard events
     (doseq [ch text]
-      (e/js-execute *driver* (str "document.querySelector('" target-selector "').focus()"))
-      (Thread/sleep 10)
-      (e/fill-active *driver* (str ch))
-      (Thread/sleep 20))))
+      (let [char-str (str ch)
+            script (str "
+              const input = document.querySelector('" target-selector "');
+              if (input) {
+                input.focus();
+                const char = '" char-str "';
+                // Dispatch keydown event
+                const keydownEvent = new KeyboardEvent('keydown', {
+                  key: char,
+                  code: 'Key' + char.toUpperCase(),
+                  bubbles: true,
+                  cancelable: true
+                });
+                input.dispatchEvent(keydownEvent);
+                // Update input value and dispatch input event
+                // Choose setter based on actual element type (hidden-input is a textarea)
+                const isTextArea = input.tagName === 'TEXTAREA';
+                const prototype = isTextArea ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
+                if (nativeInputValueSetter) {
+                  nativeInputValueSetter.call(input, input.value + char);
+                } else {
+                  input.value = input.value + char;
+                }
+                input.dispatchEvent(new Event('input', {bubbles: true}));
+                // Dispatch keyup event
+                const keyupEvent = new KeyboardEvent('keyup', {
+                  key: char,
+                  code: 'Key' + char.toUpperCase(),
+                  bubbles: true,
+                  cancelable: true
+                });
+                input.dispatchEvent(keyupEvent);
+              }
+            ")]
+        (e/js-execute *driver* script)
+        (Thread/sleep 20)))))
 
 (defn press-key
   "Press a special key (Enter, Backspace, ArrowLeft, etc.)
@@ -412,10 +445,48 @@
     (catch Exception _ "")))
 
 (defn type-in-minibuffer
-  "Type text into the minibuffer input"
+  "Type text into the minibuffer input using keyboard simulation"
   [text]
-  (e/fill *driver* {:css ".minibuffer-input"} text)
-  (Thread/sleep 100))
+  ;; Type each character with keyboard events
+  (doseq [ch text]
+    (let [char-str (str ch)
+          script (str "
+            const input = document.querySelector('.minibuffer-input');
+            if (input) {
+              input.focus();
+              const char = '" char-str "';
+              // Dispatch keydown event
+              const keydownEvent = new KeyboardEvent('keydown', {
+                key: char,
+                code: 'Key' + char.toUpperCase(),
+                bubbles: true,
+                cancelable: true
+              });
+              input.dispatchEvent(keydownEvent);
+              // Update input value and dispatch input event
+              // Choose setter based on actual element type
+              const isTextArea = input.tagName === 'TEXTAREA';
+              const prototype = isTextArea ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+              const nativeInputValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
+              if (nativeInputValueSetter) {
+                nativeInputValueSetter.call(input, input.value + char);
+              } else {
+                input.value = input.value + char;
+              }
+              input.dispatchEvent(new Event('input', {bubbles: true}));
+              // Dispatch keyup event
+              const keyupEvent = new KeyboardEvent('keyup', {
+                key: char,
+                code: 'Key' + char.toUpperCase(),
+                bubbles: true,
+                cancelable: true
+              });
+              input.dispatchEvent(keyupEvent);
+            }
+          ")]
+      (e/js-execute *driver* script)
+      (Thread/sleep 20)))
+  (Thread/sleep 50))
 
 (defn get-minibuffer-text
   "Get text from the minibuffer prompt"
@@ -454,6 +525,7 @@
   (press-meta "x")
   (Thread/sleep 100)
   (type-in-minibuffer command-name)
+  (Thread/sleep 100)  ;; Wait for typing to complete and completion to update
   (press-minibuffer-enter)
   (Thread/sleep 200))
 
@@ -774,6 +846,50 @@
   "Get the minibuffer prompt text (alias for get-minibuffer-text)"
   []
   (get-minibuffer-text))
+
+(defn get-icomplete-display
+  "Get the icomplete display text (inline completion candidates).
+   Returns the text showing candidates like '{candidate1 | candidate2}'
+   or nil if icomplete is not displaying anything."
+  []
+  (try
+    (let [script "
+      const display = document.querySelector('.icomplete-display');
+      return display ? display.textContent : null;
+    "]
+      (e/js-execute *driver* script))
+    (catch Exception _ nil)))
+
+(defn get-icomplete-state
+  "Get icomplete state from editorState for debugging.
+   Returns a map with :enabled, :index, and :cachedCount."
+  []
+  (try
+    (let [script "
+      const state = window.editorState;
+      if (!state || !state.icomplete) return null;
+      return JSON.stringify({
+        enabled: state.icomplete['enabled?'],
+        index: state.icomplete.index || 0,
+        cachedCount: state.icomplete.cachedCompletionsCount || 0,
+        lastInput: state.icomplete.lastInput || null
+      });
+    "
+          result (e/js-execute *driver* script)]
+      (when result
+        (json/parse-string result true)))
+    (catch Exception _ nil)))
+
+(defn get-minibuffer-full-content
+  "Get the full minibuffer line content including prompt, input, and icomplete display."
+  []
+  (try
+    (let [script "
+      const line = document.querySelector('.minibuffer-input-line');
+      return line ? line.textContent : '';
+    "]
+      (e/js-execute *driver* script))
+    (catch Exception _ "")))
 
 (defn clear-minibuffer-input
   "Clear the minibuffer input field"

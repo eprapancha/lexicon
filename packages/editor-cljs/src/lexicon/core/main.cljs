@@ -191,7 +191,8 @@
                             completion-help-js (when completion-help
                                                 (clj->js {:entries (vec (:entries completion-help))
                                                           :candidates (vec (:candidates completion-help))
-                                                          :bufferId (:buffer-id completion-help)}))
+                                                          :bufferId (:buffer-id completion-help)
+                                                          :selectedPos (:selected-pos completion-help)}))
                             ;; Expose basic buffer info for testing (Issue #138)
                             buffers-info (into {}
                                                (map (fn [[id buf]]
@@ -204,7 +205,10 @@
                                                              :text (or text "")
                                                              ;; Expose occur highlights for E2E tests (Issue #197)
                                                              :occurHighlights (:occur-highlights buf)}]))
-                                                    (:buffers app-db)))]
+                                                    (:buffers app-db)))
+                            ;; Expose icomplete state for E2E tests
+                            icomplete-state (:icomplete app-db)
+                            fido-state (:fido app-db)]
                         #js {:point cursor-pos
                              :buffer (or buffer-text "")
                              :bufferName (:name buffer)
@@ -217,7 +221,12 @@
                              :mark mark-position
                              :cursorOwner cursor-owner
                              :completionHelp completion-help-js
-                             :buffers (clj->js buffers-info)}))]
+                             :buffers (clj->js buffers-info)
+                             :icomplete #js {:enabled? (get icomplete-state :enabled? false)
+                                     :index (get icomplete-state :index 0)
+                                     :cachedCompletionsCount (count (get icomplete-state :cached-completions []))
+                                     :lastInput (get icomplete-state :last-input)}
+                             :fido (clj->js fido-state)}))]
       ;; Expose as a getter function so it always returns fresh state
       (aset js/window "editorState"
             (js/Object.defineProperty

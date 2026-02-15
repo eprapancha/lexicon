@@ -60,13 +60,37 @@
   (fn [db [_ value]]
     (assoc db :prefix-arg value)))
 
-(rf/reg-event-db
+(rf/reg-event-fx
   :clear-prefix-arg
-  (fn [db [_]]
-    (assoc db
-           :prefix-arg nil
-           :current-prefix-arg nil
-           :transient-keymap nil)))
+  (fn [{:keys [db]} [_]]
+    ;; Phase 7 (Embark): Check if transient map has a keep-pred
+    ;; If keep-pred exists and returns truthy, keep the transient map
+    (let [config (:transient-map-config db)
+          keep-pred (:keep-pred config)
+          on-exit (:on-exit config)
+          should-keep? (and keep-pred (keep-pred))]
+      (if should-keep?
+        ;; Keep the transient map, only clear prefix args
+        {:db (assoc db
+                    :prefix-arg nil
+                    :current-prefix-arg nil)}
+        ;; Clear everything including transient map
+        {:db (-> db
+                 (assoc :prefix-arg nil
+                        :current-prefix-arg nil
+                        :transient-keymap nil)
+                 (dissoc :transient-map-config)
+                 (update-in [:keymaps :transient] dissoc :transient-dynamic-map))
+         ;; Call on-exit callback if provided
+         :fx (when (fn? on-exit)
+               [[:transient-map-on-exit on-exit]])}))))
+
+;; Effect handler for calling on-exit callback
+(rf/reg-fx
+ :transient-map-on-exit
+ (fn [on-exit-fn]
+   (when (fn? on-exit-fn)
+     (on-exit-fn))))
 
 (rf/reg-event-db
   :save-prefix-arg

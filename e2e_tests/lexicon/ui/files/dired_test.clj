@@ -158,7 +158,7 @@
     (let [before-text (h/get-buffer-text*)]
 
       ;; Try to type (should be rejected)
-      (e/fill h/*driver* {:css ".hidden-input"} "X")
+      (h/type-text "X")
       (Thread/sleep 200)
 
       ;; Assert: No modification occurred

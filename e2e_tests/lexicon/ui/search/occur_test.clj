@@ -521,17 +521,18 @@
       (is (= 2 (count highlights))
           (str "Should have 2 highlight entries (two matching lines), got: " (count highlights)))
       (when (= 2 (count highlights))
-        ;; Occur buffer format:
+        ;; Occur buffer format (with keybinding hints header):
         ;; Line 0: "2 matches for..."
-        ;; Line 1: (blank from \n in header)
-        ;; Line 2: "     1: apple one"  <- first match
-        ;; Line 3: "     3: apple two"  <- second match (skipping line 2 "banana")
+        ;; Line 1: "[n/p: navigate, RET: goto match, q: quit]"
+        ;; Line 2: (blank from \n in header)
+        ;; Line 3: "     1: apple one"  <- first match
+        ;; Line 4: "     3: apple two"  <- second match (skipping line 2 "banana")
         (let [line1 (:line (first highlights))
               line2 (:line (second highlights))]
-          (is (= 2 line1)
-              (str "First highlight should be on occur-line 2, got: " line1))
-          (is (= 3 line2)
-              (str "Second highlight should be on occur-line 3, got: " line2)))))))
+          (is (= 3 line1)
+              (str "First highlight should be on occur-line 3, got: " line1))
+          (is (= 4 line2)
+              (str "Second highlight should be on occur-line 4, got: " line2)))))))
 
 ;; =============================================================================
 ;; Occur Rendering Tests - Issue #197

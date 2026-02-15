@@ -30,8 +30,7 @@
     (h/press-ctrl-x "b")
     (Thread/sleep 100)
 
-    (e/fill h/*driver* {:css ".minibuffer-input"} "*Messages*")
-    (Thread/sleep 20)
+    (h/type-in-minibuffer "*Messages*")
     (h/press-minibuffer-enter)
     (Thread/sleep 100)
 

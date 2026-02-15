@@ -1,85 +1,205 @@
 (ns lexicon.ui.minibuffer.icomplete-test
-  "E2E tests for incremental completion UI.
+  "E2E tests for icomplete-mode and fido-mode features.
 
   Emacs source: lisp/icomplete.el
-  Status: Placeholder tests
 
-  Note: icomplete functionality is tested via M-x completion behavior.
-  API-specific tests (icomplete-mode, etc.) are pending E2E implementation."
+  icomplete-mode shows completion candidates inline in the minibuffer
+  as you type. fido-mode is an enhanced icomplete with flex matching.
+
+  Display format:
+  - {candidate1 | candidate2 | ...} - multiple candidates
+  - (single) - single match, required
+  - [single] - single match, optional"
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
+            [etaoin.api :as e]
             [lexicon.test-helpers :as h]))
 
 (use-fixtures :once h/with-driver)
 
 ;; =============================================================================
-;; User-Visible Completion Behavior
+;; icomplete-mode Activation
 ;; =============================================================================
 
-(deftest test-mx-shows-completion-candidates
-  (testing "M-x shows completion candidates"
+(deftest test-icomplete-mode-activation
+  (testing "icomplete-mode can be toggled on and off"
     (h/setup-test*)
-    (h/clear-buffer)
 
-    ;; Open M-x
+    ;; Check initial icomplete state
+    (let [initial-state (h/get-icomplete-state)]
+      (println "DEBUG: Initial icomplete state:" initial-state)
+      (is (or (nil? initial-state)
+              (false? (:enabled initial-state)))
+          (str "Initial icomplete state should be disabled, got: " initial-state)))
+
+    ;; Enable icomplete-mode via M-x
+    (println "DEBUG: About to run icomplete-mode")
+    (h/run-mx-command "icomplete-mode")
+    (Thread/sleep 150)
+    (println "DEBUG: After running icomplete-mode")
+
+    ;; Check icomplete state after first toggle
+    (let [state-after-enable (h/get-icomplete-state)]
+      (is (true? (:enabled state-after-enable))
+          (str "After first toggle, icomplete should be enabled, got: " state-after-enable)))
+
+    ;; Verify the message
+    (let [echo-text (h/get-echo-area-text)]
+      (is (str/includes? echo-text "Icomplete mode enabled")
+          (str "Should show 'Icomplete mode enabled' message, got: " echo-text)))
+
+    ;; Disable icomplete-mode
+    (h/run-mx-command "icomplete-mode")
+    (Thread/sleep 150)
+
+    ;; Check icomplete state after second toggle
+    (let [state-after-disable (h/get-icomplete-state)]
+      (is (false? (:enabled state-after-disable))
+          (str "After second toggle, icomplete should be disabled, got: " state-after-disable)))
+
+    (let [echo-text (h/get-echo-area-text)]
+      (is (str/includes? echo-text "Icomplete mode disabled")
+          (str "Should show 'Icomplete mode disabled' message, got: " echo-text)))))
+
+;; =============================================================================
+;; icomplete Candidate Display
+;; =============================================================================
+
+(deftest test-icomplete-candidate-display
+  (testing "icomplete shows completions inline in minibuffer as you type"
+    (h/setup-test*)
+
+    ;; Enable icomplete-mode
+    (h/run-mx-command "icomplete-mode")
+    (Thread/sleep 150)
+
+    ;; Open M-x and type a partial command
     (h/press-meta "x")
     (Thread/sleep 200)
 
-    ;; Type partial command name
-    (h/type-in-minibuffer "forward")
-    (Thread/sleep 200)
-
-    ;; Minibuffer should be visible with typed text
     (is (h/minibuffer-visible?) "Minibuffer should be visible")
 
+    ;; Type partial command that has multiple matches
+    (h/type-in-minibuffer "goto")
+    (Thread/sleep 300)
+
+    ;; Check for icomplete display (inline candidates)
+    (let [icomplete-display (h/get-icomplete-display)]
+      (is (not (nil? icomplete-display))
+          "icomplete should show inline candidates")
+      (when icomplete-display
+        (is (or (str/includes? icomplete-display "{")
+                (str/includes? icomplete-display "[")
+                (str/includes? icomplete-display "("))
+            (str "icomplete display should have brackets, got: " icomplete-display))))
+
     ;; Cancel
     (h/press-ctrl "g")
+    (Thread/sleep 100)
+
+    ;; Disable icomplete-mode for cleanup
+    (h/run-mx-command "icomplete-mode")
     (Thread/sleep 100)))
 
-(deftest test-tab-completion
-  (testing "Tab completes in minibuffer"
-    (h/setup-test*)
-    (h/clear-buffer)
+;; =============================================================================
+;; icomplete Cycling (C-. and C-,)
+;; =============================================================================
 
-    ;; Open M-x
+(deftest test-icomplete-cycling
+  (testing "C-. and C-, cycle through icomplete candidates"
+    (h/setup-test*)
+
+    ;; Enable icomplete-mode
+    (h/run-mx-command "icomplete-mode")
+    (Thread/sleep 150)
+
+    ;; Open M-x with partial input
     (h/press-meta "x")
     (Thread/sleep 200)
 
-    ;; Type partial command
-    (h/type-in-minibuffer "forwar")
-    (Thread/sleep 100)
+    (is (h/minibuffer-visible?) "Minibuffer should be visible")
 
-    ;; Press Tab for completion
-    (h/press-key "Tab")
+    ;; Type partial command that has multiple completions
+    (h/type-in-minibuffer "goto")
     (Thread/sleep 200)
 
-    ;; Should have completed or shown candidates
-    (is (h/minibuffer-visible?) "Minibuffer should remain visible")
+    ;; Get initial input value
+    (let [initial-input (h/get-minibuffer-input-value)]
+      (is (= "goto" initial-input) "Initial input should be 'goto'")
+
+      ;; Press C-. to cycle forward
+      (h/press-ctrl ".")
+      (Thread/sleep 150)
+
+      (let [after-forward (h/get-minibuffer-input-value)]
+        ;; After cycling, input should be a completion (like "goto-char" or "goto-line")
+        (is (not= "goto" after-forward)
+            (str "C-. should change input to a completion, got: " after-forward))
+        ;; The completion should at least contain "goto" (prefix or substring match)
+        (is (str/includes? after-forward "goto")
+            (str "Cycled completion should contain 'goto', got: " after-forward))
+
+        ;; Press C-, to cycle backward
+        (h/press-ctrl ",")
+        (Thread/sleep 150)
+
+        (let [after-backward (h/get-minibuffer-input-value)]
+          ;; Should have cycled (may be different or same completion)
+          ;; The important thing is it's a valid completion containing "goto"
+          (is (str/includes? after-backward "goto")
+              (str "After C-, should still be a goto completion, got: " after-backward)))))
 
     ;; Cancel
     (h/press-ctrl "g")
+    (Thread/sleep 100)
+
+    ;; Disable icomplete-mode for cleanup
+    (h/run-mx-command "icomplete-mode")
     (Thread/sleep 100)))
 
 ;; =============================================================================
-;; icomplete API Tests - PENDING E2E Implementation
+;; fido-mode (Flex Matching)
 ;; =============================================================================
 
-(deftest ^:skip test-icomplete-mode-activation
-  (testing "icomplete-mode can be enabled"
-    ;; icomplete-mode is a Lisp function
-    (is true "PENDING: icomplete-mode - needs E2E implementation")))
+(deftest test-icomplete-fido-mode
+  (testing "fido-mode enables flex matching"
+    (h/setup-test*)
 
-(deftest ^:skip test-icomplete-candidate-display
-  (testing "icomplete shows completions in minibuffer"
-    ;; icomplete-completions is a Lisp function
-    (is true "PENDING: icomplete-completions - needs E2E implementation")))
+    ;; Enable fido-mode via M-x
+    (h/run-mx-command "fido-mode")
+    (Thread/sleep 150)
 
-(deftest ^:skip test-icomplete-cycling
-  (testing "icomplete-forward-completions cycles"
-    ;; icomplete-forward-completions is a Lisp function
-    (is true "PENDING: icomplete cycling - needs E2E implementation")))
+    ;; Verify the message
+    (let [echo-text (h/get-echo-area-text)]
+      (is (str/includes? echo-text "Fido mode enabled")
+          (str "Should show 'Fido mode enabled' message, got: " echo-text)))
 
-(deftest ^:skip test-icomplete-fido-mode
-  (testing "icomplete-fido-mode enables flex matching"
-    ;; fido-mode is a Lisp function
-    (is true "PENDING: fido-mode - needs E2E implementation")))
+    ;; Open M-x and type a flex pattern
+    (h/press-meta "x")
+    (Thread/sleep 200)
+
+    (is (h/minibuffer-visible?) "Minibuffer should be visible")
+
+    ;; Type flex pattern "gol" which should match "goto-line" via flex matching
+    ;; (characters g, o, l appear in order in "goto-line")
+    (h/type-in-minibuffer "gol")
+    (Thread/sleep 300)
+
+    ;; With fido-mode (flex matching), we should see candidates
+    (let [icomplete-display (h/get-icomplete-display)
+          minibuffer-content (h/get-minibuffer-full-content)]
+      ;; Either icomplete display shows candidates, or full minibuffer content has them
+      (is (or (and icomplete-display
+                   (or (str/includes? icomplete-display "goto")
+                       (str/includes? icomplete-display "{")))
+              (str/includes? minibuffer-content "goto"))
+          (str "Flex matching should find goto commands. Display: " icomplete-display
+               " Content: " minibuffer-content)))
+
+    ;; Cancel
+    (h/press-ctrl "g")
+    (Thread/sleep 100)
+
+    ;; Disable fido-mode for cleanup
+    (h/run-mx-command "fido-mode")
+    (Thread/sleep 100)))

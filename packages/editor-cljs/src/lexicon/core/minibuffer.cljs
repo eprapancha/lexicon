@@ -58,6 +58,7 @@
                       :on-confirm nil
                       :on-cancel [:minibuffer/deactivate]
                       :completions []
+                      :predicate nil          ; Filter function for completions (Phase 7: Vertico)
                       :completion-index -1  ; -1 = user input, 0+ = cycling through completions
                       :metadata nil
                       :persist? false
@@ -169,6 +170,11 @@
   "Get completions list from current frame"
   [db]
   (:completions (current-frame db) []))
+
+(defn get-predicate
+  "Get completion predicate function from current frame (Phase 7: Vertico)"
+  [db]
+  (:predicate (current-frame db)))
 
 (defn get-completion-index
   "Get completion-index from current frame"

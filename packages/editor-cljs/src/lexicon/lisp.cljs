@@ -25,7 +25,9 @@
             [lexicon.core.advanced-undo :as advanced-undo]
             [lexicon.core.dynamic :as dyn]
             [lexicon.core.ring :as ring]
-            [lexicon.core.packages.imenu :as imenu]))
+            [lexicon.core.packages.imenu :as imenu]
+            [lexicon.core.completion.styles :as completion-styles]
+            [lexicon.core.log :as log]))
 
 ;; Forward declarations for functions used before definition
 (declare goto-char line-beginning-position line-end-position current-buffer mark delete-region)
@@ -2367,6 +2369,103 @@
   []
   (boolean (get-in @rfdb/app-db [:minibuffer :active])))
 
+(defn minibuffer-prompt-end
+  "Return the buffer position at the end of the minibuffer prompt.
+
+  In Emacs, this is the position after which user input begins.
+  In Lexicon, we return the length of the prompt string since
+  minibuffer prompt and input are stored separately.
+
+  Usage: (minibuffer-prompt-end)
+  Returns: Integer position
+
+  Phase 7: Vertico ecosystem support"
+  []
+  (let [db @rfdb/app-db
+        prompt (minibuffer/get-prompt db)]
+    (count (or prompt ""))))
+
+(defn minibuffer-contents-no-properties
+  "Return the minibuffer contents without text properties.
+
+  In Lexicon, minibuffer input doesn't have text properties,
+  so this is equivalent to minibuffer-contents.
+
+  Usage: (minibuffer-contents-no-properties)
+  Returns: String
+
+  Phase 7: Vertico ecosystem support"
+  []
+  (let [db @rfdb/app-db]
+    (or (minibuffer/get-input db) "")))
+
+(defn minibuffer-prompt
+  "Return the minibuffer prompt string.
+
+  Usage: (minibuffer-prompt)
+  Returns: String
+
+  Phase 7: Vertico ecosystem support"
+  []
+  (let [db @rfdb/app-db]
+    (or (minibuffer/get-prompt db) "")))
+
+(defn minibuffer-selected-window
+  "Return the window that was selected when the minibuffer was activated.
+
+  This is the window that will regain focus when the minibuffer exits.
+  Useful for packages that need to know the 'original' context.
+
+  Usage: (minibuffer-selected-window)
+  Returns: Window ID or nil
+
+  Phase 7: Vertico ecosystem support"
+  []
+  (let [db @rfdb/app-db]
+    (:active-window-id db)))
+
+(defn active-minibuffer-window
+  "Return the currently active minibuffer window, or nil.
+
+  In Lexicon, the minibuffer is not a separate window but a UI component.
+  Returns :minibuffer if active, nil otherwise.
+
+  Usage: (active-minibuffer-window)
+  Returns: :minibuffer or nil
+
+  Phase 7: Vertico ecosystem support"
+  []
+  (let [db @rfdb/app-db]
+    (when (minibuffer/minibuffer-active? db)
+      :minibuffer)))
+
+(defn minibuffer-depth
+  "Return the current minibuffer recursion depth.
+
+  0 means minibuffer is not active.
+  1+ means minibuffer is active at that depth.
+
+  Usage: (minibuffer-depth)
+  Returns: Integer >= 0
+
+  Phase 7: Vertico ecosystem support"
+  []
+  (let [db @rfdb/app-db]
+    (minibuffer/minibuffer-depth db)))
+
+(defn delete-minibuffer-contents
+  "Delete all user input in the minibuffer.
+
+  Leaves the prompt intact, clears only the input area.
+
+  Usage: (delete-minibuffer-contents)
+  Returns: nil
+
+  Phase 7: Vertico ecosystem support"
+  []
+  (rf/dispatch-sync [:minibuffer/set-input ""])
+  nil)
+
 ;; =============================================================================
 ;; Completion System (Issue #108 - Vertico Prerequisites)
 ;; =============================================================================
@@ -2449,6 +2548,20 @@
   (let [db @rfdb/app-db]
     (minibuffer/get-completions db)))
 
+(defn minibuffer-completion-predicate
+  "Return the completion predicate for current minibuffer.
+
+  The predicate is a function that filters completion candidates.
+  Returns nil if no predicate is set.
+
+  Usage: (minibuffer-completion-predicate)
+  Returns: Function or nil
+
+  Phase 7: Vertico ecosystem support"
+  []
+  (let [db @rfdb/app-db]
+    (minibuffer/get-predicate db)))
+
 (defn completion-metadata-get
   "Get metadata property PROP from current minibuffer completion.
 
@@ -2463,6 +2576,124 @@
   (let [db @rfdb/app-db
         metadata (minibuffer/get-completion-metadata db)]
     (get metadata prop)))
+
+(defn completion-metadata
+  "Return completion metadata for STRING in TABLE with PREDICATE.
+
+  Returns the full metadata map from the completion table, which may include:
+  - :category - completion category (:command, :buffer, :file, etc.)
+  - :annotation-function - function to annotate candidates
+  - :affixation-function - function to add prefix/suffix to candidates
+  - :group-function - function to group candidates
+  - :display-sort-function - custom sort for display
+  - :cycle-sort-function - custom sort for cycling
+
+  If TABLE is a function, calls (table string predicate 'metadata).
+  Otherwise returns metadata from current minibuffer context.
+
+  Usage: (completion-metadata \"\" my-table nil)
+  Returns: Metadata map or nil
+
+  Phase 7: Vertico ecosystem support"
+  [string table predicate]
+  (cond
+    ;; If table is a function that can respond to 'metadata action
+    (fn? table)
+    (try
+      (table string predicate 'metadata)
+      (catch :default _ nil))
+
+    ;; Otherwise get from current minibuffer context
+    :else
+    (let [db @rfdb/app-db]
+      (minibuffer/get-completion-metadata db))))
+
+(defn completion-all-completions
+  "Return all completions of STRING in TABLE using completion styles.
+
+  This is the full Emacs-compatible completion function that:
+  1. Applies completion styles from completion-styles in order
+  2. Respects category-specific style overrides
+  3. Returns list of matching completions
+
+  Arguments:
+  - STRING: The string to complete
+  - TABLE: Completion table (list, vector, or function)
+  - PREDICATE: Optional filter function
+  - POINT: Position in string (for partial completion)
+  - METADATA: Optional metadata map with :category etc.
+
+  Usage: (completion-all-completions \"for\" commands-table nil 3 nil)
+  Returns: List of completions or nil
+
+  Phase 7: Vertico ecosystem support"
+  ([string table] (completion-all-completions string table nil nil nil))
+  ([string table predicate] (completion-all-completions string table predicate nil nil))
+  ([string table predicate point] (completion-all-completions string table predicate point nil))
+  ([string table predicate point metadata]
+   (let [;; Get completion styles - check category overrides
+         db @rfdb/app-db
+         category (or (:category metadata)
+                      (:category (minibuffer/get-completion-metadata db)))
+         style-overrides (get-in db [:completion :category-overrides category])
+         styles (or style-overrides
+                    (get-in db [:completion :styles] [:basic :substring :flex]))
+         ;; Get candidates from table
+         candidates (cond
+                      (fn? table) (table string predicate nil)
+                      (sequential? table) table
+                      (= table 'commands) (keys (:commands db))
+                      (= table 'buffers) (map :name (vals (:buffers db)))
+                      :else [])
+         ;; Apply predicate if given
+         filtered (if predicate
+                    (filter predicate candidates)
+                    candidates)
+         ;; Apply completion styles to filter matches
+         matches (completion-styles/filter-candidates
+                  string filtered
+                  :styles-list styles)]
+     (when (seq matches)
+       (vec matches)))))
+
+(defn completion-boundaries
+  "Return boundaries of completion field in STRING.
+
+  For simple completions, returns (0 . 0) meaning complete the whole string.
+  For file paths, returns boundaries around the filename part.
+  For partial-completion, returns boundaries around current component.
+
+  Arguments:
+  - STRING: The string being completed
+  - TABLE: Completion table
+  - PREDICATE: Optional filter function
+  - SUFFIX: Text after point (for determining end boundary)
+
+  Returns: Cons cell (START . END) where:
+  - START: Index into STRING where completion text begins
+  - END: Index into SUFFIX where completion text ends (usually 0)
+
+  Usage: (completion-boundaries \"/home/user/\" file-table nil \"\")
+  Returns: (11 . 0) ; complete from after last /
+
+  Phase 7: Vertico ecosystem support"
+  ([string table] (completion-boundaries string table nil ""))
+  ([string table predicate] (completion-boundaries string table predicate ""))
+  ([string table predicate suffix]
+   (let [;; Check if table specifies custom boundaries
+         metadata (completion-metadata string table predicate)
+         category (:category metadata)]
+     (cond
+       ;; File completion: boundary at last path separator
+       (= category :file)
+       (let [last-sep (or (str/last-index-of string "/")
+                          (str/last-index-of string "\\")
+                          -1)]
+         [(inc last-sep) 0])
+
+       ;; Default: complete entire string
+       :else
+       [0 0]))))
 
 (defn completing-read
   "Read a string from minibuffer with completion.
@@ -2539,6 +2770,101 @@
         buffer-id (current-buffer)]
     (or (get-in db [:buffers buffer-id :local-keymap key-sequence])
         (get-in db [:keymaps :global :bindings key-sequence]))))
+
+;; =============================================================================
+;; Transient Keymaps (Phase 7: Embark support)
+;; =============================================================================
+
+(defn set-transient-map
+  "Set MAP as a transient keymap.
+
+  A transient keymap is active for one command (or until KEEP-PRED returns nil).
+
+  Arguments:
+  - MAP: A map of key sequences to commands, e.g., {\"y\" :yes-command \"n\" :no-command}
+  - KEEP-PRED: Optional. If provided, called after each command.
+               If it returns truthy, the transient map stays active.
+               If nil or returns falsy, the map is deactivated.
+  - ON-EXIT: Optional function to call when the transient map is deactivated.
+
+  The transient keymap has highest precedence during key lookup.
+
+  This is used by Embark for action keymaps, by which-key for hints, etc.
+
+  Usage:
+    (set-transient-map {\"y\" :accept \"n\" :reject})
+    (set-transient-map {\"!\" :shell-command} (constantly true))
+    (set-transient-map {\"q\" :quit} nil #(message \"Exited\"))
+
+  Returns: nil
+
+  Phase 7: Vertico ecosystem support (Embark)"
+  ([keymap]
+   (set-transient-map keymap nil nil))
+  ([keymap keep-pred]
+   (set-transient-map keymap keep-pred nil))
+  ([keymap keep-pred on-exit]
+   ;; Store transient map config with the bindings, keep-pred, and on-exit
+   ;; Use a unique dynamic keymap name
+   (let [transient-id :transient-dynamic-map]
+     (swap! rfdb/app-db
+            (fn [db]
+              (-> db
+                  ;; Store the bindings in the keymaps structure
+                  (assoc-in [:keymaps :transient transient-id :bindings] keymap)
+                  ;; Set the transient keymap pointer
+                  (assoc :transient-keymap transient-id)
+                  ;; Store the config for keep-pred and on-exit
+                  (assoc :transient-map-config {:keep-pred keep-pred
+                                                 :on-exit on-exit}))))
+     nil)))
+
+(defn exit-transient-map
+  "Deactivate the current transient map and call its on-exit function.
+
+  This is called automatically after commands when keep-pred returns falsy,
+  but can also be called manually.
+
+  Usage: (exit-transient-map)
+  Returns: nil
+
+  Phase 7: Vertico ecosystem support (Embark)"
+  []
+  (let [db @rfdb/app-db
+        config (:transient-map-config db)
+        on-exit (:on-exit config)]
+    ;; Clear transient map state
+    (swap! rfdb/app-db
+           (fn [db]
+             (-> db
+                 (dissoc :transient-keymap)
+                 (dissoc :transient-map-config)
+                 (update-in [:keymaps :transient] dissoc :transient-dynamic-map))))
+    ;; Call on-exit callback if provided
+    (when (fn? on-exit)
+      (on-exit))
+    nil))
+
+(defn transient-map-keep-pred-check
+  "Check if transient map should stay active after a command.
+
+  Called by after-command-hook. If keep-pred returns falsy (or doesn't exist),
+  deactivates the transient map.
+
+  Usage: (transient-map-keep-pred-check)
+  Returns: nil
+
+  Phase 7: Vertico ecosystem support (Embark)"
+  []
+  (let [db @rfdb/app-db
+        config (:transient-map-config db)
+        keep-pred (:keep-pred config)]
+    (when config
+      ;; If no keep-pred, or keep-pred returns falsy, exit
+      (when (or (nil? keep-pred)
+                (not (keep-pred)))
+        (exit-transient-map)))
+    nil))
 
 (defn simulate-key
   "Simulate a key press as if the user typed it.
@@ -3184,6 +3510,138 @@
     (when (and sym (contains? @autoload-registry sym))
       true)))
 
+;; =============================================================================
+;; Symbol Introspection (Phase 7: Marginalia support)
+;; =============================================================================
+
+(defn documentation
+  "Return the documentation string of FUNCTION-OR-SYMBOL.
+
+  For commands, returns the :docstring from the command registry.
+  For variables, returns documentation from the global-vars registry.
+
+  Optional DOC-TYPE can be 'function (default) or 'variable.
+
+  Usage: (documentation 'save-buffer)
+         (documentation 'my-var 'variable)
+  Returns: String or nil
+
+  Phase 7: Marginalia support"
+  ([function-or-symbol]
+   (documentation function-or-symbol 'function))
+  ([function-or-symbol doc-type]
+   (let [sym (cond
+               (symbol? function-or-symbol) function-or-symbol
+               (keyword? function-or-symbol) (symbol (name function-or-symbol))
+               (string? function-or-symbol) (symbol function-or-symbol)
+               :else nil)
+         kw (when sym (keyword (name sym)))
+         db @rfdb/app-db]
+     (cond
+       ;; Command documentation
+       (= doc-type 'function)
+       (get-in db [:commands kw :docstring])
+
+       ;; Variable documentation (if stored)
+       (= doc-type 'variable)
+       (get-in @global-vars [(symbol (str sym "-doc"))])
+
+       :else nil))))
+
+(defn where-is-internal
+  "Return list of keys that invoke COMMAND.
+
+  Searches global and mode-specific keymaps.
+
+  Usage: (where-is-internal 'save-buffer)
+  Returns: Vector of key sequence strings, e.g., [\"C-x C-s\"]
+
+  Phase 7: Marginalia support"
+  [command]
+  (let [cmd-kw (cond
+                 (keyword? command) command
+                 (symbol? command) (keyword (name command))
+                 (string? command) (keyword command)
+                 :else nil)
+        db @rfdb/app-db
+        keymaps (:keymaps db)
+        global-bindings (get-in keymaps [:global :bindings] {})
+        ;; Collect all bindings from all keymaps
+        all-bindings (concat
+                      (seq global-bindings)
+                      (mapcat (fn [[_mode mode-map]]
+                                (seq (:bindings mode-map)))
+                              (get keymaps :major {}))
+                      (mapcat (fn [[_mode mode-map]]
+                                (seq (:bindings mode-map)))
+                              (get keymaps :minor {}))
+                      (seq (get keymaps :mode {})))]
+    (vec (distinct
+          (keep (fn [[key-seq cmd]]
+                  (when (or (= cmd cmd-kw)
+                            (and (vector? cmd) (= (first cmd) cmd-kw)))
+                    key-seq))
+                all-bindings)))))
+
+(defn help-function-arglist
+  "Return the argument list of FUNCTION.
+
+  For commands registered with interactive specs, returns the spec.
+  Returns nil if no argument info is available.
+
+  Usage: (help-function-arglist 'forward-char)
+  Returns: Argument list or nil
+
+  Phase 7: Marginalia support"
+  [function]
+  (let [fn-kw (cond
+                (keyword? function) function
+                (symbol? function) (keyword (name function))
+                (string? function) (keyword function)
+                :else nil)
+        db @rfdb/app-db
+        cmd-def (get-in db [:commands fn-kw])]
+    (when cmd-def
+      (:interactive cmd-def))))
+
+(defn symbol-file
+  "Return the file where SYMBOL was defined.
+
+  In browser context, this has limited functionality.
+  Returns nil for most symbols as we don't track source files.
+
+  Usage: (symbol-file 'save-buffer)
+  Returns: String filename or nil
+
+  Phase 7: Marginalia support"
+  [symbol]
+  ;; In browser context, we don't track source files
+  ;; This could be enhanced to return package info
+  nil)
+
+(defn describe-function
+  "Return a description of FUNCTION.
+
+  Returns a map with :name, :docstring, :arglist, and :keys.
+
+  Usage: (describe-function 'save-buffer)
+  Returns: Map or nil
+
+  Phase 7: Marginalia support"
+  [function]
+  (let [fn-kw (cond
+                (keyword? function) function
+                (symbol? function) (keyword (name function))
+                (string? function) (keyword function)
+                :else nil)
+        db @rfdb/app-db
+        cmd-def (get-in db [:commands fn-kw])]
+    (when cmd-def
+      {:name (name fn-kw)
+       :docstring (:docstring cmd-def)
+       :arglist (:interactive cmd-def)
+       :keys (where-is-internal fn-kw)})))
+
 ;; Event handler for autoload trigger (placeholder - logs warning)
 (rf/reg-event-fx
  :autoload-trigger
@@ -3761,10 +4219,22 @@
   Usage: (dispatch-sync-event :buffer/goto-char 100)
   Returns: nil"
   ([event-id]
-   (rf/dispatch-sync [event-id])
+   (try
+     (log/debug (str "dispatch-sync-event 1-arity: " event-id))
+     (rf/dispatch-sync [event-id])
+     (log/debug "dispatch-sync-event 1-arity completed")
+     (catch :default e
+       (log/error (str "dispatch-sync-event 1-arity ERROR: " (.-message e)))))
    nil)
   ([event-id & args]
-   (rf/dispatch-sync (vec (cons event-id args)))
+   (try
+     (log/debug (str "dispatch-sync-event n-arity: " event-id " args: " args))
+     (let [event-vec (vec (cons event-id args))]
+       (log/debug (str "dispatching event-vec: " event-vec))
+       (rf/dispatch-sync event-vec)
+       (log/debug "dispatch-sync completed"))
+     (catch :default e
+       (log/error (str "dispatch-sync-event n-arity ERROR: " (.-message e)))))
    nil))
 
 ;; =============================================================================
@@ -3778,6 +4248,180 @@
   Returns: Boolean"
   []
   (boolean (get-in @rfdb/app-db [:icomplete :enabled?])))
+
+(defn fido-enabled?
+  "Return whether fido-mode is enabled.
+
+  Fido mode is an enhanced icomplete with flex matching by default.
+
+  Usage: (fido-enabled?)
+  Returns: Boolean"
+  []
+  (boolean (get-in @rfdb/app-db [:fido :enabled?])))
+
+(defn icomplete-toggle!
+  "Toggle icomplete mode on/off.
+
+  Note: Uses direct state mutation because rf/dispatch-sync doesn't work
+  reliably from compiled ClojureScript in this codebase.
+
+  Returns: Boolean (new state)"
+  []
+  (let [current-state (get-in @rfdb/app-db [:icomplete :enabled?])
+        new-state (not current-state)]
+    (swap! rfdb/app-db
+           (fn [db]
+             (-> db
+                 (assoc-in [:icomplete :enabled?] new-state)
+                 (assoc-in [:icomplete :index] 0)
+                 (assoc-in [:icomplete :cached-completions] [])
+                 (assoc-in [:icomplete :last-input] nil))))
+    new-state))
+
+(defn fido-toggle!
+  "Toggle fido mode on/off.
+
+  Fido mode enables icomplete with flex matching by default.
+
+  Note: Uses direct state mutation because rf/dispatch-sync doesn't work
+  reliably from compiled ClojureScript in this codebase.
+
+  Returns: Boolean (new state)"
+  []
+  (let [current-state (get-in @rfdb/app-db [:fido :enabled?])
+        new-state (not current-state)]
+    (swap! rfdb/app-db
+           (fn [db]
+             (-> db
+                 (assoc-in [:fido :enabled?] new-state)
+                 (assoc-in [:icomplete :enabled?] new-state)
+                 (assoc-in [:icomplete :index] 0)
+                 (assoc-in [:icomplete :cached-completions] [])
+                 (assoc-in [:icomplete :last-input] nil)
+                 (cond-> new-state
+                   (assoc-in [:completion :styles] [:flex :basic :substring])))))
+    new-state))
+
+(defn- icomplete-normalize-candidate
+  "Convert candidate to string for matching, stripping keyword colon prefix."
+  [candidate]
+  (cond
+    (keyword? candidate) (name candidate)
+    (string? candidate) candidate
+    :else (str candidate)))
+
+(defn- icomplete-basic-match?
+  "Basic completion style - prefix matching."
+  [input candidate]
+  (let [candidate-str (icomplete-normalize-candidate candidate)]
+    (str/starts-with? (str/lower-case candidate-str) (str/lower-case input))))
+
+(defn- icomplete-substring-match?
+  "Substring completion style - match anywhere in string."
+  [input candidate]
+  (let [candidate-str (icomplete-normalize-candidate candidate)]
+    (str/includes? (str/lower-case candidate-str) (str/lower-case input))))
+
+(defn- icomplete-flex-match?
+  "Flex completion style - characters must appear in order."
+  [input candidate]
+  (let [candidate-str (icomplete-normalize-candidate candidate)
+        input-lower (str/lower-case input)
+        candidate-lower (str/lower-case candidate-str)]
+    (loop [i 0
+           c 0]
+      (cond
+        (>= i (count input-lower)) true
+        (>= c (count candidate-lower)) false
+        (= (nth input-lower i) (nth candidate-lower c))
+        (recur (inc i) (inc c))
+        :else
+        (recur i (inc c))))))
+
+(defn icomplete-get-completions
+  "Get filtered completions for input against all-completions.
+
+  Tries styles in order: basic (prefix), substring, flex.
+  Returns first style that produces results."
+  [input all-completions]
+  (if (str/blank? input)
+    []
+    (let [style-fns [icomplete-basic-match? icomplete-substring-match? icomplete-flex-match?]
+          matches (loop [fns style-fns]
+                    (if (empty? fns)
+                      []
+                      (let [style-fn (first fns)
+                            results (filter #(style-fn input %) all-completions)]
+                        (if (seq results)
+                          (vec results)
+                          (recur (rest fns))))))]
+      (vec (take 100 matches)))))
+
+(defn icomplete-forward!
+  "Cycle forward through icomplete candidates.
+
+  Gets completions from minibuffer, computes filtered list if needed,
+  and sets the minibuffer input to the next candidate.
+
+  Returns: nil"
+  []
+  (when (icomplete-enabled?)
+    (let [db @rfdb/app-db
+          frame (minibuffer/current-frame db)
+          input (or (:input frame) "")
+          all-completions (or (:completions frame) [])
+          cached-input (get-in db [:icomplete :last-input])
+          cached (get-in db [:icomplete :cached-completions] [])
+          completions (if (and (= input cached-input) (seq cached))
+                        cached
+                        (icomplete-get-completions input all-completions))
+          n (count completions)
+          index (get-in db [:icomplete :index] 0)]
+      (when (pos? n)
+        (let [new-index (mod (inc index) n)
+              selected (nth completions new-index)
+              selected-str (icomplete-normalize-candidate selected)]
+          (swap! rfdb/app-db
+                 (fn [db]
+                   (-> db
+                       (assoc-in [:icomplete :index] new-index)
+                       (assoc-in [:icomplete :cached-completions] completions)
+                       (assoc-in [:icomplete :last-input] input)
+                       (minibuffer/set-input selected-str))))))))
+  nil)
+
+(defn icomplete-backward!
+  "Cycle backward through icomplete candidates.
+
+  Gets completions from minibuffer, computes filtered list if needed,
+  and sets the minibuffer input to the previous candidate.
+
+  Returns: nil"
+  []
+  (when (icomplete-enabled?)
+    (let [db @rfdb/app-db
+          frame (minibuffer/current-frame db)
+          input (or (:input frame) "")
+          all-completions (or (:completions frame) [])
+          cached-input (get-in db [:icomplete :last-input])
+          cached (get-in db [:icomplete :cached-completions] [])
+          completions (if (and (= input cached-input) (seq cached))
+                        cached
+                        (icomplete-get-completions input all-completions))
+          n (count completions)
+          index (get-in db [:icomplete :index] 0)]
+      (when (pos? n)
+        (let [new-index (mod (+ index n -1) n)
+              selected (nth completions new-index)
+              selected-str (icomplete-normalize-candidate selected)]
+          (swap! rfdb/app-db
+                 (fn [db]
+                   (-> db
+                       (assoc-in [:icomplete :index] new-index)
+                       (assoc-in [:icomplete :cached-completions] completions)
+                       (assoc-in [:icomplete :last-input] input)
+                       (minibuffer/set-input selected-str))))))))
+  nil)
 
 ;; =============================================================================
 ;; Export for SCI
@@ -3917,18 +4561,33 @@
    'minibuffer-contents minibuffer-contents
    'minibuffer-completions minibuffer-completions
    'minibuffer-active-p minibuffer-active-p
+   ;; Phase 7: Vertico ecosystem minibuffer utilities
+   'minibuffer-prompt-end minibuffer-prompt-end
+   'minibuffer-contents-no-properties minibuffer-contents-no-properties
+   'minibuffer-prompt minibuffer-prompt
+   'minibuffer-selected-window minibuffer-selected-window
+   'active-minibuffer-window active-minibuffer-window
+   'minibuffer-depth minibuffer-depth
+   'delete-minibuffer-contents delete-minibuffer-contents
    ;; Completion (Issue #108)
    'all-completions all-completions
    'try-completion try-completion
    'test-completion test-completion
    'minibuffer-completion-table minibuffer-completion-table
+   'minibuffer-completion-predicate minibuffer-completion-predicate
    'completion-metadata-get completion-metadata-get
+   'completion-metadata completion-metadata
+   'completion-all-completions completion-all-completions
+   'completion-boundaries completion-boundaries
    'completing-read completing-read
    ;; Keymaps
    'global-set-key global-set-key
    'local-set-key local-set-key
    'define-key-for-mode define-key-for-mode
    'key-binding key-binding
+   ;; Transient keymaps (Phase 7: Embark support)
+   'set-transient-map set-transient-map
+   'exit-transient-map exit-transient-map
    ;; Commands
    'call-interactively call-interactively
    'commandp commandp
@@ -3937,6 +4596,12 @@
    'fboundp fboundp
    'boundp boundp
    'autoloadp autoloadp
+   ;; Symbol introspection (Phase 7: Marginalia support)
+   'documentation documentation
+   'where-is-internal where-is-internal
+   'help-function-arglist help-function-arglist
+   'symbol-file symbol-file
+   'describe-function describe-function
    ;; Autoload (#106)
    'autoload autoload
    ;; Messages
@@ -4029,5 +4694,6 @@
    ;; Event dispatch (for packages)
    'dispatch-event dispatch-event
    'dispatch-sync-event dispatch-sync-event
-   ;; Icomplete
-   'icomplete-enabled? icomplete-enabled?})
+   ;; Icomplete and fido
+   'icomplete-enabled? icomplete-enabled?
+   'fido-enabled? fido-enabled?})

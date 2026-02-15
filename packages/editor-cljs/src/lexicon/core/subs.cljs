@@ -686,15 +686,21 @@
    "Get the completion entry under the cursor, if any.
 
    Returns {:start N :end M :value 'completion'} or nil.
-   Issue #138: Used for span-based highlighting in *Completions* buffer."
-   (let [buffer-id (get-in db [:completion-help :buffer-id])
-         cursor-pos (get-in db [:ui :cursor-position] 0)
+   Issue #138: Used for span-based highlighting in *Completions* buffer.
+
+   IMPORTANT: Uses dedicated :selected-pos for completions navigation, NOT the
+   global :ui :cursor-position. This prevents incorrect highlighting when the
+   global cursor position (from previous buffer context) happens to fall within
+   a completion entry range."
+   (let [selected-pos (get-in db [:completion-help :selected-pos])
          entries (get-in db [:completion-help :entries] [])]
-     ;; Find entry that contains cursor position
-     (some (fn [{:keys [start end] :as entry}]
-             (when (and (<= start cursor-pos) (< cursor-pos end))
-               entry))
-           entries))))
+     ;; Only show highlighting when user has explicitly navigated (selected-pos is set)
+     (when selected-pos
+       ;; Find entry that contains selected position
+       (some (fn [{:keys [start end] :as entry}]
+               (when (and (<= start selected-pos) (< selected-pos end))
+                 entry))
+             entries)))))
 
 ;; -- Font-Lock Text Properties Subscriptions (Issue #130) --
 

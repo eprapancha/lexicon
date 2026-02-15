@@ -331,7 +331,8 @@
  :minibuffer/activate
  (fn [{:keys [db]} [_ config]]
    "Activate the minibuffer with given configuration (Phase 6.5 Week 3-4).
-   Now uses stack-based architecture to support recursive minibuffer and fix Issue #72."
+   Now uses stack-based architecture to support recursive minibuffer and fix Issue #72.
+   Runs minibuffer-setup-hook after activation (Phase 7: Vertico ecosystem support)."
    (let [already-active? (minibuffer/minibuffer-active? db)
          recursive-allowed? (:enable-recursive-minibuffers db)
          replace-mode? (:replace? config false)
@@ -344,20 +345,26 @@
        should-replace?
        {:db (-> db
                 (minibuffer/replace-current-frame config)
-                (assoc :cursor-owner :minibuffer))}
+                (assoc :cursor-owner :minibuffer))
+        :fx [[:dispatch [:hook/run :minibuffer-setup-hook {:config config}]]]}
        ;; Push new frame (normal activation or recursive)
        :else
        {:db (-> db
                 (minibuffer/push-frame config)
-                (assoc :cursor-owner :minibuffer))}))))
+                (assoc :cursor-owner :minibuffer))
+        :fx [[:dispatch [:hook/run :minibuffer-setup-hook {:config config}]]]}))))
 
 (rf/reg-event-fx
  :minibuffer/deactivate
  (fn [{:keys [db]} [_]]
    "Deactivate the minibuffer (Phase 6.5 Week 3-4).
    Pops current frame from stack. If stack becomes empty, restores cursor to window.
-   Also closes *Completions* buffer when fully deactivating (Emacs behavior)."
+   Also closes *Completions* buffer when fully deactivating (Emacs behavior).
+   Runs minibuffer-exit-hook before deactivation (Phase 7: Vertico ecosystem support)."
    (let [active-window-id (:active-window-id db)
+         ;; Capture current minibuffer state for hook context BEFORE popping
+         current-input (minibuffer/get-input db)
+         current-prompt (minibuffer/get-prompt db)
          db' (minibuffer/pop-frame db)
          still-active? (minibuffer/minibuffer-active? db')
          ;; Close *Completions* buffer when fully deactivating
@@ -368,7 +375,10 @@
             ;; If stack is now empty, restore cursor to active window
             (not still-active?)
             (assoc :cursor-owner active-window-id))
-      :fx (cond-> []
+      :fx (cond-> [[:dispatch [:hook/run :minibuffer-exit-hook
+                               {:input current-input
+                                :prompt current-prompt
+                                :fully-exited? (not still-active?)}]]]
             ;; Only focus editor if fully deactivated
             (not still-active?)
             (conj [:focus-editor]))})))
@@ -378,10 +388,12 @@
  (fn [{:keys [db]} [_ input-text]]
    "Update the minibuffer input text.
    Also resets cycling state when user types (not during arrow cycling).
-   For file completion, also updates completions based on new input."
+   For file completion, also updates completions based on new input.
+   When icomplete-mode is enabled, updates inline completion display."
    (let [on-change (minibuffer/get-on-change db)
          metadata (minibuffer/get-completion-metadata db)
-         category (:category metadata)]
+         category (:category metadata)
+         icomplete-enabled? (get-in db [:icomplete :enabled?])]
      (cond
        ;; Custom on-change handler exists (e.g., for isearch)
        ;; Still update the input in db, then notify the handler
@@ -391,7 +403,9 @@
                 (minibuffer/set-cycling? false)
                 (minibuffer/set-completion-index -1)
                 (minibuffer/set-original-input ""))
-        :fx [[:dispatch (conj on-change input-text)]]}
+        :fx (cond-> [[:dispatch (conj on-change input-text)]]
+              icomplete-enabled?
+              (conj [:dispatch [:icomplete/update-completions]]))}
 
        ;; File completion - update completions dynamically
        (= category :file)
@@ -400,7 +414,9 @@
                 (minibuffer/set-cycling? false)
                 (minibuffer/set-completion-index -1)
                 (minibuffer/set-original-input ""))
-        :fx [[:dispatch [:find-file/update-completions input-text]]]}
+        :fx (cond-> [[:dispatch [:find-file/update-completions input-text]]]
+              icomplete-enabled?
+              (conj [:dispatch [:icomplete/update-completions]]))}
 
        ;; Standard minibuffer - update input and reset cycling state
        :else
@@ -408,7 +424,9 @@
                 (minibuffer/set-input input-text)
                 (minibuffer/set-cycling? false)
                 (minibuffer/set-completion-index -1)
-                (minibuffer/set-original-input ""))}))))
+                (minibuffer/set-original-input ""))
+        :fx (when icomplete-enabled?
+              [[:dispatch [:icomplete/update-completions]]])}))))
 
 (rf/reg-event-fx
  :minibuffer/complete
@@ -620,16 +638,24 @@
                                 candidates)
            ;; Find max display length for alignment
            max-len (apply max (map count display-candidates))
-           ;; Column width = max length + padding
-           col-width (+ max-len 4)
-           ;; Window width (approximate - 80 chars typical)
-           window-width 80
-           ;; Calculate number of columns (at least 1)
-           num-cols (max 1 (int (/ window-width col-width)))
-           ;; Use single column if annotations or if items are very long
+           ;; Column width = max length + 2 spaces padding (per Emacs)
+           col-width (+ max-len 2)
+           ;; Get actual window width in characters (approx 8px per char, minus gutter)
+           ;; Use browser window width, estimate ~60px for gutter
+           window-width-px (or (and (exists? js/window) (.-innerWidth js/window)) 800)
+           char-width 8
+           gutter-width 60
+           available-px (- window-width-px gutter-width)
+           window-width-chars (max 40 (int (/ available-px char-width)))
+           ;; Emacs algorithm: columns = min(space-based-cols, items/2)
+           ;; At least 1 column, don't allocate more columns than we can fill
+           space-based-cols (max 1 (int (/ window-width-chars col-width)))
+           items-based-cols (max 1 (int (/ (count candidates) 2)))
+           num-cols (min space-based-cols items-based-cols)
+           ;; Use single column if annotations (they need full width)
            use-multi-col? (and (nil? annotation-fn) (> num-cols 1))
-           ;; Header line
-           header "Possible completions:\n"
+           ;; Header line with keybinding hints (Emacs-style)
+           header "Possible completions:\n[M-up/M-down: navigate, RET: select, q: quit]\n\n"
            header-len (count header)]
        (if use-multi-col?
          ;; Multi-column layout
@@ -857,15 +883,25 @@
    existing splits. This ensures *Completions* is always a single window at
    the bottom of the frame, not nested within other splits.
 
-   The bottom window has a fixed height of ~6 lines for *Completions*."
-  [db buffer-id]
+   Window height adapts to content (line-count parameter), capped at reasonable max."
+  [db buffer-id line-count]
   (let [window-tree (:window-tree db)
         new-window-id (db/next-window-id db)
-        ;; Create new window for completions with fixed height
-        ;; 6 lines * 20px line-height + 24px mode-line = ~144px
+        ;; Calculate adaptive height based on content
+        line-height 28
+        mode-line-height 24
+        max-lines 12  ; Don't exceed 12 lines
+        ;; Use at least 3 lines, at most max-lines
+        visible-lines (min max-lines (max 3 (or line-count 6)))
+        ;; Also cap at 40% of viewport height
+        viewport-height (or (and (exists? js/window) (.-innerHeight js/window)) 600)
+        max-height (int (* 0.4 viewport-height))
+        content-height (+ (* visible-lines line-height) mode-line-height)
+        final-height (min max-height content-height)
+        ;; Create new window with adaptive height
         new-window (-> (db/create-leaf-window new-window-id buffer-id)
-                       (assoc :viewport {:start-line 0 :end-line 6})
-                       (assoc :fixed-height 168))  ; 6 lines + mode-line + padding
+                       (assoc :viewport {:start-line 0 :end-line visible-lines})
+                       (assoc :fixed-height final-height))
         ;; Create split at ROOT level - entire existing tree goes on top
         split-id (inc new-window-id)
         new-tree {:type :hsplit
@@ -932,6 +968,8 @@
                             {}
                             entries)
            existing-window (find-completions-window db' buffer-id)
+           ;; Initialize selection to first entry (Emacs behavior: first completion pre-selected)
+           first-entry (first entries)
            db'' (-> db'
                     (assoc-in [:buffers buffer-id :cache :text] content)
                     (assoc-in [:buffers buffer-id :cache :line-count]
@@ -939,14 +977,19 @@
                     (assoc-in [:buffers buffer-id :text-properties] text-properties)
                     (assoc-in [:completion-help :candidates] (vec candidates))
                     (assoc-in [:completion-help :entries] entries)
-                    (assoc-in [:completion-help :buffer-id] buffer-id))]
-       (if existing-window
-         ;; *Completions* window exists, just update content (already done above)
-         {:db db''
-          :fx [[:dom/focus-minibuffer nil]]}
-         ;; Create bottom split for *Completions*
-         {:db (create-bottom-split-for-buffer db'' buffer-id)
-          :fx [[:dom/focus-minibuffer nil]]})))))
+                    (assoc-in [:completion-help :buffer-id] buffer-id)
+                    ;; Initialize selection to first completion (Emacs pre-selects first)
+                    (assoc-in [:completion-help :selected-pos] (when first-entry (:start first-entry)))
+                    ;; Update minibuffer with first completion value
+                    (cond-> first-entry (assoc-in [:minibuffer :input] (:value first-entry))))]
+       (let [line-count (count (clojure.string/split-lines content))]
+         (if existing-window
+           ;; *Completions* window exists, just update content (already done above)
+           {:db db''
+            :fx [[:dom/focus-minibuffer nil]]}
+           ;; Create bottom split for *Completions* with adaptive height
+           {:db (create-bottom-split-for-buffer db'' buffer-id line-count)
+            :fx [[:dom/focus-minibuffer nil]]}))))))
 
 (defn- delete-completions-window
   "Delete the *Completions* window from the window tree.
@@ -1075,54 +1118,102 @@
  (fn [{:keys [db]} [_]]
    "Choose the completion at or near point in *Completions* buffer.
 
-   Issue #138: Uses text properties to find completion value.
-   Looks for :completion--string property at cursor position.
+   Issue #138: Uses the selected-pos to find completion value.
+   When user has navigated with M-up/M-down or clicked, uses that position.
+   When no selection, tries to use minibuffer input as the completion.
    This works regardless of buffer layout (single-column, multi-column, etc.)."
    (let [buffer-id (get-in db [:completion-help :buffer-id])
          text-props (get-in db [:buffers buffer-id :text-properties] {})
-         ;; Get current cursor position (linear)
-         cursor-pos (get-in db [:ui :cursor-position] 0)
-         ;; Get completion value from text property
-         completion-value (text-props/get-text-property text-props cursor-pos :completion--string)]
+         ;; Use dedicated selected-pos for completions navigation
+         selected-pos (get-in db [:completion-help :selected-pos])
+         ;; Get completion value from text property at selected position
+         completion-value (when selected-pos
+                            (text-props/get-text-property text-props selected-pos :completion--string))]
      (if completion-value
        {:fx [[:dispatch [:completion-list/choose completion-value]]]}
-       ;; Try one position before (in case cursor is at end of completion)
-       (let [prev-value (when (> cursor-pos 0)
-                          (text-props/get-text-property text-props (dec cursor-pos) :completion--string))]
-         (if prev-value
-           {:fx [[:dispatch [:completion-list/choose prev-value]]]}
-           {:fx [[:dispatch [:echo/message "No completion at point"]]]}))))))
+       ;; No selection - try minibuffer input if it matches a completion
+       (let [mb-input (get-in db [:minibuffer :input] "")
+             candidates (get-in db [:completion-help :candidates] [])]
+         (if (some #(= % mb-input) candidates)
+           {:fx [[:dispatch [:completion-list/choose mb-input]]]}
+           {:fx [[:dispatch [:echo/message "No completion selected"]]]}))))))
+
+(defn- scroll-completions-viewport
+  "Update the *Completions* window viewport to show the target line.
+   Returns db with updated viewport if the line is outside current view."
+  [db target-line]
+  (let [window-id (get-in db [:completion-help :window-id])
+        update-fn (fn update-viewport-in-tree [tree]
+                    (cond
+                      (= (:type tree) :leaf)
+                      (if (= (:id tree) window-id)
+                        (let [viewport (or (:viewport tree) {:start-line 0 :end-line 6})
+                              {:keys [start-line end-line]} viewport
+                              visible-lines (- end-line start-line)]
+                          ;; Scroll if target is outside visible range
+                          (if (< target-line start-line)
+                            ;; Target above viewport - scroll up
+                            (assoc tree :viewport {:start-line target-line
+                                                   :end-line (+ target-line visible-lines)})
+                            (if (>= target-line end-line)
+                              ;; Target below viewport - scroll down
+                              ;; Put target line at bottom of viewport
+                              (let [new-end (inc target-line)
+                                    new-start (max 0 (- new-end visible-lines))]
+                                (assoc tree :viewport {:start-line new-start
+                                                       :end-line new-end}))
+                              ;; Target visible - no change
+                              tree)))
+                        tree)
+
+                      (or (= (:type tree) :hsplit) (= (:type tree) :vsplit))
+                      (assoc tree
+                             :first (update-viewport-in-tree (:first tree))
+                             :second (update-viewport-in-tree (:second tree)))
+
+                      :else tree))]
+    (if window-id
+      (assoc db :window-tree (update-fn (:window-tree db)))
+      db)))
+
+(defn- calculate-line-for-position
+  "Calculate which line number a position is on in the buffer content."
+  [content pos]
+  (if (or (nil? pos) (nil? content) (> pos (count content)))
+    0
+    (count (filter #(= % \newline) (subs content 0 pos)))))
 
 (rf/reg-event-db
  :completion-list/next-completion
  (fn [db [_]]
    "Move to next completion in *Completions* buffer.
 
-   Issue #138: Uses text properties for navigation.
-   Jumps to the start of the next completion entry (skips non-completion text).
-   Uses :mouse-face property to detect completion boundaries.
-
-   NOTE: Directly updates [:ui :cursor-position] because :update-cursor-position
-   uses the active buffer, but *Completions* navigation happens while focus is
-   on minibuffer (active buffer is NOT *Completions*)."
-   (let [buffer-id (get-in db [:completion-help :buffer-id])
-         text-props (get-in db [:buffers buffer-id :text-properties] {})
-         ;; Get current cursor position (linear)
-         cursor-pos (get-in db [:ui :cursor-position] 0)
-         ;; If cursor is on a completion, find end of current completion first
-         current-has-mouse-face? (text-props/get-text-property text-props cursor-pos :mouse-face)
-         pos-after-current (if current-has-mouse-face?
-                             ;; Find end of current completion
-                             (or (text-props/next-single-property-change text-props cursor-pos :mouse-face)
-                                 cursor-pos)
-                             cursor-pos)
-         ;; Now find start of next completion
-         next-start (text-props/next-single-property-change text-props pos-after-current :mouse-face)
-         ;; If no next, wrap to first
-         target-pos (or next-start
-                        (text-props/next-single-property-change text-props 0 :mouse-face))]
-     (if target-pos
-       (assoc-in db [:ui :cursor-position] target-pos)
+   Simplified navigation using entries array directly.
+   Wraps from last to first.
+   Also updates minibuffer input with the selected completion (Emacs behavior).
+   Scrolls viewport to keep selection visible."
+   (let [entries (get-in db [:completion-help :entries] [])
+         num-entries (count entries)
+         selected-pos (get-in db [:completion-help :selected-pos])
+         ;; Find current index by matching start position
+         current-idx (when selected-pos
+                       (first (keep-indexed
+                               (fn [i e] (when (= (:start e) selected-pos) i))
+                               entries)))
+         ;; Next with wrap
+         next-idx (cond
+                    (nil? current-idx) 0
+                    (>= (inc current-idx) num-entries) 0
+                    :else (inc current-idx))
+         target (when (pos? num-entries) (nth entries next-idx nil))]
+     (if target
+       (let [buffer-id (get-in db [:completion-help :buffer-id])
+             content (get-in db [:buffers buffer-id :cache :text] "")
+             target-line (calculate-line-for-position content (:start target))]
+         (-> db
+             (assoc-in [:completion-help :selected-pos] (:start target))
+             (assoc-in [:minibuffer :input] (:value target))
+             (scroll-completions-viewport target-line)))
        db))))
 
 (rf/reg-event-db
@@ -1130,67 +1221,63 @@
  (fn [db [_]]
    "Move to previous completion in *Completions* buffer.
 
-   Issue #138: Uses text properties for navigation.
-   Jumps to the start of the previous completion entry.
-   Uses :mouse-face property to detect completion boundaries.
-
-   NOTE: Directly updates [:ui :cursor-position] - see :completion-list/next-completion note."
-   (let [buffer-id (get-in db [:completion-help :buffer-id])
-         text-props (get-in db [:buffers buffer-id :text-properties] {})
-         cursor-pos (get-in db [:ui :cursor-position] 0)
-         current-has-mouse-face? (text-props/get-text-property text-props cursor-pos :mouse-face)
-         start-of-current (when current-has-mouse-face?
-                            (or (text-props/previous-single-property-change text-props cursor-pos :mouse-face)
-                                0))
-         search-from (if (and start-of-current (= start-of-current cursor-pos))
-                       (dec cursor-pos)
-                       (if current-has-mouse-face?
-                         start-of-current
-                         cursor-pos))
-         prev-boundary (when (> search-from 0)
-                         (text-props/previous-single-property-change text-props search-from :mouse-face))
-         target-pos (cond
-                      ;; Found a boundary
-                      prev-boundary
-                      (let [has-mouse-face-at-prev? (text-props/get-text-property text-props prev-boundary :mouse-face)]
-                        (if has-mouse-face-at-prev?
-                          (or (text-props/previous-single-property-change text-props prev-boundary :mouse-face)
-                              prev-boundary)
-                          (when (> prev-boundary 0)
-                            (let [pos-before (dec prev-boundary)]
-                              (when (text-props/get-text-property text-props pos-before :mouse-face)
-                                (or (text-props/previous-single-property-change text-props pos-before :mouse-face)
-                                    prev-boundary))))))
-                      ;; No previous - wrap to last
-                      :else
-                      (let [entries (get-in db [:completion-help :entries] [])
-                            last-entry (last entries)]
-                        (:start last-entry)))]
-     (if target-pos
-       (assoc-in db [:ui :cursor-position] target-pos)
+   Simplified navigation using entries array directly.
+   Wraps from first to last.
+   Also updates minibuffer input with the selected completion (Emacs behavior).
+   Scrolls viewport to keep selection visible."
+   (let [entries (get-in db [:completion-help :entries] [])
+         num-entries (count entries)
+         selected-pos (get-in db [:completion-help :selected-pos])
+         ;; Find current index by matching start position
+         current-idx (when selected-pos
+                       (first (keep-indexed
+                               (fn [i e] (when (= (:start e) selected-pos) i))
+                               entries)))
+         ;; Previous with wrap
+         prev-idx (cond
+                    (nil? current-idx) (dec num-entries)
+                    (<= current-idx 0) (dec num-entries)
+                    :else (dec current-idx))
+         target (when (and (pos? num-entries) (>= prev-idx 0))
+                  (nth entries prev-idx nil))]
+     (if target
+       (let [buffer-id (get-in db [:completion-help :buffer-id])
+             content (get-in db [:buffers buffer-id :cache :text] "")
+             target-line (calculate-line-for-position content (:start target))]
+         (-> db
+             (assoc-in [:completion-help :selected-pos] (:start target))
+             (assoc-in [:minibuffer :input] (:value target))
+             (scroll-completions-viewport target-line)))
        db))))
 
-(rf/reg-event-fx
+(rf/reg-event-db
  :completion-list/first-completion
- (fn [{:keys [db]} [_]]
+ (fn [db [_]]
    "Jump to first completion in *Completions* buffer.
    Issue #138: Called when first entering the buffer to skip informational text."
    (let [buffer-id (get-in db [:completion-help :buffer-id])
          text-props (get-in db [:buffers buffer-id :text-properties] {})
          first-pos (text-props/next-single-property-change text-props 0 :mouse-face)]
      (if first-pos
-       {:fx [[:dispatch [:update-cursor-position first-pos]]]}
-       {:db db}))))
+       (let [completion-str (text-props/get-text-property text-props first-pos :completion--string)]
+         (cond-> (assoc-in db [:completion-help :selected-pos] first-pos)
+           completion-str (assoc-in [:minibuffer :input] completion-str)))
+       db))))
 
-(rf/reg-event-fx
+(rf/reg-event-db
  :completion-list/last-completion
- (fn [{:keys [db]} [_]]
+ (fn [db [_]]
    "Jump to last completion in *Completions* buffer."
    (let [entries (get-in db [:completion-help :entries] [])
+         buffer-id (get-in db [:completion-help :buffer-id])
+         text-props (get-in db [:buffers buffer-id :text-properties] {})
          last-entry (last entries)]
      (if last-entry
-       {:fx [[:dispatch [:update-cursor-position (:start last-entry)]]]}
-       {:db db}))))
+       (let [target-pos (:start last-entry)
+             completion-str (text-props/get-text-property text-props target-pos :completion--string)]
+         (cond-> (assoc-in db [:completion-help :selected-pos] target-pos)
+           completion-str (assoc-in [:minibuffer :input] completion-str)))
+       db))))
 
 (rf/reg-event-fx
  :completion-list/click-line
@@ -1213,20 +1300,33 @@
  (fn [{:keys [db]} [_ linear-pos]]
    "Handle click at a position in *Completions* buffer.
    Uses text properties to find the completion at the clicked position.
+
+   Emacs behavior: clicking highlights the completion and populates minibuffer,
+   but does NOT immediately select. User must press RET to confirm.
    Issue #137: Clickable completion entries with text property support."
    (let [buffer-id (get-in db [:completion-help :buffer-id])
          text-props (get-in db [:buffers buffer-id :text-properties] {})
-         ;; Get completion value from text property at clicked position
-         completion-value (text-props/get-text-property text-props linear-pos :completion--string)]
-     (if completion-value
-       {:fx [[:dispatch [:completion-list/choose completion-value]]]}
-       ;; Try one position before (in case click was at end of completion)
-       (let [prev-value (when (> linear-pos 0)
-                          (text-props/get-text-property text-props (dec linear-pos) :completion--string))]
-         (if prev-value
-           {:fx [[:dispatch [:completion-list/choose prev-value]]]}
-           ;; Clicked on non-completion area (header, etc.)
-           {:db db}))))))
+         entries (get-in db [:completion-help :entries] [])
+         ;; Find entry that contains the clicked position
+         clicked-entry (some (fn [{:keys [start end] :as entry}]
+                               (when (and (<= start linear-pos) (< linear-pos end))
+                                 entry))
+                             entries)
+         ;; Also try one position before (in case click was at end of completion)
+         clicked-entry (or clicked-entry
+                           (when (> linear-pos 0)
+                             (some (fn [{:keys [start end] :as entry}]
+                                     (when (and (<= start (dec linear-pos)) (< (dec linear-pos) end))
+                                       entry))
+                                   entries)))]
+     (if clicked-entry
+       ;; Highlight the clicked completion and populate minibuffer (Emacs behavior)
+       {:db (-> db
+                (assoc-in [:completion-help :selected-pos] (:start clicked-entry))
+                (assoc-in [:minibuffer :input] (:value clicked-entry)))
+        :fx [[:dom/focus-minibuffer nil]]}
+       ;; Clicked on non-completion area (header, etc.)
+       {:db db}))))
 
 ;; =============================================================================
 ;; Echo Area Events

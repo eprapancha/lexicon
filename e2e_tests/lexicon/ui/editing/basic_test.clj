@@ -506,7 +506,7 @@
       (is minibuffer-visible "Minibuffer should be visible"))
 
     ;; Type new buffer name and press Enter in minibuffer
-    (e/fill h/*driver* {:css ".minibuffer-input"} "test-buffer")
+    (h/type-in-minibuffer "test-buffer")
     (Thread/sleep 20)
     (h/press-minibuffer-enter)
     (Thread/sleep 200)  ; Wait for buffer switch and DOM update
@@ -718,8 +718,7 @@
       (is minibuffer-visible "Minibuffer should be visible for M-x"))
 
     ;; Type command in minibuffer and press Enter
-    (e/fill h/*driver* {:css ".minibuffer-input"} "text-mode")
-    (Thread/sleep 20)
+    (h/type-in-minibuffer "text-mode")
     (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
@@ -956,14 +955,12 @@
     (Thread/sleep 50)
 
     ;; Type search string
-    (e/fill h/*driver* {:css ".minibuffer-input"} "foo")
-    (Thread/sleep 20)
+    (h/type-in-minibuffer "foo")
     (h/press-minibuffer-enter)
     (Thread/sleep 50)
 
     ;; Type replacement string
-    (e/fill h/*driver* {:css ".minibuffer-input"} "FOO")
-    (Thread/sleep 20)
+    (h/type-in-minibuffer "FOO")
     (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
@@ -1026,12 +1023,10 @@
     ;; Start query-replace for nonexistent string
     (h/press-meta "%")
     (Thread/sleep 50)
-    (e/fill h/*driver* {:css ".minibuffer-input"} "xyz")
-    (Thread/sleep 20)
+    (h/type-in-minibuffer "xyz")
     (h/press-minibuffer-enter)
     (Thread/sleep 50)
-    (e/fill h/*driver* {:css ".minibuffer-input"} "ABC")
-    (Thread/sleep 20)
+    (h/type-in-minibuffer "ABC")
     (h/press-minibuffer-enter)
     (Thread/sleep 100)
 
