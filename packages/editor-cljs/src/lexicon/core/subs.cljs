@@ -721,6 +721,14 @@
    (get text-props :face [])))
 
 (rf/reg-sub
+ ::window-invisible-intervals
+ (fn [[_ window-id]]
+   (rf/subscribe [::window-text-properties window-id]))
+ (fn [text-props _]
+   "Get invisible intervals from text properties for hiding text"
+   (get text-props 'invisible [])))
+
+(rf/reg-sub
  ::window-font-lock-enabled?
  (fn [[_ window-id]]
    (rf/subscribe [::window-buffer window-id]))

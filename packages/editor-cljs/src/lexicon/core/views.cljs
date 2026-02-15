@@ -204,6 +204,50 @@
   [theme face-keyword]
   (faces/get-face-foreground theme face-keyword))
 
+(defn filter-invisible-from-line
+  "Remove invisible text from a line based on invisible-intervals.
+
+   Args:
+     line-text - The text of the line
+     line-start-pos - The absolute character position where this line starts
+     invisible-intervals - Vector of {:start :end :value} intervals where value is truthy
+
+   Returns:
+     String with invisible portions removed."
+  [line-text line-start-pos invisible-intervals]
+  (if (empty? invisible-intervals)
+    line-text
+    (let [line-end-pos (+ line-start-pos (count line-text))
+          ;; Find invisible intervals that overlap with this line
+          overlapping (filter (fn [{:keys [start end value]}]
+                                (and value  ; Must have truthy value
+                                     (< start line-end-pos)
+                                     (> end line-start-pos)))
+                              invisible-intervals)]
+      (if (empty? overlapping)
+        line-text
+        ;; Build visible text by excluding invisible ranges
+        (let [;; Convert to line-relative positions and clamp
+              invisible-ranges (for [{:keys [start end]} overlapping]
+                                 [(max 0 (- start line-start-pos))
+                                  (min (count line-text) (- end line-start-pos))])
+              ;; Sort by start position
+              sorted-ranges (sort-by first invisible-ranges)
+              ;; Build visible segments
+              visible-segments (loop [pos 0
+                                      ranges sorted-ranges
+                                      segments []]
+                                 (if (empty? ranges)
+                                   (if (< pos (count line-text))
+                                     (conj segments (subs line-text pos))
+                                     segments)
+                                   (let [[inv-start inv-end] (first ranges)]
+                                     (if (< pos inv-start)
+                                       (recur inv-end (rest ranges)
+                                              (conj segments (subs line-text pos inv-start)))
+                                       (recur (max pos inv-end) (rest ranges) segments)))))]
+          (apply str visible-segments))))))
+
 (defn apply-font-lock-to-line
   "Apply font-lock face colors to a line of text.
 
@@ -705,6 +749,8 @@
           ;; Issue #130: Font-lock syntax highlighting
           face-intervals @(rf/subscribe [:lexicon.core.subs/window-face-intervals window-id])
           font-lock-enabled? @(rf/subscribe [:lexicon.core.subs/window-font-lock-enabled? window-id])
+          ;; Issue #262: Invisible text property
+          invisible-intervals @(rf/subscribe [:lexicon.core.subs/window-invisible-intervals window-id])
           current-theme @(rf/subscribe [:current-theme])
           region-active? (not (nil? mark-position))
           region-decorations (when region-active?
@@ -821,9 +867,10 @@
               cursor-in-viewport? (and current-line
                                        (>= current-line viewport-start)
                                        (<= current-line viewport-end))
-              ;; Issue #130: Calculate line start positions for font-lock
+              ;; Issue #130, #262: Calculate line start positions for font-lock and invisible text
               ;; Pre-compute cumulative character positions for each line
-              line-start-positions (when (and font-lock-enabled? (seq face-intervals))
+              line-start-positions (when (or (and font-lock-enabled? (seq face-intervals))
+                                             (seq invisible-intervals))
                                      (loop [positions [0]
                                             line-idx 0]
                                        (if (>= line-idx (count all-buffer-lines))
@@ -860,7 +907,11 @@
                                  line)
                   ;; Issue #130: Get line start position for font-lock
                   line-start-pos (when line-start-positions
-                                   (get line-start-positions line-number 0))]
+                                   (get line-start-positions line-number 0))
+                  ;; Issue #262: Filter invisible text from display
+                  display-line (if (and (seq invisible-intervals) line-start-pos)
+                                 (filter-invisible-from-line display-line line-start-pos invisible-intervals)
+                                 display-line)]
               ^{:key (str window-id "-" line-number)}  ;; Unique key per window to avoid React key collisions
               [:div.text-line
                {:class (when is-completion-entry? "completion-entry")
