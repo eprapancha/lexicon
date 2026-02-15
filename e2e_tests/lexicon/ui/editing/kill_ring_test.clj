@@ -271,3 +271,49 @@
       (is (or (= "Line One\n" kill)
               (= "Line One" kill))
           "Consecutive kills may append"))))
+
+;; =============================================================================
+;; Global Kill Ring (Merged from kill_ring_semantics_test.clj)
+;; =============================================================================
+
+(deftest test-kill-ring-is-global
+  (testing "Emacs invariant: Kill ring is global across buffers"
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    ;; Type text in scratch buffer
+    (h/type-text "killed-text")
+    (Thread/sleep 50)
+
+    ;; Select all and kill (C-a, C-SPC, C-e, kill-region)
+    (h/press-ctrl "a")
+    (Thread/sleep 20)
+    (h/set-mark)
+    (Thread/sleep 20)
+    (h/press-ctrl "e")
+    (Thread/sleep 20)
+    ;; C-w is blocked by browser (close tab shortcut), use M-x
+    (h/execute-command "kill-region")
+
+    ;; Buffer should be empty after kill
+    (let [text-after-kill (h/get-buffer-text*)]
+      (is (or (empty? text-after-kill)
+              (not (.contains text-after-kill "killed-text")))
+          "Text should be killed from buffer"))
+
+    ;; Switch to new buffer (C-x b)
+    (h/press-ctrl-x "b")
+    (Thread/sleep 100)
+
+    (h/type-in-minibuffer "new-buffer")
+    (h/press-minibuffer-enter)
+    (Thread/sleep 100)
+
+    ;; Yank in new buffer (C-y)
+    (h/press-ctrl "y")
+    (Thread/sleep 100)
+
+    ;; Yanked text should appear in new buffer
+    (let [text-in-new-buffer (h/get-buffer-text*)]
+      (is (.contains text-in-new-buffer "killed-text")
+          (str "Killed text from buffer A should yank into buffer B, got: " text-in-new-buffer)))))

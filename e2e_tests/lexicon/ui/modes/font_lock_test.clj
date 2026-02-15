@@ -44,47 +44,9 @@
         "User can type code with keywords")))
 
 ;; =============================================================================
-;; Font Lock Mode Activation - PENDING E2E Implementation
+;; Font Lock API Tests
+;;
+;; NOTE: Font-lock APIs (font-lock-mode, font-lock-keywords, faces, which-func)
+;; are Lisp functions. E2E tests focus on user-visible typing behavior.
+;; API-specific tests belong in lexicon.lisp namespace when implemented.
 ;; =============================================================================
-
-(deftest ^:skip test-font-lock-mode-activation
-  (testing "font-lock-mode can be enabled"
-    ;; font-lock-mode is a Lisp function
-    (is true "PENDING: font-lock-mode - needs E2E implementation")))
-
-;; =============================================================================
-;; Font Lock Keywords - PENDING E2E Implementation
-;; =============================================================================
-
-(deftest ^:skip test-font-lock-keywords
-  (testing "font-lock-keywords list is accessible"
-    ;; font-lock-keywords is a Lisp variable
-    (is true "PENDING: font-lock-keywords - needs E2E implementation")))
-
-(deftest ^:skip test-font-lock-add-keywords
-  (testing "font-lock-add-keywords extends rules"
-    ;; font-lock-add-keywords is a Lisp function
-    (is true "PENDING: font-lock-add-keywords - needs E2E implementation")))
-
-;; =============================================================================
-;; Font Lock Faces - PENDING E2E Implementation
-;; =============================================================================
-
-(deftest ^:skip test-font-lock-faces
-  (testing "font-lock faces are defined"
-    ;; face-attribute is a Lisp function
-    (is true "PENDING: font-lock faces - needs E2E implementation")))
-
-;; =============================================================================
-;; Which Function Mode - PENDING E2E Implementation
-;; =============================================================================
-
-(deftest ^:skip test-which-function-mode
-  (testing "which-function returns function name"
-    ;; which-function is a Lisp function
-    (is true "PENDING: which-function - needs E2E implementation")))
-
-(deftest ^:skip test-which-func-mode-line
-  (testing "which-func-mode shows in mode line"
-    ;; which-func-mode is a Lisp function
-    (is true "PENDING: which-func-mode - needs E2E implementation")))

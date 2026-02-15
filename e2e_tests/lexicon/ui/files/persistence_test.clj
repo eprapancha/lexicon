@@ -31,28 +31,9 @@
         "Cursor should be at beginning")))
 
 ;; =============================================================================
-;; Recentf - PENDING E2E Implementation
+;; Persistence Feature Tests
+;;
+;; NOTE: recentf, saveplace, and auto-revert are Lisp features. E2E tests
+;; focus on user-visible cursor position behavior. API-specific tests belong
+;; in lexicon.lisp namespace when implemented.
 ;; =============================================================================
-
-(deftest ^:skip test-recentf-tracking
-  (testing "file added to recent list"
-    ;; recentf is a Lisp feature
-    (is true "PENDING: recentf - needs E2E implementation")))
-
-;; =============================================================================
-;; Saveplace - PENDING E2E Implementation
-;; =============================================================================
-
-(deftest ^:skip test-saveplace-restore
-  (testing "position saved and restored"
-    ;; saveplace is a Lisp feature
-    (is true "PENDING: saveplace - needs E2E implementation")))
-
-;; =============================================================================
-;; Auto-Revert - PENDING E2E Implementation
-;; =============================================================================
-
-(deftest ^:skip test-auto-revert-on-change
-  (testing "auto-revert detects change"
-    ;; auto-revert is a Lisp feature
-    (is true "PENDING: auto-revert - needs E2E implementation")))

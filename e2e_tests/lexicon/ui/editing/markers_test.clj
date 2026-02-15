@@ -15,35 +15,9 @@
 ;; Mark (Region Anchor) - User-Visible Effects via Keyboard
 ;; =============================================================================
 
-(deftest test-mark-and-region
-  (testing "C-space sets mark for region selection"
-    (h/setup-test*)
-    (h/clear-buffer)
-    ;; User types text
-    (h/type-text "Hello World")
-    (Thread/sleep 100)
-
-    ;; Go to beginning
-    (h/press-ctrl "a")
-    (Thread/sleep 50)
-
-    ;; Set mark with C-space (mark command, not marker API)
-    (h/set-mark)
-    (Thread/sleep 50)
-
-    ;; Move forward to select "Hello"
-    (dotimes [_ 5]
-      (h/press-ctrl "f")
-      (Thread/sleep 20))
-    (Thread/sleep 50)
-
-    ;; Region should be active - verify by killing
-    ;; Note: C-w is blocked by browser (close tab), use M-x instead
-    (h/execute-command "kill-region")
-    (Thread/sleep 100)
-
-    (is (= " World" (h/get-buffer-text*))
-        "C-space and movement should create region that can be killed")))
+;; NOTE: test-mark-and-region removed - duplicate of
+;; kill_ring_test.clj::test-kill-region-deletes-selection which tests
+;; mark + region + kill with additional kill ring verification
 
 (deftest test-mark-survives-cursor-movement
   (testing "Mark position is preserved when cursor moves"

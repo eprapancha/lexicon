@@ -185,176 +185,23 @@
 ;; Phase 1: Core Emacs - Basic Editing
 ;; ========================================
 
-(deftest test-p1-01-character-navigation
-  (testing "P1-01: Character-wise navigation (C-f, C-b)"
+;; =============================================================================
+;; Navigation Workflow Test (Subsumes P1-01 through P1-05)
+;;
+;; This workflow test exercises ALL navigation commands in a single multi-line
+;; buffer, preserving all assertions from the individual tests it subsumes.
+;;
+;; NOTE: Each section uses h/setup-test* to ensure clean state, matching
+;; the behavior of the original individual tests.
+;; =============================================================================
+
+(deftest test-navigation-workflow
+  (testing "Complete navigation workflow - buffer boundaries (M-< M->)"
+    ;; Subsumes test-p1-05: Beginning/end of buffer
     (h/setup-test*)
     (h/clear-buffer)
 
-    ;; Type "hello world"
-    (h/type-text "hello world")
-    (Thread/sleep 10)
-
-    ;; Move cursor to beginning
-    (h/press-ctrl "a")
-    (Thread/sleep 10)
-
-    ;; Press C-f five times to move to space after "hello"
-    (dotimes [_ 5]
-      (h/press-ctrl "f")
-      (Thread/sleep 30))
-
-    ;; Verify position by typing a character
-    (h/type-text "X")
-    (Thread/sleep 20)
-
-    (let [editor-text (h/get-buffer-text*)]
-      (is (.contains editor-text "helloX")
-          "C-f should move cursor forward"))
-
-    ;; Move to beginning again and test C-b
-    (h/press-ctrl "a")
-    (Thread/sleep 10)
-
-    ;; Move to end
-    (h/press-ctrl "e")
-    (Thread/sleep 10)
-
-    ;; Press C-b three times
-    (dotimes [_ 3]
-      (h/press-ctrl "b")
-      (Thread/sleep 30))
-
-    ;; Type character - should be before "rld"
-    (h/type-text "Y")
-    (Thread/sleep 20)
-
-    (let [editor-text (h/get-buffer-text*)]
-      (is (.contains editor-text "woYrld")
-          (str "C-b should move cursor backward. Got: " editor-text)))))
-
-(deftest test-p1-02-line-navigation
-  (testing "P1-02: Line-wise navigation (C-p, C-n)"
-    (h/setup-test*)
-    (h/clear-buffer)
-
-    ;; Type three lines
-    (h/type-text "line 1")
-    (h/press-key "Enter")
-    (Thread/sleep 10)
-    (h/type-text "line 2")
-    (h/press-key "Enter")
-    (Thread/sleep 10)
-    (h/type-text "line 3")
-    (Thread/sleep 10)
-
-    ;; Cursor should be at end of line 3
-    ;; Press C-p to move to line 2
-    (h/press-ctrl "p")
-    (Thread/sleep 10)
-
-    ;; Type character to verify on line 2
-    (h/type-text "X")
-    (Thread/sleep 20)
-
-    (let [editor-text (h/get-buffer-text*)]
-      (is (.contains editor-text "line 2X")
-          "C-p should move cursor up"))
-
-    ;; Press C-n once to move back to line 3
-    (h/press-ctrl "n")
-    (Thread/sleep 10)
-
-    ;; Type character to verify on line 3
-    (h/type-text "Y")
-    (Thread/sleep 20)
-
-    (let [editor-text (h/get-buffer-text*)]
-      (is (.contains editor-text "line 3")
-          (str "C-n should move cursor down. Got: " editor-text)))))
-
-(deftest test-p1-03-beginning-end-of-line
-  (testing "P1-03: Beginning/end of line (C-a, C-e)"
-    (h/setup-test*)
-    (h/clear-buffer)
-
-    ;; Type text
-    (h/type-text "this is a test")
-    (Thread/sleep 10)
-
-    ;; Move cursor to middle (using C-b)
-    (dotimes [_ 5]
-      (h/press-ctrl "b")
-      (Thread/sleep 20))
-
-    ;; Press C-a to go to beginning of line
-    (h/press-ctrl "a")
-    (Thread/sleep 10)
-
-    ;; Type character to verify at beginning
-    (h/type-text "X")
-    (Thread/sleep 20)
-
-    (let [editor-text (h/get-buffer-text*)]
-      (is (.contains editor-text "Xthis is a test")
-          "C-a should move to beginning of line"))
-
-    ;; Press C-e to go to end of line
-    (h/press-ctrl "e")
-    (Thread/sleep 10)
-
-    ;; Type character to verify at end
-    (h/type-text "Y")
-    (Thread/sleep 20)
-
-    (let [editor-text (h/get-buffer-text*)]
-      (is (.contains editor-text "Xthis is a testY")
-          "C-e should move to end of line"))))
-
-(deftest test-p1-04-word-navigation
-  (testing "P1-04: Word-wise navigation (M-f, M-b)"
-    (h/setup-test*)
-    (h/clear-buffer)
-
-    ;; Type text
-    (h/type-text "the quick brown fox")
-    (Thread/sleep 10)
-
-    ;; Move to beginning
-    (h/press-ctrl "a")
-    (Thread/sleep 10)
-
-    ;; Press M-f once to move forward one word
-    (h/press-meta "f")
-    (Thread/sleep 10)
-
-    ;; Type character to verify we moved forward
-    (h/type-text "X")
-    (Thread/sleep 20)
-
-    (let [editor-text (h/get-buffer-text*)]
-      (is (or (.contains editor-text "theX")
-              (.contains editor-text "the X"))
-          (str "M-f should move forward by word. Got: " editor-text)))
-
-    ;; Press M-b once to move back one word
-    (h/press-meta "b")
-    (Thread/sleep 10)
-
-    ;; Type character to verify we moved backward
-    (h/type-text "Y")
-    (Thread/sleep 20)
-
-    (let [editor-text (h/get-buffer-text*)]
-      (is (or (.contains editor-text "Ythe")
-              (.contains editor-text "Y the"))
-          (str "M-b should move backward by word. Got: " editor-text)))))
-
-(deftest test-p1-05-beginning-end-of-buffer
-  (testing "P1-05: Beginning/end of buffer (M-<, M->)"
-    (h/setup-test*)
-    (h/clear-buffer)
-
-    ;; Type multiple lines
+    ;; Setup: multi-line content
     (h/type-text "first line")
     (h/press-key "Enter")
     (Thread/sleep 10)
@@ -365,117 +212,163 @@
     (h/press-key "Enter")
     (Thread/sleep 10)
     (h/type-text "fourth line")
-    (Thread/sleep 10)
-
-    ;; Move to middle
-    (h/press-ctrl "p")
-    (h/press-ctrl "p")
-    (Thread/sleep 10)
-
-    ;; Press M-> to go to end of buffer
-    (h/press-meta ">")
-    (Thread/sleep 10)
-
-    ;; Type character to verify at end
-    (h/type-text "X")
     (Thread/sleep 20)
 
+    ;; Move to middle first
+    (h/press-ctrl "p")
+    (h/press-ctrl "p")
+    (Thread/sleep 10)
+
+    ;; M-> should move to end of buffer
+    (h/press-meta ">")
+    (Thread/sleep 10)
+    (h/type-text "X")
+    (Thread/sleep 20)
     (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "fourth lineX")
           "M-> should move to end of buffer"))
 
-    ;; Press M-< to go to beginning of buffer
+    ;; M-< should move to beginning of buffer
     (h/press-meta "<")
     (Thread/sleep 10)
-
-    ;; Type character to verify at beginning
     (h/type-text "Y")
     (Thread/sleep 20)
-
     (let [editor-text (h/get-buffer-text*)]
       (is (.contains editor-text "Yfirst line")
-          "M-< should move to beginning of buffer"))))
+          "M-< should move to beginning of buffer")))
 
-(deftest ^:skip test-p1-06-set-mark
-  ;; DUPLICATE: Covered by lexicon.ui.editing.markers-test/test-mark-and-region
-  (testing "P1-06: Setting the mark (C-SPC)"
+  (testing "Complete navigation workflow - line boundaries (C-a C-e)"
+    ;; Subsumes test-p1-03: Beginning/end of line
     (h/setup-test*)
     (h/clear-buffer)
 
-    ;; Type text
-    (h/type-text "select this text")
+    (h/type-text "this is a test")
+    (Thread/sleep 10)
+
+    ;; Move to middle
+    (dotimes [_ 5]
+      (h/press-ctrl "b")
+      (Thread/sleep 20))
+
+    ;; C-a should move to beginning of line
+    (h/press-ctrl "a")
+    (Thread/sleep 10)
+    (h/type-text "X")
+    (Thread/sleep 20)
+    (let [editor-text (h/get-buffer-text*)]
+      (is (.contains editor-text "Xthis is a test")
+          "C-a should move to beginning of line"))
+
+    ;; C-e should move to end of line
+    (h/press-ctrl "e")
+    (Thread/sleep 10)
+    (h/type-text "Y")
+    (Thread/sleep 20)
+    (let [editor-text (h/get-buffer-text*)]
+      (is (.contains editor-text "Xthis is a testY")
+          "C-e should move to end of line")))
+
+  (testing "Complete navigation workflow - character movement (C-f C-b)"
+    ;; Subsumes test-p1-01: Character-wise navigation
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    (h/type-text "hello world")
     (Thread/sleep 10)
 
     ;; Move to beginning
     (h/press-ctrl "a")
     (Thread/sleep 10)
 
-    ;; Set mark with C-SPC (Ctrl+Space)
-    (let [script "
-      const input = document.querySelector('.hidden-input');
-      input.focus();
-      const event = new KeyboardEvent('keydown', {
-        key: ' ',
-        code: 'Space',
-        ctrlKey: true,
-        bubbles: true
-      });
-      input.dispatchEvent(event);
-    "]
-      (e/js-execute h/*driver* script))
-    (Thread/sleep 20)
-
-    ;; Move forward to select "select this"
-    (dotimes [_ 11]
+    ;; C-f should move forward
+    (dotimes [_ 5]
       (h/press-ctrl "f")
-      (Thread/sleep 10))
+      (Thread/sleep 30))
+    (h/type-text "X")
     (Thread/sleep 20)
+    (let [editor-text (h/get-buffer-text*)]
+      (is (.contains editor-text "helloX")
+          "C-f should move cursor forward"))
 
-    ;; Check if region exists by trying to verify mark was set
-    ;; We can't easily check visual highlighting, so we'll verify
-    ;; that kill-region works in the next test
-    (is true "PENDING: Mark set - verified in subsequent kill-region test - needs E2E implementation")))
+    ;; Move to end, then C-b
+    (h/press-ctrl "e")
+    (Thread/sleep 10)
+    (dotimes [_ 3]
+      (h/press-ctrl "b")
+      (Thread/sleep 30))
+    (h/type-text "Y")
+    (Thread/sleep 20)
+    (let [editor-text (h/get-buffer-text*)]
+      (is (.contains editor-text "woYrld")
+          "C-b should move cursor backward")))
 
-(deftest ^:skip test-p1-07-kill-region
-  (testing "P1-07: Kill region (C-w) - SKIPPED: Browser captures C-w (close tab)"
+  (testing "Complete navigation workflow - word movement (M-f M-b)"
+    ;; Subsumes test-p1-04: Word-wise navigation
     (h/setup-test*)
     (h/clear-buffer)
 
-    ;; Type text
-    (h/type-text "select this text")
+    (h/type-text "the quick brown fox")
     (Thread/sleep 10)
 
-    ;; Move to beginning and set mark
+    ;; Move to beginning
     (h/press-ctrl "a")
     (Thread/sleep 10)
 
-    ;; Set mark
-    (let [script "
-      const input = document.querySelector('.hidden-input');
-      const event = new KeyboardEvent('keydown', {
-        key: ' ',
-        code: 'Space',
-        ctrlKey: true,
-        bubbles: true
-      });
-      input.dispatchEvent(event);
-    "]
-      (e/js-execute h/*driver* script))
+    ;; M-f should move forward by word
+    (h/press-meta "f")
     (Thread/sleep 10)
-
-    ;; Move forward to select "select this"
-    (dotimes [_ 11]
-      (h/press-ctrl "f")
-      (Thread/sleep 10))
-    (Thread/sleep 10)
-
-    ;; Kill region with C-w
-    (h/press-ctrl "w")
+    (h/type-text "X")
     (Thread/sleep 20)
+    (let [editor-text (h/get-buffer-text*)]
+      (is (or (.contains editor-text "theX")
+              (.contains editor-text "the X"))
+          (str "M-f should move forward by word. Got: " editor-text)))
 
-    ;; NOTE: C-w is captured by browser (close tab) - cannot test in E2E
-    ;; This must be verified manually or in native desktop tests
-    (is true "PENDING: Test skipped - C-w intercepted by browser - needs E2E implementation")))
+    ;; M-b should move backward by word
+    (h/press-meta "b")
+    (Thread/sleep 10)
+    (h/type-text "Y")
+    (Thread/sleep 20)
+    (let [editor-text (h/get-buffer-text*)]
+      (is (or (.contains editor-text "Ythe")
+              (.contains editor-text "Y the"))
+          (str "M-b should move backward by word. Got: " editor-text))))
+
+  (testing "Complete navigation workflow - line movement (C-p C-n)"
+    ;; Subsumes test-p1-02: Line-wise navigation
+    (h/setup-test*)
+    (h/clear-buffer)
+
+    (h/type-text "line 1")
+    (h/press-key "Enter")
+    (Thread/sleep 10)
+    (h/type-text "line 2")
+    (h/press-key "Enter")
+    (Thread/sleep 10)
+    (h/type-text "line 3")
+    (Thread/sleep 10)
+
+    ;; Cursor at end of line 3, C-p moves to line 2
+    (h/press-ctrl "p")
+    (Thread/sleep 10)
+    (h/type-text "X")
+    (Thread/sleep 20)
+    (let [editor-text (h/get-buffer-text*)]
+      (is (.contains editor-text "line 2X")
+          "C-p should move cursor up"))
+
+    ;; C-n should move back down
+    (h/press-ctrl "n")
+    (Thread/sleep 10)
+    (h/type-text "Y")
+    (Thread/sleep 20)
+    (let [editor-text (h/get-buffer-text*)]
+      (is (.contains editor-text "line 3")
+          "C-n should move cursor down"))))
+
+;; NOTE: P1-06 (set-mark) is covered by lexicon.ui.editing.markers-test
+;; NOTE: P1-07 (kill-region with C-w) cannot be tested in E2E - browser intercepts C-w.
+;; See kill_ring_test.clj for alternative kill-region tests using M-x.
 
 ;; NOTE: Kill/yank tests (P1-08, P1-09, P1-10) moved to kill_ring_test.clj
 ;; to avoid duplication. See: test-yank-inserts-killed-text,

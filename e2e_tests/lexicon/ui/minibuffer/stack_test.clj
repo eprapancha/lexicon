@@ -127,39 +127,38 @@
           (str "Prompt should change to replace-string, but got: " prompt)))))
 
 ;; =============================================================================
-;; Test Suite: Stack Depth Tracking
+;; Test Suite: Stack Depth Lifecycle (Workflow Test)
+;; Subsumes: test-minibuffer-depth-inactive, test-minibuffer-depth-active,
+;;           test-minibuffer-cancel-restores-depth,
+;;           test-mode-line-no-depth-indicator-when-inactive,
+;;           test-mode-line-no-depth-indicator-at-depth-1
 ;; =============================================================================
 
-(deftest test-minibuffer-depth-inactive
-  (testing "Minibuffer depth is 0 when inactive"
+(deftest test-minibuffer-depth-lifecycle
+  (testing "Minibuffer depth tracking through activation cycle"
     (h/setup-test*)
 
-    ;; Initially depth should be 0
-    (is (= 0 (get-minibuffer-depth)) "Depth should be 0 when inactive")))
+    ;; === Part 1: Depth is 0 when inactive (subsumes test-minibuffer-depth-inactive) ===
+    (is (= 0 (get-minibuffer-depth)) "Depth should be 0 when inactive")
 
-(deftest test-minibuffer-depth-active
-  (testing "Minibuffer depth is 1 when M-x is active"
-    (h/setup-test*)
+    ;; === Part 2: No depth indicator when inactive (subsumes test-mode-line-no-depth-indicator-when-inactive) ===
+    (let [mode-line (get-mode-line-text)]
+      (is (not (str/includes? mode-line "[1]")) "Should not show [1] when depth is 0")
+      (is (not (str/includes? mode-line "[2]")) "Should not show [2] when depth is 0"))
 
-    ;; Activate M-x
+    ;; === Part 3: Depth is 1 when M-x is active (subsumes test-minibuffer-depth-active) ===
     (h/press-meta "x")
     (Thread/sleep 100)
+    (is (= 1 (get-minibuffer-depth)) "Depth should be 1 when M-x is active")
 
-    (is (= 1 (get-minibuffer-depth)) "Depth should be 1 when M-x is active")))
+    ;; === Part 4: No depth indicator at depth 1 (subsumes test-mode-line-no-depth-indicator-at-depth-1) ===
+    (let [mode-line (get-mode-line-text)]
+      (is (not (str/includes? mode-line "[1]")) "Should not show [1] at depth 1")
+      (is (not (str/includes? mode-line "[2]")) "Should not show [2] at depth 1"))
 
-(deftest test-minibuffer-cancel-restores-depth
-  (testing "Canceling minibuffer restores depth to 0"
-    (h/setup-test*)
-
-    ;; Activate M-x
-    (h/press-meta "x")
-    (Thread/sleep 100)
-    (is (= 1 (get-minibuffer-depth)) "Depth should be 1")
-
-    ;; Cancel with Escape
+    ;; === Part 5: Cancel restores depth to 0 (subsumes test-minibuffer-cancel-restores-depth) ===
     (press-escape)
     (Thread/sleep 100)
-
     (is (= 0 (get-minibuffer-depth)) "Depth should return to 0 after cancel")))
 
 ;; =============================================================================
@@ -182,29 +181,7 @@
     ;; Depth should still be 1 (not nested)
     (is (= 1 (get-minibuffer-depth)) "Depth should remain 1 (recursive blocked)")))
 
-;; =============================================================================
-;; Test Suite: Mode-line Depth Indicator
-;; =============================================================================
-
-(deftest test-mode-line-no-depth-indicator-when-inactive
-  (testing "Mode-line has no depth indicator when minibuffer is inactive"
-    (h/setup-test*)
-
-    (let [mode-line (get-mode-line-text)]
-      (is (not (str/includes? mode-line "[2]")) "Should not show [2] when depth is 0")
-      (is (not (str/includes? mode-line "[1]")) "Should not show [1] when depth is 0"))))
-
-(deftest test-mode-line-no-depth-indicator-at-depth-1
-  (testing "Mode-line has no depth indicator when depth is 1 (only shows when > 1)"
-    (h/setup-test*)
-
-    ;; Activate M-x (depth 1)
-    (h/press-meta "x")
-    (Thread/sleep 100)
-
-    (let [mode-line (get-mode-line-text)]
-      (is (not (str/includes? mode-line "[1]")) "Should not show [1] at depth 1")
-      (is (not (str/includes? mode-line "[2]")) "Should not show [2] at depth 1"))))
+;; NOTE: Mode-line depth indicator tests removed - subsumed by test-minibuffer-depth-lifecycle
 
 ;; Note: Testing depth > 1 requires enable-recursive-minibuffers to be true,
 ;; which would need to be set via configuration or eval-expression.

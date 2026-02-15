@@ -26,21 +26,8 @@
     (is (= "Hello" (h/get-buffer-text*))
         "User typing should update buffer")))
 
-(deftest test-undo-after-user-typing
-  (testing "Undo works on user-typed text"
-    (h/setup-test*)
-    (h/clear-buffer)
-
-    ;; User types text
-    (h/type-text "Hello World")
-    (Thread/sleep 100)
-
-    ;; Undo via keyboard (C-/ is Emacs undo)
-    (h/press-ctrl "/")
-    (Thread/sleep 100)
-
-    (is (= "" (h/get-buffer-text*))
-        "Undo should remove user-typed text")))
+;; NOTE: test-undo-after-user-typing removed - exact duplicate of
+;; undo_test.clj::test-undo-reverses-insert
 
 (deftest test-user-cursor-movement
   (testing "User can move cursor"
