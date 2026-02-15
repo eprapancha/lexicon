@@ -360,6 +360,22 @@
         zv (get-in db [:buffers buffer-id :zv])]
     (or (some? begv) (some? zv))))
 
+(defn save-restriction
+  "Execute BODY-FN with current restriction saved, restoring afterward.
+
+  In ClojureScript, this is a function taking a thunk (zero-arg function).
+  The restriction is restored even if BODY-FN throws an exception.
+
+  Usage: (save-restriction (fn [] (narrow-to-region 10 20) (do-work)))
+  Returns: Result of BODY-FN"
+  [body-fn]
+  (let [buffer-id (current-buffer)]
+    (rf/dispatch-sync [:buffer/push-restriction buffer-id])
+    (try
+      (body-fn)
+      (finally
+        (rf/dispatch-sync [:buffer/pop-restriction buffer-id])))))
+
 ;; -- Buffer-Local Variables (Phase 6.6 - Issue #100) --
 
 (defn make-local-variable
@@ -4624,6 +4640,7 @@
    'narrow-to-region narrow-to-region
    'widen widen
    'buffer-narrowed-p buffer-narrowed-p
+   'save-restriction save-restriction
    ;; Phase 6.6: Buffer-local variables (Issue #100)
    'make-local-variable make-local-variable
    'buffer-local-value buffer-local-value

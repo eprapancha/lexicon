@@ -185,6 +185,21 @@
     ;; Clean up
     (lisp/eval-lisp! "(widen)")))
 
+(deftest test-save-restriction
+  (testing "save-restriction preserves and restores narrowing state"
+    (lisp/setup-test)
+    (lisp/eval-lisp! "(insert \"Hello World\")")
+    ;; Narrow first
+    (lisp/eval-lisp! "(narrow-to-region 0 5)")
+    (is (= "Hello" (lisp/eval-lisp! "(buffer-string)")))
+    ;; Use save-restriction to temporarily widen
+    (lisp/eval-lisp! "(save-restriction (fn [] (widen) (goto-char 6)))")
+    ;; After save-restriction, should be back to narrowed state
+    (is (= "Hello" (lisp/eval-lisp! "(buffer-string)")))
+    (is (= true (lisp/eval-lisp! "(buffer-narrowed-p)")))
+    ;; Clean up
+    (lisp/eval-lisp! "(widen)")))
+
 ;; =============================================================================
 ;; Buffer-Local Variables (#100)
 ;; =============================================================================
