@@ -121,10 +121,19 @@ The Architect's spec tells you what files to modify, what events to create, what
   ...)
 ```
 
-Register in the symbol table at the bottom of `lisp.cljs`:
+Register in **TWO places** at the bottom of `lisp.cljs`:
+
+1. The symbol table:
 ```clojure
 'function-name function-name
 ```
+
+2. The `sci-namespace` map (so external packages running in SCI can call it):
+```clojure
+'function-name function-name
+```
+
+**Both registrations are required.** External packages are interpreted by SCI at runtime and can only call functions in `sci-namespace`. If you add a function to `lexicon.lisp` but forget the `sci-namespace` entry, external packages silently can't use it.
 
 ### New Subscription
 ```clojure

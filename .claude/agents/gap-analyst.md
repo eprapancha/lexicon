@@ -60,6 +60,12 @@ Something in Lexicon's core infrastructure is missing or wrong. Must be fixed be
 - Missing event handler that other features depend on
 - State schema doesn't support required data
 - `lexicon.lisp` missing a primitive that the feature needs
+- A function exists in `lexicon.lisp` but is NOT registered in `sci-namespace` (external packages can't use it)
+
+### API Surface Gap
+A function needed by an external package doesn't exist in `lexicon.lisp/sci-namespace`. External packages run in SCI at runtime and can ONLY call functions registered in the `sci-namespace` map. When assessing gaps for external packages, always check both:
+1. Does the function exist in `lexicon.lisp`?
+2. Is it registered in the `sci-namespace` map at the bottom of `lisp.cljs`?
 
 ### Surface Gap
 The foundation exists but the specific feature behavior is missing or wrong. Can be built on existing infrastructure. Examples:

@@ -115,6 +115,71 @@ Each state variable is owned by exactly ONE module. Others MUST dispatch events 
 - Packages NEVER import `lexicon.core.*` or `re-frame`
 - `bb lint:arch` enforces this -- violations are hard failures
 
+## External Package Architecture
+
+### Design Decision: SCI + Multi-File Bundling
+
+External packages (like Vertico, evil-mode) are:
+- **Separate git repos** named `lexicon-<name>` (e.g., `lexicon-vertico`)
+- **Written as ClojureScript source** (`.cljs` files), NOT compiled JavaScript
+- **Interpreted at runtime by SCI** (Small Clojure Interpreter, v0.8.42)
+- **Only able to call `lexicon.lisp` functions** -- the SCI sandbox denies access to `lexicon.core.*`, `re-frame`, `js/eval`, `js/fetch`, etc.
+
+This mirrors Emacs: Elisp packages are source files loaded at runtime by the Lisp interpreter. Our packages are ClojureScript source files loaded at runtime by SCI.
+
+### SCI Infrastructure (Already Built)
+
+| Component | File | Status |
+|-----------|------|--------|
+| SCI evaluation engine | `core/eval.cljs` | Working |
+| Package SCI sandbox | `core/packages/sci.cljs` | Working |
+| Package loader | `core/packages/loader.cljs` | Working (needs HTTP fetch) |
+| Lisp API → SCI bindings | `lisp.cljs` `sci-namespace` (~200+ functions) | Working |
+| Trust levels | `core/packages/sci.cljs` | Working |
+| Test package | `packages/lexicon-test-package/` | Working |
+| Package registry (`lexpa`) | N/A | Not yet built |
+
+### Trust Levels
+
+- **`:core`** -- Built-in packages (full access)
+- **`:local`** -- User-installed from filesystem (full access)
+- **`:external`** -- Third-party from internet (SCI sandbox, Core API only)
+
+### Package Metadata (`package.edn`)
+
+```clojure
+{:name "lexicon-vertico"
+ :version "0.1.0"
+ :description "Vertical completion UI"
+ :entry lexicon.vertico.core
+ :lexicon-version ">=0.1.0"
+ :dependencies []}
+```
+
+### What Packages CAN Call (via SCI)
+
+All ~200+ functions in `lexicon.lisp/sci-namespace`: buffer ops, point/mark, insert/delete, commands, keymaps, modes, hooks, minibuffer, completion, windows, text properties, overlays, filesystem, variables, messages.
+
+### What Packages CANNOT Call (denied by SCI sandbox)
+
+`js/eval`, `js/Function`, `js/fetch`, `js/XMLHttpRequest`, `re-frame.core/dispatch`, `re-frame.core/subscribe`, `lexicon.db/*`, `lexicon.events/*`.
+
+### When a Package Needs a Missing Primitive
+
+If an external package needs functionality not in `lexicon.lisp`:
+1. **Do NOT work around it** -- no reaching into internals
+2. **Foundation-builder adds the function** to `lexicon.lisp`
+3. **Foundation-builder registers it** in `lisp.cljs` `sci-namespace` map
+4. **Then the package can use it** via SCI
+
+### Future: `lexpa` (Lexicon Package Archive)
+
+A git-based package registry (like MELPA/straight.el) that:
+- Lists available packages with git URLs and metadata
+- Client fetches `.cljs` source from package repos
+- Multi-file packages are concatenated in dependency order
+- Evaluated in SCI at install/load time
+
 ## Emacs Source Reference
 
 Emacs 29.4 source is at `~/projects/emacs-source/`:

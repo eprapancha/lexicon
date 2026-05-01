@@ -63,8 +63,14 @@ Every state key has exactly one owner. Check `CLAUDE.md` ownership map. If a new
 ### Core vs Package Boundary
 - Packages import ONLY `lexicon.lisp`
 - Packages NEVER import from `lexicon.core.*` or `re-frame`
-- If a package needs something not in `lexicon.lisp`, the spec must include adding the primitive to `lexicon.lisp`
+- If a package needs something not in `lexicon.lisp`, the spec must include adding the primitive to `lexicon.lisp` AND registering it in the `sci-namespace` map
 - `bb lint` enforces this -- your designs must pass lint
+
+### External Packages Run in SCI
+External packages (Vertico, evil-mode, etc.) live in **separate git repos** and are interpreted at runtime by SCI. They can ONLY call functions exposed in `lexicon.lisp/sci-namespace`. When designing specs that require new API surface for external packages, you must explicitly list:
+1. The new `lexicon.lisp` function (signature, behavior)
+2. The `sci-namespace` registration entry
+3. Whether the function needs to be available at the `:external` trust level
 
 ### Minibuffer Architecture
 The minibuffer uses a flat `:minibuffer` map, NOT a stack. Any design touching the minibuffer must use:
