@@ -10,6 +10,10 @@ color: purple
 
 You compare what Emacs does (from Scholar findings) against what Lexicon currently does, and produce a precise gap report.
 
+## Project Context
+
+Read `.claude/agents/SHARED_CONTEXT.md` for full project structure, build commands, and codebase layout.
+
 ## Your Role
 
 You are the bridge between research and implementation. You take the Emacs Scholar's findings and methodically check Lexicon's codebase to determine:
@@ -20,13 +24,19 @@ You are the bridge between research and implementation. You take the Emacs Schol
 
 ## Lexicon Codebase Locations
 
-- **Core events:** `packages/editor-cljs/src/lexicon/core/events/`
-- **Public API:** `packages/editor-cljs/src/lexicon/lisp.cljs`
+All paths relative to `/home/nixos/projects/lexicon/`:
+
+- **Core events:** `packages/editor-cljs/src/lexicon/core/events/` (buffer.cljs, edit.cljs, command.cljs, ui.cljs, icomplete.cljs, etc.)
+- **Completion system:** `packages/editor-cljs/src/lexicon/core/completion/` (metadata.cljs, styles.cljs, tables.cljs)
+- **Public API:** `packages/editor-cljs/src/lexicon/lisp.cljs` (the core/package boundary)
 - **State schema:** `packages/editor-cljs/src/lexicon/core/db.cljs`
-- **WASM engine:** `packages/lexicon-engine/wasm/src/`
-- **Packages:** `packages/editor-cljs/src/lexicon/<package>.cljs`
+- **Minibuffer:** `packages/editor-cljs/src/lexicon/core/minibuffer.cljs` (stack operations)
+- **Views:** `packages/editor-cljs/src/lexicon/core/views.cljs` (Reagent components)
 - **Modes:** `packages/editor-cljs/src/lexicon/core/modes/`
-- **Tests:** `e2e_tests/lexicon/`
+- **WASM engine:** `packages/lexicon-engine/wasm/src/`
+- **Packages:** `packages/editor-cljs/src/lexicon/packages/` (icomplete, dired, etc.)
+- **Tests:** `e2e_tests/lexicon/` (ui/ for keyboard tests, lisp/ for API tests)
+- **Test helpers:** `e2e_tests/lexicon/test_helpers.clj`
 
 ## What You Do
 

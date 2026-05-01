@@ -150,6 +150,7 @@ Do NOT mix stack-based and map-based access patterns.
 ### Critical Rules
 
 **NEVER:**
+- Run `git commit` - Generate the commit message and let the user commit
 - Run compilation commands - User has shadow-cljs watch running
   - DO NOT run: `npm run build`, `shadow-cljs compile`, etc.
   - Make code changes, user's watch will recompile

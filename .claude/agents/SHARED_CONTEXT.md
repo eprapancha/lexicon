@@ -1,0 +1,125 @@
+# Shared Agent Context -- Lexicon Project
+
+This file is referenced by all agent configs. It contains project-wide knowledge that every agent needs.
+
+## Build System: Babashka (bb)
+
+All build, test, and lint commands use [Babashka](https://babashka.org/) task runner. Tasks are defined in `bb.edn` at the project root.
+
+### Key Commands
+
+| Command | Purpose |
+|---------|---------|
+| `bb dev` | Start shadow-cljs watch + dev server at http://localhost:8080 |
+| `bb lint` | Run ALL linters (architecture boundary, clj-kondo, e2e checks) |
+| `bb lint:arch` | Check architecture boundary only |
+| `bb lint:kondo` | Run clj-kondo static analysis only |
+| `bb test:e2e` | Run all E2E tests (headless Firefox via Etaoin) |
+| `bb test:e2e <pattern>` | Run specific E2E tests matching namespace pattern |
+| `bb test:unit` | Run ClojureScript unit tests |
+| `bb test` | Run all tests (unit + E2E + Rust) |
+| `bb clean` | Clean all build artifacts |
+| `bb build` | Full production build (WASM + ClojureScript) |
+| `bb build-wasm` | Build Rust WASM module (release) |
+| `bb build-cljs-dev` | Build ClojureScript frontend (dev mode) |
+
+### E2E Tests Are Self-Contained and Headless
+
+- E2E tests use **Etaoin** with **headless Firefox** (geckodriver)
+- They are fully self-contained -- they run in CI (GitHub Actions) without manual setup
+- **Prerequisite:** The app must be served at `http://localhost:8080`
+  - If `bb dev` (shadow-cljs watch) is already running, tests can run immediately
+  - If not, start it with `bb dev` in background first
+- Tests run via Kaocha test runner: `clojure -M:e2e -m kaocha.runner`
+- Typical test run: `bb test:e2e ui.minibuffer.completion-sorting-test`
+- Capture output: `bb test:e2e <pattern> 2>&1 | tee /tmp/e2e-<feature>.log`
+
+### What NOT to Run
+
+- **NEVER** run `npm run build`, `shadow-cljs compile`, or `npx shadow-cljs ...` during development
+- The user typically has `bb dev` (shadow-cljs watch) running -- it recompiles on file save
+- Only `bb lint` and `bb test:e2e` are safe to run alongside the dev server
+
+## Project Structure
+
+```
+lexicon/
+  bb.edn                    # Babashka task definitions
+  CLAUDE.md                 # Project memory and engineering standards
+  deps.edn                  # Clojure dependencies
+  tests.edn                 # Kaocha E2E test configuration
+  docs/                     # Architecture docs (org-mode)
+    ARCHITECTURE.org
+    ARCHITECTURE_BOUNDARY.org
+    EMACS_COMPATIBILITY_CONTRACT.org
+    VISION.org
+    ROADMAP.org
+  e2e_tests/                # E2E tests (Clojure + Etaoin + headless Firefox)
+    lexicon/
+      test_helpers.clj      # Shared test utilities
+      ui/                   # Keyboard-only UI tests
+        editing/
+        buffers/
+        windows/
+        minibuffer/
+        modes/
+        files/
+        search/
+      lisp/                 # Lisp API tests (eval-lisp allowed)
+  packages/
+    editor-cljs/             # Main ClojureScript editor
+      src/lexicon/
+        core/                # Internal core modules
+          events/            # Re-frame event handlers (buffer, edit, command, ui, etc.)
+          completion/        # Completion system (metadata, styles, tables)
+          modes/             # Major/minor mode definitions
+          ui/                # UI subsystems (faces, frames, overlays)
+          api/               # Internal APIs (test.cljs)
+          fs/                # File system access
+          db.cljs            # App-db schema
+          minibuffer.cljs    # Minibuffer stack operations
+          views.cljs         # Reagent view components
+          init.cljs          # Initialization
+          main.cljs          # Entry point (requires all modules)
+          log.cljs           # Logging
+        lisp.cljs            # PUBLIC API -- the core/package boundary
+        packages/            # Package implementations
+          icomplete.cljs     # Icomplete package
+          dired.cljs         # Dired package
+          flymake.cljs       # Flymake package
+          etc.
+    lexicon-engine/          # Rust WASM gap buffer engine
+      wasm/src/              # Rust source
+    evil-mode/               # Evil mode (vim emulation) package
+    backend-server/          # Backend server
+    lexicon-bridge/          # Bridge between core and packages
+    language-grammars/       # Tree-sitter grammar files
+```
+
+## State Ownership (Critical Rule)
+
+Each state variable is owned by exactly ONE module. Others MUST dispatch events to the owner.
+
+| State Key | Owner | Events |
+|-----------|-------|--------|
+| `:minibuffer` | `ui.cljs` | `:minibuffer/activate`, `:minibuffer/deactivate` |
+| `:echo-area` | `ui.cljs` | `:echo/message`, `:echo/clear` |
+| `:mark-position` | `edit.cljs` | `:set-mark`, `:deactivate-mark` |
+| `:window-tree` | `ui.cljs` | `:window/set-buffer`, `:window/set-mark` |
+| `:buffers` | `buffer.cljs` | `:buffer/set-mode`, `:buffer/update-version` |
+| `:kill-ring` | `edit.cljs` | (kill/yank commands only) |
+
+## Core/Package Boundary
+
+- Packages import ONLY `lexicon.lisp` (the public API)
+- Packages NEVER import `lexicon.core.*` or `re-frame`
+- `bb lint:arch` enforces this -- violations are hard failures
+
+## Emacs Source Reference
+
+Emacs 29.4 source is at `~/projects/emacs-source/`:
+- `lisp/simple.el` -- universal-argument, basic commands
+- `src/callint.c` -- interactive specs
+- `lisp/minibuffer.el` -- completion system
+- `src/buffer.c` -- buffer-local variables
+- `lisp/icomplete.el` -- icomplete-mode

@@ -12,6 +12,10 @@ skills:
 
 You write E2E tests that define what "done" looks like. You write tests BEFORE implementation begins. Your tests are the specification.
 
+## Project Context
+
+Read `.claude/agents/SHARED_CONTEXT.md` for full project structure, build commands, and codebase layout.
+
 ## Your Role
 
 You take Architect specs (with acceptance criteria) and produce E2E tests that will initially fail (because the feature doesn't exist yet) and pass once the feature is correctly implemented.
@@ -110,10 +114,18 @@ ONLY for features that genuinely cannot be tested yet:
 
 ## Running Tests
 
+E2E tests are headless and self-contained (Firefox + Etaoin). They require the app to be served at `http://localhost:8080` (via `bb dev`).
+
 ```bash
 bb test:e2e <pattern>                              # Run specific tests
 bb test:e2e <pattern> 2>&1 | tee /tmp/e2e-test.log # With log capture
 bb lint                                             # Verify no eval-lisp in UI tests
+```
+
+Before running tests, verify the dev server is up:
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/index.html
+# Should return 200. If not, start with: bb dev &
 ```
 
 ## Communication

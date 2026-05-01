@@ -67,6 +67,17 @@
    :substring substring-style-match?
    :flex flex-style-match?})
 
+(defn- sort-completions
+  "Sort completions according to display-sort-function from metadata.
+  Emacs convention: sort function takes list, returns sorted list."
+  [completions metadata]
+  (let [sort-fn (:display-sort-function metadata)]
+    (case sort-fn
+      :alphabetical (vec (sort-by #(str/lower-case (normalize-candidate %)) completions))
+      :recent-first completions  ;; preserve insertion order for buffers (already recent-first from caller)
+      ;; No sort function or unknown - return as-is
+      completions)))
+
 ;; =============================================================================
 ;; Helper Functions
 ;; =============================================================================
@@ -76,11 +87,15 @@
 (def icomplete-show-matches-on-no-input false)
 
 (defn get-completions
-  "Get filtered completions for input against all-completions."
-  [input all-completions]
+  "Get filtered completions for input against all-completions.
+  Optional :metadata keyword arg supplies completion metadata including :display-sort-function."
+  [input all-completions & {:keys [metadata]}]
   (if (str/blank? input)
     (if icomplete-show-matches-on-no-input
-      (vec (take 100 all-completions))
+      (let [sorted (if metadata
+                     (sort-completions (vec all-completions) metadata)
+                     (vec all-completions))]
+        (vec (take 100 sorted)))
       [])
     ;; Use completion styles to filter
     (let [style-fns [:basic :substring :flex]
@@ -93,8 +108,11 @@
                                       (filter #(style-fn input %) all-completions))]
                         (if (seq results)
                           (vec results)
-                          (recur (rest fns))))))]
-      (vec (take 100 matches)))))
+                          (recur (rest fns))))))
+          sorted (if metadata
+                   (sort-completions matches metadata)
+                   matches)]
+      (vec (take 100 sorted)))))
 
 (defn format-icomplete-display
   "Format the icomplete display string showing candidates."
@@ -143,6 +161,7 @@
            active? (some? frame)  ; Frame exists means minibuffer is active
            input (or (:input frame) "")
            completions (or (:completions frame) [])
+           metadata (:metadata frame)
            cached-input (get-in db [:icomplete :last-input])
            cached-completions (get-in db [:icomplete :cached-completions] [])
            index (get-in db [:icomplete :index] 0)]
@@ -150,7 +169,7 @@
          ;; Use cached completions if input unchanged
          (let [current-completions (if (= input cached-input)
                                      cached-completions
-                                     (get-completions input completions))]
+                                     (get-completions input completions :metadata metadata))]
            (when (or (seq current-completions)
                      (and (not (str/blank? input))
                           (seq completions)))
@@ -234,13 +253,14 @@
      (let [frame (minibuffer/current-frame db)
            input (or (:input frame) "")
            completions (or (:completions frame) [])
+           metadata (:metadata frame)
            last-input (get-in db [:icomplete :last-input])]
        (log/debug (str "icomplete/update-completions: input=" input
                        " completions-count=" (count completions)
                        " last-input=" last-input))
        (if (= input last-input)
          db
-         (let [filtered (get-completions input completions)]
+         (let [filtered (get-completions input completions :metadata metadata)]
            (log/debug (str "icomplete/update-completions: filtered-count=" (count filtered)))
            (-> db
                (assoc-in [:icomplete :last-input] input)
