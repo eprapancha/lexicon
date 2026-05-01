@@ -75,15 +75,15 @@
                     :prefix-arg nil
                     :current-prefix-arg nil)}
         ;; Clear everything including transient map
-        {:db (-> db
-                 (assoc :prefix-arg nil
-                        :current-prefix-arg nil
-                        :transient-keymap nil)
-                 (dissoc :transient-map-config)
-                 (update-in [:keymaps :transient] dissoc :transient-dynamic-map))
-         ;; Call on-exit callback if provided
-         :fx (when (fn? on-exit)
-               [[:transient-map-on-exit on-exit]])}))))
+        (cond-> {:db (-> db
+                         (assoc :prefix-arg nil
+                                :current-prefix-arg nil
+                                :transient-keymap nil)
+                         (dissoc :transient-map-config)
+                         (update-in [:keymaps :transient] dissoc :transient-dynamic-map))}
+          ;; Call on-exit callback if provided
+          (fn? on-exit)
+          (assoc :fx [[:transient-map-on-exit on-exit]]))))))
 
 ;; Effect handler for calling on-exit callback
 (rf/reg-fx

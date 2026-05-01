@@ -120,8 +120,8 @@
    Args:
      content - Init file content as string"
    (if (save-init-file-to-storage content)
-     {:fx [[:dispatch [:message "Init file saved"]]]}
-     {:fx [[:dispatch [:message "Failed to save init file"]]]})))
+     {:fx [[:dispatch [:echo/message "Init file saved"]]]}
+     {:fx [[:dispatch [:echo/message "Failed to save init file"]]]})))
 
 (rf/reg-event-fx
  :init/reload-file
@@ -131,8 +131,8 @@
    Re-evaluates the init file without restarting the editor."
    (let [result (load-init-file)]
      (if (:success result)
-       {:fx [[:dispatch [:message "Init file reloaded"]]]}
-       {:fx [[:dispatch [:message (str "Error reloading: " (:error result))]]]}))))
+       {:fx [[:dispatch [:echo/message "Init file reloaded"]]]}
+       {:fx [[:dispatch [:echo/message (str "Error reloading: " (:error result))]]]}))))
 
 ;; =============================================================================
 ;; Commands

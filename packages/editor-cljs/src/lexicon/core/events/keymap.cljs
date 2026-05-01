@@ -299,7 +299,24 @@
                all-bindings))
        {:fx [[:dispatch [:set-prefix-key-state full-sequence]]]}
 
-       ;; Handle special keys that should insert
+       ;; Route RET/TAB/SPC to minibuffer when active
+       (and (not prefix-state)
+            (minibuffer/minibuffer-active? db)
+            (or (= key-str "RET")
+                (= key-str "TAB")
+                (= key-str "SPC")))
+       (cond
+         (= key-str "RET")
+         {:fx [[:dispatch [:minibuffer/confirm]]]}
+         (= key-str "TAB")
+         {:fx [[:dispatch [:minibuffer/complete]]]}
+         (= key-str "SPC")
+         (let [current-input (minibuffer/get-input db)
+               new-input (str current-input " ")]
+           {:fx [[:dom/focus-minibuffer nil]
+                 [:dispatch [:minibuffer/set-input new-input]]]}))
+
+       ;; Handle special keys that should insert (when minibuffer is not active)
        (and (not prefix-state)
             (or (= key-str "SPC")   ; Space
                 (= key-str "RET")   ; Enter/Return

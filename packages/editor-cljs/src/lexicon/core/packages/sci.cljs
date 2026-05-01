@@ -5,8 +5,7 @@
   access only to the Core API, while allowing :core and :local packages
   full access via native evaluation."
   (:require [sci.core :as sci]
-            [re-frame.core :as rf]
-            [clojure.string :as str]))
+            [lexicon.lisp :as lisp]))
 
 ;; -- Trust Levels --
 
@@ -18,85 +17,51 @@
   :external - Third-party from internet (Core API only, SCI sandbox)"
   #{:core :local :external})
 
-;; -- Core API Bindings --
-;; TODO: These will be populated as Core API is implemented
-;; For now, providing scaffolding with basic re-frame dispatch wrappers
+;; -- Core API Namespace --
 
 (defn- make-api-namespace
-  "Create SCI namespace with Core API bindings for external packages.
+  "Create SCI namespace map from lexicon.lisp/sci-namespace.
 
-  External packages run in SCI sandbox and can only access functions
-  defined here. This provides security isolation from editor internals."
+  Exposes all 229+ lexicon.lisp functions so packages can call
+  (message ...), (insert ...) etc. directly."
   []
-  {'lexicon.core.api
-   {;; Buffer API
-    'create-buffer (fn [name]
-                     @(rf/subscribe [:command/sync-result
-                                     [:buffer/create {:name name}]]))
-    'current-buffer (fn []
-                      @(rf/subscribe [:buffers/current-id]))
-    'switch-to-buffer (fn [buffer-id]
-                        (rf/dispatch [:buffer/switch buffer-id]))
-
-    ;; Command API
-    'define-command (fn [command-id opts handler]
-                      (rf/dispatch [:command/register command-id
-                                    (assoc opts :handler handler)]))
-    'execute-command (fn [command-id & args]
-                       (apply rf/dispatch (into [command-id] args)))
-
-    ;; Keymap API
-    'define-key (fn [keymap key-seq command-id]
-                  (rf/dispatch [:keymap/bind keymap key-seq command-id]))
-
-    ;; Mode API
-    'define-major-mode (fn [mode-id opts]
-                         (rf/dispatch [:mode/register-major mode-id opts]))
-    'define-minor-mode (fn [mode-id opts]
-                         (rf/dispatch [:mode/register-minor mode-id opts]))
-
-    ;; Hook API
-    'add-hook (fn [hook-id handler & {:keys [priority]
-                                      :or {priority 50}}]
-                (rf/dispatch [:hook/add hook-id handler priority]))
-    'remove-hook (fn [hook-id handler]
-                   (rf/dispatch [:hook/remove hook-id handler]))
-
-    ;; Messaging
-    'message (fn [& args]
-               (rf/dispatch [:echo/message (apply str args)]))}})
+  lisp/sci-namespace)
 
 ;; -- SCI Context --
 
 ;; SCI evaluation context for external packages.
-;; Initialized once with Core API bindings and ClojureScript stdlib.
+;; Initialized once with Core API in both 'user and 'lexicon.api namespaces.
+;; - 'user: for interactive eval (M-:) and packages without ns forms
+;; - 'lexicon.api: for packages to (:require [lexicon.api :refer [message]])
 (defonce ^:private sci-ctx
   (delay
-    (sci/init
-      {:namespaces (make-api-namespace)
+    (let [api-ns (make-api-namespace)
+          dynamic-vars {'*current-buffer* (sci/new-dynamic-var '*current-buffer* nil)
+                        '*current-command* (sci/new-dynamic-var '*current-command* nil)
+                        '*prefix-arg* (sci/new-dynamic-var '*prefix-arg* nil)
+                        '*this-command-keys* (sci/new-dynamic-var '*this-command-keys* nil)}]
+      (sci/init
+        {:namespaces {;; user ns: API + dynamic vars (for interactive eval)
+                      'user (merge api-ns dynamic-vars)
+                      ;; lexicon.api: packages require from here
+                      'lexicon.api api-ns}
 
-       ;; Dynamic context variables (match Emacs dynamic scope)
-       :bindings {'*current-buffer* (sci/new-dynamic-var '*current-buffer* nil)
-                  '*current-command* (sci/new-dynamic-var '*current-command* nil)
-                  '*prefix-arg* (sci/new-dynamic-var '*prefix-arg* nil)
-                  '*this-command-keys* (sci/new-dynamic-var '*this-command-keys* nil)}
+         ;; Security: deny dangerous JavaScript access
+         :deny ['js/eval
+                'js/Function
+                'js/XMLHttpRequest
+                'js/fetch
+                ;; No direct access to editor internals
+                're-frame.core/dispatch
+                're-frame.core/subscribe
+                'lexicon.db/*
+                'lexicon.events/*]
 
-       ;; Security: deny dangerous JavaScript access
-       :deny ['js/eval
-              'js/Function
-              'js/XMLHttpRequest
-              'js/fetch
-              ;; No direct access to editor internals
-              're-frame.core/dispatch
-              're-frame.core/subscribe
-              'lexicon.db/*
-              'lexicon.events/*]
+         ;; Prevent unrestricted eval
+         :allow-unrestricted-eval false
 
-       ;; Prevent unrestricted eval
-       :allow-unrestricted-eval false
-
-       ;; Allow ClojureScript core functions
-       :classes {'js js/globalThis :allow :all}})))
+         ;; Allow ClojureScript core functions
+         :classes {'js js/globalThis :allow :all}}))))
 
 ;; -- Package Evaluation --
 
@@ -134,10 +99,8 @@
 
                     ;; External packages run in SCI sandbox
                     :external
-                    (let [ctx (or (:sci-context opts) @sci-ctx)
-                          bindings (:bindings opts {})]
-                      (sci/binding [sci/*ctx* ctx]
-                        (sci/eval-string* ctx source))))]
+                    (let [ctx (or (:sci-context opts) @sci-ctx)]
+                      (sci/eval-string* ctx source)))]
 
        {:success true
         :result result})
@@ -215,28 +178,24 @@
           pkg-ctx (when (= trust-level :external)
                     (create-package-context package-name))
 
-          ;; Evaluate package source
-          eval-result (eval-string source trust-level
+          ;; Append initialize! call to source so it runs in the package namespace.
+          ;; Use try/catch so packages without initialize! still load fine.
+          source-with-init (str source "\n(try (initialize!) (catch :default _ nil))")
+
+          ;; Evaluate package source + initialize in one pass
+          eval-result (eval-string source-with-init trust-level
                                    (when pkg-ctx
                                      {:sci-context pkg-ctx}))
 
           _ (when-not (:success eval-result)
-              (throw (ex-info "Package evaluation failed"
+              (throw (ex-info (str "Package evaluation failed: " (:error eval-result))
                               {:package package-name
-                               :error (:error eval-result)})))
-
-          ;; Call initialize! function if it exists
-          init-result (when (= trust-level :external)
-                        (eval-string "(if (resolve 'initialize!)
-                                       (initialize!)
-                                       ::no-init)"
-                                     trust-level
-                                     {:sci-context pkg-ctx}))]
+                               :error (:error eval-result)})))]
 
       {:success true
        :package-name package-name
        :trust-level trust-level
-       :initialized? (not= (:result init-result) ::no-init)})
+       :initialized? true})
 
     (catch :default e
       {:success false
@@ -247,19 +206,15 @@
 
 (comment
   ;; Example: Evaluate external package code
+  ;; All lexicon.lisp functions are in the user namespace
   (eval-string
-    "(ns my-package.core
-       (:require [lexicon.core.core.api :as api]))
-
-     (defn initialize! []
-       (api/message \"Hello from package!\"))"
+    "(defn initialize! []
+       (message \"Hello from package!\"))"
     :external)
 
   ;; Example: Load full package
   (load-package-source
     :my-package
-    "(ns my-package.core
-       (:require [lexicon.core.core.api :as api]))
-     (defn initialize! []
-       (api/message \"Package loaded!\"))"
+    "(defn initialize! []
+       (message \"Package loaded!\"))"
     :external))

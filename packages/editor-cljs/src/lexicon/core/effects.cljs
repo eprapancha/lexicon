@@ -41,11 +41,24 @@
       (.remove style-element))))
 
 ;; Focus the minibuffer input element.
+;; Uses requestAnimationFrame to ensure React has rendered the element.
 (rf/reg-fx
   :dom/focus-minibuffer
   (fn [_]
-    (when-let [minibuffer-input (js/document.getElementById "minibuffer-input")]
-      (.focus minibuffer-input))))
+    (let [do-focus #(when-let [el (js/document.getElementById "minibuffer-input")]
+                      (.focus el))]
+      ;; Try immediately (element may already exist)
+      (if (js/document.getElementById "minibuffer-input")
+        (do-focus)
+        ;; If not yet rendered, wait for next animation frame
+        (js/requestAnimationFrame do-focus)))))
+
+;; Call a function-based on-confirm handler outside the event processing loop.
+;; This avoids re-frame reentrancy issues when the callback dispatches events.
+(rf/reg-fx
+  :minibuffer/call-on-confirm
+  (fn [{:keys [fn input]}]
+    (fn input)))
 
 ;; Blur the minibuffer input element (Issue #137: cursor singleton).
 ;; Used when cursor ownership transfers away from minibuffer to a window.

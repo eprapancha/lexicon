@@ -125,7 +125,7 @@
           selected-file (when (< selected-idx (count candidates))
                           (nth candidates selected-idx))]
       {:db (mb/pop-frame db)
-       :fx [[:dispatch [:message (str "Selected: " (or selected-file input))]]]})))
+       :fx [[:dispatch [:echo/message (str "Selected: " (or selected-file input))]]]})))
 
 ;; Update filtered completions as user types
 (rf/reg-event-db
@@ -196,7 +196,7 @@
   (fn [{:keys [db]} [_]]
     (let [input (mb/get-input db)]
       {:db (mb/pop-frame db)
-       :fx [[:dispatch [:message (str "You selected: " input)]]]})))
+       :fx [[:dispatch [:echo/message (str "You selected: " input)]]]})))
 
 (defn init-example-commands!
   "Register example minibuffer commands. Must be called after :initialize-commands."

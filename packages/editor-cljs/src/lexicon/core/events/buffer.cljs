@@ -127,9 +127,9 @@
          current-read-only? (:is-read-only? buffer false)
          new-read-only? (not current-read-only?)]
      {:db (assoc-in db [:buffers buffer-id :is-read-only?] new-read-only?)
-      :fx [[:dispatch [:message (if new-read-only?
-                                   "Buffer is now read-only"
-                                   "Buffer is now writable")]]]})))
+      :fx [[:dispatch [:echo/message (if new-read-only?
+                                        "Buffer is now read-only"
+                                        "Buffer is now writable")]]]})))
 
 ;; -- Phase 6.6: Buffer Primitives (Issue #100) --
 
@@ -439,13 +439,13 @@
          buffer-name (:name buffer)
          file-path (:file-path buffer)]
      (js/console.log "Killing buffer:" buffer-name)
-     {:db (-> db
-              (update :buffers dissoc buffer-id)
-              ;; Remove from access order
-              (update :buffer-access-order #(vec (remove #{buffer-id} %))))
+     (cond-> {:db (-> db
+                    (update :buffers dissoc buffer-id)
+                    ;; Remove from access order
+                    (update :buffer-access-order #(vec (remove #{buffer-id} %))))}
       ;; Issue #118: Save cursor position before killing
-      :fx (when file-path
-            [[:dispatch [:saveplace/on-kill-buffer buffer-id]]])})))
+      file-path
+      (assoc :fx [[:dispatch [:saveplace/on-kill-buffer buffer-id]]])))))
 
 (rf/reg-event-fx
  :list-buffers

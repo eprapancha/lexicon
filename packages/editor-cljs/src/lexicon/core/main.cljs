@@ -81,6 +81,7 @@
             [lexicon.core.eval]                ; Load runtime evaluation (Phase 6.5 Week 7-8)
             [lexicon.core.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.core.views :as views]
+            [lexicon.core.packages.loader]  ; Load HTTP package loader (events + subscriptions)
             [lexicon.core.package-loader]   ; Load all packages
             ;; Re-export core API functions
             [lexicon.core.api.message :as msg]

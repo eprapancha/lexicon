@@ -10,7 +10,8 @@
   (:require [lexicon.core.packages.sci :as sci]
             [re-frame.core :as rf]
             [clojure.string :as str]
-            [cljs.reader :as reader]))
+            [cljs.reader :as reader]
+            [lexicon.core.log :as log]))
 
 ;; -- Schema Validation --
 
@@ -260,6 +261,72 @@
       {:success false
        :error (ex-message e)})))
 
+;; -- Async HTTP Loading --
+
+(defn load-package-from-url
+  "Load a package from HTTP URL (async).
+
+  Fetches package.edn and entry source file via HTTP, evaluates
+  in SCI sandbox with :external trust level.
+
+  Parameters:
+    base-url - URL prefix (e.g., 'http://localhost:3100/packages/vertico')
+
+  Returns: nil (async -- dispatches :packages/loaded or :packages/load-error)"
+  [base-url]
+  (let [edn-url (str base-url "/package.edn")]
+    (log/debug (str "loader: Fetching package metadata from " edn-url))
+    (-> (js/fetch edn-url)
+        (.then (fn [response]
+                 (when-not (.-ok response)
+                   (throw (js/Error. (str "Failed to fetch package.edn: " (.-status response)))))
+                 (.text response)))
+        (.then (fn [edn-text]
+                 (let [metadata (reader/read-string edn-text)
+                       validation (validate-package-metadata metadata)]
+                   (when-not (:valid? validation)
+                     (throw (js/Error. (str "Invalid package.edn: "
+                                           (str/join ", " (:errors validation))))))
+                   (log/debug (str "loader: Package metadata valid: " (:name metadata)))
+                   metadata)))
+        (.then (fn [metadata]
+                 (let [entry-ns (:entry metadata)
+                       ns-path (-> (str entry-ns)
+                                   (str/replace "." "/")
+                                   (str/replace "-" "_"))
+                       source-url (str base-url "/src/" ns-path ".cljs")]
+                   (log/debug (str "loader: Fetching source from " source-url))
+                   (-> (js/fetch source-url)
+                       (.then (fn [response]
+                                (when-not (.-ok response)
+                                  (throw (js/Error. (str "Failed to fetch source: " (.-status response)))))
+                                (.text response)))
+                       (.then (fn [source]
+                                [metadata source]))))))
+        (.then (fn [[metadata source]]
+                 (let [package-name (:name metadata)
+                       eval-result (sci/load-package-source
+                                     (keyword package-name)
+                                     source
+                                     :external)]
+                   (if (:success eval-result)
+                     (let [package-info (assoc metadata
+                                         :url base-url
+                                         :trust-level :external
+                                         :loaded? true
+                                         :load-time (js/Date.now))]
+                       (rf/dispatch [:packages/loaded package-name package-info])
+                       (rf/dispatch [:echo/message (str "Package loaded: " package-name)]))
+                     (do
+                       (log/debug (str "loader: SCI eval failed: " (:error eval-result)))
+                       (rf/dispatch [:packages/load-error package-name (:error eval-result)])
+                       (rf/dispatch [:echo/message (str "Package load failed: " (:error eval-result))]))))))
+        (.catch (fn [error]
+                  (let [msg (.-message error)]
+                    (log/debug (str "loader: Package load error: " msg))
+                    (rf/dispatch [:packages/load-error base-url msg])
+                    (rf/dispatch [:echo/message (str "Package load error: " msg)])))))))
+
 ;; -- Re-frame Events --
 
 (rf/reg-event-db
@@ -308,6 +375,19 @@
          :dispatch [:echo/message (str "Reloaded package: " (:package-name result))]}
         {:db db
          :dispatch [:show-error (str "Failed to reload package: " (:error result))]}))))
+
+(rf/reg-event-fx
+  :packages/load-from-url
+  (fn [{:keys [db]} [_ url]]
+    "Load a package from HTTP URL (async)"
+    (load-package-from-url url)
+    {:db db}))
+
+(rf/reg-event-db
+  :packages/load-error
+  (fn [db [_ package-name error]]
+    "Record a package load error"
+    (assoc-in db [:packages package-name :error] error)))
 
 ;; -- Subscriptions --
 

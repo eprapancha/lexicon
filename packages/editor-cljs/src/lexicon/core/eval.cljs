@@ -394,14 +394,14 @@
 (rf/reg-event-fx
  :eval/string
  (fn [{:keys [db]} [_ code-str]]
-   "Evaluate a string of code and display result in minibuffer.
+   "Evaluate a string of code and display result in echo area.
 
    Args:
      code-str - String of ClojureScript code"
    (let [result (eval-string code-str)]
      (if (:success result)
-       {:fx [[:dispatch [:message (str (:result result))]]]}
-       {:fx [[:dispatch [:message (str "Error: " (:error result))]]]}))))
+       {:fx [[:dispatch [:echo/message (str (:result result))]]]}
+       {:fx [[:dispatch [:echo/message (str "Error: " (:error result))]]]}))))
 
 (rf/reg-event-fx
  :eval/last-sexp
@@ -411,8 +411,8 @@
    Evaluates the expression and displays result in echo area."
    (let [result (eval-last-sexp db)]
      (if (:success result)
-       {:fx [[:dispatch [:message (str (:result result))]]]}
-       {:fx [[:dispatch [:message (str "Error: " (:error result))]]]}))))
+       {:fx [[:dispatch [:echo/message (str (:result result))]]]}
+       {:fx [[:dispatch [:echo/message (str "Error: " (:error result))]]]}))))
 
 (rf/reg-event-fx
  :eval/expression

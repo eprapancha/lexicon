@@ -180,7 +180,7 @@
 
      (if (<= (count all-windows) 1)
        ;; Can't delete the last window
-       {:fx [[:dispatch [:message "Attempt to delete sole window"]]]}
+       {:fx [[:dispatch [:echo/message "Attempt to delete sole window"]]]}
        ;; Delete the window and switch to another
        (let [new-tree (db/delete-window-from-tree window-tree active-window-id)
              remaining-windows (db/get-all-leaf-windows new-tree)
@@ -346,13 +346,15 @@
        {:db (-> db
                 (minibuffer/replace-current-frame config)
                 (assoc :cursor-owner :minibuffer))
-        :fx [[:dispatch [:hook/run :minibuffer-setup-hook {:config config}]]]}
+        :fx [[:dispatch [:hook/run :minibuffer-setup-hook {:config config}]]
+             [:dom/focus-minibuffer nil]]}
        ;; Push new frame (normal activation or recursive)
        :else
        {:db (-> db
                 (minibuffer/push-frame config)
                 (assoc :cursor-owner :minibuffer))
-        :fx [[:dispatch [:hook/run :minibuffer-setup-hook {:config config}]]]}))))
+        :fx [[:dispatch [:hook/run :minibuffer-setup-hook {:config config}]]
+             [:dom/focus-minibuffer nil]]}))))
 
 (rf/reg-event-fx
  :minibuffer/deactivate
@@ -420,13 +422,14 @@
 
        ;; Standard minibuffer - update input and reset cycling state
        :else
-       {:db (-> db
-                (minibuffer/set-input input-text)
-                (minibuffer/set-cycling? false)
-                (minibuffer/set-completion-index -1)
-                (minibuffer/set-original-input ""))
-        :fx (when icomplete-enabled?
-              [[:dispatch [:icomplete/update-completions]]])}))))
+       (cond-> {:db (-> db
+                        (minibuffer/set-input input-text)
+                        (minibuffer/set-cycling? false)
+                        (minibuffer/set-completion-index -1)
+                        (minibuffer/set-original-input ""))}
+         icomplete-enabled?
+         (assoc :fx [[:dispatch [:icomplete/update-completions]]]))))))
+
 
 (rf/reg-event-fx
  :minibuffer/complete
@@ -445,13 +448,14 @@
    - TAB twice opens *Completions* buffer
 
    See Issue #136 for details."
-   (let [input (minibuffer/get-input db)
+   (let [input (or (minibuffer/get-input db) "")
          metadata (minibuffer/get-completion-metadata db)
          category (:category metadata)
          last-tab-input (minibuffer/get-last-tab-input db)
          ;; For file completion, check if we need to descend into a directory
          is-file-completion? (= category :file)
          input-is-directory? (and is-file-completion?
+                                  (seq input)
                                   (clojure.string/ends-with? input "/"))
          ;; Check if directory is cached (for file completion)
          dir-cache (get-in db [:fs-access :directory-cache] {})
@@ -551,18 +555,31 @@
  (fn [{:keys [db]} [_]]
    "Confirm minibuffer input.
    IMPORTANT: Does NOT auto-deactivate anymore! Commands must deactivate explicitly
-   or use :replace? true to take over the minibuffer slot. This fixes Issue #72."
+   or use :replace? true to take over the minibuffer slot. This fixes Issue #72.
+
+   on-confirm can be either:
+   - A vector like [:event-name] -- will (conj on-confirm input) and dispatch
+   - A function -- will be called with input via :minibuffer/call-on-confirm effect"
    (let [input (minibuffer/get-input db)
          on-confirm (minibuffer/get-on-confirm db)
          persist? (minibuffer/get-persist? db)]
-     (if on-confirm
+     (cond
+       ;; on-confirm is a function -- call via effect to avoid re-frame reentrancy
+       (fn? on-confirm)
        (if persist?
-         ;; Multi-step prompt - dispatch without deactivating
+         {:fx [[:minibuffer/call-on-confirm {:fn on-confirm :input input}]]}
+         {:fx [[:minibuffer/call-on-confirm {:fn on-confirm :input input}]
+               [:dispatch [:minibuffer/deactivate]]]})
+
+       ;; on-confirm is a vector -- conj input and dispatch
+       (vector? on-confirm)
+       (if persist?
          {:fx [[:dispatch (conj on-confirm input)]]}
-         ;; Single-step prompt - dispatch then deactivate
          {:fx [[:dispatch (conj on-confirm input)]
                [:dispatch [:minibuffer/deactivate]]]})
+
        ;; No handler - just deactivate
+       :else
        {:fx [[:dispatch [:minibuffer/deactivate]]]}))))
 
 ;; Completion navigation events

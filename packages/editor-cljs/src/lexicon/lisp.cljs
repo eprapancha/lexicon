@@ -4704,6 +4704,20 @@
   nil)
 
 ;; =============================================================================
+;; Package Installation
+;; =============================================================================
+
+(defn install-package
+  "Install a package from a URL.
+
+  Fetches package metadata and source via HTTP, evaluates in SCI sandbox.
+
+  Usage: (install-package \"http://localhost:3100/packages/vertico\")
+  Returns: nil (async -- result shown in echo area)"
+  [url]
+  (rf/dispatch [:packages/load-from-url url]))
+
+;; =============================================================================
 ;; Export for SCI
 ;; =============================================================================
 
@@ -4985,4 +4999,6 @@
    'dispatch-sync-event dispatch-sync-event
    ;; Icomplete and fido
    'icomplete-enabled? icomplete-enabled?
-   'fido-enabled? fido-enabled?})
+   'fido-enabled? fido-enabled?
+   ;; Package management
+   'install-package install-package})
