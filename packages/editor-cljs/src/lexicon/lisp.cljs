@@ -2776,6 +2776,186 @@
   (rf/dispatch-sync [:keymap/set-mode-key mode key-sequence command])
   nil)
 
+;; =============================================================================
+;; Command Remapping (Issue #263)
+;; =============================================================================
+
+(defn- unquote-symbol
+  "Extract symbol from a quoted form. Returns the input unchanged if not quoted."
+  [x]
+  (if (and (list? x) (= 'quote (first x)) (= 2 (count x)))
+    (second x)
+    x))
+
+(defn- parse-remap-key
+  "Parse a key sequence that may be a [remap COMMAND] form.
+
+  Returns {:type :remap :command cmd} if it's a remap form,
+  or {:type :key :sequence key-str} if it's a normal key sequence.
+
+  Note: In ClojureScript, [remap 'cmd] evaluates to [remap (quote cmd)],
+  so we need to handle both quoted and unquoted forms."
+  [key-or-remap]
+  (cond
+    ;; Vector form: [remap kill-line] or [remap 'kill-line] (quoted)
+    (and (vector? key-or-remap)
+         (= 2 (count key-or-remap))
+         (= 'remap (first key-or-remap)))
+    {:type :remap :command (unquote-symbol (second key-or-remap))}
+
+    ;; List form: (remap kill-line) - some Emacs configs use this
+    (and (list? key-or-remap)
+         (= 2 (count key-or-remap))
+         (= 'remap (first key-or-remap)))
+    {:type :remap :command (unquote-symbol (second key-or-remap))}
+
+    ;; String key sequence
+    (string? key-or-remap)
+    {:type :key :sequence key-or-remap}
+
+    ;; Keyword key sequence (convert to string)
+    (keyword? key-or-remap)
+    {:type :key :sequence (name key-or-remap)}
+
+    :else
+    (throw (ex-info "Invalid key sequence format"
+                    {:key key-or-remap
+                     :expected "String, [remap CMD], or (remap CMD)"}))))
+
+(defn define-key
+  "Define a key binding in KEYMAP for KEY to run COMMAND.
+
+  This is the Emacs-compatible define-key function that supports both
+  regular key bindings and command remapping via [remap CMD] syntax.
+
+  Issue #263: Implement [remap CMD] keybinding syntax.
+
+  Arguments:
+  - KEYMAP: A keymap identifier. Can be:
+    - :global or 'global-map - the global keymap
+    - A mode symbol like 'text-mode-map - a major mode keymap
+    - A keyword like :text-mode - a major mode keymap
+  - KEY: Either:
+    - A string key sequence like \"C-c C-c\"
+    - A vector [remap COMMAND] to remap COMMAND to a new command
+    - A list (remap COMMAND) - alternate syntax
+  - COMMAND: The command to bind (keyword or symbol)
+
+  Examples:
+    (define-key 'global-map \"C-c C-c\" 'my-compile)
+    (define-key 'text-mode-map [remap kill-line] 'my-kill-line)
+    (define-key :dired-mode \"n\" :dired-next-line)
+
+  Returns: nil (side effect only)"
+  [keymap key command]
+  (let [parsed (parse-remap-key key)
+        ;; Normalize command to keyword
+        cmd-kw (cond
+                 (keyword? command) command
+                 (symbol? command) (keyword (name command))
+                 :else command)
+        ;; Determine keymap type and name
+        [keymap-type keymap-name]
+        (cond
+          ;; Global keymap
+          (or (= keymap :global)
+              (= keymap 'global-map)
+              (= keymap :global-map))
+          [:global nil]
+
+          ;; Mode keymap specified as symbol ending in -map
+          (and (symbol? keymap)
+               (str/ends-with? (name keymap) "-map"))
+          (let [mode-name (str/replace (name keymap) #"-map$" "")]
+            [:major (keyword mode-name)])
+
+          ;; Mode keymap specified as keyword ending in -map
+          (and (keyword? keymap)
+               (str/ends-with? (name keymap) "-map"))
+          (let [mode-name (str/replace (name keymap) #"-map$" "")]
+            [:major (keyword mode-name)])
+
+          ;; Mode keymap specified directly as mode name
+          (keyword? keymap)
+          [:major keymap]
+
+          (symbol? keymap)
+          [:major (keyword (name keymap))]
+
+          :else
+          (throw (ex-info "Invalid keymap"
+                          {:keymap keymap
+                           :expected ":global, 'global-map, 'mode-name-map, or :mode-name"})))]
+
+    (case (:type parsed)
+      :remap
+      ;; Set up command remapping
+      (let [from-cmd (:command parsed)
+            from-kw (if (keyword? from-cmd) from-cmd (keyword (name from-cmd)))]
+        (rf/dispatch-sync [:keymap/set-remap keymap-type keymap-name from-kw cmd-kw]))
+
+      :key
+      ;; Set up regular key binding
+      (case keymap-type
+        :global
+        (rf/dispatch-sync [:keymap/set-global (:sequence parsed) cmd-kw])
+
+        :major
+        (rf/dispatch-sync [:keymap/set-mode-key keymap-name (:sequence parsed) cmd-kw])))
+
+    nil))
+
+(defn command-remapping
+  "Return the remapping for COMMAND in current keymaps.
+
+  Looks up [remap COMMAND] bindings in all active keymaps and returns
+  the command that COMMAND is remapped to, or nil if no remapping exists.
+
+  This is the Emacs-compatible command-remapping function.
+
+  Issue #263: Implement [remap CMD] keybinding syntax.
+
+  Usage:
+    (command-remapping 'kill-line)  ; => 'my-kill-line or nil
+
+  Returns: Remapped command keyword, or nil if no remapping"
+  [command]
+  (let [db @rfdb/app-db
+        ;; Import the lookup function from keymap events
+        ;; We need to call the db-based version
+        keymaps (:keymaps db)
+        active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
+        active-buffer-id (:buffer-id active-window)
+        active-buffer (get (:buffers db) active-buffer-id)
+        minor-modes (:minor-modes active-buffer #{})
+        major-mode (:major-mode active-buffer :fundamental-mode)
+        ;; Normalize command to keyword
+        cmd-kw (if (keyword? command) command (keyword (name command)))
+
+        ;; Helper to lookup remap in a keymap with parent chain
+        lookup-remap (fn lookup-remap [keymap-path]
+                       (when keymap-path
+                         (let [keymap-data (get-in keymaps keymap-path)]
+                           (or
+                            (get-in keymap-data [:remaps cmd-kw])
+                            (when-let [parent-path (:parent keymap-data)]
+                              (lookup-remap parent-path))))))]
+
+    (or
+     ;; Check minor mode keymaps
+     (some (fn [minor-mode]
+             (lookup-remap [:minor minor-mode]))
+           (reverse (seq minor-modes)))
+
+     ;; Check major mode keymap
+     (lookup-remap [:major major-mode])
+
+     ;; Check global keymap
+     (lookup-remap [:global])
+
+     ;; No remap found
+     nil)))
+
 (defn key-binding
   "Look up KEY-SEQUENCE and return bound command.
 
@@ -3914,6 +4094,90 @@
   (let [buffer-id (current-buffer)]
     (get-in @rfdb/app-db [:buffers buffer-id :overlays overlay-id :end])))
 
+(defn overlays-at
+  "Return a list of overlays that contain the character at POS.
+  If SORTED is non-nil, sort them by decreasing priority.
+
+  Zero-length overlays that start and stop at POS are not included.
+  Use `overlays-in` if those overlays are of interest.
+
+  Usage: (overlays-at pos)
+         (overlays-at pos sorted)
+  Returns: Vector of overlay IDs"
+  ([pos]
+   (overlays-at pos nil))
+  ([pos sorted]
+   (let [buffer-id (current-buffer)
+         overlays (get-in @rfdb/app-db [:buffers buffer-id :overlays] {})
+         ;; An overlay contains POS if start <= pos < end (and start != end)
+         matching (keep (fn [[id ov]]
+                          (when (and (< (:start ov) (:end ov))  ; Non-zero length
+                                     (<= (:start ov) pos)
+                                     (< pos (:end ov)))
+                            [id ov]))
+                        overlays)
+         sorted-results (if sorted
+                          (sort-by (fn [[_ ov]] (- (or (:priority ov) 0))) matching)
+                          matching)]
+     (vec (map first sorted-results)))))
+
+(defn move-overlay
+  "Set the endpoints of OVERLAY to BEG and END in BUFFER.
+  If BUFFER is omitted, leave OVERLAY in the same buffer it inhabits now.
+  Returns the OVERLAY.
+
+  Usage: (move-overlay overlay beg end)
+         (move-overlay overlay beg end buffer)
+  Returns: Overlay ID"
+  ([overlay-id beg end]
+   (move-overlay overlay-id beg end nil))
+  ([overlay-id beg end _buffer]
+   ;; For now, we only support moving within current buffer
+   ;; Future: support moving between buffers
+   (let [buffer-id (current-buffer)
+         actual-start (min beg end)
+         actual-end (max beg end)]
+     (swap! rfdb/app-db
+            (fn [db]
+              (-> db
+                  (assoc-in [:buffers buffer-id :overlays overlay-id :start] actual-start)
+                  (assoc-in [:buffers buffer-id :overlays overlay-id :end] actual-end))))
+     overlay-id)))
+
+(defn overlay-buffer
+  "Return the buffer OVERLAY belongs to.
+  Return nil if OVERLAY has been deleted.
+
+  Usage: (overlay-buffer overlay-id)
+  Returns: Buffer ID or nil"
+  [overlay-id]
+  ;; In Lexicon, overlays are stored within buffer state, so we need to search
+  ;; all buffers to find which one contains this overlay
+  (let [buffers (get @rfdb/app-db :buffers {})]
+    (some (fn [[buffer-id buffer-data]]
+            (when (get-in buffer-data [:overlays overlay-id])
+              buffer-id))
+          buffers)))
+
+(defn overlay-properties
+  "Return a list of the properties on OVERLAY.
+  This is a copy of OVERLAY's plist; modifying its conses has no effect on OVERLAY.
+
+  The properties returned exclude internal keys (id, start, end).
+
+  Usage: (overlay-properties overlay-id)
+  Returns: Property list (vector of alternating keys and values)"
+  [overlay-id]
+  (let [buffer-id (overlay-buffer overlay-id)]
+    (when buffer-id
+      (let [overlay (get-in @rfdb/app-db [:buffers buffer-id :overlays overlay-id])
+            ;; Exclude internal overlay structure keys
+            props (dissoc overlay :id :start :end)]
+        ;; Convert to plist format: [key1 val1 key2 val2 ...]
+        (vec (mapcat (fn [[k v]]
+                       [(if (keyword? k) (symbol (name k)) k) v])
+                     props))))))
+
 ;; =============================================================================
 ;; Additional primitives for packages
 ;; =============================================================================
@@ -4551,6 +4815,10 @@
    'remove-overlays remove-overlays
    'overlay-start overlay-start
    'overlay-end overlay-end
+   'overlays-at overlays-at
+   'move-overlay move-overlay
+   'overlay-buffer overlay-buffer
+   'overlay-properties overlay-properties
    ;; Additional primitives
    'goto-line goto-line
    'symbol-at-point symbol-at-point
@@ -4599,8 +4867,12 @@
    ;; Keymaps
    'global-set-key global-set-key
    'local-set-key local-set-key
+   'define-key define-key
    'define-key-for-mode define-key-for-mode
+   'command-remapping command-remapping
    'key-binding key-binding
+   ;; Remap marker symbol for [remap COMMAND] syntax (Issue #263)
+   'remap 'remap
    ;; Transient keymaps (Phase 7: Embark support)
    'set-transient-map set-transient-map
    'exit-transient-map exit-transient-map

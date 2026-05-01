@@ -55,47 +55,102 @@
                            (collect-all-bindings-from-keymap keymaps parent))]
       (concat (seq bindings) parent-bindings))))
 
+(defn lookup-remap-in-keymap
+  "Look up a command remap in a single keymap, walking parent chain if needed.
+   Returns remapped command or nil if no remap found."
+  [keymaps keymap-path command]
+  (when keymap-path
+    (let [keymap-data (get-in keymaps keymap-path)]
+      (or
+       ;; Check direct remap in this keymap
+       (get-in keymap-data [:remaps command])
+       ;; If not found, check parent keymap
+       (when-let [parent-path (:parent keymap-data)]
+         (lookup-remap-in-keymap keymaps parent-path command))))))
+
+(defn command-remapping
+  "Look up command remapping using Emacs precedence order.
+   Returns the remapped command if found, nil otherwise.
+
+   This implements Emacs's command-remapping function which checks
+   all active keymaps for [remap COMMAND] entries.
+
+   Precedence order (same as key lookup):
+   1. Minor mode keymaps (in reverse order of activation)
+   2. Major mode keymap
+   3. Global keymap"
+  [db command]
+  (let [keymaps (:keymaps db)
+        minor-modes (get-active-minor-modes db)
+        major-mode (get-active-major-mode db)
+        ;; Normalize command to keyword for consistent lookup
+        cmd-kw (if (keyword? command) command (keyword (name command)))]
+    (or
+     ;; 1. Check minor mode keymaps (with parent chains)
+     (some (fn [minor-mode]
+             (lookup-remap-in-keymap keymaps [:minor minor-mode] cmd-kw))
+           (reverse (seq minor-modes)))
+
+     ;; 2. Check major mode keymap (with parent chain)
+     (lookup-remap-in-keymap keymaps [:major major-mode] cmd-kw)
+
+     ;; 3. Check global keymap (with parent chain)
+     (lookup-remap-in-keymap keymaps [:global] cmd-kw)
+
+     ;; No remap found
+     nil)))
+
 (defn resolve-keybinding
   "Resolve a key sequence to a command using Emacs precedence order.
-   Walks keymap parent chains automatically."
+   Walks keymap parent chains automatically.
+
+   After finding a command, checks for [remap COMMAND] bindings and
+   returns the remapped command if one exists (Issue #263)."
   [db key-sequence-str]
   (let [keymaps (:keymaps db)
         transient-keymap (:transient-keymap db)
         minor-modes (get-active-minor-modes db)
         major-mode (get-active-major-mode db)
-        mode-binding (get-in keymaps [:mode (keyword major-mode) key-sequence-str])]
+        mode-binding (get-in keymaps [:mode (keyword major-mode) key-sequence-str])
 
-    ;; Emacs precedence order (Phase 6.5):
-    ;; 0. Transient keymap (for C-u accumulation)
-    ;; 1. Active minor mode keymaps (in reverse order of activation)
-    ;; 2. Active major mode keymap
-    ;; 2.5. Mode-specific bindings (Issue #139: from define-key-for-mode)
-    ;; 3. Global keymap
-    ;; Each keymap can have a parent chain
+        ;; Emacs precedence order (Phase 6.5):
+        ;; 0. Transient keymap (for C-u accumulation)
+        ;; 1. Active minor mode keymaps (in reverse order of activation)
+        ;; 2. Active major mode keymap
+        ;; 2.5. Mode-specific bindings (Issue #139: from define-key-for-mode)
+        ;; 3. Global keymap
+        ;; Each keymap can have a parent chain
 
-    (or
-     ;; 0. Check transient keymap (Phase 6.5 Week 1-2)
-     (when transient-keymap
-       (lookup-key-in-keymap keymaps [:transient transient-keymap] key-sequence-str))
+        base-command
+        (or
+         ;; 0. Check transient keymap (Phase 6.5 Week 1-2)
+         (when transient-keymap
+           (lookup-key-in-keymap keymaps [:transient transient-keymap] key-sequence-str))
 
-     ;; 1. Check minor mode keymaps (with parent chains)
-     (some (fn [minor-mode]
-             (lookup-key-in-keymap keymaps [:minor minor-mode] key-sequence-str))
-           (reverse (seq minor-modes)))
+         ;; 1. Check minor mode keymaps (with parent chains)
+         (some (fn [minor-mode]
+                 (lookup-key-in-keymap keymaps [:minor minor-mode] key-sequence-str))
+               (reverse (seq minor-modes)))
 
-     ;; 2. Check major mode keymap (with parent chain)
-     (lookup-key-in-keymap keymaps [:major major-mode] key-sequence-str)
+         ;; 2. Check major mode keymap (with parent chain)
+         (lookup-key-in-keymap keymaps [:major major-mode] key-sequence-str)
 
-     ;; 2.5. Issue #139: Check mode-specific keymaps (from define-key-for-mode)
-     ;; These are stored at [:keymaps :mode mode key-sequence]
-     ;; Mode keymaps are stored with keyword keys, but major-mode may be symbol
-     mode-binding
+         ;; 2.5. Issue #139: Check mode-specific keymaps (from define-key-for-mode)
+         ;; These are stored at [:keymaps :mode mode key-sequence]
+         ;; Mode keymaps are stored with keyword keys, but major-mode may be symbol
+         mode-binding
 
-     ;; 3. Check global keymap (with parent chain)
-     (lookup-key-in-keymap keymaps [:global] key-sequence-str)
+         ;; 3. Check global keymap (with parent chain)
+         (lookup-key-in-keymap keymaps [:global] key-sequence-str)
 
-     ;; Return nil if no binding found
-     nil)))
+         ;; Return nil if no binding found
+         nil)]
+
+    ;; Issue #263: Apply command remapping if a command was found
+    ;; This allows modes to redirect commands (e.g., [remap kill-line] -> my-kill-line)
+    (if (and base-command (keyword? base-command))
+      (or (command-remapping db base-command) base-command)
+      base-command)))
 
 ;; -- Event Handlers --
 
@@ -385,6 +440,51 @@
    Mode keymaps are checked after local keymaps but before global."
    (let [mode-kw (if (symbol? mode) (keyword mode) mode)]
      (assoc-in db [:keymaps :mode mode-kw key-sequence] command))))
+
+;; -- Command Remapping Events (Issue #263) --
+
+(rf/reg-event-db
+ :keymap/set-remap
+ (fn [db [_ keymap-type keymap-name from-command to-command]]
+   "Set a command remapping in a keymap (Issue #263).
+
+   This implements [remap COMMAND] syntax from Emacs.
+   When FROM-COMMAND would be executed, TO-COMMAND runs instead.
+
+   Args:
+     keymap-type - :global, :major, or :minor
+     keymap-name - nil for global, mode keyword for major/minor
+     from-command - Command keyword to remap (e.g., :kill-line)
+     to-command - Command keyword to run instead (e.g., :my-kill-line)
+
+   Example:
+     [:keymap/set-remap :major :text-mode :kill-line :my-kill-line]
+     ;; Now C-k runs my-kill-line instead of kill-line in text-mode"
+   (let [;; Normalize commands to keywords
+         from-kw (if (keyword? from-command) from-command (keyword (name from-command)))
+         to-kw (if (keyword? to-command) to-command (keyword (name to-command)))
+         ;; Build the path to the remaps map
+         path (case keymap-type
+                :global [:keymaps :global :remaps from-kw]
+                :major [:keymaps :major keymap-name :remaps from-kw]
+                :minor [:keymaps :minor keymap-name :remaps from-kw])]
+     (assoc-in db path to-kw))))
+
+(rf/reg-event-db
+ :keymap/remove-remap
+ (fn [db [_ keymap-type keymap-name from-command]]
+   "Remove a command remapping from a keymap (Issue #263).
+
+   Args:
+     keymap-type - :global, :major, or :minor
+     keymap-name - nil for global, mode keyword for major/minor
+     from-command - Command keyword to stop remapping"
+   (let [from-kw (if (keyword? from-command) from-command (keyword (name from-command)))
+         path (case keymap-type
+                :global [:keymaps :global :remaps]
+                :major [:keymaps :major keymap-name :remaps]
+                :minor [:keymaps :minor keymap-name :remaps])]
+     (update-in db path dissoc from-kw))))
 
 (rf/reg-event-fx
  :input/keys
