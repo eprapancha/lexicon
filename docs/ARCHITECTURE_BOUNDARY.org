@@ -1,0 +1,183 @@
+#+TITLE: Lexicon Architecture: Core vs Packages Boundary
+#+AUTHOR: Lexicon Project
+#+DATE: 2026-05-01
+
+* Related Documents
+
+- [[file:ARCHITECTURE.org][Architecture]] -- Technical architecture reference
+- [[file:EMACS_COMPATIBILITY_CONTRACT.org][Emacs Compatibility Contract]] -- The project constitution
+- [[file:VISION.org][Vision]] -- Long-term vision and sequencing
+- [[file:ROADMAP.org][Roadmap]] -- Phase-by-phase development plan
+
+* The Boundary
+
+Packages and core are physically separated:
+
+- =lexicon.core.*= -- INTERNAL (packages must NEVER import)
+- =lexicon.lisp= -- PUBLIC API (the ONLY thing packages can import)
+- =lexicon.<package>= -- Packages (e.g., =lexicon.dired=)
+
+* How Emacs Does It
+
+#+begin_example
++-------------------------------------+
+|  Packages (Elisp)                   |  <-- Can ONLY use Lisp primitives
+|  - dired.el, org.el, etc.           |
++-------------------------------------+
+|  Lisp Primitives API                |  <-- THE BOUNDARY
+|  - buffer-*, point, insert, etc.    |
++-------------------------------------+
+|  C Core                             |  <-- Packages can't touch this
+|  - gap buffer, redisplay, GC        |
++-------------------------------------+
+#+end_example
+
+* What Lexicon Is
+
+#+begin_example
++-------------------------------------+
+|  Packages (top-level)               |  <-- ONLY uses lexicon.lisp API
+|  - lexicon.dired, lexicon.org       |      No re-frame, no app-db access
++-------------------------------------+
+|  lexicon.lisp (Public API)          |  <-- THE BOUNDARY
+|  - All Emacs primitives exposed     |
++-------------------------------------+
+|  lexicon.core.* (Internal)          |  <-- Packages can't touch this
+|  - events/, WASM, rendering         |      (enforced by lint script)
++-------------------------------------+
+#+end_example
+
+* Directory Structure
+
+#+begin_example
+packages/editor-cljs/src/lexicon/
++-- dired.cljs              # PACKAGE - uses ONLY lexicon.lisp
++-- lisp.cljs               # PUBLIC API - the boundary
+|
++-- core/                   # INTERNAL - packages must NEVER import from here
+    +-- main.cljs           # Entry point
+    +-- package_loader.cljs # Loads packages (correct dependency direction)
+    +-- events.cljs         # Core events
+    +-- db.cljs             # State schema
+    +-- subs.cljs           # Subscriptions
+    +-- events/             # Event handlers
+    |   +-- buffer.cljs
+    |   +-- edit.cljs
+    |   +-- window.cljs
+    |   +-- keymap.cljs
+    |   +-- mode.cljs
+    |   +-- isearch.cljs
+    |   +-- hooks.cljs
+    |   +-- text_properties.cljs
+    |   +-- command.cljs
+    |   +-- ui.cljs
+    |   +-- wasm.cljs
+    |   +-- message.cljs
+    |   +-- icomplete.cljs
+    +-- api/                # Internal API helpers
+    +-- ui/                 # UI components
+    +-- modes/              # Core modes
+    +-- ...
+#+end_example
+
+* Dependency Direction
+
+#+begin_example
+lexicon.core.main
+    |
+    v
+lexicon.core.package-loader  <-- packages loaded HERE
+    |
+    v
+lexicon.dired                <-- package at top-level
+    |
+    v
+lexicon.lisp                 <-- PUBLIC API (only thing packages can use)
+#+end_example
+
+Rule: core NEVER imports packages. Package loading happens through =package_loader.cljs=.
+
+* Enforcement
+
+Run =bb lint= to check for violations:
+
+#+begin_src bash
+bb lint
+#+end_src
+
+This task:
+- Finds all package files (=*.cljs= at =src/lexicon/=, except =lisp.cljs=)
+- Fails if any import from =lexicon.core.*=
+- Fails if any import from =re-frame.*=
+- Fails if any access =re-frame.db= directly
+
+* What IS Core (lexicon.core.*)
+
+These belong in =core/= as re-frame handlers:
+
+1. *Primitives* -- gap buffer operations, cursor movement, text manipulation
+2. *Buffer System* -- create, switch, kill buffers
+3. *Window System* -- split, delete, resize windows
+4. *Keymap System* -- key binding lookup and dispatch
+5. *Mode Framework* -- major/minor mode infrastructure
+6. *Minibuffer* -- prompt and completion system
+7. *Command Infrastructure* -- registration and execution
+8. *Hooks* -- hook system for extensibility
+9. *Text Properties* -- property attachment to text ranges
+10. *Undo System* -- undo/redo infrastructure
+11. *Isearch* -- incremental search (core feature, uses primitives internally)
+
+* What IS NOT Core (Packages)
+
+These are implemented using ONLY =lexicon.lisp= API:
+
+1. *Dired* -- directory editor (=lexicon.dired=)
+2. *Org-mode* -- outlining (future, =lexicon.org=)
+3. *Magit* -- git interface (future, =lexicon.magit=)
+4. *Custom modes* -- user-defined major/minor modes
+
+* The Litmus Test
+
+/"Can this feature be implemented using only functions in =lexicon.lisp=?"/
+
+- If YES: it's a package, put it at =lexicon/<name>.cljs=
+- If NO: either add the missing primitive to =lexicon.lisp=, or it's core
+
+* Package Implementation Rules
+
+1. *Namespace:* =lexicon.<name>= (top-level, e.g., =lexicon.dired=)
+2. *Imports:* ONLY =[lexicon.lisp :as lisp]=
+3. *Registration:* use =lisp/define-command= to register commands
+4. *Loading:* added to =core/package_loader.cljs=
+5. *No re-frame:* packages must not import re-frame or access state directly
+
+Example:
+
+#+begin_src clojure
+(ns lexicon.dired
+  "Dired package - uses ONLY lexicon.lisp API"
+  (:require [lexicon.lisp :as lisp]))
+
+(defn dired [directory]
+  (lisp/switch-to-buffer (str "*dired " directory "*"))
+  (lisp/insert-directory directory)
+  (lisp/set-buffer-read-only true)
+  (lisp/set-major-mode 'dired-mode))
+
+(defn register-dired-package! []
+  (lisp/define-command 'dired dired "Open directory in Dired"
+    {:interactive [{:type :async :prompt "Directory: "}]}))
+#+end_src
+
+* Implementation Status
+
+- [X] Documented core vs packages boundary
+- [X] Created =lexicon.dired= as a proper package
+- [X] Added filesystem primitives to =lexicon.lisp=
+- [X] Refactored isearch to use =lexicon.lisp= primitives
+- [X] Established correct dependency direction via =package_loader.cljs=
+- [X] Moved all core code to =lexicon.core.*= namespace
+- [X] Created =bb lint= task to enforce boundary
+- [X] Added =bb lint= to CI pipeline
+- [ ] Move more features to packages as appropriate
+- [ ] Add more primitives to =lexicon.lisp= as needed

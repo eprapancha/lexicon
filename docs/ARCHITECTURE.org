@@ -1,0 +1,255 @@
+#+TITLE: Lexicon Architecture
+#+AUTHOR: Lexicon Project
+#+DATE: 2026-05-01
+
+* Related Documents
+
+- [[file:ARCHITECTURE_BOUNDARY.org][Architecture Boundary]] -- Core/package boundary rules
+- [[file:EMACS_COMPATIBILITY_CONTRACT.org][Emacs Compatibility Contract]] -- The project constitution
+- [[file:VISION.org][Vision]] -- Long-term vision and sequencing
+- [[file:ROADMAP.org][Roadmap]] -- Phase-by-phase development plan
+
+* Core Philosophy
+
+Lexicon is a faithful recreation of GNU Emacs for the modern web.
+
+"When in doubt, do what Emacs does" -- we study Emacs source code before implementing features. This is not Emacs-inspired, this IS Emacs for the browser.
+
+* Architectural Principles
+
+** Userspace/Kernel Split (Emacs C / Elisp Analogy)
+
+*Rust/WASM "Kernel":*
+- Gap buffer operations
+- UTF-8 text handling
+- Performance-critical primitives
+- Marker management at engine level
+
+*ClojureScript "Userspace":*
+- All user-facing commands (even =self-insert-command=)
+- Mode definitions, keymap configurations
+- UI rendering (Reagent/React)
+- Extensibility and package system
+
+Rule: only functions that need speed go in Rust. Everything else in ClojureScript.
+
+** Core vs Package
+
+*Core* (what you get with =emacs -Q=):
+- Buffer/window/frame management
+- Keymap system, command dispatcher
+- Mode system (major/minor)
+- Minibuffer, basic editing
+- File I/O, kill ring
+
+*Packages* (external, loadable):
+- Evil-mode (vim emulation)
+- Vertico/Orderless/Consult (completion)
+- LSP integration
+- Syntax highlighting (beyond basic)
+- Themes
+
+Rule: if Emacs doesn't have it by default, it's a package. See [[file:ARCHITECTURE_BOUNDARY.org][Architecture Boundary]] for enforcement details.
+
+** State Ownership
+
+Each state variable is OWNED by exactly ONE module. Others MUST dispatch events.
+
+*Ownership Map:*
+
+| State Key              | Owner         | Events                                               |
+|------------------------+---------------+------------------------------------------------------|
+| =:minibuffer=          | =ui.cljs=     | =:minibuffer/activate=, =:minibuffer/deactivate=     |
+| =:echo-area=           | =ui.cljs=     | =:echo/message=, =:echo/clear=                       |
+| =:mark-position=       | =edit.cljs=   | =:set-mark=, =:deactivate-mark=                      |
+| =:window-tree=         | =ui.cljs=     | =:window/set-buffer=, =:window/set-mark=             |
+| =:ui :cursor-position= | =edit.cljs=   | =:cursor/set-position=                               |
+| =:buffers=             | =buffer.cljs= | =:buffer/set-mode=, =:buffer/update-version=         |
+| =:kill-ring=           | =edit.cljs=   | kill/yank commands only                               |
+
+#+begin_src clojure
+;; WRONG: Direct state manipulation
+(assoc db :minibuffer {...})
+
+;; CORRECT: Dispatch to owner
+[:dispatch [:minibuffer/activate {...}]]
+#+end_src
+
+See =packages/editor-cljs/src/lexicon/db.cljs= for full ownership documentation.
+
+* System Architecture
+
+** Gap Buffer (Rust/WASM)
+
+Simpler than piece table/rope, faster for localized edits (99% of editing), exact Emacs implementation.
+
+#+begin_src rust
+// packages/lexicon-engine/wasm/src/lib.rs
+pub struct WasmGapBuffer {
+    buffer: GapBuffer,
+}
+
+impl WasmGapBuffer {
+    pub fn insert(&mut self, pos: usize, text: &str);
+    pub fn delete(&mut self, pos: usize, length: usize);
+    pub fn get_text(&self) -> String;
+    pub fn length(&self) -> usize;  // Property, not method: use .-length in JS
+}
+#+end_src
+
+ClojureScript integration:
+
+#+begin_src clojure
+(let [buffer (WasmGapBuffer. "")]
+  (.insert buffer 0 "Hello")
+  (.delete buffer 0 5)
+  (.getText buffer)
+  (.-length buffer))  ; NOT (.getLength buffer)
+#+end_src
+
+** Re-frame State Management
+
+App-DB schema:
+
+#+begin_src clojure
+{:buffers {"*scratch*" {:name "*scratch*"
+                        :wasm-instance <WasmGapBuffer>
+                        :major-mode :text-mode
+                        :local-vars {}
+                        :cursor-position {:line 0 :column 0}}}
+
+ :window-tree {:type :window
+               :buffer-id "*scratch*"
+               :cursor-position {:line 0 :column 0}
+               :mark-position nil}
+
+ :active-window-id <window-id>
+
+ :minibuffer {:active? false     ; Flat map, NOT a stack
+              :prompt ""
+              :input ""
+              :on-confirm nil
+              :on-cancel nil}
+
+ :prefix-arg nil
+ :current-prefix-arg nil
+
+ :kill-ring []
+
+ :ui {:cursor-position 0}}  ; Linear position for WASM
+#+end_src
+
+*Important:* The minibuffer uses a flat =:minibuffer= map, not a stack. All handlers read/write consistently:
+
+#+begin_src clojure
+(get-in db [:minibuffer :input])
+(assoc-in db [:minibuffer :input] new-input)
+#+end_src
+
+** Cursor Position (3 Locations)
+
+1. =[:ui :cursor-position]= -- linear integer for WASM operations
+2. =[:buffers id :cursor-position]= -- per-buffer line/column
+3. Window =:cursor-position= -- per-window, survives buffer switches
+
+** Keymap System
+
+Hierarchical precedence (exact Emacs order):
+
+1. Transient keymap (for C-u accumulation)
+2. Minor mode keymaps (in reverse order of activation)
+3. Major mode keymap
+4. Mode-specific bindings (from =define-key-for-mode=)
+5. Global keymap
+
+Each keymap can have a parent chain. Command remapping via =[remap COMMAND]= is supported.
+
+** Command System
+
+Interactive specs:
+
+#+begin_src clojure
+;; "P" - Raw prefix argument
+(defn my-command []
+  (interactive "P")
+  (let [arg (current-prefix-arg)] ...))
+
+;; "p" - Numeric prefix (nil -> 1, (4) -> 4, etc.)
+(defn forward-char [n]
+  (interactive "p") ...)
+#+end_src
+
+** Security Model
+
+- *:core* -- built-in packages, full access, native eval
+- *:local* -- user filesystem, full access, native eval
+- *:external* -- internet packages, SCI sandbox only, core API only
+
+User init file (=~/.lexicon/init.cljs=) runs in SCI sandbox with allow-listed namespaces.
+
+* File Organization
+
+#+begin_example
+packages/
++-- editor-cljs/
+|   +-- src/lexicon/
+|       +-- lisp.cljs               # PUBLIC API (the boundary)
+|       +-- dired.cljs              # PACKAGE - uses ONLY lexicon.lisp
+|       +-- core/                   # INTERNAL - packages must NEVER import
+|           +-- main.cljs           # Entry point
+|           +-- db.cljs             # Schema, state ownership
+|           +-- subs.cljs           # Subscriptions
+|           +-- events.cljs         # Core events
+|           +-- events/             # Event handlers by domain
+|           |   +-- buffer.cljs
+|           |   +-- edit.cljs
+|           |   +-- window.cljs
+|           |   +-- keymap.cljs
+|           |   +-- command.cljs
+|           |   +-- mode.cljs
+|           |   +-- isearch.cljs
+|           |   +-- hooks.cljs
+|           |   +-- text_properties.cljs
+|           |   +-- ui.cljs
+|           |   +-- wasm.cljs
+|           |   +-- message.cljs
+|           |   +-- icomplete.cljs
+|           +-- eval.cljs           # SCI wrapper
+|           +-- modes/              # Core modes
+|           +-- api/                # Internal API helpers
+|           +-- ui/                 # UI components
+|           +-- ...
++-- lexicon-engine/
+    +-- wasm/
+        +-- src/
+            +-- lib.rs              # Gap buffer WASM bindings
+#+end_example
+
+Size limit: ~500 lines per namespace -- split when exceeded.
+
+* Emacs Reference
+
+Before implementing features, study the Emacs source at =~/projects/emacs-source/=:
+
+| File                                    | Content                       |
+|-----------------------------------------+-------------------------------|
+| =lisp/simple.el=                        | Basic commands, universal-arg |
+| =src/callint.c=                         | Interactive calling, prefix   |
+| =lisp/minibuffer.el=                    | Completion framework          |
+| =src/minibuf.c=                         | Minibuffer depth, state       |
+| =src/buffer.c=                          | Buffer-local variables        |
+| =lisp/emacs-lisp/easy-mmode.el=        | Mode macros                   |
+
+* Performance Standards
+
+- Editor startup: < 2 seconds
+- Command execution: < 16ms (60 FPS)
+- File loading: < 1 second for 10k line files
+- Package loading: < 100ms per package
+
+* WASM Quirks
+
+- =WasmGapBuffer= only -- simple gap buffer interface
+- =.-length= is a property, NOT =.getLength()= method
+- =WasmEditorCore= was deleted (unused complexity)
+- Three cursor locations must stay in sync; cache conversions where possible

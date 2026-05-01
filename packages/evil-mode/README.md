@@ -80,4 +80,4 @@ Evil-mode demonstrates that Lexicon's package system works: complex features lik
 
 ---
 
-**See:** [/docs/ROADMAP.md](/docs/ROADMAP.md) Phase 6 for implementation timeline
+**See:** [/docs/ROADMAP.org](/docs/ROADMAP.org) for implementation timeline

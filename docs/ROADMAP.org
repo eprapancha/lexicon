@@ -1,0 +1,101 @@
+#+TITLE: Lexicon Development Roadmap
+#+AUTHOR: Lexicon Project
+#+DATE: 2026-05-01
+
+* Related Documents
+
+- [[file:VISION.org][Vision]] -- Long-term vision and sequencing
+- [[file:ARCHITECTURE.org][Architecture]] -- Technical architecture reference
+- [[file:ARCHITECTURE_BOUNDARY.org][Architecture Boundary]] -- Core/package boundary rules
+- [[file:EMACS_COMPATIBILITY_CONTRACT.org][Emacs Compatibility Contract]] -- The project constitution
+
+* Overview
+
+This roadmap tracks Lexicon's evolution from a bare Emacs implementation to a full package ecosystem. Strategy: build a solid, tested core first, then grow the package ecosystem.
+
+Source of truth: [[https://github.com/eprapancha/lexicon/issues][GitHub Issues]]
+
+* Completed Phases
+
+| Phase | Description | Completed |
+|-------+-------------+-----------|
+|     0 | Architecture Reset -- gap buffer, Evil-mode extraction | Dec 2025 |
+|     1 | Basic Editing -- navigation, kill ring, undo | Dec 2025 |
+|     2 | Buffers & Files -- multi-buffer, file I/O | Dec 2025 |
+|   2.5 | Core Polish -- focus handling, echo area, prefix args | Dec 2025 |
+|     3 | Windows & Frames -- splitting, navigation | Dec 2025 |
+|     4 | Minibuffer & Completion -- M-x, TAB completion, help | Dec 2025 |
+|     5 | Modes & Keymaps -- major/minor modes, hierarchical keymaps | Dec 2025 |
+|    6A | Package System -- loading, namespacing | Dec 2025 |
+|    6B | Display & Theming -- faces, mode-line, themes | Dec 2025 |
+|    6C | Completion Framework -- metadata, annotations | Dec 2025 |
+|    6D | Missing Infrastructure -- various Emacs primitives | Dec 2025 |
+|   6.5 | Initial Testing -- browser-based tests, manual test plan | Dec 2025 |
+|   7.1 | Core API Design -- buffer/command/keymap API documentation | Jan 2026 |
+|   7.2 | events.cljs Refactor -- split 3000-line monolith into 8 modules | Jan 2026 |
+| 7.3-5 | Hook System, Undo Architecture, Markers | Jan 2026 |
+| 7.6-7 | Dynamic Context, Package Isolation | Jan 2026 |
+|   7.8 | Query Replace, Minibuffer Redesign | Jan 2026 |
+
+** What's Been Built
+
+The core editor is substantial:
+
+- Full editing: kill ring, yank, undo, prefix arguments, rectangle operations, keyboard macros
+- Buffer/window/frame management with splitting, navigation, tabs
+- Minibuffer completion system with styles (basic, substring, flex) and icomplete
+- Major/minor modes with hierarchical keymaps and buffer-local state
+- File operations via FS Access API (find-file, save, dired)
+- Search: isearch, query-replace, occur, grep
+- Programming: compile (stub), imenu, outline, folding, font-lock
+- Help system: describe-key/function/variable, info browser
+- Diff/merge: diff-mode, ediff, smerge-mode
+- Text properties, overlays, markers, narrowing
+
+* Current Phase: Core Editor Validation
+
+The codebase has grown faster than testing. The priority now is:
+
+1. *Manual testing* -- verify every interactive command actually works as expected
+2. *Fix or delete superficial tests* -- tests that pass but don't test real behavior
+3. *Issue sweep* -- work through open GitHub issues systematically
+
+This phase ends when every core command is manually verified and has a meaningful E2E test.
+
+* Future Phases
+
+** Phase 8: Package Ecosystem (Vertico, Orderless, Consult)
+
+Prove that the Elisp compatibility layer works by porting high-value completion packages.
+
+- straight.el-style package installation from GitHub
+- Package persistence (~/.lexicon/packages.edn~)
+- Orderless -- flexible matching
+- Vertico -- vertical completion UI
+- Consult -- enhanced commands
+
+** Phase 9: Evil-mode
+
+Full Vim emulation as an external package.
+
+- Modal editing (normal, insert, visual, operator-pending)
+- Vim operators and motions
+- Ex command line
+
+** Phase 10: Syntax Highlighting (Tree-sitter)
+
+Modern syntax highlighting via tree-sitter WASM integration. Replace regex-based font-lock with proper parsing.
+
+** Phase 11: Backend Server Bridge
+
+WebSocket bridge to enable features that require server processes:
+
+- Shell/terminal (PTY)
+- Version control (git operations)
+- LSP (language server communication)
+- TRAMP (remote files)
+- Compilation (real build commands)
+
+** Phase 12+: org-mode, Collaboration, Publishing
+
+See [[file:VISION.org][Vision]] for the long-term direction.

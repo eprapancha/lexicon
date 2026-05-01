@@ -1,0 +1,62 @@
+#+TITLE: Lexicon Vision
+#+AUTHOR: Lexicon Project
+#+DATE: 2026-05-01
+
+* Related Documents
+
+- [[file:ARCHITECTURE.org][Architecture]] -- Technical architecture reference
+- [[file:ARCHITECTURE_BOUNDARY.org][Architecture Boundary]] -- Core/package boundary rules
+- [[file:EMACS_COMPATIBILITY_CONTRACT.org][Emacs Compatibility Contract]] -- The project constitution
+- [[file:ROADMAP.org][Roadmap]] -- Phase-by-phase development plan
+
+* What Lexicon Is
+
+Lexicon is a *literal recreation* of GNU Emacs for the web browser. Not Emacs-inspired. Not Emacs-like. Actual Emacs -- gap buffers, hierarchical keymaps, the mode system, the command model, buffer-local variables, the hook system -- all of it.
+
+The target user is an Emacs diehard who opens Lexicon and feels *zero friction*. =C-x C-f= opens a file. =M-x= runs commands. =C-h k= describes a key. Kill ring, yank, undo, prefix arguments -- all behave exactly as expected. The mental model transfers completely.
+
+* Long-Term Vision: Collaborative CMS
+
+The editor is the foundation, not the destination. The long-term goal is a *collaborative content management system* built on Emacs's organizational power:
+
+1. *org-mode* as the authoring format
+2. *org-roam* for knowledge graph navigation
+3. *babel* for executable documents and literate programming
+4. *Real-time collaboration* -- multiple cursors, shared buffers
+5. *Publishing pipeline* -- org to HTML/PDF, replacing WordPress for technical content
+
+This is a WordPress replacement for people who think in org-mode.
+
+* Sequencing
+
+The path from editor to CMS follows a strict dependency chain:
+
+1. *Core editor* -- Get every built-in Emacs command working correctly (current phase)
+2. *Package system* -- straight.el-style GitHub-based package installation
+3. *Port key packages* -- vertico, orderless, consult (completion ecosystem), evil (vim emulation)
+4. *org-mode* -- The big one. Requires solid text properties, overlays, font-lock
+5. *magit* -- Git integration via backend server bridge
+6. *Collaboration* -- CRDT-based shared editing, presence, permissions
+7. *Publishing* -- org-export, static site generation, CMS features
+
+Each phase depends on the one before it. Skipping ahead produces fragile results.
+
+* Backend-Dependent Features
+
+Some Emacs features require a server process that the browser cannot provide:
+
+- *Shell/terminal* -- Process spawning, PTY
+- *Version control* -- Git operations
+- *LSP* -- Language server communication
+- *TRAMP* -- Remote file access
+- *Compilation* -- Running build commands
+
+These features have command stubs and UI infrastructure in place. They will activate when connected to a backend server via WebSocket bridge. The stubs are preserved because the UI/UX design work is valuable and the command registration is correct.
+
+* Development Model
+
+- *Solo developer + AI* -- One human, Claude as pair programmer
+- *TDD* -- Tests are the specification. Never weaken a test to make it pass
+- *Emacs source as spec* -- When in doubt, read =~/projects/emacs-source/=
+- *GitHub issues as source of truth* -- All work tracked in issues
+- *Behavioral compatibility* -- Measured by semantic tests, not API compatibility

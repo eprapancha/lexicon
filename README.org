@@ -1,0 +1,195 @@
+#+TITLE: Lexicon: Emacs for the Modern Web
+#+AUTHOR: Lexicon Project
+
+/A faithful recreation of GNU Emacs in the browser, built with Rust, ClojureScript, and WebAssembly./
+
+[[https://eprapancha.github.io/lexicon][Try it now]]
+
+* What is Lexicon?
+
+Lexicon is GNU Emacs running in the browser -- not Emacs-inspired, not Emacs-like, but actual Emacs with its core architecture faithfully implemented:
+
+- *Gap buffer* text storage (like Emacs C core)
+- *Hierarchical keymaps* with exact Emacs precedence
+- *Major and minor modes* with buffer-local state
+- *Command-oriented* editing model
+- *Minibuffer* for interactive commands with completion
+- *Package system* where Evil-mode, Vertico, etc. are external packages
+
+*Technology Stack:* Rust/WASM (gap buffer), ClojureScript/re-frame (Emacs Lisp layer), Reagent (UI)
+
+* Current Status
+
+The core editor is functional. You can open Lexicon and edit text with familiar Emacs keybindings. The features below describe what actually works today.
+
+Backend-dependent features (shell, version control, LSP, remote files) have command stubs and UI infrastructure but require a server bridge to function. They are listed separately at the end.
+
+* Working Features
+
+** Core Editing
+
+Navigation (=C-f/b/n/p=, =M-f/b=, =C-a/e=, =M-</>==), kill/yank (=C-k=, =C-w=, =M-w=, =C-y=, =M-y=), undo (=C-/=), delete (=DEL=, =C-d=), open-line (=C-o=), join lines (=M-^=), prefix arguments (=C-u=, =C-0= to =C-9=, =C--=).
+
+** Kill Ring and Region
+
+Set mark (=C-SPC=), exchange point and mark (=C-x C-x=), shift-select, kill-region (=C-w=), copy (=M-w=), yank-pop (=M-y=), kill-word (=M-d=), backward-kill-word (=M-DEL=).
+
+** Rectangle Operations
+
+=C-x r k= (kill), =C-x r d= (delete), =C-x r y= (yank), =C-x r o= (open), =C-x r c= (clear), =C-x r t= (string replace).
+
+** Search and Replace
+
+Incremental search (=C-s=, =C-r=), query-replace (=M-%=), query-replace-regexp (=C-M-%=), replace-string, replace-regexp, occur (=M-x occur=), grep across open buffers.
+
+** Buffer Management
+
+Switch (=C-x b=), kill (=C-x k=), list (=C-x C-b=), buffer-menu, ibuffer with filter groups and bulk operations. Buffer names auto-disambiguated (uniquify).
+
+** Window Management
+
+Split below (=C-x 2=), split right (=C-x 3=), delete (=C-x 0=), delete others (=C-x 1=), other-window (=C-x o=), windmove (=S-<arrows>=), winner-mode (=C-c <left/right>=), tab-bar.
+
+** File Operations
+
+find-file (=C-x C-f=) with path completion, save (=C-x C-s=), write-file (=C-x C-w=), revert-buffer. Uses browser FS Access API. recentf, save-place, auto-revert modes.
+
+** Dired
+
+Directory editor with navigation, mark/unmark, flag/execute delete, copy (=C=), rename (=R=), delete (=D=), create directory (=+=).
+
+** Keyboard Macros
+
+Record (=F3= / =C-x (=), stop/replay (=F4= / =C-x )=), call-last-kbd-macro (=C-x e=).
+
+** Help System
+
+describe-key (=C-h k=), describe-function (=C-h f=), describe-variable (=C-h v=), describe-bindings (=C-h b=), apropos-command (=C-h a=), info browser (=M-x info=).
+
+** Completion
+
+Minibuffer TAB completion with styles (basic, substring, flex). icomplete-mode for inline candidate display with cycling (=C-.= / =C-,=).
+
+** Programming Support
+
+compile/recompile (stub -- creates buffer but can't run commands), next-error/previous-error navigation, imenu, outline-mode, hideshow code folding, font-lock syntax highlighting, eldoc.
+
+** Diff and Merge
+
+diff-mode (hunk navigation, goto-source), ediff-buffers (basic text comparison), smerge-mode (conflict resolution with real marker parsing).
+
+** Minor Modes
+
+line-number-mode, column-number-mode, display-line-numbers-mode, electric-pair-mode, delete-selection-mode, show-paren-mode, hl-line-mode, whitespace-mode, auto-save-mode, read-only-mode, winner-mode, which-function-mode, font-lock-mode, hs-minor-mode, outline-minor-mode, eldoc-mode, hi-lock-mode, smerge-mode, recentf-mode, save-place-mode, auto-revert-mode, abbrev-mode, tab-bar-mode.
+
+** Major Modes
+
+fundamental-mode, text-mode, help-mode, special-mode, buffer-menu-mode, dired-mode, occur-mode, outline-mode, completion-list-mode, diff-mode, info-mode, grep-mode, ibuffer-mode. Programming modes (clojure, javascript, python, rust, html, css, markdown) with syntax highlighting.
+
+** Dynamic Abbreviation
+
+dabbrev-expand (=M-/=), hippie-expand, abbrev-mode with expand-abbrev (=C-x a e=).
+
+** Highlighting
+
+hi-lock interactive highlighting (=M-s h r=, =M-s h p=, =M-s h l=, =M-s h u=, =M-s h .=).
+
+* Backend-Dependent Features (Stubs)
+
+These features have command registration and UI framework in place. They produce placeholder output or report limitations. They will become functional when connected to a backend server via WebSocket bridge.
+
+| Feature | Status |
+|---------+--------|
+| Shell/eshell | Built-in commands only (echo, pwd, ls of buffers). No process spawning. |
+| Version control (vc) | Commands registered, synthetic data. No real git operations. |
+| LSP (eglot) | Command registration only. No protocol implementation. |
+| Terminal (term/ansi-term) | Delegates to shell. No VT100/ANSI emulation. |
+| TRAMP (remote files) | Path parsing, method listing. No actual remote connections. |
+| Project (project.el) | Searches open buffers only. No filesystem project detection. |
+| Xref | Text matching across open buffers. No semantic resolution. |
+| Compilation | Creates buffer. Cannot run build commands. |
+
+* Architecture
+
+#+begin_example
++-------------------------------------+
+|       Browser (localhost:8080)       |
+|  +-------------------------------+  |
+|  |  ClojureScript (re-frame)     |  |  <-- Emacs Lisp layer
+|  |  - Buffers, windows, modes    |  |
+|  |  - Commands, keymaps          |  |
+|  |  - UI rendering (Reagent)     |  |
+|  +--------------+----------------+  |
+|                 | WASM FFI          |
+|  +--------------+----------------+  |
+|  |  Rust/WASM (Gap Buffer)       |  |  <-- Emacs C core
+|  |  - Text storage & operations  |  |
+|  |  - UTF-8 handling             |  |
+|  +-------------------------------+  |
++-------------------------------------+
+#+end_example
+
+See [[file:docs/ARCHITECTURE.org][docs/ARCHITECTURE.org]] for full technical details.
+
+* Quick Start
+
+** Prerequisites
+
+- *Nix* (recommended) or Node.js 18+, Java 17+, Rust
+- *Firefox* (for E2E tests)
+
+** Run Locally
+
+#+begin_src bash
+git clone https://github.com/eprapancha/lexicon.git
+cd lexicon
+nix-shell
+
+bb build
+bb dev
+
+# Open http://localhost:8080
+#+end_src
+
+** Run Tests
+
+#+begin_src bash
+bb test        # All tests
+bb test:e2e    # E2E tests only
+bb lint        # Linters
+#+end_src
+
+* Project Structure
+
+#+begin_example
+lexicon/
++-- docs/                      # Documentation (.org files)
++-- packages/
+|   +-- editor-cljs/           # ClojureScript core (Emacs Lisp layer)
+|   +-- lexicon-engine/        # Rust/WASM gap buffer (Emacs C core)
++-- e2e_tests/                 # E2E tests (Etaoin/Firefox)
++-- scripts/                   # Build scripts
+#+end_example
+
+* Vision & Roadmap
+
+Lexicon aims to become a collaborative CMS built on org-mode -- a WordPress replacement for people who think in Emacs. The path: core editor (now) -> package system -> port packages (vertico, evil) -> org-mode -> collaboration -> publishing.
+
+See [[file:docs/VISION.org][docs/VISION.org]] for the full vision and [[file:docs/ROADMAP.org][docs/ROADMAP.org]] for the phase-by-phase plan.
+
+* Documentation
+
+- [[file:docs/ARCHITECTURE.org][Architecture]] -- Technical architecture, state management, WASM API
+- [[file:docs/ARCHITECTURE_BOUNDARY.org][Architecture Boundary]] -- Core/package separation and enforcement
+- [[file:docs/EMACS_COMPATIBILITY_CONTRACT.org][Emacs Compatibility Contract]] -- Semantic guarantees (the project constitution)
+- [[file:docs/VISION.org][Vision]] -- Long-term direction
+- [[file:docs/ROADMAP.org][Roadmap]] -- Development phases
+
+* License
+
+GNU General Public License v3.0 -- See [[file:LICENSE][LICENSE]]
+
+-----
+
+*Status:* Active Development -- Core Editor Validation Phase
+*Last Updated:* 2026-05-01

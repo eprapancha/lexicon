@@ -232,8 +232,8 @@ wasm-pack build --target web
 
 - **Writing Tests**: See [test/README.md](./test/README.md)
 - **Running Tests**: See [test/RUNNING_TESTS.md](./test/RUNNING_TESTS.md)
-- **Architecture**: See [../../docs/architecture.md](../../docs/architecture.md)
-- **Roadmap**: See [../../docs/ROADMAP.md](../../docs/ROADMAP.md)
+- **Architecture**: See [../../docs/ARCHITECTURE.org](../../docs/ARCHITECTURE.org)
+- **Roadmap**: See [../../docs/ROADMAP.org](../../docs/ROADMAP.org)
 
 ---
 
