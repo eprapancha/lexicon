@@ -524,6 +524,7 @@
   [hidden-input-ref]
   (let [visible-lines @(rf/subscribe [:lexicon.core.subs/visible-lines])
         line-height @(rf/subscribe [:line-height])
+        char-width @(rf/subscribe [:custom/char-width])
         viewport @(rf/subscribe [:lexicon.core.subs/viewport])
         base-decorations @(rf/subscribe [:lexicon.core.subs/all-decorations])
         cursor-pos @(rf/subscribe [:lexicon.core.subs/cursor-position])
@@ -584,7 +585,6 @@
                        (let [rect (-> e .-currentTarget .getBoundingClientRect)
                              click-x (- (.-clientX e) (.-left rect))
                              click-y (- (.-clientY e) (.-top rect))
-                             char-width 8.4
                              left-padding 8
                              top-padding 20
                              ;; Calculate line and column from click position
@@ -614,8 +614,8 @@
                :bottom "0"
                :padding "20px 8px"  ; Top/bottom 20px, left/right 8px
                :box-sizing "border-box"  ; Include padding in width calculation
-               :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
-               :font-size "14px"
+               :font-family "var(--lexicon-font-family-mono, 'Monaco', 'Menlo', monospace)"
+               :font-size "var(--lexicon-font-size, 14px)"
                :line-height (str line-height "px")
                :color "#d4d4d4"
                :white-space "pre-wrap"
@@ -641,7 +641,6 @@
       ;; Cursor - now positioned INSIDE editable-area
       (when cursor-pos
         (let [{:keys [line column]} cursor-pos
-              char-width 8.4
               left-padding 8  ; Account for editable-area left padding
               top-padding 20  ; Account for editable-area top padding
               top-px (+ top-padding (* line line-height))
@@ -732,6 +731,7 @@
                visible-lines-atom (atom nil)]
     (let [visible-lines @(rf/subscribe [:lexicon.core.subs/window-visible-lines window-id])
           line-height @(rf/subscribe [:line-height])
+          char-width @(rf/subscribe [:custom/char-width])
           viewport @(rf/subscribe [:lexicon.core.subs/window-viewport window-id])
           base-decorations @(rf/subscribe [:lexicon.core.subs/window-decorations window-id])
           cursor-pos @(rf/subscribe [:lexicon.core.subs/window-cursor-position window-id])
@@ -805,7 +805,6 @@
                        (let [rect (-> e .-currentTarget .getBoundingClientRect)
                              click-x (- (.-clientX e) (.-left rect))
                              click-y (- (.-clientY e) (.-top rect))
-                             char-width 8.4
                              left-padding 8
                              top-padding 20
                              clicked-line (int (/ (- click-y top-padding) line-height))
@@ -847,8 +846,8 @@
                :bottom "0"
                :padding "20px 8px"
                :box-sizing "border-box"
-               :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
-               :font-size "14px"
+               :font-family "var(--lexicon-font-family-mono, 'Monaco', 'Menlo', monospace)"
+               :font-size "var(--lexicon-font-size, 14px)"
                :line-height (str line-height "px")
                :color "#d4d4d4"
                :white-space "pre-wrap"
@@ -954,7 +953,6 @@
         (let [{:keys [line column]} cursor-pos
               ;; Calculate relative line position within viewport
               relative-line (- line (:start-line viewport 0))
-              char-width 8.4
               left-padding 8
               top-padding 20
               top-px (+ top-padding (* relative-line line-height))
@@ -981,8 +979,8 @@
                       :pointer-events "none"
                       :animation "cursor-blink 1s infinite"
                       :z-index "1000"
-                      :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
-                      :font-size "14px"
+                      :font-family "var(--lexicon-font-family-mono, 'Monaco', 'Menlo', monospace)"
+                      :font-size "var(--lexicon-font-size, 14px)"
                       :line-height (str line-height "px")
                       :text-align "center"}}
              cursor-char]

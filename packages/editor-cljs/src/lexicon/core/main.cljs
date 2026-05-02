@@ -81,6 +81,7 @@
             [lexicon.core.eval]                ; Load runtime evaluation (Phase 6.5 Week 7-8)
             [lexicon.core.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.core.views :as views]
+            [lexicon.core.custom :as custom]  ; Load customization system (defcustom/defgroup)
             [lexicon.core.packages.loader]  ; Load HTTP package loader (events + subscriptions)
             [lexicon.core.package-loader]   ; Load all packages
             ;; Re-export core API functions
@@ -255,6 +256,12 @@
 
   ;; Initialize re-frame database
   (rf/dispatch-sync [:initialize-db])
+
+  ;; Load saved customizations from localStorage into :global-vars
+  (rf/dispatch-sync [:custom/load-saved-values])
+
+  ;; Register all defcustom variables (resolves saved > standard values)
+  (custom/register-defcustoms!)
 
   ;; Initialize built-in commands first
   (rf/dispatch-sync [:initialize-commands])

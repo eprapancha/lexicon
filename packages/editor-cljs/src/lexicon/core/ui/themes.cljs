@@ -286,15 +286,16 @@
   :theme/initialize
   (fn [{:keys [db]} _]
     (println "🎨 Initializing theme system...")
-    (let [;; Default to light theme
-          default-theme-id :lexicon-base-light
-          default-theme (get default-themes default-theme-id)]
+    (let [;; Read theme from :global-vars (set by defcustom :custom-enabled-themes)
+          themes-var (get-in db [:global-vars :custom-enabled-themes] [:lexicon-base-dark])
+          theme-id (first themes-var)
+          theme (get default-themes theme-id)]
       ;; Inject theme CSS immediately
-      (inject-theme-css default-theme)
+      (inject-theme-css theme)
       {:db (assoc db
                   :theme/registry default-themes
-                  :theme/active default-theme-id
-                  :theme/current default-theme)})))
+                  :theme/active theme-id
+                  :theme/current theme)})))
 
 ;; Load a theme by ID
 (rf/reg-event-fx

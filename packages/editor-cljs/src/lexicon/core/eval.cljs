@@ -19,6 +19,7 @@
             [lexicon.core.api.message :as msg]
             [lexicon.core.api.buffer :as buf]
             [lexicon.core.minibuffer :as minibuffer]
+            [lexicon.core.custom :as custom]
             [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
@@ -66,17 +67,29 @@
 ;; Atom to hold sci-context (allows setq-sci to access it)
 (defonce sci-context-atom (atom nil))
 
+(def ^:private dynamic-vars
+  "Dynamic variables that stay atom-only."
+  #{'*prefix-arg* '*last-command* '*this-command*})
+
 (defn setq-impl
   "Runtime implementation of setq that interns variables into SCI context.
 
   This makes variables defined via setq available for subsequent evaluations.
-  Called from the setq macro with quoted symbol and evaluated value."
+  Called from the setq macro with quoted symbol and evaluated value.
+  Non-dynamic variables are also synced to :global-vars in re-frame DB."
   [var val]
   ;; Store in global-vars for compatibility
   (swap! lisp/global-vars assoc var val)
   ;; Intern into SCI 'user namespace so bare symbols resolve
   (when-let [ctx @sci-context-atom]
     (sci/intern ctx 'user var val))
+  ;; Sync non-dynamic vars to re-frame DB canonical store
+  (when-not (dynamic-vars var)
+    (let [kw (if (keyword? var) var (keyword (name var)))]
+      (rf/dispatch-sync [:variable/set-global kw val])
+      ;; Call custom setter if registered
+      (when-let [setter (custom/get-custom-setter kw)]
+        (custom/invoke-setter setter val))))
   val)
 
 (def sci-context
@@ -96,7 +109,12 @@
                                         ;; Override setq runtime implementation
                                         'setq-impl setq-impl
                                         ;; Emacs compatibility: t = true, nil already works
-                                        't true})}
+                                        't true
+                                        ;; Customization system
+                                        'defcustom custom/defcustom
+                                        'defgroup custom/defgroup
+                                        'custom-set-variables custom/custom-set-variables
+                                        'setopt custom/setopt})}
              :classes {'js {'Math js/Math         ; Allow Math for arithmetic
                             'Date js/Date          ; Allow Date for timestamps
                             'console js/console}   ; Allow console for debugging

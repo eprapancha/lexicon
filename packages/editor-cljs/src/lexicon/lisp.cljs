@@ -28,6 +28,7 @@
             [lexicon.core.packages.imenu :as imenu]
             [lexicon.core.completion.styles :as completion-styles]
             [lexicon.core.hooks :as core-hooks]
+            [lexicon.core.custom :as custom]
             [lexicon.core.log :as log]))
 
 ;; Forward declarations for functions used before definition
@@ -42,6 +43,10 @@
   (atom {'*prefix-arg* nil
          '*last-command* nil
          '*this-command* nil}))
+
+;; Dynamic variables that change every keystroke — atom-only, never synced to re-frame DB
+(def ^:private dynamic-vars
+  #{'*prefix-arg* '*last-command* '*this-command*})
 
 ;; =============================================================================
 ;; Hooks System
@@ -191,8 +196,9 @@
 (defn setq
   "Set variable VAR to VALUE.
 
-  In our implementation, this stores the value in a global atom.
-  Multiple var/value pairs can be provided.
+  Stores in the global atom for fast synchronous reads.
+  Non-dynamic variables are also synced to :global-vars in re-frame DB
+  and custom setters are invoked if registered.
 
   Usage: (setq x 5)
          (setq x 5 y 10)
@@ -200,16 +206,29 @@
   [& args]
   (let [pairs (partition 2 args)]
     (doseq [[var val] pairs]
-      (swap! global-vars assoc var val))
+      (swap! global-vars assoc var val)
+      ;; Sync non-dynamic vars to re-frame DB canonical store
+      (when-not (dynamic-vars var)
+        (let [kw (if (keyword? var) var (keyword (name var)))]
+          (rf/dispatch-sync [:variable/set-global kw val])
+          ;; Call custom setter if registered
+          (when-let [setter (custom/get-custom-setter kw)]
+            (custom/invoke-setter setter val)))))
     (second (last pairs))))
 
 (defn symbol-value
   "Return the value of SYMBOL.
 
+  Checks the atom first (fast synchronous), then falls back to
+  :global-vars in re-frame DB for variables set via defcustom.
+
   Usage: (symbol-value 'x)
   Returns: Value or nil"
   [sym]
-  (get @global-vars sym))
+  (let [vars @global-vars]
+    (if (contains? vars sym)
+      (get vars sym)
+      (get-in @rfdb/app-db [:global-vars (keyword (name sym))]))))
 
 (defn last-command
   "Return the last command that was executed.
@@ -4790,14 +4809,22 @@
 ;; =============================================================================
 
 (defn install-package
-  "Install a package from a URL.
+  "Install a package from a URL or short name.
 
-  Fetches package metadata and source via HTTP, evaluates in SCI sandbox.
+  If given a full URL (starts with http), uses it directly.
+  If given a short name, derives URL from package-archives variable.
 
-  Usage: (install-package \"http://localhost:3100/packages/vertico\")
+  Usage: (install-package \"marginalia\")           ; short name
+         (install-package \"http://localhost:3100/packages/vertico\")  ; full URL
   Returns: nil (async -- result shown in echo area)"
-  [url]
-  (rf/dispatch [:packages/load-from-url url]))
+  [url-or-name]
+  (let [url (if (str/starts-with? (str url-or-name) "http")
+              url-or-name
+              (let [base (or (symbol-value 'package-archives)
+                             (get-in @rfdb/app-db [:global-vars :package-archives])
+                             "https://eprapancha.github.io/lexpkgs/packages")]
+                (str base "/" url-or-name)))]
+    (rf/dispatch [:packages/load-from-url url])))
 
 ;; =============================================================================
 ;; Export for SCI
@@ -5088,4 +5115,9 @@
    'icomplete-enabled? icomplete-enabled?
    'fido-enabled? fido-enabled?
    ;; Package management
-   'install-package install-package})
+   'install-package install-package
+   ;; Customization system (defcustom / defgroup / custom-set-variables)
+   'defcustom custom/defcustom
+   'defgroup custom/defgroup
+   'custom-set-variables custom/custom-set-variables
+   'setopt custom/setopt})

@@ -9,10 +9,11 @@
   2. Automatically buffer-local: All buffers get local copy (make-variable-buffer-local)
 
   Implementation:
-  - Global values stored in [:variables :global var-name]
+  - Global values stored in [:global-vars var-name] (canonical store in re-frame DB)
   - Buffer-local values stored in [:buffers buffer-id :local-variables var-name]
   - Automatically buffer-local vars tracked in [:variables :auto-buffer-local]"
-  (:require [re-frame.core :as rf]))
+  (:require [re-frame.core :as rf]
+            [re-frame.db :as rfdb]))
 
 ;; -- Variable Access --
 
@@ -27,11 +28,11 @@
   Returns: Variable value or nil"
   [db buffer-id variable]
   (if buffer-id
-    ;; Try buffer-local first, then global
+    ;; Try buffer-local first, then canonical :global-vars
     (or (get-in db [:buffers buffer-id :local-variables variable])
-        (get-in db [:variables :global variable]))
+        (get-in db [:global-vars variable]))
     ;; No buffer ID, return global
-    (get-in db [:variables :global variable])))
+    (get-in db [:global-vars variable])))
 
 (defn set-variable!
   "Set value of VARIABLE in BUFFER-ID or globally.
@@ -51,10 +52,10 @@
         (if is-local?
           ;; Set buffer-local value
           (assoc-in db [:buffers buffer-id :local-variables variable] value)
-          ;; Set global value
-          (assoc-in db [:variables :global variable] value)))
-      ;; No buffer ID, set global
-      (assoc-in db [:variables :global variable] value))))
+          ;; Set global value in canonical store
+          (assoc-in db [:global-vars variable] value)))
+      ;; No buffer ID, set global in canonical store
+      (assoc-in db [:global-vars variable] value))))
 
 (defn get-variable-sub
   "Subscription for variable value in current buffer."
@@ -64,8 +65,12 @@
 (rf/reg-sub
   :variables/get
   (fn [db [_ variable]]
+    ;; Try to find current buffer, fall back to global lookup
     (let [buffer-id (get-in db [:editor :current-buffer-id])]
-      (get-variable db buffer-id variable))))
+      (if buffer-id
+        (get-variable db buffer-id variable)
+        ;; No current buffer context — return global value
+        (get-in db [:global-vars variable])))))
 
 ;; -- Buffer-Local Variable Management --
 
@@ -90,7 +95,7 @@
         (update-in [:buffers buffer-id :local-variables variable]
                    (fn [current]
                      (if (nil? current)
-                       (get-in db [:variables :global variable])
+                       (get-in db [:global-vars variable])
                        current))))))
 
 (defn make-variable-buffer-local
@@ -142,11 +147,21 @@
 (defn defvar-local
   "Define a buffer-local variable with optional default value.
 
+  Registers the variable as automatically buffer-local. Global default values
+  are managed by default-db and defcustom — defvar-local only sets the global
+  default if no value exists yet in :global-vars.
+
+  Uses direct atom swap instead of dispatch-sync because this runs at
+  namespace load time, before event handlers are registered.
+
   Usage: (defvar-local :my-buffer-local-var default-value)"
   [variable & [default-value]]
   (make-variable-buffer-local variable)
-  (when default-value
-    (rf/dispatch [:variables/set nil variable default-value])))
+  (when (and (some? default-value)
+             (not (contains? (:global-vars @rfdb/app-db) variable)))
+    ;; Write directly to re-frame DB atom — safe at namespace load time
+    ;; when :variable/set-global event handler may not yet be registered
+    (swap! rfdb/app-db assoc-in [:global-vars variable] default-value)))
 
 ;; -- Subscriptions --
 
@@ -176,9 +191,9 @@
 (rf/reg-event-db
   :variables/initialize
   (fn [db [_]]
-    (-> db
-        (assoc-in [:variables :global] {})
-        (assoc-in [:variables :auto-buffer-local] {}))))
+    ;; Only initialize auto-buffer-local metadata tracker.
+    ;; Global values are stored in the canonical :global-vars map (managed by variables.cljs).
+    (assoc-in db [:variables :auto-buffer-local] {})))
 
 ;; Auto-initialize on namespace load
 (initialize-buffer-local-variables!)

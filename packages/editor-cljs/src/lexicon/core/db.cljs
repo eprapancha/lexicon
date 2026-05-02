@@ -341,6 +341,9 @@
    :help {:awaiting-key? false                      ; Waiting for key press for C-h k
           :callback nil}                            ; Callback event vector for key press
    :packages {}                                     ; Loaded packages (Phase 6)
+
+   ;; Customization system (defcustom / defgroup / custom-set-variables)
+   :custom {:saved-values {}}                         ; User customizations persisted to localStorage
    :buffer-access-order []                          ; MRU buffer ordering for other-buffer (Phase 6.6 #100)
 
    ;; Phase 6B Week 2: Child Frames (Popups)
