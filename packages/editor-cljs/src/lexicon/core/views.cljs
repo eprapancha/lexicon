@@ -1348,7 +1348,17 @@
           message (:message minibuffer)
           height-lines (:height-lines minibuffer 1)
           line-height 24
-          total-height (* height-lines line-height)
+          ;; Vertical completion mode (Phase 7: Vertico)
+          vertical-mode? (= (:completion-display minibuffer) :vertical)
+          vertical-candidates (:vertical-candidates minibuffer [])
+          vertical-index (:vertical-index minibuffer -1)
+          vertical-count (:vertical-count minibuffer 10)
+          vertical-count-format (:vertical-count-format minibuffer)
+          ;; Calculate height: expand for vertical candidates
+          visible-candidates (min (count vertical-candidates) vertical-count)
+          total-height (if (and active? vertical-mode? (pos? visible-candidates))
+                         (* (+ 1 visible-candidates) line-height)
+                         (* height-lines line-height))
           filtered-completions (:filtered-completions minibuffer)
           show-completions? (:show-completions? minibuffer)
           completion-index (:completion-index minibuffer)
@@ -1383,6 +1393,14 @@
       (if active?
         ;; ACTIVE MODE: Show prompt + input
         [:<>
+         ;; Vertico count format (e.g., "3/42") before prompt
+         (when vertical-count-format
+           [:span.vertico-count
+            {:style {:color "#888888"
+                     :margin-right "4px"
+                     :font-size "12px"
+                     :font-family "monospace"}}
+            vertical-count-format])
          [:span.minibuffer-prompt
           {:style (merge prompt-style {:margin-right "4px"})}
           (:prompt minibuffer)]
@@ -1444,6 +1462,30 @@
                               (do
                                 (.preventDefault e)
                                 (rf/dispatch [:isearch/repeat-backward]))
+
+                              ;; Phase 7: Vertico vertical mode key routing
+                              ;; Route navigation keys through hooks so SCI package handles them
+                              (and vertical-mode? (= key "ArrowDown"))
+                              (do
+                                (.preventDefault e)
+                                (rf/dispatch [:hook/run :vertico-next-hook {}]))
+
+                              (and vertical-mode? (= key "ArrowUp"))
+                              (do
+                                (.preventDefault e)
+                                (rf/dispatch [:hook/run :vertico-prev-hook {}]))
+
+                              (and vertical-mode? (= key "Tab"))
+                              (do
+                                (.preventDefault e)
+                                (rf/dispatch [:hook/run :vertico-insert-hook {}]))
+
+                              (and vertical-mode? (= key "Enter"))
+                              (do
+                                (.preventDefault e)
+                                ;; If a candidate is selected, insert + confirm
+                                ;; Otherwise just confirm with current input
+                                (rf/dispatch [:minibuffer/confirm]))
 
                               (= key "Enter")
                               (do
@@ -1546,8 +1588,8 @@
                         :border "1px solid #888888"
                         :pointer-events "none"
                         :z-index "10"}}]))]
-         ;; Icomplete display (inline completion candidates)
-         (when icomplete-display
+         ;; Icomplete display (inline completion candidates) - suppressed when vertical mode active
+         (when (and icomplete-display (not vertical-mode?))
            [:span.icomplete-display
             {:style {:color "#888888"
                      :font-size "12px"
@@ -1555,20 +1597,21 @@
                      :white-space "nowrap"}}
             icomplete-display])
 
-         ;; Match count display [current/total] (Issue #137)
-         (let [completions (:completions minibuffer [])
-               total-count (count completions)
-               current-pos (if (and completion-index (>= completion-index 0))
-                             (inc completion-index)  ; 1-indexed for display
-                             0)]                     ; 0 means no selection
-           (when (pos? total-count)
-             [:span.match-count
-              {:style {:color "#888888"
-                       :font-size "11px"
-                       :font-family "monospace"
-                       :margin-left "8px"
-                       :white-space "nowrap"}}
-              (str "[" current-pos "/" total-count "]")]))]
+         ;; Match count display [current/total] (Issue #137) - suppressed when vertical mode active
+         (when (not vertical-mode?)
+           (let [completions (:completions minibuffer [])
+                 total-count (count completions)
+                 current-pos (if (and completion-index (>= completion-index 0))
+                               (inc completion-index)  ; 1-indexed for display
+                               0)]                     ; 0 means no selection
+             (when (pos? total-count)
+               [:span.match-count
+                {:style {:color "#888888"
+                         :font-size "11px"
+                         :font-family "monospace"
+                         :margin-left "8px"
+                         :white-space "nowrap"}}
+                (str "[" current-pos "/" total-count "]")])))]
 
         ;; IDLE MODE: Show echo message or empty
         [:span.minibuffer-message.echo-area  ; Add .echo-area for E2E test compatibility (Issue #67)
@@ -1578,8 +1621,44 @@
            message
            "")])]  ; Empty string when truly idle
 
-     ;; Completion candidates or custom renderer
-     (when active?
+     ;; Vertical completion candidates (Phase 7: Vertico)
+     (when (and active? vertical-mode? (seq vertical-candidates))
+       [:div.vertico-candidates
+        {:style {:overflow "hidden"}}
+        (for [[i cand] (map-indexed vector vertical-candidates)]
+          ^{:key i}
+          [:<>
+           (when (:group-title cand)
+             [:div.vertico-group-title
+              {:style {:color "#888888"
+                       :font-style "italic"
+                       :padding "0 8px"
+                       :font-size "12px"
+                       :font-family "monospace"
+                       :line-height (str line-height "px")}}
+              (:group-title cand)])
+           [:div.vertico-candidate
+            {:style {:display "flex"
+                     :padding "0 8px"
+                     :line-height (str line-height "px")
+                     :white-space "nowrap"
+                     :font-size "12px"
+                     :font-family "monospace"
+                     :background-color (if (= i vertical-index)
+                                         "rgba(100, 149, 237, 0.3)"
+                                         "transparent")}}
+            [:span.vertico-text
+             {:style {:color (:color mode-line-style "#cccccc")}}
+             (:candidate cand)]
+            (when (seq (:suffix cand))
+              [:span.vertico-suffix
+               {:style {:color "#888888"
+                        :margin-left "auto"
+                        :padding-left "16px"}}
+               (:suffix cand)])]])])
+
+     ;; Completion candidates or custom renderer (non-vertical mode)
+     (when (and active? (not vertical-mode?))
        (if custom-renderer
          ;; Custom renderer provided - delegate rendering to it (Issue #46)
          [:div.minibuffer-custom

@@ -405,7 +405,8 @@
                 (minibuffer/set-cycling? false)
                 (minibuffer/set-completion-index -1)
                 (minibuffer/set-original-input ""))
-        :fx (cond-> [[:dispatch (conj on-change input-text)]]
+        :fx (cond-> [[:dispatch (conj on-change input-text)]
+                     [:dispatch [:hook/run :minibuffer-after-change-hook {:input input-text}]]]
               icomplete-enabled?
               (conj [:dispatch [:icomplete/update-completions]]))}
 
@@ -416,20 +417,34 @@
                 (minibuffer/set-cycling? false)
                 (minibuffer/set-completion-index -1)
                 (minibuffer/set-original-input ""))
-        :fx (cond-> [[:dispatch [:find-file/update-completions input-text]]]
+        :fx (cond-> [[:dispatch [:find-file/update-completions input-text]]
+                     [:dispatch [:hook/run :minibuffer-after-change-hook {:input input-text}]]]
               icomplete-enabled?
               (conj [:dispatch [:icomplete/update-completions]]))}
 
        ;; Standard minibuffer - update input and reset cycling state
        :else
-       (cond-> {:db (-> db
-                        (minibuffer/set-input input-text)
-                        (minibuffer/set-cycling? false)
-                        (minibuffer/set-completion-index -1)
-                        (minibuffer/set-original-input ""))}
-         icomplete-enabled?
-         (assoc :fx [[:dispatch [:icomplete/update-completions]]]))))))
+       {:db (-> db
+                (minibuffer/set-input input-text)
+                (minibuffer/set-cycling? false)
+                (minibuffer/set-completion-index -1)
+                (minibuffer/set-original-input ""))
+        :fx (cond-> [[:dispatch [:hook/run :minibuffer-after-change-hook {:input input-text}]]]
+              icomplete-enabled?
+              (conj [:dispatch [:icomplete/update-completions]]))}))))
 
+
+;; =============================================================================
+;; Vertico Frame Update Event (Phase 7: Vertical Completion)
+;; =============================================================================
+
+(rf/reg-event-db
+ :vertico/update-frame
+ (fn [db [_ props]]
+   "Batch-update vertical completion properties on the current minibuffer frame.
+   Avoids multiple re-renders by setting multiple properties at once.
+   Used by the Vertico SCI package via update-minibuffer-frame API."
+   (minibuffer/update-current-frame db props)))
 
 (rf/reg-event-fx
  :minibuffer/complete

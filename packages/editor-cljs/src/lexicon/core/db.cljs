@@ -110,6 +110,11 @@
            ;; Minibuffer hooks (Phase 7: Vertico ecosystem support)
            :minibuffer-setup-hook []                 ; Run when minibuffer is activated
            :minibuffer-exit-hook []                  ; Run when minibuffer is deactivated
+           :minibuffer-after-change-hook []           ; Run after minibuffer input changes
+           ;; Vertico navigation hooks (Phase 7: vertical completion)
+           :vertico-next-hook []                     ; Navigate to next candidate
+           :vertico-prev-hook []                     ; Navigate to previous candidate
+           :vertico-insert-hook []                   ; Insert selected candidate
            ;; Legacy hooks (to be migrated to new system)
            :before-save-hook []                      ; Run before saving
            :after-save-hook []                       ; Run after saving

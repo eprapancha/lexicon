@@ -7,6 +7,11 @@
   Based on the Hook System Specification (docs/core/hooks.md)."
   (:require [re-frame.core :as rf]))
 
+;; -- SCI Hooks Bridge --
+;; Callback atom for bridging re-frame hooks to SCI-level hooks-registry.
+;; Set by lisp.cljs at init time to avoid circular dependency.
+(defonce sci-hooks-bridge (atom nil))
+
 ;; -- Helper Functions --
 
 (defn create-hook-entry
@@ -120,23 +125,32 @@
  :hook/run
  (fn [{:keys [db]} [_ hook-id context]]
    "Run all hooks for a given hook ID with the provided context.
+   Also invokes SCI-level hooks via the bridge (for package integration).
    Returns effects to dispatch any errors."
    (let [hook-entries (get-in db [:hooks hook-id] [])
          errors (atom [])]
-     ;; Execute each hook entry
+     ;; Execute each re-frame hook entry
      (doseq [entry hook-entries]
        (when-let [err (run-hook-entry entry context)]
          (swap! errors conj {:hook-id hook-id
                              :entry-id (:id entry)
                              :error err
                              :context context})))
-     ;; Return effects for errors if any
-     (if (seq @errors)
+     ;; Bridge to SCI hooks-registry (for packages using add-hook)
+     (when-let [bridge-fn @sci-hooks-bridge]
+       (try
+         (bridge-fn hook-id context)
+         (catch :default e
+           (js/console.error "SCI hooks bridge error:" (str hook-id) e))))
+     ;; Return effects for errors if any.
+     ;; IMPORTANT: Do NOT return {:db db} — hook callbacks (via SCI bridge)
+     ;; may have modified rfdb/app-db directly with swap!. Returning the
+     ;; original db would overwrite those changes.
+     (when (seq @errors)
        {:fx (mapv (fn [err]
                     [:dispatch [:echo/message
                                 (str "Hook error: " (:entry-id err))]])
-                  @errors)}
-       {:db db}))))
+                  @errors)}))))
 
 (rf/reg-event-db
  :hook/clear

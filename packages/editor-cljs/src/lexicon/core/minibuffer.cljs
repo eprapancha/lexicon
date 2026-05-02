@@ -70,7 +70,14 @@
                       :last-tab-input nil
                       :original-input ""    ; What user typed before cycling
                       :cycling? false       ; Currently cycling with arrows?
-                      :annotation-fn nil}   ; Function to generate annotations for completions
+                      :annotation-fn nil    ; Function to generate annotations for completions
+                      ;; Vertical completion (Phase 7: Vertico)
+                      :completion-display nil          ; nil | :vertical
+                      :vertical-candidates []          ; Vector of {:candidate "str" :suffix "" :group-title nil}
+                      :vertical-index -1               ; -1 = prompt selected, 0+ = candidate index
+                      :vertical-scroll 0               ; First visible candidate index
+                      :vertical-count 10               ; Max visible candidates
+                      :vertical-count-format nil}      ; String like "3/42" for count display
                      config)]
     (update db :minibuffer-stack conj frame)))
 
@@ -114,7 +121,14 @@
                           :last-tab-input nil
                           :original-input ""
                           :cycling? false
-                          :annotation-fn nil}
+                          :annotation-fn nil
+                          ;; Vertical completion (Phase 7: Vertico)
+                          :completion-display nil
+                          :vertical-candidates []
+                          :vertical-index -1
+                          :vertical-scroll 0
+                          :vertical-count 10
+                          :vertical-count-format nil}
                          config)]
         (assoc db :minibuffer-stack (conj new-stack frame))))))
 
@@ -294,3 +308,67 @@
   "Set completion-table in current frame"
   [db value]
   (update-current-frame db {:completion-table value}))
+
+;; =============================================================================
+;; Vertical Completion Accessors/Setters (Phase 7: Vertico)
+;; =============================================================================
+
+(defn get-completion-display
+  "Get completion-display mode from current frame (:vertical or nil)"
+  [db]
+  (:completion-display (current-frame db)))
+
+(defn set-completion-display
+  "Set completion-display mode in current frame"
+  [db value]
+  (update-current-frame db {:completion-display value}))
+
+(defn get-vertical-candidates
+  "Get vertical-candidates from current frame"
+  [db]
+  (:vertical-candidates (current-frame db) []))
+
+(defn set-vertical-candidates
+  "Set vertical-candidates in current frame"
+  [db value]
+  (update-current-frame db {:vertical-candidates value}))
+
+(defn get-vertical-index
+  "Get vertical-index from current frame (-1 = prompt, 0+ = candidate)"
+  [db]
+  (:vertical-index (current-frame db) -1))
+
+(defn set-vertical-index
+  "Set vertical-index in current frame"
+  [db value]
+  (update-current-frame db {:vertical-index value}))
+
+(defn get-vertical-scroll
+  "Get vertical-scroll (first visible candidate index) from current frame"
+  [db]
+  (:vertical-scroll (current-frame db) 0))
+
+(defn set-vertical-scroll
+  "Set vertical-scroll in current frame"
+  [db value]
+  (update-current-frame db {:vertical-scroll value}))
+
+(defn get-vertical-count
+  "Get vertical-count (max visible candidates) from current frame"
+  [db]
+  (:vertical-count (current-frame db) 10))
+
+(defn set-vertical-count
+  "Set vertical-count in current frame"
+  [db value]
+  (update-current-frame db {:vertical-count value}))
+
+(defn get-vertical-count-format
+  "Get vertical-count-format string (e.g., '3/42') from current frame"
+  [db]
+  (:vertical-count-format (current-frame db)))
+
+(defn set-vertical-count-format
+  "Set vertical-count-format in current frame"
+  [db value]
+  (update-current-frame db {:vertical-count-format value}))

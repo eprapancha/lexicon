@@ -27,6 +27,7 @@
             [lexicon.core.ring :as ring]
             [lexicon.core.packages.imenu :as imenu]
             [lexicon.core.completion.styles :as completion-styles]
+            [lexicon.core.hooks :as core-hooks]
             [lexicon.core.log :as log]))
 
 ;; Forward declarations for functions used before definition
@@ -140,6 +141,25 @@
           (if (nil? result)
             nil  ; Stop and return nil on failure
             (recur (rest remaining) result)))))))
+
+;; =============================================================================
+;; SCI Hooks Bridge Setup
+;; =============================================================================
+;; Bridge re-frame :hook/run to also invoke SCI-level hooks-registry.
+;; This allows SCI packages (e.g., Vertico) that use (add-hook ...) to receive
+;; hook notifications fired by core via [:dispatch [:hook/run ...]].
+
+(defonce ^:private _bridge-setup
+  (reset! core-hooks/sci-hooks-bridge
+          (fn [hook-id _context]
+            ;; Convert keyword hook-id to symbol for SCI hooks-registry lookup
+            (let [hook-sym (symbol (name hook-id))
+                  fns (get @hooks-registry hook-sym [])]
+              (doseq [f fns]
+                (try
+                  (f _context)
+                  (catch :default e
+                    (js/console.error "SCI hook error:" (str hook-sym) e))))))))
 
 ;; =============================================================================
 ;; inhibit-read-only Support
@@ -2350,15 +2370,19 @@
   Usage: (minibuffer-input)
   Returns: String or nil if minibuffer not active"
   []
-  (get-in @rfdb/app-db [:minibuffer :input]))
+  (let [db @rfdb/app-db]
+    (minibuffer/get-input db)))
 
 (defn set-minibuffer-input
   "Set the current minibuffer input text.
 
+  Updates the minibuffer stack frame (not deprecated :minibuffer map).
+  Does NOT fire minibuffer-after-change-hook (use for programmatic updates).
+
   Usage: (set-minibuffer-input \"new-text\")
   Returns: nil"
   [text]
-  (swap! rfdb/app-db assoc-in [:minibuffer :input] text)
+  (swap! rfdb/app-db (fn [db] (minibuffer/set-input db text)))
   nil)
 
 (defn minibuffer-contents
@@ -2375,7 +2399,8 @@
   Usage: (minibuffer-completions)
   Returns: Vector of completion strings or nil"
   []
-  (get-in @rfdb/app-db [:minibuffer :completions]))
+  (let [db @rfdb/app-db]
+    (minibuffer/get-completions db)))
 
 (defn minibuffer-active-p
   "Return t if minibuffer is currently active.
@@ -2383,7 +2408,8 @@
   Usage: (minibuffer-active-p)
   Returns: Boolean"
   []
-  (boolean (get-in @rfdb/app-db [:minibuffer :active])))
+  (let [db @rfdb/app-db]
+    (minibuffer/minibuffer-active? db)))
 
 (defn minibuffer-prompt-end
   "Return the buffer position at the end of the minibuffer prompt.
@@ -2480,6 +2506,48 @@
   Phase 7: Vertico ecosystem support"
   []
   (rf/dispatch-sync [:minibuffer/set-input ""])
+  nil)
+
+;; =============================================================================
+;; Vertico API Functions (Phase 7: Vertical Completion)
+;; =============================================================================
+
+(defn update-minibuffer-frame
+  "Update properties on the current minibuffer frame.
+
+  Used by the Vertico package to batch-update vertical completion state.
+  Props is a map of frame property keys to values.
+
+  NOTE: Uses direct swap! because dispatch-sync doesn't work when called
+  from inside an event handler (e.g., from hook callbacks).
+
+  Usage: (update-minibuffer-frame {:vertical-candidates [...] :vertical-index 0})
+  Returns: nil"
+  [props]
+  (swap! rfdb/app-db (fn [db] (minibuffer/update-current-frame db props)))
+  nil)
+
+(defn set-completion-display
+  "Set the completion display mode for the current minibuffer frame.
+
+  MODE can be :vertical (for Vertico) or nil (for default behavior).
+
+  NOTE: Uses direct swap! because dispatch-sync doesn't work when called
+  from inside an event handler (e.g., from hook callbacks).
+
+  Usage: (set-completion-display :vertical)
+  Returns: nil"
+  [mode]
+  (swap! rfdb/app-db (fn [db] (minibuffer/update-current-frame db {:completion-display mode})))
+  nil)
+
+(defn exit-minibuffer
+  "Exit the minibuffer, confirming current input.
+
+  Usage: (exit-minibuffer)
+  Returns: nil"
+  []
+  (rf/dispatch [:minibuffer/confirm])
   nil)
 
 ;; =============================================================================
@@ -4867,6 +4935,10 @@
    'active-minibuffer-window active-minibuffer-window
    'minibuffer-depth minibuffer-depth
    'delete-minibuffer-contents delete-minibuffer-contents
+   ;; Phase 7: Vertico vertical completion API
+   'update-minibuffer-frame update-minibuffer-frame
+   'set-completion-display set-completion-display
+   'exit-minibuffer exit-minibuffer
    ;; Completion (Issue #108)
    'all-completions all-completions
    'try-completion try-completion
