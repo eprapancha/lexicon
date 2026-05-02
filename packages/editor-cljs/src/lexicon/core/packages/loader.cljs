@@ -444,12 +444,7 @@
     (assoc-in db [:packages package-name :error] error)))
 
 ;; -- Subscriptions --
-
-(rf/reg-sub
-  :packages/all
-  (fn [db _]
-    "Get all package info from db"
-    (:packages db {})))
+;; Note: :packages/all is registered in packages.cljs (canonical location)
 
 (rf/reg-sub
   :packages/loaded?

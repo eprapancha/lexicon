@@ -208,9 +208,11 @@
     (doseq [[var val] pairs]
       (swap! global-vars assoc var val)
       ;; Sync non-dynamic vars to re-frame DB canonical store
+      ;; Uses direct swap! because setq is often called from within event handlers
+      ;; (e.g., M-: eval) where dispatch-sync is forbidden
       (when-not (dynamic-vars var)
         (let [kw (if (keyword? var) var (keyword (name var)))]
-          (rf/dispatch-sync [:variable/set-global kw val])
+          (swap! rfdb/app-db assoc-in [:global-vars kw] val)
           ;; Call custom setter if registered
           (when-let [setter (custom/get-custom-setter kw)]
             (custom/invoke-setter setter val)))))

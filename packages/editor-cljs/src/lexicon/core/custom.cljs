@@ -60,10 +60,12 @@
 
 (defn update-font-metrics!
   "Recalculate and store font metrics in re-frame DB.
-  Called when font-size or font-family changes."
+  Called when font-size or font-family changes.
+  Uses direct swap! because this is called from custom setters which
+  may be invoked from within event handlers (e.g., M-: eval)."
   []
   (let [char-width (measure-char-width)]
-    (rf/dispatch-sync [:custom/set-font-metrics char-width])))
+    (swap! rfdb/app-db assoc-in [:custom :char-width] char-width)))
 
 (rf/reg-event-db
   :custom/set-font-metrics
@@ -195,8 +197,9 @@
         saved-value (get-in db [:custom :saved-values var-name])
         effective-value (if (some? saved-value) saved-value standard-value)]
 
-    ;; 4. Set effective value in :global-vars via dispatch-sync
-    (rf/dispatch-sync [:variable/set-global var-name effective-value])
+    ;; 4. Set effective value in :global-vars directly
+    ;; Uses swap! because defcustom may be called from SCI eval within event handlers
+    (swap! rfdb/app-db assoc-in [:global-vars var-name] effective-value)
 
     ;; 5. Call custom setter if provided
     (when set
@@ -221,12 +224,16 @@
 
   Usage: (custom-set-variables [:font-size \"16px\"] [:fill-column 80])"
   [& pairs]
-  ;; Build the saved-values map directly instead of relying on DB read-back
+  ;; Uses direct swap! because custom-set-variables is often called from within
+  ;; event handlers (e.g., M-: eval) where dispatch-sync is forbidden
   (let [kv-map (reduce (fn [acc [var-name value]]
                          (let [kw (if (keyword? var-name) var-name (keyword (name var-name)))]
-                           ;; Update re-frame DB: saved-values and global-vars
-                           (rf/dispatch-sync [:custom/set-saved-value kw value])
-                           (rf/dispatch-sync [:variable/set-global kw value])
+                           ;; Update re-frame DB directly: saved-values and global-vars
+                           (swap! rfdb/app-db
+                                  (fn [db]
+                                    (-> db
+                                        (assoc-in [:custom :saved-values kw] value)
+                                        (assoc-in [:global-vars kw] value))))
                            ;; Call custom setter
                            (when-let [setter (get-custom-setter kw)]
                              (invoke-setter setter value))
@@ -319,8 +326,10 @@
            ;; Only dispatch theme load if theme registry is initialized
            ;; (avoids error during startup when register-defcustoms! runs
            ;; before :theme/initialize)
+           ;; Uses async dispatch because theme/load has side effects (inject CSS)
+           ;; that are safe to run asynchronously
            (when (:theme/registry @rfdb/app-db)
-             (rf/dispatch-sync [:theme/load (first val)]))))
+             (rf/dispatch [:theme/load (first val)]))))
 
   ;; -- Package management --
   (defcustom :package-archives "https://eprapancha.github.io/lexpkgs/packages"

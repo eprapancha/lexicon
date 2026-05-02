@@ -14,6 +14,7 @@
 
   Phase 6.5 Week 7-8"
   (:require [re-frame.core :as rf]
+            [re-frame.db :as rfdb]
             [sci.core :as sci]
             [lexicon.core.db :as db]
             [lexicon.core.api.message :as msg]
@@ -84,9 +85,11 @@
   (when-let [ctx @sci-context-atom]
     (sci/intern ctx 'user var val))
   ;; Sync non-dynamic vars to re-frame DB canonical store
+  ;; Uses direct swap! because setq-impl is called from within event handlers
+  ;; (e.g., M-: eval, SCI evaluation) where dispatch-sync is forbidden
   (when-not (dynamic-vars var)
     (let [kw (if (keyword? var) var (keyword (name var)))]
-      (rf/dispatch-sync [:variable/set-global kw val])
+      (swap! rfdb/app-db assoc-in [:global-vars kw] val)
       ;; Call custom setter if registered
       (when-let [setter (custom/get-custom-setter kw)]
         (custom/invoke-setter setter val))))
