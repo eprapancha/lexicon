@@ -266,7 +266,7 @@
 
 (defn- derive-server-base
   "Derive the server base URL from a package URL.
-  \"http://localhost:3100/packages/marginalia\" → \"http://localhost:3100/packages\""
+  \"http://localhost:3100/marginalia\" → \"http://localhost:3100\""
   [package-url]
   (let [last-slash (.lastIndexOf package-url "/")]
     (subs package-url 0 last-slash)))
@@ -310,7 +310,7 @@
   Resolves dependencies before loading the package source.
 
   Parameters:
-    base-url - URL prefix (e.g., 'http://localhost:3100/packages/vertico')
+    base-url - URL prefix (e.g., 'http://localhost:3100/vertico')
     loading-set - (optional) Set of package names currently being loaded,
                   used for circular dependency detection.
 

@@ -332,7 +332,7 @@
              (rf/dispatch [:theme/load (first val)]))))
 
   ;; -- Package management --
-  (defcustom :package-archives "https://eprapancha.github.io/lexpkgs/packages"
+  (defcustom :package-archives "https://eprapancha.github.io/lexpa"
     :type :string
     :docstring "Base URL of the package archive server."
     :group :lexicon-packages))

@@ -4817,14 +4817,14 @@
   If given a short name, derives URL from package-archives variable.
 
   Usage: (install-package \"marginalia\")           ; short name
-         (install-package \"http://localhost:3100/packages/vertico\")  ; full URL
+         (install-package \"http://localhost:3100/vertico\")  ; full URL
   Returns: nil (async -- result shown in echo area)"
   [url-or-name]
   (let [url (if (str/starts-with? (str url-or-name) "http")
               url-or-name
               (let [base (or (symbol-value 'package-archives)
                              (get-in @rfdb/app-db [:global-vars :package-archives])
-                             "https://eprapancha.github.io/lexpkgs/packages")]
+                             "https://eprapancha.github.io/lexpa")]
                 (str base "/" url-or-name)))]
     (rf/dispatch [:packages/load-from-url url])))
 

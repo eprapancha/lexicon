@@ -129,9 +129,9 @@
   (testing "install-package with short name uses package-archives base URL"
     (lisp/setup-test)
     ;; Set a known package-archives URL
-    (lisp/eval-lisp! "(setq package-archives \"http://localhost:3100/packages\")")
+    (lisp/eval-lisp! "(setq package-archives \"http://localhost:3100\")")
     ;; Verify the value was set
-    (is (= "http://localhost:3100/packages"
+    (is (= "http://localhost:3100"
             (lisp/eval-lisp! "(symbol-value 'package-archives)"))
         "package-archives should be set to localhost URL")))
 
