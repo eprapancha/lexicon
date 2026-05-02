@@ -1745,7 +1745,7 @@
   (let [buffer (get-in @rfdb/app-db [:buffers buffer-id])
         wasm (:wasm-instance buffer)]
     (if wasm
-      (try (.-length wasm) (catch :default _ 0))
+      (try (count (.getText wasm)) (catch :default _ 0))
       0)))
 
 (defn buffer-mode-of
@@ -2691,6 +2691,20 @@
     :else
     (let [db @rfdb/app-db]
       (minibuffer/get-completion-metadata db))))
+
+(defn set-completion-metadata
+  "Set completion metadata on the current minibuffer frame.
+
+  Used by packages like Marginalia to inject real annotation functions
+  into the metadata, replacing keyword placeholders with callable fns.
+
+  Usage: (set-completion-metadata {:category :command :annotation-function my-fn})
+  Returns: nil
+
+  Phase 7: Marginalia support"
+  [metadata]
+  (swap! rfdb/app-db (fn [db] (minibuffer/set-metadata db metadata)))
+  nil)
 
 (defn completion-all-completions
   "Return all completions of STRING in TABLE using completion styles.
@@ -4947,6 +4961,7 @@
    'minibuffer-completion-predicate minibuffer-completion-predicate
    'completion-metadata-get completion-metadata-get
    'completion-metadata completion-metadata
+   'set-completion-metadata set-completion-metadata
    'completion-all-completions completion-all-completions
    'completion-boundaries completion-boundaries
    'completing-read completing-read

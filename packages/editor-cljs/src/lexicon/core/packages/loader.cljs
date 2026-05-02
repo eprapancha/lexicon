@@ -9,6 +9,7 @@
   - Integration with SCI evaluation"
   (:require [lexicon.core.packages.sci :as sci]
             [re-frame.core :as rf]
+            [re-frame.db :as rfdb]
             [clojure.string :as str]
             [cljs.reader :as reader]
             [lexicon.core.log :as log]))
@@ -261,6 +262,43 @@
       {:success false
        :error (ex-message e)})))
 
+;; -- Dependency Resolution --
+
+(defn- derive-server-base
+  "Derive the server base URL from a package URL.
+  \"http://localhost:3100/packages/marginalia\" → \"http://localhost:3100/packages\""
+  [package-url]
+  (let [last-slash (.lastIndexOf package-url "/")]
+    (subs package-url 0 last-slash)))
+
+(defn- package-loaded?
+  "Check if a package is already loaded in app-db.
+  Checks both \"lexicon-<name>\" and \"<name>\" variants."
+  [package-name]
+  (let [db @rfdb/app-db]
+    (or (get-in db [:packages (str "lexicon-" package-name) :loaded?] false)
+        (get-in db [:packages package-name :loaded?] false))))
+
+;; Forward declare for mutual recursion
+(declare load-package-from-url)
+
+(defn- resolve-dependencies
+  "Resolve package dependencies sequentially.
+  Returns a Promise that resolves when all deps are loaded."
+  [deps server-base loading-set]
+  (if (empty? deps)
+    (js/Promise.resolve true)
+    (let [dep (first deps)
+          dep-url (str server-base "/" dep)]
+      (if (contains? loading-set dep)
+        (js/Promise.reject (js/Error. (str "Circular dependency detected: " dep)))
+        (-> (if (package-loaded? dep)
+              (do
+                (log/debug (str "loader: Dependency already loaded: " dep))
+                (js/Promise.resolve true))
+              (load-package-from-url dep-url (conj loading-set dep)))
+            (.then (fn [_] (resolve-dependencies (rest deps) server-base loading-set))))))))
+
 ;; -- Async HTTP Loading --
 
 (defn load-package-from-url
@@ -269,63 +307,79 @@
   Fetches package.edn and entry source file via HTTP, evaluates
   in SCI sandbox with :external trust level.
 
+  Resolves dependencies before loading the package source.
+
   Parameters:
     base-url - URL prefix (e.g., 'http://localhost:3100/packages/vertico')
+    loading-set - (optional) Set of package names currently being loaded,
+                  used for circular dependency detection.
 
-  Returns: nil (async -- dispatches :packages/loaded or :packages/load-error)"
-  [base-url]
-  (let [edn-url (str base-url "/package.edn")]
-    (log/debug (str "loader: Fetching package metadata from " edn-url))
-    (-> (js/fetch edn-url)
-        (.then (fn [response]
-                 (when-not (.-ok response)
-                   (throw (js/Error. (str "Failed to fetch package.edn: " (.-status response)))))
-                 (.text response)))
-        (.then (fn [edn-text]
-                 (let [metadata (reader/read-string edn-text)
-                       validation (validate-package-metadata metadata)]
-                   (when-not (:valid? validation)
-                     (throw (js/Error. (str "Invalid package.edn: "
-                                           (str/join ", " (:errors validation))))))
-                   (log/debug (str "loader: Package metadata valid: " (:name metadata)))
-                   metadata)))
-        (.then (fn [metadata]
-                 (let [entry-ns (:entry metadata)
-                       ns-path (-> (str entry-ns)
-                                   (str/replace "." "/")
-                                   (str/replace "-" "_"))
-                       source-url (str base-url "/src/" ns-path ".cljs")]
-                   (log/debug (str "loader: Fetching source from " source-url))
-                   (-> (js/fetch source-url)
-                       (.then (fn [response]
-                                (when-not (.-ok response)
-                                  (throw (js/Error. (str "Failed to fetch source: " (.-status response)))))
-                                (.text response)))
-                       (.then (fn [source]
-                                [metadata source]))))))
-        (.then (fn [[metadata source]]
-                 (let [package-name (:name metadata)
-                       eval-result (sci/load-package-source
-                                     (keyword package-name)
-                                     source
-                                     :external)]
-                   (if (:success eval-result)
-                     (let [package-info (assoc metadata
-                                         :url base-url
-                                         :trust-level :external
-                                         :loaded? true
-                                         :load-time (js/Date.now))]
-                       (rf/dispatch [:packages/loaded package-name package-info])
-                       (rf/dispatch [:echo/message (str "Package loaded: " package-name)]))
-                     (do
-                       (log/debug (str "loader: SCI eval failed: " (:error eval-result)))
-                       (rf/dispatch [:packages/load-error package-name (:error eval-result)])
-                       (rf/dispatch [:echo/message (str "Package load failed: " (:error eval-result))]))))))
-        (.catch (fn [error]
-                  (let [msg (.-message error)]
-                    (log/debug (str "loader: Package load error: " msg))
-                    (rf/dispatch [:packages/load-error base-url msg])
-                    (rf/dispatch [:echo/message (str "Package load error: " msg)])))))))
+  Returns: Promise that resolves when package is loaded"
+  ([base-url]
+   (load-package-from-url base-url #{}))
+  ([base-url loading-set]
+   (let [edn-url (str base-url "/package.edn")]
+     (log/debug (str "loader: Fetching package metadata from " edn-url))
+     (-> (js/fetch edn-url)
+         (.then (fn [response]
+                  (when-not (.-ok response)
+                    (throw (js/Error. (str "Failed to fetch package.edn: " (.-status response)))))
+                  (.text response)))
+         (.then (fn [edn-text]
+                  (let [metadata (reader/read-string edn-text)
+                        validation (validate-package-metadata metadata)]
+                    (when-not (:valid? validation)
+                      (throw (js/Error. (str "Invalid package.edn: "
+                                            (str/join ", " (:errors validation))))))
+                    (log/debug (str "loader: Package metadata valid: " (:name metadata)))
+                    metadata)))
+         (.then (fn [metadata]
+                  ;; Resolve dependencies before loading this package's source
+                  (let [deps (or (:dependencies metadata) [])
+                        server-base (derive-server-base base-url)]
+                    (-> (if (seq deps)
+                          (do
+                            (log/debug (str "loader: Resolving dependencies for " (:name metadata) ": " deps))
+                            (resolve-dependencies deps server-base loading-set))
+                          (js/Promise.resolve true))
+                        (.then (fn [_] metadata))))))
+         (.then (fn [metadata]
+                  (let [entry-ns (:entry metadata)
+                        ns-path (-> (str entry-ns)
+                                    (str/replace "." "/")
+                                    (str/replace "-" "_"))
+                        source-url (str base-url "/src/" ns-path ".cljs")]
+                    (log/debug (str "loader: Fetching source from " source-url))
+                    (-> (js/fetch source-url)
+                        (.then (fn [response]
+                                 (when-not (.-ok response)
+                                   (throw (js/Error. (str "Failed to fetch source: " (.-status response)))))
+                                 (.text response)))
+                        (.then (fn [source]
+                                 [metadata source]))))))
+         (.then (fn [[metadata source]]
+                  (let [package-name (:name metadata)
+                        eval-result (sci/load-package-source
+                                      (keyword package-name)
+                                      source
+                                      :external)]
+                    (if (:success eval-result)
+                      (let [package-info (assoc metadata
+                                          :url base-url
+                                          :trust-level :external
+                                          :loaded? true
+                                          :load-time (js/Date.now))]
+                        (rf/dispatch [:packages/loaded package-name package-info])
+                        (rf/dispatch [:echo/message (str "Package loaded: " package-name)]))
+                      (do
+                        (log/debug (str "loader: SCI eval failed: " (:error eval-result)))
+                        (rf/dispatch [:packages/load-error package-name (:error eval-result)])
+                        (rf/dispatch [:echo/message (str "Package load failed: " (:error eval-result))]))))))
+         (.catch (fn [error]
+                   (let [msg (.-message error)]
+                     (log/debug (str "loader: Package load error: " msg))
+                     (rf/dispatch [:packages/load-error base-url msg])
+                     (rf/dispatch [:echo/message (str "Package load error: " msg)]))))))))
 
 ;; -- Re-frame Events --
 
