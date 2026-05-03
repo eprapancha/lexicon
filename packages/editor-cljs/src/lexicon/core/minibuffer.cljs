@@ -77,7 +77,18 @@
                       :vertical-index -1               ; -1 = prompt selected, 0+ = candidate index
                       :vertical-scroll 0               ; First visible candidate index
                       :vertical-count 10               ; Max visible candidates
-                      :vertical-count-format nil}      ; String like "3/42" for count display
+                      :vertical-count-format nil       ; String like "3/42" for count display
+                      ;; Multi-source narrowing (consult--multi)
+                      :narrow-key nil                  ; Current narrow key character
+                      :narrow-value nil                ; Current narrow source name
+                      :narrow-predicate nil             ; Filter predicate based on narrow
+                      ;; Preview state function
+                      :state-fn nil                    ; Preview state function (consult)
+                      ;; Completion table and enrichment
+                      :completion-table nil             ; Original completion table
+                      :default nil                     ; Default value for completing-read
+                      :hist nil                        ; History symbol
+                      :require-match nil}              ; Whether match is required
                      config)]
     (update db :minibuffer-stack conj frame)))
 
@@ -128,7 +139,17 @@
                           :vertical-index -1
                           :vertical-scroll 0
                           :vertical-count 10
-                          :vertical-count-format nil}
+                          :vertical-count-format nil
+                          ;; Multi-source narrowing
+                          :narrow-key nil
+                          :narrow-value nil
+                          :narrow-predicate nil
+                          ;; Preview and enrichment
+                          :state-fn nil
+                          :completion-table nil
+                          :default nil
+                          :hist nil
+                          :require-match nil}
                          config)]
         (assoc db :minibuffer-stack (conj new-stack frame))))))
 

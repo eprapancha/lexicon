@@ -30,6 +30,8 @@
             [lexicon.core.hooks :as core-hooks]
             [lexicon.core.custom :as custom]
             [lexicon.core.wasm-utils :as wasm-utils]
+            [lexicon.core.timers :as timers]
+            [lexicon.core.preview :as preview]
             [lexicon.core.log :as log]))
 
 ;; Forward declarations for functions used before definition
@@ -2911,31 +2913,65 @@
   "Read a string from minibuffer with completion.
 
   PROMPT is the prompt string.
-  COLLECTION is the completion table (list of candidates).
+  COLLECTION is the completion table — a vector of strings, a function, or
+  a CompletionTable/ICompletionTable (anything with metadata).
   Optional PREDICATE filters candidates.
   Optional REQUIRE-MATCH if non-nil, only allow valid completions.
   Optional INITIAL-INPUT is initial text in minibuffer.
+  Optional DEF is the default value.
+  Optional HIST is the history symbol (currently unused).
 
-  Note: This is a synchronous stub. Full implementation needs async support.
+  The function normalizes collection into a flat candidate list, extracts
+  metadata from the table, and passes all through to the minibuffer frame.
+  Returns \"\" (event-driven Approach C). Consult/Vertico SCI packages use
+  :on-confirm / :on-cancel event handlers.
 
   Usage: (completing-read \"Command: \" [\"forward\" \"backward\"])
-  Returns: Selected string"
+  Returns: Selected string (\"\" in event-driven mode)"
   ([prompt collection]
-   (completing-read prompt collection nil nil nil))
+   (completing-read prompt collection nil nil nil nil nil))
   ([prompt collection predicate]
-   (completing-read prompt collection predicate nil nil))
+   (completing-read prompt collection predicate nil nil nil nil))
   ([prompt collection predicate require-match]
-   (completing-read prompt collection predicate require-match nil))
+   (completing-read prompt collection predicate require-match nil nil nil))
   ([prompt collection predicate require-match initial-input]
-   (let [candidates (if (sequential? collection) collection [])]
-     (rf/dispatch-sync [:minibuffer/activate
-                        {:prompt prompt
-                         :completions candidates
-                         :initial-input (or initial-input "")
-                         :require-match require-match
-                         :on-confirm [:minibuffer/deactivate]
-                         :on-cancel [:minibuffer/deactivate]}])
-     ;; Return empty string - full impl needs callback/promise
+   (completing-read prompt collection predicate require-match initial-input nil nil))
+  ([prompt collection predicate require-match initial-input def]
+   (completing-read prompt collection predicate require-match initial-input def nil))
+  ([prompt collection predicate require-match initial-input def hist]
+   (let [;; Normalize collection to a flat vector of candidates
+         candidates (cond
+                      (sequential? collection) (vec collection)
+                      (fn? collection) (vec (collection "" nil true))
+                      :else [])
+         ;; Extract metadata from the collection if it has any
+         table-metadata (cond
+                          ;; CompletionTable protocol — check for metadata fn
+                          (and (map? collection) (:metadata collection))
+                          (:metadata collection)
+                          ;; Check for metadata on the table itself
+                          (meta collection)
+                          (:completion-metadata (meta collection))
+                          :else nil)
+         ;; Also try getting metadata via completion-metadata for the empty string
+         computed-metadata (when (and (not table-metadata)
+                                      (or (fn? collection) (sequential? collection)))
+                             (completion-metadata "" collection predicate))
+         metadata (or table-metadata computed-metadata)
+         ;; Build the minibuffer config
+         config {:prompt prompt
+                 :completions candidates
+                 :completion-table collection
+                 :predicate predicate
+                 :metadata metadata
+                 :initial-input (or initial-input "")
+                 :require-match require-match
+                 :default def
+                 :hist hist
+                 :on-confirm [:minibuffer/deactivate]
+                 :on-cancel [:minibuffer/deactivate]}]
+     (rf/dispatch-sync [:minibuffer/activate config])
+     ;; Return empty string - event-driven Approach C
      "")))
 
 ;; =============================================================================
@@ -4900,6 +4936,279 @@
   nil)
 
 ;; =============================================================================
+;; Timer System (Emacs timer API)
+;; =============================================================================
+
+(defn run-with-timer
+  "Run FN after SECS seconds. If REPEAT is non-nil, repeat every REPEAT seconds.
+
+  Returns a timer-id that can be passed to cancel-timer.
+
+  Usage: (run-with-timer 2 nil (lambda () (message \"fired!\")))
+         (run-with-timer 1 5 (lambda () (message \"tick\")))
+  Returns: timer-id"
+  [secs repeat f & args]
+  (apply timers/run-with-timer secs repeat f args))
+
+(defn run-with-idle-timer
+  "Run FN after SECS seconds of idle time (no user input).
+
+  If REPEAT is non-nil, re-arm after each firing.
+
+  Usage: (run-with-idle-timer 5 nil (lambda () (message \"idle!\")))
+  Returns: timer-id"
+  [secs repeat f & args]
+  (apply timers/run-with-idle-timer secs repeat f args))
+
+(defn run-at-time
+  "Run FN at TIME. Alias for run-with-timer.
+
+  TIME is seconds from now (or nil for immediate).
+  REPEAT is seconds between repeats (or nil for one-shot).
+
+  Usage: (run-at-time 2 nil (lambda () (message \"fired!\")))
+  Returns: timer-id"
+  [time repeat f & args]
+  (apply timers/run-with-timer (or time 0) repeat f args))
+
+(defn cancel-timer
+  "Cancel a timer created by run-with-timer or run-with-idle-timer.
+
+  TIMER-ID is the value returned by the timer creation function.
+
+  Usage: (cancel-timer timer-id)
+  Returns: nil"
+  [timer-id]
+  (timers/cancel-timer timer-id))
+
+;; =============================================================================
+;; Text Property Helpers (propertize, add-face-text-property)
+;; =============================================================================
+
+(defn propertize
+  "Return a copy of STRING with text properties added.
+
+  Properties are specified as alternating keyword-value pairs.
+
+  Usage: (propertize \"hello\" :face :bold :help-echo \"tooltip\")
+  Returns: String with metadata containing text properties"
+  [string & properties]
+  (if (or (nil? string) (empty? (str string)))
+    (str string)
+    (let [s (str string)
+          prop-map (apply hash-map properties)]
+      (with-meta s {:text-properties {0 {(count s) prop-map}}}))))
+
+(defn get-text-property-from-string
+  "Get text property PROP at position POS from STRING.
+
+  Usage: (get-text-property-from-string 0 :face (propertize \"hello\" :face :bold))
+  Returns: Property value or nil"
+  [pos prop string]
+  (when-let [text-props (get (meta string) :text-properties)]
+    ;; Walk through property ranges to find one covering pos
+    (some (fn [[start end-map]]
+            (some (fn [[end props]]
+                    (when (and (<= start pos) (< pos end))
+                      (get props prop)))
+                  end-map))
+          text-props)))
+
+(defn add-face-text-property
+  "Add FACE to the :face property of text between START and END in STRING.
+
+  This is used for multi-source candidate coloring.
+
+  Usage: (add-face-text-property 0 5 :bold \"hello world\")
+  Returns: String with updated face property"
+  [start end face string]
+  (if (or (nil? string) (empty? (str string)))
+    (str string)
+    (let [s (str string)
+          existing-props (get (meta s) :text-properties {})
+          new-props (assoc existing-props start {end {:face face}})]
+      (with-meta s {:text-properties new-props}))))
+
+;; =============================================================================
+;; Window Functions (set-window-buffer, window-point, set-window-point)
+;; =============================================================================
+
+(defn set-window-buffer
+  "Set WINDOW to display BUFFER-OR-NAME.
+
+  WINDOW is a window-id. BUFFER-OR-NAME is a buffer-id or buffer name string.
+
+  Usage: (set-window-buffer (selected-window) \"*scratch*\")
+  Returns: nil"
+  ([buffer-or-name]
+   (set-window-buffer (selected-window) buffer-or-name))
+  ([window buffer-or-name]
+   (let [db @rfdb/app-db
+         buffer-id (cond
+                     (keyword? buffer-or-name) buffer-or-name
+                     (string? buffer-or-name)
+                     (let [buf (db/find-buffer-by-name (:buffers db) buffer-or-name)]
+                       (:id buf))
+                     :else buffer-or-name)]
+     (when buffer-id
+       (rf/dispatch-sync [:window/set-buffer window buffer-id]))
+     nil)))
+
+(defn window-point
+  "Return the point (cursor position) of WINDOW.
+
+  If WINDOW is nil, uses the selected window.
+
+  Usage: (window-point)
+         (window-point some-window-id)
+  Returns: Integer position"
+  ([] (window-point (selected-window)))
+  ([window-id]
+   (let [db @rfdb/app-db
+         win (db/find-window-in-tree (:window-tree db) window-id)]
+     (when win
+       (let [buffer (get-in db [:buffers (:buffer-id win)])
+             cursor-pos (:cursor-position win)]
+         (if cursor-pos
+           (buf/line-col-to-point buffer (:line cursor-pos) (:column cursor-pos))
+           (get-in db [:buffers (:buffer-id win) :point] 0)))))))
+
+(defn set-window-point
+  "Set the point (cursor position) of WINDOW to POS.
+
+  Usage: (set-window-point (selected-window) 42)
+  Returns: POS"
+  ([pos] (set-window-point (selected-window) pos))
+  ([window-id pos]
+   ;; For the active window, use goto-char. For others, update the window directly.
+   (let [db @rfdb/app-db]
+     (if (= window-id (:active-window-id db))
+       (goto-char pos)
+       ;; For non-active windows, update the point in the buffer
+       (let [win (db/find-window-in-tree (:window-tree db) window-id)]
+         (when win
+           (swap! rfdb/app-db assoc-in [:buffers (:buffer-id win) :point] pos)))))
+   pos))
+
+;; =============================================================================
+;; Candidate Collection API
+;; =============================================================================
+
+(defn completion-current-candidate
+  "Return the currently selected completion candidate.
+
+  Calls consult--completion-candidate-hook. Returns the first non-nil result,
+  or nil if no hook provides a candidate.
+
+  Usage: (completion-current-candidate)
+  Returns: String or nil"
+  []
+  (run-hook-with-args-until-success 'consult--completion-candidate-hook))
+
+(defn completion-all-candidates
+  "Return all current completion candidates.
+
+  Calls embark-candidate-collectors hook chain. Returns the first non-nil
+  result (a vector of candidates).
+
+  Usage: (completion-all-candidates)
+  Returns: Vector of strings or nil"
+  []
+  (run-hook-with-args-until-success 'embark-candidate-collectors))
+
+;; =============================================================================
+;; Composed Keymap (for Embark)
+;; =============================================================================
+
+(defn make-composed-keymap
+  "Create a composed keymap from multiple keymaps.
+
+  Lookups check each keymap in order. First match wins.
+  The composed keymap is represented as a flat merge (later keymaps
+  have lower priority).
+
+  MAPS is a list of keymap binding maps.
+  PARENT is an optional parent keymap (checked last).
+
+  Usage: (make-composed-keymap [{\"a\" :cmd-a} {\"b\" :cmd-b}])
+  Returns: Merged keymap bindings"
+  ([maps] (make-composed-keymap maps nil))
+  ([maps parent]
+   (let [base (or parent {})
+         ;; Merge in reverse so first map has highest priority
+         merged (reduce (fn [acc m]
+                          (merge acc (if (map? m) m {})))
+                        base
+                        (reverse maps))]
+     merged)))
+
+;; =============================================================================
+;; Preview Framework (consult)
+;; =============================================================================
+
+(defn- preview-api-fns
+  "Build the API function map needed by preview constructors.
+  This avoids circular dependencies between preview.cljs and lisp.cljs."
+  []
+  {:point point
+   :goto-char goto-char
+   :current-window-configuration current-window-configuration
+   :set-window-configuration set-window-configuration
+   :set-window-buffer set-window-buffer
+   :minibuffer-selected-window minibuffer-selected-window
+   :make-overlay make-overlay
+   :overlay-put overlay-put
+   :delete-overlay delete-overlay})
+
+(defn make-jump-preview
+  "Create a jump preview state function for consult.
+
+  GOTO-FN takes a candidate string and navigates to that position.
+  The preview saves/restores point and window config on cancel.
+
+  Usage: (make-jump-preview (lambda (cand) (goto-line (parse-int cand))))
+  Returns: State function"
+  [goto-fn]
+  (preview/make-jump-preview goto-fn (preview-api-fns)))
+
+(defn make-buffer-preview
+  "Create a buffer preview state function for consult.
+
+  BUFFER-FN takes a candidate string and returns a buffer-id or name.
+  The preview saves/restores window config on cancel.
+
+  Usage: (make-buffer-preview (lambda (cand) cand))
+  Returns: State function"
+  [buffer-fn]
+  (preview/make-buffer-preview buffer-fn (preview-api-fns)))
+
+(defn make-insertion-preview
+  "Create an insertion preview state function.
+
+  Shows candidate text at point using an overlay during preview.
+
+  Usage: (make-insertion-preview)
+  Returns: State function"
+  []
+  (preview/make-insertion-preview (preview-api-fns)))
+
+(defn minibuffer-with-setup-hook
+  "Run FN during the next minibuffer setup, then auto-remove.
+
+  Adds FN to minibuffer-setup-hook and removes it after first call.
+
+  Usage: (minibuffer-with-setup-hook (lambda () (insert \"pre-filled\")))
+  Returns: nil"
+  [f]
+  ;; Create a wrapper that removes itself after first call
+  (letfn [(wrapper [& args]
+            (apply f args)
+            ;; Remove ourselves after running
+            (remove-hook 'minibuffer-setup-hook wrapper))]
+    (add-hook 'minibuffer-setup-hook wrapper))
+  nil)
+
+;; =============================================================================
 ;; Package Installation
 ;; =============================================================================
 
@@ -5223,4 +5532,27 @@
    'custom-set-variables custom/custom-set-variables
    'setopt custom/setopt
    ;; WASM grep search (ripgrep engine)
-   'grep-search grep-search})
+   'grep-search grep-search
+   ;; Timer system
+   'run-with-timer run-with-timer
+   'run-with-idle-timer run-with-idle-timer
+   'run-at-time run-at-time
+   'cancel-timer cancel-timer
+   ;; Text property helpers
+   'propertize propertize
+   'get-text-property-from-string get-text-property-from-string
+   'add-face-text-property add-face-text-property
+   ;; Window functions
+   'set-window-buffer set-window-buffer
+   'window-point window-point
+   'set-window-point set-window-point
+   ;; Candidate collection (consult/embark)
+   'completion-current-candidate completion-current-candidate
+   'completion-all-candidates completion-all-candidates
+   ;; Composed keymaps (embark)
+   'make-composed-keymap make-composed-keymap
+   'minibuffer-with-setup-hook minibuffer-with-setup-hook
+   ;; Preview framework (consult)
+   'make-jump-preview make-jump-preview
+   'make-buffer-preview make-buffer-preview
+   'make-insertion-preview make-insertion-preview})

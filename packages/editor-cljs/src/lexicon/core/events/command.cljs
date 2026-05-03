@@ -7,6 +7,7 @@
             [lexicon.core.context :as ctx]
             [lexicon.core.api.interactive :as interactive]
             [lexicon.core.api.buffer :as buffer-api]
+            [lexicon.core.timers :as timers]
             [lexicon.core.log :as log]
             [lexicon.lisp :as lisp]))
 
@@ -135,6 +136,8 @@
                                           :digit-argument :negative-argument} command-name))]
          ;; Track command execution for packages that need last-command (e.g., dabbrev)
          (lisp/set-this-command! command-name)
+         ;; Update last-user-input-time for idle timer tracking
+         (timers/update-last-input-time!)
          ;; Execute command with undo boundaries
          {:db db'
           :fx (cond-> [[:dispatch-with-context {:event [:hook/run :before-command-hook context]
@@ -149,6 +152,8 @@
                 ;; Run after-command hook within dynamic context
                 true (conj [:dispatch-with-context {:event [:hook/run :after-command-hook (assoc context :result nil)]
                                                     :context exec-context}])
+                ;; Fire post-command-hook (for which-func, consult, etc.)
+                true (conj [:dispatch [:hook/run :post-command-hook context]])
                 ;; Phase 6.5: Clear prefix-arg and transient-keymap after command execution
                 should-clear-prefix? (conj [:dispatch [:clear-prefix-arg]]))})
        {:fx [[:dispatch [:show-error (str "Command not found: " command-name)]]]})))))
