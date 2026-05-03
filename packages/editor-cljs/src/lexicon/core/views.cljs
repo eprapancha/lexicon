@@ -162,7 +162,7 @@
     (if (empty? line-decorations)
       ;; No decorations, return plain text
       [:span.line-content
-       {:style {:color "#d4d4d4"}}
+       {:style {:color "var(--lexicon-fg-default, #d4d4d4)"}}
        line-text]
       ;; Apply decorations
       (let [segments (atom [])
@@ -193,7 +193,7 @@
             (swap! segments conj [:span remaining-text])))
 
         ;; Return combined segments
-        (into [:span.line-content {:style {:color "#d4d4d4"}}] @segments)))))
+        (into [:span.line-content {:style {:color "var(--lexicon-fg-default, #d4d4d4)"}}] @segments)))))
 
 ;; =============================================================================
 ;; Font-Lock Rendering (Issue #130)
@@ -296,6 +296,8 @@
                 color (if face
                         (or (get-face-color theme face) default-color)
                         default-color)
+                ;; Get background color for faces like hi-yellow, hi-pink, etc.
+                bg-color (when face (faces/get-face-background theme face))
                 ;; Get additional face attributes (bold, italic)
                 face-def (when face (get faces/default-faces face))
                 weight (when (= (:weight face-def) :bold) "bold")
@@ -303,6 +305,7 @@
             (when (seq span-text)
               (swap! spans conj
                      [:span {:style (cond-> {:color color}
+                                      bg-color (assoc :background-color bg-color)
                                       weight (assoc :font-weight weight)
                                       slant (assoc :font-style slant))}
                       span-text]))))
@@ -464,12 +467,12 @@
     [:div.gutter
      {:style {:flex-shrink "0"
               :width "60px"
-              :background-color "#2d2d30"
-              :border-right "1px solid #3e3e3e"
+              :background-color "var(--lexicon-bg-dim, #2d2d30)"
+              :border-right "1px solid var(--lexicon-border-default, #3e3e3e)"
               :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
               :font-size "12px"
               :line-height (str line-height "px")
-              :color "#858585"
+              :color "var(--lexicon-fg-dim, #858585)"
               :user-select "none"
               :padding-top "20px"}}
 
@@ -501,9 +504,9 @@
                             :height "8px"
                             :border-radius "50%"
                             :background-color (cond
-                                               has-error? "#f14c4c"
-                                               has-warning? "#ff8c00"
-                                               has-hint? "#d7ba7d"
+                                               has-error? "var(--lexicon-fg-error, #f14c4c)"
+                                               has-warning? "var(--lexicon-fg-warning, #ff8c00)"
+                                               has-hint? "var(--lexicon-fg-info, #d7ba7d)"
                                                :else "#666")}}])
 
                 ;; Line number
@@ -512,10 +515,10 @@
                           :text-align "right"
                           :font-weight (if (or has-error? has-warning? has-hint?) "bold" "normal")
                           :color (cond
-                                  has-error? "#f14c4c"
-                                  has-warning? "#ff8c00"
-                                  has-hint? "#d7ba7d"
-                                  :else "#858585")}}
+                                  has-error? "var(--lexicon-fg-error, #f14c4c)"
+                                  has-warning? "var(--lexicon-fg-warning, #ff8c00)"
+                                  has-hint? "var(--lexicon-fg-info, #d7ba7d)"
+                                  :else "var(--lexicon-fg-dim, #858585)")}}
                  line-num]]))
            lines)))]))
 
@@ -605,7 +608,7 @@
       {:on-click (fn [e]
                    (when-let [hidden-input @hidden-input-ref]
                      (.focus hidden-input)))
-       :style {:background-color "rgba(37, 37, 38, 0.5)"  ; Semi-transparent highlight
+       :style {:background-color "var(--lexicon-bg-default, rgba(37, 37, 38, 0.5))"  ; Semi-transparent highlight
                :border-radius "4px"
                :position "absolute"  ; Changed from relative
                :top "0"
@@ -617,7 +620,7 @@
                :font-family "var(--lexicon-font-family-mono, 'Monaco', 'Menlo', monospace)"
                :font-size "var(--lexicon-font-size, 14px)"
                :line-height (str line-height "px")
-               :color "#d4d4d4"
+               :color "var(--lexicon-fg-default, #d4d4d4)"
                :white-space "pre-wrap"
                :cursor "text"  ; Show text cursor
                :pointer-events "auto"  ; Enable clicks
@@ -633,7 +636,7 @@
               ^{:key line-number}
               [:div.text-line
                {:style (cond-> {:min-height (str line-height "px")
-                                :color "#d4d4d4"}
+                                :color "var(--lexicon-fg-default, #d4d4d4)"}
                          ;; Add hl-line background when enabled and on current line
                          is-current-line? (assoc :background-color "rgba(80, 80, 120, 0.6)"))}
                (apply-decorations-to-line line line-number decorations)]))))
@@ -651,7 +654,7 @@
                     :left (str left-px "px")
                     :width "2px"
                     :height (str line-height "px")
-                    :background-color "#ffffff"
+                    :background-color "var(--lexicon-fg-default, #ffffff)"
                     :pointer-events "none"
                     :animation "cursor-blink 1s infinite"
                     :z-index "1000"}}]))]]))
@@ -672,12 +675,12 @@
       [:div.gutter
      {:style {:flex-shrink "0"
               :width "60px"
-              :background-color "#2d2d30"
-              :border-right "1px solid #3e3e3e"
+              :background-color "var(--lexicon-bg-dim, #2d2d30)"
+              :border-right "1px solid var(--lexicon-border-default, #3e3e3e)"
               :font-family "'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
               :font-size "12px"
               :line-height (str line-height "px")
-              :color "#858585"
+              :color "var(--lexicon-fg-dim, #858585)"
               :user-select "none"
               :padding-top "20px"}}
 
@@ -707,9 +710,9 @@
                             :height "8px"
                             :border-radius "50%"
                             :background-color (cond
-                                               has-error? "#f14c4c"
-                                               has-warning? "#ff8c00"
-                                               has-hint? "#d7ba7d"
+                                               has-error? "var(--lexicon-fg-error, #f14c4c)"
+                                               has-warning? "var(--lexicon-fg-warning, #ff8c00)"
+                                               has-hint? "var(--lexicon-fg-info, #d7ba7d)"
                                                :else "#666")}}])
 
                 [:div.line-number
@@ -717,10 +720,10 @@
                           :text-align "right"
                           :font-weight (if (or has-error? has-warning? has-hint?) "bold" "normal")
                           :color (cond
-                                  has-error? "#f14c4c"
-                                  has-warning? "#ff8c00"
-                                  has-hint? "#d7ba7d"
-                                  :else "#858585")}}
+                                  has-error? "var(--lexicon-fg-error, #f14c4c)"
+                                  has-warning? "var(--lexicon-fg-warning, #ff8c00)"
+                                  has-hint? "var(--lexicon-fg-info, #d7ba7d)"
+                                  :else "var(--lexicon-fg-dim, #858585)")}}
                  line-num]]))
            lines)))])))
 
@@ -751,6 +754,8 @@
           font-lock-enabled? @(rf/subscribe [:lexicon.core.subs/window-font-lock-enabled? window-id])
           ;; Issue #262: Invisible text property
           invisible-intervals @(rf/subscribe [:lexicon.core.subs/window-invisible-intervals window-id])
+          ;; Issue #237/#240/#241: Overlay-based folded regions (outline/hideshow)
+          folded-regions @(rf/subscribe [:lexicon.core.subs/window-folded-regions window-id])
           current-theme @(rf/subscribe [:current-theme])
           region-active? (not (nil? mark-position))
           region-decorations (when region-active?
@@ -837,7 +842,7 @@
       {:on-click (fn [e]
                    (when-let [hidden-input @hidden-input-ref]
                      (.focus hidden-input)))
-       :style {:background-color "rgba(37, 37, 38, 0.5)"
+       :style {:background-color "var(--lexicon-bg-default, rgba(37, 37, 38, 0.5))"
                :border-radius "4px"
                :position "absolute"
                :top "0"
@@ -849,7 +854,7 @@
                :font-family "var(--lexicon-font-family-mono, 'Monaco', 'Menlo', monospace)"
                :font-size "var(--lexicon-font-size, 14px)"
                :line-height (str line-height "px")
-               :color "#d4d4d4"
+               :color "var(--lexicon-fg-default, #d4d4d4)"
                :white-space "pre-wrap"
                :cursor "text"
                :pointer-events "auto"
@@ -866,9 +871,9 @@
               cursor-in-viewport? (and current-line
                                        (>= current-line viewport-start)
                                        (<= current-line viewport-end))
-              ;; Issue #130, #262: Calculate line start positions for font-lock and invisible text
+              ;; Issue #130, #262, #257: Calculate line start positions for font-lock, overlays, and invisible text
               ;; Pre-compute cumulative character positions for each line
-              line-start-positions (when (or (and font-lock-enabled? (seq face-intervals))
+              line-start-positions (when (or (seq face-intervals)
                                              (seq invisible-intervals))
                                      (loop [positions [0]
                                             line-idx 0]
@@ -877,10 +882,13 @@
                                          (let [line-len (count (nth all-buffer-lines line-idx ""))
                                                next-pos (+ (peek positions) line-len 1)]  ; +1 for newline
                                            (recur (conj positions next-pos) (inc line-idx))))))
-              default-color "#d4d4d4"]
-          (for [[idx line] (map-indexed vector lines)]
-            (let [line-number (+ viewport-start idx)
-                  ;; Issue #138: For *Completions*, don't use full-line hl-line highlighting
+              default-color "var(--lexicon-fg-default, #d4d4d4)"]
+          (for [[idx line] (map-indexed vector lines)
+                ;; Issue #237/#240/#241: Skip lines inside folded regions
+                :let [line-number (+ viewport-start idx)]
+                :when (not (and (seq folded-regions)
+                                (subs/line-folded? folded-regions line-number)))]
+            (let [;; Issue #138: For *Completions*, don't use full-line hl-line highlighting
                   ;; Instead, use span-based cursor-face highlighting
                   is-current-line? (and hl-line-enabled?
                                         owns-cursor?
@@ -910,7 +918,10 @@
                   ;; Issue #262: Filter invisible text from display
                   display-line (if (and (seq invisible-intervals) line-start-pos)
                                  (filter-invisible-from-line display-line line-start-pos invisible-intervals)
-                                 display-line)]
+                                 display-line)
+                  ;; Issue #237/#240/#241: Append fold indicator if this line precedes a fold
+                  fold-indicator (when (seq folded-regions)
+                                  (subs/get-fold-indicator folded-regions line-number))]
               ^{:key (str window-id "-" line-number)}  ;; Unique key per window to avoid React key collisions
               [:div.text-line
                {:class (when is-completion-entry? "completion-entry")
@@ -940,11 +951,14 @@
                       [:span {:style {:background-color "rgba(80, 80, 120, 0.6)"}}
                        highlight-span])
                     (when after-span [:span after-span])])
-                 ;; Issue #130: Use font-lock rendering when enabled, otherwise fall back to decorations
-                 (if (and font-lock-enabled? (seq face-intervals) line-start-pos)
+                 ;; Issue #130/#257: Use face rendering when font-lock enabled OR overlay faces exist
+                 (if (and (seq face-intervals) line-start-pos)
                    (render-line-with-font-lock display-line line-number line-start-pos
                                                face-intervals current-theme decorations default-color)
-                   (apply-decorations-to-line display-line line-number decorations)))]))))
+                   (apply-decorations-to-line display-line line-number decorations)))
+               ;; Issue #237/#240/#241: Append fold indicator after line content
+               (when fold-indicator
+                 [:span {:style {:color "#888" :font-style "italic"}} fold-indicator])]))))
 
       ;; Cursor - Issue #62: cursor singleton, Issue #137: block cursor
       ;; Active cursor: filled block with inverted character
@@ -974,8 +988,8 @@
                       :left (str left-px "px")
                       :width (str char-width "px")
                       :height (str line-height "px")
-                      :background-color "#d4d4d4"  ; Light background
-                      :color "#1e1e1e"             ; Dark text (inverted)
+                      :background-color "var(--lexicon-fg-default, #d4d4d4)"  ; Light background
+                      :color "var(--lexicon-bg-default, #1e1e1e)"             ; Dark text (inverted)
                       :pointer-events "none"
                       :animation "cursor-blink 1s infinite"
                       :z-index "1000"
@@ -992,7 +1006,7 @@
                       :width (str (- char-width 2) "px")  ; Account for border
                       :height (str (- line-height 2) "px")
                       :background-color "transparent"
-                      :border "1px solid #888888"
+                      :border "1px solid var(--lexicon-fg-dim, #888888)"
                       :pointer-events "none"
                       :z-index "1000"}}])))]])))
 
@@ -1021,7 +1035,7 @@
                      :display "flex"
                      :align-items "center"
                      :padding "0 8px"
-                     :border-top (str "1px solid " (:border-color effective-style "#3e3e42"))
+                     :border-top (str "1px solid " (:border-color effective-style "var(--lexicon-border-mode-line, #3e3e42)"))
                      :flex-shrink "0"})}
 
      ;; Encoding indicator (U: = UTF-8 Unix)
@@ -1157,7 +1171,7 @@
      [:div.split-first
       {:style {:flex "1"
                :height "100%"
-               :border-right "1px solid #3e3e3e"}}
+               :border-right "1px solid var(--lexicon-border-default, #3e3e3e)"}}
       (render-window-tree (:first tree) active-window-id hidden-input-ref)]
      [:div.split-second
       {:style {:flex "1"
@@ -1252,7 +1266,7 @@
                :overflow-y "hidden"  ; No scrollbar - Emacs-style (scroll via commands)
                :overflow-x "hidden"  ; Prevent horizontal scrollbar
                :position "relative"
-               :background-color "#1e1e1e"}}
+               :background-color "var(--lexicon-bg-default, #1e1e1e)"}}
 
       ;; Virtual space to create proper scrollbar height
       [:div.virtual-space
@@ -1270,7 +1284,7 @@
             :align-items "center"
             :padding "4px 8px"
             :margin-right "4px"
-            :background-color (if is-active? "#4e4e50" "#2d2d30")
+            :background-color (if is-active? "var(--lexicon-bg-mode-line, #4e4e50)" "#2d2d30")
             :border "1px solid #3e3e42"
             :border-radius "4px 4px 0 0"
             :font-size "12px"
@@ -1283,7 +1297,7 @@
    [:button.buffer-close
     {:style {:background "none"
              :border "none"
-             :color "#cccccc"
+             :color "var(--lexicon-fg-default, #cccccc)"
              :cursor "pointer"
              :padding "0"
              :margin "0"
@@ -1311,8 +1325,8 @@
               :left "0"
               :right "0"
               :height "32px"
-              :background-color "#2d2d30"
-              :border-bottom "1px solid #3e3e42"
+              :background-color "var(--lexicon-bg-dim, #2d2d30)"
+              :border-bottom "1px solid var(--lexicon-border-mode-line, #3e3e42)"
               :display "flex"
               :align-items "flex-end"
               :padding "0 10px"
@@ -1377,7 +1391,7 @@
                      :font-family "monospace"
                      :display "flex"
                      :flex-direction "column"
-                     :border-top (str "1px solid " (:border-color mode-line-style "#3e3e42"))
+                     :border-top (str "1px solid " (:border-color mode-line-style "var(--lexicon-border-mode-line, #3e3e42)"))
                      :z-index "1000"
                      :transition "height 0.2s ease-in-out"})}
 
@@ -1394,7 +1408,7 @@
          ;; Vertico count format (e.g., "3/42") before prompt
          (when vertical-count-format
            [:span.vertico-count
-            {:style {:color "#888888"
+            {:style {:color "var(--lexicon-fg-dim, #888888)"
                      :margin-right "4px"
                      :font-size "12px"
                      :font-family "monospace"}}
@@ -1545,7 +1559,7 @@
             :style {:background-color "transparent"
                     :border "none"
                     :outline "none"
-                    :color (:color mode-line-style "#cccccc")
+                    :color (:color mode-line-style "var(--lexicon-fg-default, #cccccc)")
                     :font-size "12px"
                     :font-family "monospace"
                     :flex "1"
@@ -1565,8 +1579,8 @@
                         :top "0"
                         :width (str char-width "px")
                         :height "20px"
-                        :background-color "#d4d4d4"
-                        :color "#1e1e1e"
+                        :background-color "var(--lexicon-fg-default, #d4d4d4)"
+                        :color "var(--lexicon-bg-default, #1e1e1e)"
                         :font-size "12px"
                         :font-family "monospace"
                         :line-height "20px"
@@ -1583,13 +1597,13 @@
                         :width (str (- char-width 2) "px")
                         :height "18px"
                         :background-color "transparent"
-                        :border "1px solid #888888"
+                        :border "1px solid var(--lexicon-fg-dim, #888888)"
                         :pointer-events "none"
                         :z-index "10"}}]))]
          ;; Icomplete display (inline completion candidates) - suppressed when vertical mode active
          (when (and icomplete-display (not vertical-mode?))
            [:span.icomplete-display
-            {:style {:color "#888888"
+            {:style {:color "var(--lexicon-fg-dim, #888888)"
                      :font-size "12px"
                      :font-family "monospace"
                      :white-space "nowrap"}}
@@ -1604,7 +1618,7 @@
                                0)]                     ; 0 means no selection
              (when (pos? total-count)
                [:span.match-count
-                {:style {:color "#888888"
+                {:style {:color "var(--lexicon-fg-dim, #888888)"
                          :font-size "11px"
                          :font-family "monospace"
                          :margin-left "8px"
@@ -1613,7 +1627,7 @@
 
         ;; IDLE MODE: Show echo message or empty
         [:span.minibuffer-message.echo-area  ; Add .echo-area for E2E test compatibility (Issue #67)
-         {:style {:color (:color mode-line-style "#cccccc")
+         {:style {:color (:color mode-line-style "var(--lexicon-fg-default, #cccccc)")
                   :font-size "12px"}}
          (if (and message (not (clojure.string/blank? message)))
            message
@@ -1628,7 +1642,7 @@
           [:<>
            (when (:group-title cand)
              [:div.vertico-group-title
-              {:style {:color "#888888"
+              {:style {:color "var(--lexicon-fg-dim, #888888)"
                        :font-style "italic"
                        :padding "0 8px"
                        :font-size "12px"
@@ -1646,11 +1660,11 @@
                                          "rgba(100, 149, 237, 0.3)"
                                          "transparent")}}
             [:span.vertico-text
-             {:style {:color (:color mode-line-style "#cccccc")}}
+             {:style {:color (:color mode-line-style "var(--lexicon-fg-default, #cccccc)")}}
              (:candidate cand)]
             (when (seq (:suffix cand))
               [:span.vertico-suffix
-               {:style {:color "#888888"
+               {:style {:color "var(--lexicon-fg-dim, #888888)"
                         :margin-left "auto"
                         :padding-left "16px"}}
                (:suffix cand)])]])])
@@ -1723,7 +1737,7 @@
                        :display     "flex"
                        :align-items "center"
                        :padding     "0 8px"
-                       :border-top  (str "1px solid " (:border-color mode-line-style "#3e3e42"))})}
+                       :border-top  (str "1px solid " (:border-color mode-line-style "var(--lexicon-border-mode-line, #3e3e42)"))})}
 
      ;; Encoding indicator (U: = UTF-8 Unix)
      [:span.encoding-info
@@ -1791,11 +1805,11 @@
          0%, 50% { opacity: 1; }
          51%, 100% { opacity: 0; }
        }
-       .syntax-keyword { color: #569cd6; font-weight: bold; }
-       .syntax-string { color: #ce9178; }
-       .syntax-comment { color: #6a9955; font-style: italic; }
-       .syntax-number { color: #b5cea8; }
-       .syntax-default { color: #d4d4d4; }"]
+       .syntax-keyword { color: var(--lexicon-fg-keyword, #569cd6); font-weight: bold; }
+       .syntax-string { color: var(--lexicon-fg-string, #ce9178); }
+       .syntax-comment { color: var(--lexicon-fg-comment, #6a9955); font-style: italic; }
+       .syntax-number { color: var(--lexicon-fg-number, #b5cea8); }
+       .syntax-default { color: var(--lexicon-fg-default, #d4d4d4); }"]
 
    [:div.lexicon-app
     {:style {:width          "100%"

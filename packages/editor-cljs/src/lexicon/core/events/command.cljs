@@ -258,8 +258,8 @@
 
              ;; Format keybindings
              global-bindings (get-in keymaps [:global :bindings])
-             major-bindings (get-in keymaps [:major major-mode :bindings])
-             minor-bindings (get-in keymaps [:minor :bindings])
+             major-bindings (get-in keymaps [:mode major-mode])
+             minor-bindings (reduce merge {} (map #(get-in keymaps [:mode %]) (get active-buffer :minor-modes #{})))
 
              format-bindings (fn [bindings title]
                               (when (seq bindings)
@@ -271,12 +271,15 @@
                                      "\n\n")))
 
              header "Key Bindings\n============\n\n"
+             minor-section (when (seq minor-bindings)
+                            (format-bindings minor-bindings "Minor Modes"))
              major-section (when (seq major-bindings)
                             (format-bindings major-bindings
                                             (str (name major-mode) " Mode")))
              global-section (format-bindings global-bindings "Global")
 
              content (str header
+                         (or minor-section "")
                          (or major-section "")
                          global-section)
              lines (clojure.string/split content #"\n" -1)
@@ -326,8 +329,8 @@
          major-mode (:major-mode active-buffer :fundamental-mode)
 
          ;; Look up key in keymaps (major mode first, then global)
-         major-bindings (get-in keymaps [:major major-mode])
-         global-bindings (get-in keymaps [:global])
+         major-bindings (get-in keymaps [:mode major-mode])
+         global-bindings (get-in keymaps [:global :bindings])
          command (or (get major-bindings key-str)
                     (get global-bindings key-str))
 
@@ -506,7 +509,7 @@
          ;; Try to find variable value
          var-value (case var-name
                     "kill-ring" (pr-str (take 3 (:kill-ring db)))
-                    "prefix-argument" (pr-str (get-in db [:ui :prefix-argument]))
+                    "prefix-argument" (pr-str (:prefix-arg db))
                     "mark-position" (pr-str (get-in active-window [:mark-position]))
                     (or (get-in active-buffer [:buffer-local-vars var-keyword])
                         "undefined"))

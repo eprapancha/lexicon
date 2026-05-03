@@ -289,13 +289,18 @@
     (let [;; Read theme from :global-vars (set by defcustom :custom-enabled-themes)
           themes-var (get-in db [:global-vars :custom-enabled-themes] [:lexicon-base-dark])
           theme-id (first themes-var)
-          theme (get default-themes theme-id)]
+          theme (get default-themes theme-id)
+          faces-theme (case (:kind theme)
+                        :light :modus-operandi
+                        :dark :modus-vivendi
+                        :modus-vivendi)]
       ;; Inject theme CSS immediately
       (inject-theme-css theme)
       {:db (assoc db
                   :theme/registry default-themes
                   :theme/active theme-id
-                  :theme/current theme)})))
+                  :theme/current theme
+                  :current-theme faces-theme)})))
 
 ;; Load a theme by ID
 (rf/reg-event-fx
@@ -304,12 +309,18 @@
     (let [registry (:theme/registry db)
           theme (get registry theme-id)]
       (if theme
-        (do
+        (let [;; Map themes.cljs theme IDs to faces.cljs palette names
+              ;; so face-to-style resolves mode-line, minibuffer, etc. correctly
+              faces-theme (case (:kind theme)
+                            :light :modus-operandi
+                            :dark :modus-vivendi
+                            :modus-vivendi)]
           (println "🎨 Loading theme:" (:name theme))
           (inject-theme-css theme)
           {:db (assoc db
                       :theme/active theme-id
-                      :theme/current theme)
+                      :theme/current theme
+                      :current-theme faces-theme)
            :fx [[:dispatch [:echo/message (str "Loaded theme: " (:name theme))]]]})
         (do
           (println "⚠️ Unknown theme:" theme-id)
@@ -354,25 +365,48 @@
 
 ;; -- Commands --
 
+;; Event handler for loading a theme from minibuffer input
+(rf/reg-event-fx
+  :theme/load-from-input
+  (fn [_ [_ theme-id-str]]
+    (let [theme-id (keyword theme-id-str)]
+      {:fx [[:dispatch [:theme/load theme-id]]]})))
+
+;; Event handler for setting font size from minibuffer input
+(rf/reg-event-fx
+  :theme/set-font-size-from-input
+  (fn [_ [_ size-str]]
+    (let [size (js/parseInt size-str)]
+      (if (js/isNaN size)
+        {:fx [[:dispatch [:echo/message "Invalid font size"]]]}
+        {:fx [[:dispatch [:theme/set-font-size size]]]}))))
+
 ;; Register load-theme command
 (defn register-commands! []
   (rf/dispatch [:register-command :load-theme
-                {:description "Load a color theme"
-                 :interactive {:type :completing-read
-                              :prompt "Load theme: "
-                              :collection [:lexicon-base-light :lexicon-base-dark]}
-                 :handler (fn [theme-id-str]
-                           (let [theme-id (keyword theme-id-str)]
-                             (rf/dispatch [:theme/load theme-id])))}])
+                {:docstring "Load a color theme"
+                 :handler [:theme/load-interactive]}])
 
   (rf/dispatch [:register-command :set-font-size
-                {:description "Set editor font size"
-                 :interactive {:type :read-string
-                              :prompt "Font size (px): "}
-                 :handler (fn [size-str]
-                           (let [size (js/parseInt size-str)]
-                             (when-not (js/isNaN size)
-                               (rf/dispatch [:theme/set-font-size size]))))}]))
+                {:docstring "Set editor font size"
+                 :handler [:theme/set-font-size-interactive]}]))
+
+;; Interactive command events that prompt via minibuffer
+(rf/reg-event-fx
+  :theme/load-interactive
+  (fn [{:keys [db]} [_]]
+    (let [theme-names (map name (keys (:theme/registry db)))]
+      {:fx [[:dispatch [:minibuffer/activate
+                        {:prompt "Load theme: "
+                         :completions (vec theme-names)
+                         :on-confirm [:theme/load-from-input]}]]]})))
+
+(rf/reg-event-fx
+  :theme/set-font-size-interactive
+  (fn [_ [_]]
+    {:fx [[:dispatch [:minibuffer/activate
+                      {:prompt "Font size (px): "
+                       :on-confirm [:theme/set-font-size-from-input]}]]]}))
 
 ;; Auto-register commands on namespace load
 (register-commands!)

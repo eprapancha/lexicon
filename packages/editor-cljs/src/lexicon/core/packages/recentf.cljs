@@ -158,7 +158,7 @@
 (rf/reg-event-fx
   :recentf/open-file
   (fn [{:keys [db]} [_ file-path]]
-    {:fx [[:dispatch [:find-file file-path]]]}))
+    {:fx [[:dispatch [:find-file/from-path file-path]]]}))
 
 ;; recentf-edit-list
 (rf/reg-event-fx

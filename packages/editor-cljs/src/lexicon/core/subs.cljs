@@ -713,12 +713,35 @@
    (get buffer :text-properties {})))
 
 (rf/reg-sub
- ::window-face-intervals
+ ::window-text-property-face-intervals
  (fn [[_ window-id]]
    (rf/subscribe [::window-text-properties window-id]))
  (fn [text-props _]
    "Get face intervals from text properties for syntax highlighting"
    (get text-props :face [])))
+
+;; Issue #257: Extract face intervals from overlays (hi-lock, etc.)
+(rf/reg-sub
+ ::window-overlay-face-intervals
+ (fn [[_ window-id]]
+   (rf/subscribe [::window-buffer window-id]))
+ (fn [buffer _]
+   "Get face intervals from overlays that have :face property"
+   (let [overlays (get buffer :overlays {})]
+     (->> (vals overlays)
+          (filter :face)
+          (map (fn [o] {:start (:start o) :end (:end o) :value (:face o)}))
+          vec))))
+
+;; Merged face intervals: overlay faces take priority over text-property faces
+(rf/reg-sub
+ ::window-face-intervals
+ (fn [[_ window-id]]
+   [(rf/subscribe [::window-text-property-face-intervals window-id])
+    (rf/subscribe [::window-overlay-face-intervals window-id])])
+ (fn [[text-prop-faces overlay-faces] _]
+   "Merge face intervals from text properties and overlays (overlays appended last = higher priority)"
+   (into (vec text-prop-faces) overlay-faces)))
 
 (rf/reg-sub
  ::window-invisible-intervals

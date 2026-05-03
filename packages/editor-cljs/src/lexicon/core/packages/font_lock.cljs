@@ -550,7 +550,8 @@
  (fn [{:keys [db]} [_ buffer-id]]
    "Enable font-lock mode for a buffer."
    {:db (assoc-in db [:buffers buffer-id :font-lock-mode] true)
-    :fx [[:dispatch [:font-lock/fontify-buffer buffer-id]]]}))
+    :fx [[:dispatch [:font-lock/fontify-buffer buffer-id]]
+         [:dispatch [:buffer/increment-version buffer-id]]]}))
 
 (rf/reg-event-fx
  :font-lock/disable
@@ -558,7 +559,8 @@
    "Disable font-lock mode for a buffer."
    {:db (-> db
             (assoc-in [:buffers buffer-id :font-lock-mode] false)
-            (update-in [:buffers buffer-id :text-properties] dissoc :face))}))
+            (update-in [:buffers buffer-id :text-properties] dissoc :face))
+    :fx [[:dispatch [:buffer/increment-version buffer-id]]]}))
 
 (rf/reg-event-fx
  :font-lock/toggle

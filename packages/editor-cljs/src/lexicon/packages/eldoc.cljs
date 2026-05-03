@@ -242,6 +242,9 @@
     global-eldoc-mode!
     "Toggle global ElDoc mode for all supported buffers")
 
+  ;; Register post-command hook for automatic documentation display
+  (lisp/add-hook 'post-command-hook on-post-command)
+
   ;; Register built-in documentation provider for Lisp
   (register-documentation-function!
    :elisp-basic

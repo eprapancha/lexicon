@@ -268,9 +268,13 @@
  :diff-mode/activate
  (fn [{:keys [db]} [_ buffer-id]]
    "Activate diff-mode for a buffer."
-   {:db (-> db
-            (assoc-in [:buffers buffer-id :major-mode] :diff-mode)
-            (assoc-in [:buffers buffer-id :is-read-only?] true))}))
+   (let [buffer-id (or buffer-id
+                       (let [active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))]
+                         (:buffer-id active-window)))]
+     (when buffer-id
+       {:db (-> db
+                (assoc-in [:buffers buffer-id :major-mode] :diff-mode)
+                (assoc-in [:buffers buffer-id :is-read-only?] true))}))))
 
 ;; =============================================================================
 ;; Open Diff Buffer

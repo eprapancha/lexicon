@@ -53,7 +53,13 @@
    ;; Special highlights
    :region-bg "#bcbcbc"
    :cursor "#000000"
-   :hl-line "#e0e0e0"})
+   :hl-line "#e0e0e0"
+
+   ;; Hi-lock highlighting
+   :hi-yellow "#ffff00"
+   :hi-pink "#ffb6c1"
+   :hi-green "#90ee90"
+   :hi-blue "#b0e0e6"})
 
 (def modus-vivendi-palette
   "Modus Vivendi (dark theme) color palette.
@@ -100,7 +106,13 @@
    ;; Special highlights
    :region-bg "#3c3c3c"
    :cursor "#ffffff"
-   :hl-line "#2a2a2a"})
+   :hl-line "#2a2a2a"
+
+   ;; Hi-lock highlighting
+   :hi-yellow "#8b8b00"
+   :hi-pink "#8b4557"
+   :hi-green "#3a5f3a"
+   :hi-blue "#3a5f8b"})
 
 ;; -- Face Registry --
 
@@ -186,7 +198,24 @@
 
    :font-lock-comment-delimiter-face
    {:foreground :comment-delimiter
-    :slant :italic}})
+    :slant :italic}
+
+   ;; Hi-lock faces (highlight-regexp)
+   :hi-yellow
+   {:background :hi-yellow
+    :foreground :fg-main}
+
+   :hi-pink
+   {:background :hi-pink
+    :foreground :fg-main}
+
+   :hi-green
+   {:background :hi-green
+    :foreground :fg-main}
+
+   :hi-blue
+   {:background :hi-blue
+    :foreground :fg-main}})
 
 ;; -- Theme Registry --
 

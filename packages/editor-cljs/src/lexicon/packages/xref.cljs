@@ -350,6 +350,11 @@
   (lisp/define-key-for-mode :xref-mode "q" :xref-quit)
   (lisp/define-key-for-mode :xref-mode "RET" :xref-goto-match)
 
+  ;; Global keybindings for xref
+  (lisp/global-set-key "M-." :xref-find-definitions)
+  (lisp/global-set-key "M-," :xref-go-back)
+  (lisp/global-set-key "M-?" :xref-find-references)
+
   ;; Project commands
   (lisp/define-command 'project-find-regexp
     project-find-regexp-interactive

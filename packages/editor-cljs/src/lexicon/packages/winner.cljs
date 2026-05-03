@@ -123,5 +123,5 @@
     "Redo window configuration (C-c <right>)")
 
   ;; Set up key bindings
-  (lisp/global-set-key "C-c <left>" :winner-undo)
-  (lisp/global-set-key "C-c <right>" :winner-redo))
+  (lisp/global-set-key "C-c ArrowLeft" :winner-undo)
+  (lisp/global-set-key "C-c ArrowRight" :winner-redo))

@@ -103,78 +103,6 @@
     (assoc db :transient-keymap keymap)))
 
 ;; ============================================================================
-;; Universal Argument Commands
-;; ============================================================================
-
-(rf/reg-event-fx
-  :universal-argument
-  (fn [{:keys [db]} [_]]
-    {:db (assoc db :prefix-arg (list 4))
-     :fx [[:dispatch [:set-transient-keymap :universal-argument-map]]]}))
-
-(rf/reg-event-fx
-  :universal-argument-more
-  (fn [{:keys [db]} [_]]
-    (let [arg (:prefix-arg db)
-          new-arg (cond
-                    ;; C-u C-u → (16), C-u C-u C-u → (64)
-                    (list? arg) (list (* 4 (first arg)))
-                    ;; C-u - C-u → (-4)
-                    (= arg '-) (list -4)
-                    ;; Already a number, keep it
-                    :else arg)]
-      (cond-> {:db (assoc db :prefix-arg new-arg)}
-        ;; Only set transient keymap when accumulating multiplier
-        (list? new-arg) (assoc :fx [[:dispatch [:set-transient-keymap :universal-argument-map]]])))))
-
-(rf/reg-event-fx
-  :digit-argument
-  (fn [{:keys [db]} [_ digit]]
-    (let [arg (:prefix-arg db)
-          new-arg (cond
-                    ;; C-u 5 → 5, C-u 5 2 → 52
-                    (number? arg) (+ (* arg 10) (if (< arg 0) (- digit) digit))
-                    ;; C-u - 0 → Keep '- if digit is 0, else start negative number
-                    (= arg '-) (if (zero? digit) '- (- digit))
-                    ;; First digit after C-u
-                    :else digit)]
-      {:db (assoc db :prefix-arg new-arg)
-       :fx [[:dispatch [:set-transient-keymap :universal-argument-map]]]})))
-
-(rf/reg-event-fx
-  :negative-argument
-  (fn [{:keys [db]} [_]]
-    (let [arg (:prefix-arg db)
-          new-arg (cond
-                    ;; C-u - 5 - → negate
-                    (number? arg) (- arg)
-                    ;; C-u - - → cancel back to nil
-                    (= arg '-) nil
-                    ;; C-u - → '-
-                    :else '-)]
-      {:db (assoc db :prefix-arg new-arg)
-       :fx [[:dispatch [:set-transient-keymap :universal-argument-map]]]})))
-
-;; ============================================================================
-;; Subscriptions
-;; ============================================================================
-
-(rf/reg-sub
-  :prefix-arg
-  (fn [db _]
-    (:prefix-arg db)))
-
-(rf/reg-sub
-  :current-prefix-arg
-  (fn [db _]
-    (:current-prefix-arg db)))
-
-(rf/reg-sub
-  :transient-keymap
-  (fn [db _]
-    (:transient-keymap db)))
-
-;; ============================================================================
 ;; Prefix Argument Description (for mode-line display)
 ;; ============================================================================
 
@@ -210,3 +138,81 @@
           "C-u"
           (str (apply str (repeat (inc cu-count) "C-u ")) n)))
       :else (str "C-u " prefix-arg))))
+
+;; ============================================================================
+;; Universal Argument Commands
+;; ============================================================================
+
+(rf/reg-event-fx
+  :universal-argument
+  (fn [{:keys [db]} [_]]
+    (let [new-arg (list 4)]
+      {:db (assoc db :prefix-arg new-arg)
+       :fx [[:dispatch [:set-transient-keymap :universal-argument-map]]
+            [:dispatch [:echo/message (prefix-arg-description new-arg)]]]})))
+
+(rf/reg-event-fx
+  :universal-argument-more
+  (fn [{:keys [db]} [_]]
+    (let [arg (:prefix-arg db)
+          new-arg (cond
+                    ;; C-u C-u → (16), C-u C-u C-u → (64)
+                    (list? arg) (list (* 4 (first arg)))
+                    ;; C-u - C-u → (-4)
+                    (= arg '-) (list -4)
+                    ;; Already a number, keep it
+                    :else arg)]
+      (cond-> {:db (assoc db :prefix-arg new-arg)
+               :fx [[:dispatch [:echo/message (or (prefix-arg-description new-arg) "")]]]}
+        ;; Only set transient keymap when accumulating multiplier
+        (list? new-arg) (update :fx conj [:dispatch [:set-transient-keymap :universal-argument-map]])))))
+
+(rf/reg-event-fx
+  :digit-argument
+  (fn [{:keys [db]} [_ digit]]
+    (let [arg (:prefix-arg db)
+          new-arg (cond
+                    ;; C-u 5 → 5, C-u 5 2 → 52
+                    (number? arg) (+ (* arg 10) (if (< arg 0) (- digit) digit))
+                    ;; C-u - 0 → Keep '- if digit is 0, else start negative number
+                    (= arg '-) (if (zero? digit) '- (- digit))
+                    ;; First digit after C-u
+                    :else digit)]
+      {:db (assoc db :prefix-arg new-arg)
+       :fx [[:dispatch [:set-transient-keymap :universal-argument-map]]
+            [:dispatch [:echo/message (or (prefix-arg-description new-arg) "")]]]})))
+
+(rf/reg-event-fx
+  :negative-argument
+  (fn [{:keys [db]} [_]]
+    (let [arg (:prefix-arg db)
+          new-arg (cond
+                    ;; C-u - 5 - → negate
+                    (number? arg) (- arg)
+                    ;; C-u - - → cancel back to nil
+                    (= arg '-) nil
+                    ;; C-u - → '-
+                    :else '-)]
+      {:db (assoc db :prefix-arg new-arg)
+       :fx [[:dispatch [:set-transient-keymap :universal-argument-map]]
+            [:dispatch [:echo/message (or (prefix-arg-description new-arg) "")]]]})))
+
+;; ============================================================================
+;; Subscriptions
+;; ============================================================================
+
+(rf/reg-sub
+  :prefix-arg
+  (fn [db _]
+    (:prefix-arg db)))
+
+(rf/reg-sub
+  :current-prefix-arg
+  (fn [db _]
+    (:current-prefix-arg db)))
+
+(rf/reg-sub
+  :transient-keymap
+  (fn [db _]
+    (:transient-keymap db)))
+
