@@ -14,6 +14,14 @@
   (:require [re-frame.core :as rf]
             [clojure.string :as str]))
 
+;; -- Orderless Configuration --
+
+(defonce orderless-config
+  (atom {:component-separator #"\s+"
+         :matching-styles [:literal :regexp :flex]
+         :style-dispatchers []
+         :smart-case true}))
+
 ;; -- Matching Functions --
 
 (defn basic-match?
@@ -81,17 +89,109 @@
                   (str/starts-with? c-part p-part))
                 (map vector pattern-parts candidate-parts)))))
 
+(defn regexp-match?
+  "Regexp matching. Treats pattern as a regular expression.
+  Example: 'for.*char' matches 'forward-char'"
+  [pattern candidate]
+  (try
+    (boolean (re-find (re-pattern pattern) candidate))
+    (catch :default _ false)))
+
+;; -- Orderless Component Matching --
+
+(defn- smart-case?
+  "Returns true if pattern should use case-insensitive matching.
+  All-lowercase patterns are case-insensitive; patterns with uppercase
+  chars are case-sensitive."
+  [pattern]
+  (= pattern (str/lower-case pattern)))
+
+(def ^:private component-style-fns
+  "Map of component matching style keywords to their match functions.
+  These are used by the orderless engine per-component."
+  {:literal   (fn [p c] (str/includes? c p))
+   :regexp    (fn [p c] (try (boolean (re-find (re-pattern p) c)) (catch :default _ false)))
+   :flex      (fn [pattern candidate]
+                (loop [p-idx 0 c-idx 0]
+                  (cond
+                    (>= p-idx (count pattern)) true
+                    (>= c-idx (count candidate)) false
+                    (= (nth pattern p-idx) (nth candidate c-idx))
+                    (recur (inc p-idx) (inc c-idx))
+                    :else (recur p-idx (inc c-idx)))))
+   :prefix    (fn [p c] (str/starts-with? c p))
+   :initialism (fn [pattern candidate]
+                 (let [initials (->> candidate
+                                     (partition-by #(contains? #{\- \_ \space} %))
+                                     (remove #(contains? #{\- \_ \space} (first %)))
+                                     (map first)
+                                     (apply str))]
+                   (str/starts-with? initials pattern)))})
+
+(defn parse-dispatch
+  "Parse affix dispatch characters from a component.
+  Returns {:pattern string :style keyword-or-nil :negate? boolean}
+
+  Dispatch characters:
+  - =foo  literal match
+  - ~foo  flex match
+  - !foo  negation (must NOT match)
+  - ^foo  prefix match
+  - ,foo  initialism match"
+  [component]
+  (if (>= (count component) 2)
+    (let [first-char (first component)
+          rest-str (subs component 1)]
+      (case first-char
+        \= {:pattern rest-str :style :literal :negate? false}
+        \~ {:pattern rest-str :style :flex :negate? false}
+        \! {:pattern rest-str :style nil :negate? true}
+        \^ {:pattern rest-str :style :prefix :negate? false}
+        \, {:pattern rest-str :style :initialism :negate? false}
+        {:pattern component :style nil :negate? false}))
+    {:pattern component :style nil :negate? false}))
+
+(defn- try-component-styles
+  "Try matching a component against a candidate using the given styles.
+  If dispatched-style is non-nil, use only that style.
+  Otherwise try styles in order until one matches."
+  [pattern candidate styles smart-case-enabled? dispatched-style]
+  (let [case-p (if (and smart-case-enabled? (smart-case? pattern))
+                 (str/lower-case pattern)
+                 pattern)
+        case-c (if (and smart-case-enabled? (smart-case? pattern))
+                 (str/lower-case candidate)
+                 candidate)]
+    (if dispatched-style
+      ;; Use only the dispatched style
+      (when-let [match-fn (get component-style-fns dispatched-style)]
+        (match-fn case-p case-c))
+      ;; Try styles in order
+      (some (fn [style-key]
+              (when-let [match-fn (get component-style-fns style-key)]
+                (match-fn case-p case-c)))
+            styles))))
+
 (defn orderless-match?
   "Orderless matching. Space-separated patterns, all must match (any order).
+  Supports affix dispatchers (=literal, ~flex, !negation, ^prefix, ,initialism),
+  configurable matching styles, and smart case.
   Example: 'buf mode' matches 'buffer-menu-mode', 'mode buf' also matches"
   [pattern candidate]
-  (let [candidate-lower (str/lower-case candidate)
-        ;; Split by whitespace
-        patterns (remove str/blank? (str/split pattern #"\s+"))]
-    ;; All patterns must match (using flex matching for each)
-    (every? (fn [pat]
-             (flex-match? pat candidate-lower))
-           patterns)))
+  (let [config @orderless-config
+        components (remove str/blank?
+                           (str/split pattern (:component-separator config)))
+        styles (:matching-styles config)
+        smart-case-enabled? (:smart-case config)]
+    (if (empty? components)
+      false
+      (every? (fn [component]
+                (let [{:keys [pattern style negate?]} (parse-dispatch component)
+                      match? (try-component-styles
+                              pattern candidate styles
+                              smart-case-enabled? style)]
+                  (if negate? (not match?) match?)))
+              components))))
 
 ;; -- Match Highlighting --
 
@@ -130,13 +230,79 @@
           :else
           (recur p-idx (inc c-idx) matched-indices))))))
 
+(defn- highlight-component
+  "Return matched char indices for a single orderless component against candidate."
+  [component candidate smart-case-enabled? styles]
+  (let [{:keys [pattern style negate?]} (parse-dispatch component)]
+    (when-not negate?
+      (let [case-p (if (and smart-case-enabled? (smart-case? pattern))
+                     (str/lower-case pattern)
+                     pattern)
+            case-c (if (and smart-case-enabled? (smart-case? pattern))
+                     (str/lower-case candidate)
+                     candidate)
+            ;; Determine which style matched
+            matched-style (or style
+                              (some (fn [s]
+                                      (when-let [mfn (get component-style-fns s)]
+                                        (when (mfn case-p case-c) s)))
+                                    styles))]
+        (case matched-style
+          :literal
+          (when-let [idx (str/index-of case-c case-p)]
+            (range idx (+ idx (count case-p))))
+
+          :prefix
+          (when (str/starts-with? case-c case-p)
+            (range 0 (count case-p)))
+
+          (:flex nil)
+          (loop [p-idx 0 c-idx 0 indices []]
+            (cond
+              (>= p-idx (count case-p)) indices
+              (>= c-idx (count case-c)) nil
+              (= (nth case-p p-idx) (nth case-c c-idx))
+              (recur (inc p-idx) (inc c-idx) (conj indices c-idx))
+              :else (recur p-idx (inc c-idx) indices)))
+
+          :regexp
+          (when-let [m (try (re-find (re-pattern case-p) case-c) (catch :default _ nil))]
+            (let [match-str (if (string? m) m (first m))]
+              (when-let [idx (str/index-of case-c match-str)]
+                (range idx (+ idx (count match-str))))))
+
+          :initialism
+          (let [initials-indices
+                (loop [chars (seq case-p)
+                       idx 0
+                       at-word-start? true
+                       indices []]
+                  (cond
+                    (empty? chars) indices
+                    (>= idx (count case-c)) nil
+                    (and at-word-start?
+                         (= (first chars) (nth case-c idx)))
+                    (recur (rest chars) (inc idx) false (conj indices idx))
+                    (contains? #{\- \_ \space} (nth case-c idx))
+                    (recur chars (inc idx) true indices)
+                    :else
+                    (recur chars (inc idx) false indices)))]
+            initials-indices)
+
+          ;; fallback
+          nil)))))
+
 (defn highlight-orderless-match
   "Return indices of matched chars for orderless match."
   [pattern candidate]
   (when (orderless-match? pattern candidate)
-    (let [patterns (remove str/blank? (str/split pattern #"\s+"))
-          ;; Get flex matches for each pattern
-          all-indices (mapcat #(highlight-flex-match % candidate) patterns)]
+    (let [config @orderless-config
+          components (remove str/blank?
+                             (str/split pattern (:component-separator config)))
+          styles (:matching-styles config)
+          smart-case-enabled? (:smart-case config)
+          all-indices (mapcat #(highlight-component % candidate smart-case-enabled? styles)
+                              components)]
       (distinct (sort all-indices)))))
 
 ;; -- Style Definitions --

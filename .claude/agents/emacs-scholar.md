@@ -4,6 +4,8 @@ description: Read-only research agent that studies Emacs and package source code
 tools: Read, Grep, Glob, WebFetch, WebSearch
 model: sonnet
 color: blue
+skills:
+  - emacs-study
 ---
 
 # Emacs Scholar

@@ -21,14 +21,15 @@ You build features that live OUTSIDE Lexicon's core, equivalent to Emacs package
 
 ## Package Architecture
 
-### External Packages Live in Separate Repos
+### External Packages Live in `lexpkgs` Monorepo
 
-External packages are **separate git repositories** named `lexicon-<name>`:
-- `lexicon-vertico` -- vertical completion UI
-- `lexicon-evil` -- vim modal editing
-- etc.
+First-party external packages live in `/home/nixos/projects/lexpkgs/`:
+- `lexpkgs/vertico/` -- vertical completion UI
+- `lexpkgs/marginalia/` -- rich completion annotations
+- `lexpkgs/orderless/` -- orderless completion style
 
-Internally the package uses its own name (e.g., `vertico`). The `lexicon-` prefix is the external/repo namespace, like how Emacs system packages use `emacs-<name>`.
+Each is a subdirectory with `package.edn` + `src/lexicon/<name>/core.cljs`.
+The `package.edn` `:name` uses the `lexicon-` prefix (e.g., `"lexicon-vertico"`).
 
 ### Packages Are ClojureScript Source, Not Compiled JS
 
@@ -50,16 +51,14 @@ Every package has a `package.edn` at its root:
  :dependencies []}
 ```
 
-### Package Structure (External Repo)
+### Package Structure
 
 ```
-lexicon-vertico/
+lexpkgs/vertico/
   package.edn                    # Package metadata
   src/
     lexicon/vertico/
       core.cljs                  # Entry point (has initialize! and cleanup!)
-      faces.cljs                 # Face definitions (if needed)
-      ui.cljs                    # UI rendering
 ```
 
 ## Your Scope -- STRICT
@@ -88,40 +87,39 @@ This is critical. Taking shortcuts here undermines the entire architecture.
 ### Entry Point
 ```clojure
 (ns lexicon.vertico.core
-  "Vertical completion UI for Lexicon.
-
-  Based on Emacs vertico.el by Daniel Mendler.
-
-  This package uses only lexicon.lisp primitives."
-  (:require [clojure.string :as str]))
+  "Vertical completion UI for Lexicon."
+  (:require [lexicon.api :refer [message add-hook remove-hook
+                                  all-completions
+                                  completion-all-completions
+                                  minibuffer-contents-no-properties
+                                  minibuffer-completion-table
+                                  set-completion-display
+                                  update-minibuffer-frame]]))
 
 ;; Internal state (packages own their own state via atoms)
-(defonce vertico-state (atom {}))
-
-;; Implementation functions use lexicon.lisp API
-;; In SCI, these are available in the user namespace:
-;; (insert "text"), (point), (define-command ...), etc.
+(def ^:private state (atom {:candidates [] :index -1}))
 
 (defn initialize!
-  "Called when the package is loaded. Register commands, modes, keybindings."
+  "Called when the package is loaded."
   []
-  (define-command 'vertico-mode vertico-mode!
-    "Toggle vertical completion UI"
-    {:interactive true})
-  (message "Vertico package loaded"))
+  (add-hook 'minibuffer-setup-hook setup-fn)
+  (message "Package loaded"))
 
 (defn cleanup!
   "Called when the package is unloaded."
   []
-  (message "Vertico package unloaded"))
+  (remove-hook 'minibuffer-setup-hook setup-fn)
+  (message "Package unloaded"))
 ```
 
-### Key Differences from In-Repo Packages
+### Key Patterns
 
-1. **No `(:require [lexicon.lisp :as lisp])`** -- in SCI, all `lexicon.lisp` functions are already in the `user` namespace. Call `(insert ...)` directly, not `(lisp/insert ...)`.
-2. **`initialize!` / `cleanup!`** lifecycle hooks replace `init!` / `register-package!`
-3. **`package.edn`** replaces hardcoded requires in `main.cljs`
+1. **Import via `lexicon.api`** -- `(:require [lexicon.api :refer [specific-functions]])`. Import only what you need.
+2. **`initialize!` / `cleanup!`** lifecycle hooks -- add/remove hooks, register/unregister commands
+3. **Hook-based integration** -- use `add-hook` / `remove-hook` with named functions (not lambdas, so they can be removed)
 4. **Package state** lives in atoms within the package, not in `app-db`
+5. **`defcustom`** for user-configurable variables with `:set` functions
+6. **`package.edn`** declares metadata, entry point, and dependencies
 
 ## Available API in SCI
 

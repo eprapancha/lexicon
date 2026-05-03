@@ -4,6 +4,8 @@ description: Read-only architectural authority that designs implementation specs
 tools: Read, Grep, Glob
 model: opus
 color: yellow
+skills:
+  - design-spec
 ---
 
 # Architect

@@ -14,15 +14,13 @@ Lexicon is GNU Emacs running in the browser -- not Emacs-inspired, not Emacs-lik
 - *Major and minor modes* with buffer-local state
 - *Command-oriented* editing model
 - *Minibuffer* for interactive commands with completion
-- *Package system* where Evil-mode, Vertico, etc. are external packages
+- *Package system* where packages are ClojureScript source interpreted by SCI at runtime -- just like Emacs loads Elisp
 
 *Technology Stack:* Rust/WASM (gap buffer), ClojureScript/re-frame (Emacs Lisp layer), Reagent (UI)
 
 * Current Status
 
-The core editor is functional. You can open Lexicon and edit text with familiar Emacs keybindings. The features below describe what actually works today.
-
-Backend-dependent features (shell, version control, LSP, remote files) have command stubs and UI infrastructure but require a server bridge to function. They are listed separately at the end.
+The core editor is functional with 230+ API functions exposed to packages via SCI (Small Clojure Interpreter). The package ecosystem is actively growing -- Vertico, Marginalia, and Orderless are working. Backend-dependent features (shell, VC, LSP) have command stubs and UI infrastructure but require a server bridge.
 
 * Working Features
 
@@ -66,9 +64,37 @@ Record (=F3= / =C-x (=), stop/replay (=F4= / =C-x )=), call-last-kbd-macro (=C-x
 
 describe-key (=C-h k=), describe-function (=C-h f=), describe-variable (=C-h v=), describe-bindings (=C-h b=), apropos-command (=C-h a=), info browser (=M-x info=).
 
-** Completion
+** Completion System
 
-Minibuffer TAB completion with styles (basic, substring, flex). icomplete-mode for inline candidate display with cycling (=C-.= / =C-,=).
+Style-extensible completion pipeline with pluggable matching strategies:
+
+- *Matching styles:* basic (prefix), substring, flex, initials, partial-completion, orderless
+- *Style configuration:* =set-completion-styles=, per-category overrides
+- *icomplete-mode:* inline candidate display with cycling (=C-.= / =C-,=)
+- *Completion metadata:* category, annotation functions, display sort functions
+
+The completion system supports external packages (Vertico, Marginalia, Orderless) via the same API.
+
+** Customization System
+
+=defcustom= / =defgroup= for user-configurable variables with type checking, setter functions, and localStorage persistence. =setopt= applies custom values. Packages use this for configuration.
+
+** Package System
+
+Emacs-style package loading: ClojureScript source files interpreted at runtime by SCI (Small Clojure Interpreter) with a sandboxed API of 230+ functions.
+
+- *Install:* =(install-package "vertico")= or =(install-package "http://url")=
+- *Registry:* lexpa -- recipe-based package archive (like MELPA)
+- *Security:* SCI sandbox blocks =js/eval=, =js/fetch=, =re-frame= access
+- *Lifecycle:* =initialize!= / =cleanup!= hooks, dependency resolution
+
+*** Available Packages
+
+| Package | Description | Status |
+|---------+-------------+--------|
+| *Vertico* | Vertical completion UI (candidate list in minibuffer) | Working |
+| *Marginalia* | Rich annotations (keybinding, docstring) for completion candidates | Working |
+| *Orderless* | Multi-component completion matching with dispatchers (=literal, ~flex, !negation, ^prefix, ,initialism) | Working |
 
 ** Programming Support
 
@@ -127,6 +153,22 @@ These features have command registration and UI framework in place. They produce
 |  |  - UTF-8 handling             |  |
 |  +-------------------------------+  |
 +-------------------------------------+
+         |
+         | SCI (runtime package loading)
+         v
++-------------------------------------+
+|  External Packages (lexpkgs/)       |
+|  - Vertico, Marginalia, Orderless   |
+|  - ClojureScript source, not JS     |
+|  - Sandboxed: 230+ API functions    |
++-------------------------------------+
+         ^
+         | recipes
++-------------------------------------+
+|  lexpa (Package Registry)           |
+|  - Recipe-based (like MELPA)        |
+|  - Decoupled from editor            |
++-------------------------------------+
 #+end_example
 
 See [[file:docs/ARCHITECTURE.org][docs/ARCHITECTURE.org]] for full technical details.
@@ -169,13 +211,33 @@ lexicon/
 |   +-- lexicon-engine/        # Rust/WASM gap buffer (Emacs C core)
 +-- e2e_tests/                 # E2E tests (Etaoin/Firefox)
 +-- scripts/                   # Build scripts
+
+External (separate repos):
+~/projects/lexpkgs/            # External packages (vertico, marginalia, orderless)
+~/projects/lexpa/              # Package registry (recipes, server)
 #+end_example
 
-* Vision & Roadmap
+* What's Next
 
-Lexicon aims to become a collaborative CMS built on org-mode -- a WordPress replacement for people who think in Emacs. The path: core editor (now) -> package system -> port packages (vertico, evil) -> org-mode -> collaboration -> publishing.
+** Near-term: Completion Ecosystem
 
-See [[file:docs/VISION.org][docs/VISION.org]] for the full vision and [[file:docs/ROADMAP.org][docs/ROADMAP.org]] for the phase-by-phase plan.
+- *Consult* -- Enhanced commands (=consult-line=, =consult-outline=, =consult-buffer=). Buffer-local sources first; external sources (=consult-ripgrep=) deferred until WASM ripgrep or backend.
+- *Embark* -- Action framework on completion candidates.
+
+** Medium-term
+
+- *Tree-sitter* via =web-tree-sitter= WASM -- AST-based syntax highlighting replacing regex font-lock
+- *Evil-mode* -- Full Vim emulation as an external package
+- *WASM expansion* -- ripgrep, Emacs regexp engine, more C primitives compiled to WASM
+
+** Long-term
+
+- *Backend server bridge* -- WebSocket bridge for shell, git, LSP, compilation
+- *org-mode* -- The big one. Requires solid text properties, overlays, font-lock
+- *Collaboration* -- CRDT-based shared editing
+- *Publishing* -- org-export, static site generation
+
+See [[file:docs/VISION.org][docs/VISION.org]] for the full vision.
 
 * Documentation
 
@@ -183,7 +245,7 @@ See [[file:docs/VISION.org][docs/VISION.org]] for the full vision and [[file:doc
 - [[file:docs/ARCHITECTURE_BOUNDARY.org][Architecture Boundary]] -- Core/package separation and enforcement
 - [[file:docs/EMACS_COMPATIBILITY_CONTRACT.org][Emacs Compatibility Contract]] -- Semantic guarantees (the project constitution)
 - [[file:docs/VISION.org][Vision]] -- Long-term direction
-- [[file:docs/ROADMAP.org][Roadmap]] -- Development phases
+- [[file:docs/ROADMAP.org][Roadmap]] -- Development tracking
 
 * License
 
@@ -191,5 +253,4 @@ GNU General Public License v3.0 -- See [[file:LICENSE][LICENSE]]
 
 -----
 
-*Status:* Active Development -- Core Editor Validation Phase
-*Last Updated:* 2026-05-01
+*Last Updated:* 2026-05-03

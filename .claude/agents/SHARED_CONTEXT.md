@@ -133,11 +133,11 @@ This mirrors Emacs: Elisp packages are source files loaded at runtime by the Lis
 |-----------|------|--------|
 | SCI evaluation engine | `core/eval.cljs` | Working |
 | Package SCI sandbox | `core/packages/sci.cljs` | Working |
-| Package loader | `core/packages/loader.cljs` | Working (needs HTTP fetch) |
-| Lisp API → SCI bindings | `lisp.cljs` `sci-namespace` (~200+ functions) | Working |
+| Package loader | `core/packages/loader.cljs` | Working |
+| Lisp API → SCI bindings | `lisp.cljs` `sci-namespace` (~230+ functions) | Working |
 | Trust levels | `core/packages/sci.cljs` | Working |
 | Test package | `packages/lexicon-test-package/` | Working |
-| Package registry (`lexpa`) | N/A | Not yet built |
+| Package registry (`lexpa`) | `/home/nixos/projects/lexpa/` | Working |
 
 ### Trust Levels
 
@@ -172,13 +172,44 @@ If an external package needs functionality not in `lexicon.lisp`:
 3. **Foundation-builder registers it** in `lisp.cljs` `sci-namespace` map
 4. **Then the package can use it** via SCI
 
-### Future: `lexpa` (Lexicon Package Archive)
+### `lexpa` (Lexicon Package Archive)
 
-A git-based package registry (like MELPA/straight.el) that:
-- Lists available packages with git URLs and metadata
-- Client fetches `.cljs` source from package repos
+A recipe-based package registry (like MELPA/straight.el):
+- Located at `/home/nixos/projects/lexpa/`
+- Recipes in `recipes/*.edn` map package names to GitHub repo + path
+- Local dev via `local.edn` (maps package names to filesystem paths)
+- Server (`server.js`) serves packages at `http://localhost:3100`
+- Client fetches `.cljs` source and `package.edn` via HTTP
 - Multi-file packages are concatenated in dependency order
 - Evaluated in SCI at install/load time
+- Install from SCI: `(install-package "vertico")` or `(install-package "http://url")`
+
+### External Package Monorepo (`lexpkgs`)
+
+All first-party external packages live in a shared monorepo at `/home/nixos/projects/lexpkgs/`:
+```
+lexpkgs/
+  vertico/          # Vertical completion UI
+  marginalia/       # Rich annotations for completions
+  orderless/        # Orderless completion matching style
+```
+
+Each subdirectory contains `package.edn` + `src/lexicon/<name>/core.cljs`.
+
+### Customization System (`defcustom` / `defgroup`)
+
+Packages can declare user-configurable variables:
+```clojure
+(defcustom orderless-smart-case true
+  :type :boolean
+  :group :orderless
+  :set (fn [val] (orderless-set-smart-case val)))
+```
+
+- `defcustom` registers a variable with a standard value, type, and optional setter
+- `defgroup` organizes related custom variables
+- `setopt` sets a custom variable (triggers its `:set` function)
+- Values persist via `custom-set-variables`
 
 ## Emacs Source Reference
 

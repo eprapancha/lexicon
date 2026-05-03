@@ -119,9 +119,25 @@ Console errors: [NONE / list]
 - Multiple windows display correctly
 
 ### packages
-- (install-package "http://localhost:3100/packages/vertico") works
+- (install-package "vertico") works (uses lexpa registry)
 - Echo area shows success/error message
 - No console errors during package load
+- (install-package "orderless") activates orderless completion
+
+### completion
+- M-x with Vertico shows vertical candidate list
+- Typing filters candidates (count decreases)
+- Arrow keys navigate, Tab inserts selected candidate
+- C-g cancels completion
+
+### orderless
+- After (set-completion-styles [:orderless :basic]):
+- M-x "forward char" shows only commands matching both words
+- M-x "=forward" forces literal substring match
+- M-x "~eec" forces flex match (should find execute-extended-command)
+- M-x "buffer !read" negates: buffer commands excluding "read"
+- M-x "^forward" forces prefix match (only commands starting with "forward")
+- M-x ",stb" forces initialism match (switch-to-buffer)
 
 ---
 

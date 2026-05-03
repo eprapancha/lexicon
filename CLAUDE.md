@@ -1,6 +1,6 @@
 # Lexicon Project Memory
 
-**Last Updated:** 2026-05-01
+**Last Updated:** 2026-05-03
 
 ---
 
@@ -11,7 +11,7 @@
 **Core Philosophy:** "When in doubt, do what Emacs does" - We study Emacs source code before implementing features. This is not Emacs-inspired, this IS Emacs for the browser.
 
 **Full vision:** See `docs/VISION.org` for long-term direction (collaborative CMS on org-mode).
-**Roadmap:** See `docs/ROADMAP.org` for phase-by-phase plan.
+**Roadmap:** See `docs/ROADMAP.org` for development tracking.
 
 ---
 
@@ -23,9 +23,21 @@
 | `docs/ARCHITECTURE_BOUNDARY.org` | Core/package boundary rules, enforcement |
 | `docs/EMACS_COMPATIBILITY_CONTRACT.org` | The project "constitution" - semantic guarantees |
 | `docs/VISION.org` | Long-term vision and sequencing |
-| `docs/ROADMAP.org` | Phase-by-phase development plan |
+| `docs/ROADMAP.org` | Development tracking |
 | `.claude/DEBUGGING_E2E_TESTS.md` | E2E test debugging guide |
 | `.claude/skills/write-test/SKILL.md` | E2E test authoring templates |
+
+### Skills (invoke with `/skill-name`)
+
+| Skill | Purpose |
+|-------|---------|
+| `/chrome-test` | Generate browser test prompts for Chrome Extension |
+| `/write-test` | Author E2E tests following project conventions |
+| `/reconcile` | Check if docs are up-to-date with code changes |
+| `/emacs-study` | Research Emacs source for a feature |
+| `/gap-analysis` | Compare Emacs vs Lexicon for a feature |
+| `/design-spec` | Design implementation spec for a feature |
+| `/qa-check` | Run tests, lint, and validate quality |
 
 ---
 
@@ -204,6 +216,8 @@ packages/editor-cljs/src/lexicon/core/  # Internal core (events, modes, UI)
 packages/editor-cljs/src/lexicon/lisp.cljs  # Public API boundary
 packages/lexicon-engine/wasm/         # Rust WASM gap buffer
 e2e_tests/                            # E2E tests
+~/projects/lexpkgs/                   # External packages (vertico, marginalia, orderless)
+~/projects/lexpa/                     # Package registry (recipes, server)
 ```
 
 ### Emacs Reference
@@ -219,6 +233,20 @@ e2e_tests/                            # E2E tests
 
 ---
 
+## Browser Testing (Chrome Extension)
+
+E2E tests (Etaoin/WebDriver) test API contracts but can miss integration issues,
+especially for external SCI packages that are loaded at runtime. Use the Chrome
+Extension (`/chrome-test` skill) to verify features work end-to-end in the browser.
+
+**Key caveat:** Changes to external packages in `lexpkgs/` require reinstalling
+the package in the browser (e.g., `(install-package "vertico")`) -- shadow-cljs
+hot-reload only covers core code, not SCI-loaded packages.
+
+See `.claude/CHROME_EXTENSION_TESTING.md` for the full workflow.
+
+---
+
 ## Remember
 
 1. **GitHub first** - Check issues before starting
@@ -227,7 +255,9 @@ e2e_tests/                            # E2E tests
 4. **Test first** - Write tests before implementing
 5. **Zero warnings** - Fix all warnings before commit
 6. **Zero regressions** - All tests must pass
+7. **Browser verify** - Test in browser after E2E, especially for package integration
+8. **Reconcile docs** - Run `/reconcile` after adding features, packages, or API functions
 
 ---
 
-**This file survives conversation compactions. Updated 2026-05-01.**
+**This file survives conversation compactions. Updated 2026-05-03.**

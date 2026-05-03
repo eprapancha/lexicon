@@ -2775,6 +2775,74 @@
      (when (seq matches)
        (vec matches)))))
 
+;; =============================================================================
+;; Completion Style Configuration (Orderless support)
+;; =============================================================================
+
+(defn set-completion-styles
+  "Set the global completion styles list.
+
+  STYLES is a vector of style keywords (e.g., [:orderless :basic]).
+  Styles are tried in order; first style that produces matches wins.
+
+  Available styles: :basic, :substring, :flex, :initials,
+  :partial-completion, :orderless
+
+  Usage: (set-completion-styles [:orderless :basic])
+  Returns: nil"
+  [styles]
+  (swap! rfdb/app-db assoc-in [:completion :styles] (vec styles))
+  nil)
+
+(defn set-completion-category-override
+  "Set completion styles for a specific category.
+
+  CATEGORY is a keyword (:command, :buffer, :file, etc.).
+  STYLES is a vector of style keywords.
+
+  Usage: (set-completion-category-override :command [:orderless :basic])
+  Returns: nil"
+  [category styles]
+  (swap! rfdb/app-db assoc-in [:completion :category-overrides category] (vec styles))
+  nil)
+
+(defn orderless-set-matching-styles
+  "Set the matching styles used by each orderless component.
+
+  STYLES is a vector of component style keywords:
+  :literal, :regexp, :flex, :prefix, :initialism
+
+  These are tried in order per component (unless overridden by affix dispatch).
+
+  Usage: (orderless-set-matching-styles [:literal :regexp :flex])
+  Returns: nil"
+  [styles]
+  (swap! completion-styles/orderless-config assoc :matching-styles (vec styles))
+  nil)
+
+(defn orderless-set-component-separator
+  "Set the regex pattern used to split orderless input into components.
+
+  SEP is a string that will be compiled to a regex pattern.
+
+  Usage: (orderless-set-component-separator \"\\\\s+\")
+  Returns: nil"
+  [sep]
+  (swap! completion-styles/orderless-config assoc :component-separator (re-pattern sep))
+  nil)
+
+(defn orderless-set-smart-case
+  "Enable or disable smart case for orderless matching.
+
+  When enabled (default), all-lowercase patterns match case-insensitively
+  while patterns with uppercase characters match case-sensitively.
+
+  Usage: (orderless-set-smart-case true)
+  Returns: nil"
+  [enabled?]
+  (swap! completion-styles/orderless-config assoc :smart-case (boolean enabled?))
+  nil)
+
 (defn completion-boundaries
   "Return boundaries of completion field in STRING.
 
@@ -4824,7 +4892,8 @@
               url-or-name
               (let [base (or (symbol-value 'package-archives)
                              (get-in @rfdb/app-db [:global-vars :package-archives])
-                             "https://eprapancha.github.io/lexpa")]
+                             "https://eprapancha.github.io/lexpa")
+                    base (cond-> base (str/ends-with? base "/") (subs 0 (dec (count base))))]
                 (str base "/" url-or-name)))]
     (rf/dispatch [:packages/load-from-url url])))
 
@@ -4992,6 +5061,11 @@
    'completion-metadata completion-metadata
    'set-completion-metadata set-completion-metadata
    'completion-all-completions completion-all-completions
+   'set-completion-styles set-completion-styles
+   'set-completion-category-override set-completion-category-override
+   'orderless-set-matching-styles orderless-set-matching-styles
+   'orderless-set-component-separator orderless-set-component-separator
+   'orderless-set-smart-case orderless-set-smart-case
    'completion-boundaries completion-boundaries
    'completing-read completing-read
    ;; Keymaps

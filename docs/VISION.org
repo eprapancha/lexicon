@@ -7,7 +7,7 @@
 - [[file:ARCHITECTURE.org][Architecture]] -- Technical architecture reference
 - [[file:ARCHITECTURE_BOUNDARY.org][Architecture Boundary]] -- Core/package boundary rules
 - [[file:EMACS_COMPATIBILITY_CONTRACT.org][Emacs Compatibility Contract]] -- The project constitution
-- [[file:ROADMAP.org][Roadmap]] -- Phase-by-phase development plan
+- [[file:ROADMAP.org][Roadmap]] -- Development tracking
 
 * What Lexicon Is
 
@@ -31,15 +31,15 @@ This is a WordPress replacement for people who think in org-mode.
 
 The path from editor to CMS follows a strict dependency chain:
 
-1. *Core editor* -- Get every built-in Emacs command working correctly (current phase)
-2. *Package system* -- straight.el-style GitHub-based package installation
-3. *Port key packages* -- vertico, orderless, consult (completion ecosystem), evil (vim emulation)
+1. *Core editor* -- Get every built-in Emacs command working correctly
+2. *Package ecosystem* -- Completion stack (Vertico, Orderless, Marginalia done; Consult, Embark next)
+3. *Tree-sitter* -- AST-based syntax highlighting via web-tree-sitter WASM
 4. *org-mode* -- The big one. Requires solid text properties, overlays, font-lock
-5. *magit* -- Git integration via backend server bridge
+5. *Backend server bridge* -- WebSocket bridge for shell, git, LSP, compilation
 6. *Collaboration* -- CRDT-based shared editing, presence, permissions
 7. *Publishing* -- org-export, static site generation, CMS features
 
-Each phase depends on the one before it. Skipping ahead produces fragile results.
+Each layer depends on the one before it. Skipping ahead produces fragile results.
 
 * WASM Core as Browser-Based Process
 

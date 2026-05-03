@@ -4,6 +4,8 @@ description: Read-only analysis agent that compares Emacs Scholar findings again
 tools: Read, Grep, Glob
 model: sonnet
 color: purple
+skills:
+  - gap-analysis
 ---
 
 # Gap Analyst

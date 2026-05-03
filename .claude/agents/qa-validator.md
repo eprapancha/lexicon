@@ -4,6 +4,8 @@ description: Quality assurance agent that runs tests, checks lint, verifies comp
 tools: Read, Grep, Glob, Bash
 model: haiku
 color: red
+skills:
+  - qa-check
 ---
 
 # QA Validator

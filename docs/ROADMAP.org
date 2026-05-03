@@ -1,6 +1,6 @@
 #+TITLE: Lexicon Development Roadmap
 #+AUTHOR: Lexicon Project
-#+DATE: 2026-05-01
+#+DATE: 2026-05-03
 
 * Related Documents
 
@@ -15,35 +15,13 @@ This roadmap tracks Lexicon's evolution from a bare Emacs implementation to a fu
 
 Source of truth: [[https://github.com/eprapancha/lexicon/issues][GitHub Issues]]
 
-* Completed Phases
-
-| Phase | Description | Completed |
-|-------+-------------+-----------|
-|     0 | Architecture Reset -- gap buffer, Evil-mode extraction | Dec 2025 |
-|     1 | Basic Editing -- navigation, kill ring, undo | Dec 2025 |
-|     2 | Buffers & Files -- multi-buffer, file I/O | Dec 2025 |
-|   2.5 | Core Polish -- focus handling, echo area, prefix args | Dec 2025 |
-|     3 | Windows & Frames -- splitting, navigation | Dec 2025 |
-|     4 | Minibuffer & Completion -- M-x, TAB completion, help | Dec 2025 |
-|     5 | Modes & Keymaps -- major/minor modes, hierarchical keymaps | Dec 2025 |
-|    6A | Package System -- loading, namespacing | Dec 2025 |
-|    6B | Display & Theming -- faces, mode-line, themes | Dec 2025 |
-|    6C | Completion Framework -- metadata, annotations | Dec 2025 |
-|    6D | Missing Infrastructure -- various Emacs primitives | Dec 2025 |
-|   6.5 | Initial Testing -- browser-based tests, manual test plan | Dec 2025 |
-|   7.1 | Core API Design -- buffer/command/keymap API documentation | Jan 2026 |
-|   7.2 | events.cljs Refactor -- split 3000-line monolith into 8 modules | Jan 2026 |
-| 7.3-5 | Hook System, Undo Architecture, Markers | Jan 2026 |
-| 7.6-7 | Dynamic Context, Package Isolation | Jan 2026 |
-|   7.8 | Query Replace, Minibuffer Redesign | Jan 2026 |
-
-** What's Been Built
+* What's Been Built
 
 The core editor is substantial:
 
 - Full editing: kill ring, yank, undo, prefix arguments, rectangle operations, keyboard macros
 - Buffer/window/frame management with splitting, navigation, tabs
-- Minibuffer completion system with styles (basic, substring, flex) and icomplete
+- Minibuffer completion system with styles (basic, substring, flex, orderless) and icomplete
 - Major/minor modes with hierarchical keymaps and buffer-local state
 - File operations via FS Access API (find-file, save, dired)
 - Search: isearch, query-replace, occur, grep
@@ -51,44 +29,35 @@ The core editor is substantial:
 - Help system: describe-key/function/variable, info browser
 - Diff/merge: diff-mode, ediff, smerge-mode
 - Text properties, overlays, markers, narrowing
+- Customization: defcustom/defgroup with localStorage persistence
 
-* Current Phase: Core Editor Validation
+** Package Infrastructure
 
-The codebase has grown faster than testing. The priority now is:
+- Package system: install-package from short names or URLs
+- Package registry (lexpa): recipe-based, decoupled from editor and packages
+- defcustom/defgroup/custom-set-variables with localStorage persistence
+- Unified variable stores (:global-vars canonical, atom mirror)
+- SCI sandbox with 230+ API functions
+- Dependency resolution and lifecycle management
 
-1. *Manual testing* -- verify every interactive command actually works as expected
-2. *Fix or delete superficial tests* -- tests that pass but don't test real behavior
-3. *Issue sweep* -- work through open GitHub issues systematically
+** Completed Packages
 
-This phase ends when every core command is manually verified and has a meaningful E2E test.
+- *Vertico* -- Vertical completion UI
+- *Marginalia* -- Rich annotations for completion candidates
+- *Orderless* -- Multi-component completion matching (literal, flex, regexp, prefix, initialism, negation dispatchers, smart case)
 
-* Current Phase: Package Ecosystem (Minad Stack)
+* Active Work: Completion Ecosystem
 
-Prove that the Elisp compatibility layer works by porting high-value completion packages. Infrastructure is in place:
-
-- Package system: install-package from short names or URLs ✓
-- Package registry (lexpa): recipe-based, decoupled from editor and packages ✓
-- defcustom/defgroup/custom-set-variables with localStorage persistence ✓
-- Unified variable stores (:global-vars canonical, atom mirror) ✓
-- SCI sandbox with 229+ API functions ✓
-
-** Completed
-
-- *Vertico* -- Vertical completion UI ✓
-- *Marginalia* -- Rich annotations for completion candidates ✓
-
-** In Progress
-
-- *Orderless* -- Flexible completion matching (multiple space-separated patterns, regexp/literal/flex)
+Prove that the Elisp compatibility layer works by porting high-value completion packages.
 
 ** Up Next
 
 - *Consult* -- Enhanced commands. Buffer-local sources first (=consult-line=, =consult-outline=, =consult-buffer=, =consult-history=). External sources (=consult-ripgrep=, =consult-find=) deferred until WASM ripgrep or backend.
 - *Embark* -- Action framework on top of completion candidates (act-on-thing-at-point, bulk actions)
 
-* Future Phases
+* Future Work
 
-** Phase 9: Tree-sitter (WASM)
+** Tree-sitter (WASM)
 
 Modern syntax highlighting via =web-tree-sitter= WASM integration. Replace regex-based font-lock with proper AST-based parsing.
 
@@ -97,9 +66,9 @@ Modern syntax highlighting via =web-tree-sitter= WASM integration. Replace regex
 - AST-to-face mapping (tree-sitter highlight queries)
 - Major modes backed by tree-sitter (=typescript-ts-mode=, =rust-ts-mode=, etc.)
 
-See [[file:VISION.org][Vision § WASM Core]] for the broader WASM ambitions.
+See [[file:VISION.org][Vision]] for the broader WASM ambitions.
 
-** Phase 10: WASM Core Expansion
+** WASM Core Expansion
 
 Compile C/Rust tools to WASM to reduce backend dependencies:
 
@@ -108,7 +77,7 @@ Compile C/Rust tools to WASM to reduce backend dependencies:
 - Emscripten virtual filesystem as shared substrate
 - Selected Emacs C primitives (buffer internals, intervals)
 
-** Phase 11: Package Security
+** Package Security
 
 Defense-in-depth for arbitrary package code:
 
@@ -116,9 +85,9 @@ Defense-in-depth for arbitrary package code:
 - Web Worker isolation (packages in separate threads)
 - Capability-based permissions (declared in =package.edn=)
 
-See [[file:VISION.org][Vision § Package Security Model]] for details.
+See [[file:VISION.org][Vision]] for details.
 
-** Phase 12: Evil-mode
+** Evil-mode
 
 Full Vim emulation as an external package.
 
@@ -126,7 +95,7 @@ Full Vim emulation as an external package.
 - Vim operators and motions
 - Ex command line
 
-** Phase 13: Backend Server Bridge
+** Backend Server Bridge
 
 WebSocket bridge to enable features that require server processes:
 
@@ -136,6 +105,6 @@ WebSocket bridge to enable features that require server processes:
 - TRAMP (remote files)
 - Compilation (real build commands)
 
-** Phase 14+: org-mode, Collaboration, Publishing
+** org-mode, Collaboration, Publishing
 
 See [[file:VISION.org][Vision]] for the long-term direction.
