@@ -118,7 +118,7 @@
 
 (rf/reg-event-fx
  :wasm-module-loaded
- (fn [{:keys [db]} [_ {:keys [^js instance constructor]}]]
+ (fn [{:keys [db]} [_ {:keys [^js instance constructor grep-search grep-search-with-context]}]]
    "Store the loaded WASM module instance and constructor in the app state"
    ;; Log WASM module loading (before Messages buffer exists - tests log bus!)
    (log/info "WASM module loaded successfully")
@@ -139,6 +139,8 @@
        {:db (-> db
                 (assoc :initialized? true)
                 (assoc-in [:system :wasm-constructor] constructor)
+                (assoc-in [:system :grep-search] grep-search)
+                (assoc-in [:system :grep-search-with-context] grep-search-with-context)
                 (assoc-in [:buffers 1 :wasm-instance] instance)
                 ;; Initialize cache with initial text and line count
                 (assoc-in [:buffers 1 :cache :text] initial-text)

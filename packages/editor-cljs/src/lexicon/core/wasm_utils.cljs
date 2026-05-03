@@ -33,6 +33,21 @@
       (js/console.error "Failed to get character:" (.-message e))
       nil)))
 
+;; Grep search using WASM ripgrep engine
+(defn grep-search
+  "Search content for pattern using WASM ripgrep engine.
+   grep-fn is the grepSearch function from the WASM module.
+   Returns vector of {:line_number N :line_text S :match_start N :match_end N}"
+  [grep-fn content pattern & {:keys [case-insensitive max-count fixed-strings]
+                               :or {case-insensitive false max-count -1 fixed-strings false}}]
+  (try
+    (let [result-json (grep-fn pattern content
+                               case-insensitive max-count fixed-strings)]
+      (js->clj (.parse js/JSON result-json) :keywordize-keys true))
+    (catch js/Error e
+      (js/console.error "WASM grep error:" (.-message e))
+      [])))
+
 ;; Test if WASM instance is properly initialized
 (defn wasm-initialized?
   "Check if WASM instance is properly initialized and responsive."

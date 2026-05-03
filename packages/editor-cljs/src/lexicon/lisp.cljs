@@ -29,6 +29,7 @@
             [lexicon.core.completion.styles :as completion-styles]
             [lexicon.core.hooks :as core-hooks]
             [lexicon.core.custom :as custom]
+            [lexicon.core.wasm-utils :as wasm-utils]
             [lexicon.core.log :as log]))
 
 ;; Forward declarations for functions used before definition
@@ -1047,6 +1048,30 @@
                   (>= match-index effective-bound))
          (set-point-internal match-index)
          match-index)))))
+
+;; =============================================================================
+;; WASM Grep Search (ripgrep engine)
+;; =============================================================================
+
+(defn grep-search
+  "Search CONTENT string for PATTERN using WASM ripgrep engine.
+   Returns a list of match objects, each with keys:
+   :line_number, :line_text, :match_start, :match_end.
+
+   Optional keyword args:
+   :case-insensitive - ignore case (default false)
+   :max-count - maximum number of matches, -1 for unlimited (default -1)
+   :fixed-strings - treat pattern as literal, not regex (default false)
+
+   Usage: (grep-search \"defn\" (buffer-string))
+          (grep-search \"TODO\" (buffer-string) :case-insensitive true)"
+  [pattern content & opts]
+  (let [grep-fn (get-in @rfdb/app-db [:system :grep-search])]
+    (if grep-fn
+      (apply wasm-utils/grep-search grep-fn content pattern opts)
+      (do
+        (log/warn "grep-search: WASM grep not available")
+        []))))
 
 ;; =============================================================================
 ;; Buffer Mutation Functions
@@ -5196,4 +5221,6 @@
    'defcustom custom/defcustom
    'defgroup custom/defgroup
    'custom-set-variables custom/custom-set-variables
-   'setopt custom/setopt})
+   'setopt custom/setopt
+   ;; WASM grep search (ripgrep engine)
+   'grep-search grep-search})

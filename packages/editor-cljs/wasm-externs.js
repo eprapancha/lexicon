@@ -32,5 +32,10 @@ WasmEditorCore.prototype.getLastErrorMessage = function() {};
 
 WasmEditorCore.prototype.free = function() {};
 
+/** @param {string} pattern @param {string} content @param {boolean} ci @param {number} max @param {boolean} fixed @return {string} */
+var grepSearch = function(pattern, content, ci, max, fixed) {};
+/** @param {string} pattern @param {string} content @param {boolean} ci @param {number} ctx @return {string} */
+var grepSearchWithContext = function(pattern, content, ci, ctx) {};
+
 /** @type {!Function} */
 var wasm_bindgen;

@@ -114,11 +114,16 @@
                               (println "✅ WASM initialized")
                               ;; WasmGapBuffer is available as a named export
                               (let [WasmGapBuffer (.-WasmGapBuffer ^js wasm-module)
-                                    wasm-instance (new WasmGapBuffer "")]
+                                    wasm-instance (new WasmGapBuffer "")
+                                    ;; Grep functions are free functions (not struct methods)
+                                    grep-search-fn (.-grepSearch ^js wasm-module)
+                                    grep-search-ctx-fn (.-grepSearchWithContext ^js wasm-module)]
                                 (println "✅ WasmGapBuffer created")
-                                ;; Store both the instance and the constructor
+                                ;; Store instance, constructor, and grep functions
                                 (rf/dispatch [:wasm-module-loaded {:instance wasm-instance
-                                                                  :constructor WasmGapBuffer}])
+                                                                  :constructor WasmGapBuffer
+                                                                  :grep-search grep-search-fn
+                                                                  :grep-search-with-context grep-search-ctx-fn}])
                                 (println "✅ WASM Gap Buffer loaded and initialized"))))
                      (.catch (fn [error]
                                (println "❌ Failed to initialize WASM:" error)

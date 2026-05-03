@@ -1,7 +1,11 @@
 [workspace]
 members = [
     "core",
-    "wasm"
+    "wasm",
+    "grep",
+    "vendor/grep-matcher",
+    "vendor/grep-regex",
+    "vendor/grep-searcher",
 ]
 resolver = "2"
 

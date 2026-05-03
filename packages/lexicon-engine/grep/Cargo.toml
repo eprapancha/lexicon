@@ -1,0 +1,11 @@
+[package]
+name = "lexicon-grep"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+grep-matcher = { path = "../vendor/grep-matcher" }
+grep-regex = { path = "../vendor/grep-regex" }
+grep-searcher = { path = "../vendor/grep-searcher", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
