@@ -39,6 +39,15 @@
 | `/design-spec` | Design implementation spec for a feature |
 | `/qa-check` | Run tests, lint, and validate quality |
 
+### Research (survives compaction)
+
+| File | Purpose |
+|------|---------|
+| `.claude/research/consult-study.md` | Exhaustive consult package analysis (commands, async pipeline, sources, preview) |
+| `.claude/research/embark-study.md` | Exhaustive embark package analysis (targets, actions, integration) |
+| `.claude/research/wasm-ecosystem.md` | WASM feasibility: ripgrep, VFS, process model, tree-sitter |
+| `.claude/research/consult-implementation-strategy.md` | Five-layer implementation plan with subproject extraction |
+
 ---
 
 ## GitHub First - Source of Truth
