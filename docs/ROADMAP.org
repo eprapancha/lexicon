@@ -62,19 +62,63 @@ The codebase has grown faster than testing. The priority now is:
 
 This phase ends when every core command is manually verified and has a meaningful E2E test.
 
+* Current Phase: Package Ecosystem (Minad Stack)
+
+Prove that the Elisp compatibility layer works by porting high-value completion packages. Infrastructure is in place:
+
+- Package system: install-package from short names or URLs ✓
+- Package registry (lexpa): recipe-based, decoupled from editor and packages ✓
+- defcustom/defgroup/custom-set-variables with localStorage persistence ✓
+- Unified variable stores (:global-vars canonical, atom mirror) ✓
+- SCI sandbox with 229+ API functions ✓
+
+** Completed
+
+- *Vertico* -- Vertical completion UI ✓
+- *Marginalia* -- Rich annotations for completion candidates ✓
+
+** In Progress
+
+- *Orderless* -- Flexible completion matching (multiple space-separated patterns, regexp/literal/flex)
+
+** Up Next
+
+- *Consult* -- Enhanced commands. Buffer-local sources first (=consult-line=, =consult-outline=, =consult-buffer=, =consult-history=). External sources (=consult-ripgrep=, =consult-find=) deferred until WASM ripgrep or backend.
+- *Embark* -- Action framework on top of completion candidates (act-on-thing-at-point, bulk actions)
+
 * Future Phases
 
-** Phase 8: Package Ecosystem (Vertico, Orderless, Consult)
+** Phase 9: Tree-sitter (WASM)
 
-Prove that the Elisp compatibility layer works by porting high-value completion packages.
+Modern syntax highlighting via =web-tree-sitter= WASM integration. Replace regex-based font-lock with proper AST-based parsing.
 
-- straight.el-style package installation from GitHub
-- Package persistence (~/.lexicon/packages.edn~)
-- Orderless -- flexible matching
-- Vertico -- vertical completion UI
-- Consult -- enhanced commands
+- Load =web-tree-sitter= and language grammar =.wasm= files
+- Incremental parsing on buffer edits
+- AST-to-face mapping (tree-sitter highlight queries)
+- Major modes backed by tree-sitter (=typescript-ts-mode=, =rust-ts-mode=, etc.)
 
-** Phase 9: Evil-mode
+See [[file:VISION.org][Vision § WASM Core]] for the broader WASM ambitions.
+
+** Phase 10: WASM Core Expansion
+
+Compile C/Rust tools to WASM to reduce backend dependencies:
+
+- ripgrep in WASM (enables =consult-ripgrep= in-browser)
+- Emacs regexp engine (=src/regex-emacs.c=)
+- Emscripten virtual filesystem as shared substrate
+- Selected Emacs C primitives (buffer internals, intervals)
+
+** Phase 11: Package Security
+
+Defense-in-depth for arbitrary package code:
+
+- Content Security Policy headers
+- Web Worker isolation (packages in separate threads)
+- Capability-based permissions (declared in =package.edn=)
+
+See [[file:VISION.org][Vision § Package Security Model]] for details.
+
+** Phase 12: Evil-mode
 
 Full Vim emulation as an external package.
 
@@ -82,11 +126,7 @@ Full Vim emulation as an external package.
 - Vim operators and motions
 - Ex command line
 
-** Phase 10: Syntax Highlighting (Tree-sitter)
-
-Modern syntax highlighting via tree-sitter WASM integration. Replace regex-based font-lock with proper parsing.
-
-** Phase 11: Backend Server Bridge
+** Phase 13: Backend Server Bridge
 
 WebSocket bridge to enable features that require server processes:
 
@@ -96,6 +136,6 @@ WebSocket bridge to enable features that require server processes:
 - TRAMP (remote files)
 - Compilation (real build commands)
 
-** Phase 12+: org-mode, Collaboration, Publishing
+** Phase 14+: org-mode, Collaboration, Publishing
 
 See [[file:VISION.org][Vision]] for the long-term direction.

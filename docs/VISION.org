@@ -41,6 +41,52 @@ The path from editor to CMS follows a strict dependency chain:
 
 Each phase depends on the one before it. Skipping ahead produces fragile results.
 
+* WASM Core as Browser-Based Process
+
+The current WASM core is a gap buffer. The ambition is much larger: a browser-based "unix process" where substantial C and Rust code runs in WASM, sharing a virtual filesystem and providing capabilities that normally require a backend.
+
+** What Could Live in WASM
+
+- *Tree-sitter* -- Already written in C, compiles to WASM. Official =web-tree-sitter= bindings exist (used by GitHub.com). Language grammars compile to =.wasm=. This gives real syntax highlighting and structural editing with zero backend.
+- *ripgrep* -- Written in Rust, compiles to WASM. Could search buffers or a virtual filesystem entirely in-browser, enabling =consult-ripgrep= without a backend.
+- *Emacs regexp engine* -- =src/regex-emacs.c= from GNU Emacs source. Would give proper Emacs regex semantics.
+- *Buffer internals* -- =src/buffer.c=, =src/insdel.c= -- text properties, intervals, markers at the C level.
+- *GNU core utilities* -- Compiled via Emscripten, providing a POSIX-like environment.
+
+** Virtual Filesystem Architecture
+
+Emscripten provides POSIX-like =read=/=write=/=open= syscalls mapped to in-memory storage or IndexedDB. Tree-sitter, ripgrep, and compiled tools could share this virtual filesystem. This is similar to how VS Code's web version works with its filesystem provider.
+
+** Existing Art
+
+- =web-tree-sitter= -- Official tree-sitter WASM bindings, used by GitHub.com for syntax highlighting
+- =nickel-lang/nickel= -- Rust language tools compiled to WASM for browser playground
+- Emacs WASM experiments (=nicferrier/emacs-wasm=)
+- VS Code web -- filesystem providers, extension host in Worker
+
+** Sequencing
+
+1. Tree-sitter via =web-tree-sitter= (well-trodden path, immediate value)
+2. Explore compiling ripgrep to WASM (unlocks consult-grep/find in-browser)
+3. Compile selected Emacs C primitives (regex, buffer internals)
+4. Emscripten virtual filesystem as shared substrate
+
+* Package Security Model
+
+Loading packages from arbitrary GitHub repos requires defense in depth. The current SCI sandbox blocks =js/fetch=, =js/eval=, =js/Function=, and direct re-frame access, but it is not a true security boundary.
+
+** Security Layers (Defense in Depth)
+
+1. *SCI sandbox (current)* -- Denies dangerous APIs at the interpreter level. Good first layer but not an isolation boundary.
+2. *Content Security Policy* -- HTTP headers restricting what scripts can do (no =eval=, restricted fetch targets). Free and strong.
+3. *Web Workers* -- Run package code in a separate Worker thread. No DOM access, communication only via =postMessage=. This IS a real isolation boundary.
+4. *WASM sandbox* -- WASM modules are memory-isolated by design. Package code compiled to WASM cannot escape its linear memory.
+5. *Capability-based permissions* -- Like Android app permissions. =(install-package "foo")= shows "foo requests: network access, clipboard access" and user approves.
+
+** Practical Path
+
+Web Workers + capability permissions. A package runs in a Worker, can only call Lexicon API functions via message passing, and the host decides which APIs to expose based on declared permissions. This is close to how VS Code extensions work.
+
 * Backend-Dependent Features
 
 Some Emacs features require a server process that the browser cannot provide:
@@ -52,6 +98,8 @@ Some Emacs features require a server process that the browser cannot provide:
 - *Compilation* -- Running build commands
 
 These features have command stubs and UI infrastructure in place. They will activate when connected to a backend server via WebSocket bridge. The stubs are preserved because the UI/UX design work is valuable and the command registration is correct.
+
+The long-term WASM vision (see above) may reduce or eliminate some backend dependencies -- e.g., tree-sitter and ripgrep running in WASM removes the need for a backend for syntax highlighting and search.
 
 * Development Model
 
