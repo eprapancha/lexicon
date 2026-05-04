@@ -5,81 +5,80 @@
   - load-package - Load package from directory
   - unload-package - Unload loaded package
   - reload-package - Reload package (for development)
-  - list-packages - Show all loaded packages"
-  (:require [lexicon.core.packages.loader :as loader]
-            [re-frame.core :as rf]))
+  - list-packages - Show all loaded packages
+  - describe-package - Show info about a package"
+  (:require [re-frame.core :as rf]
+            [clojure.string :as str]))
+
+;; -- Event Handlers --
+
+(rf/reg-event-fx
+  :packages/load-interactive
+  (fn [_ _]
+    {:fx [[:dispatch [:echo/message
+                      "load-package: Not yet fully implemented. Use (loader/load-package-from-dir \"path\") from REPL."]]]}))
+
+(rf/reg-event-fx
+  :packages/unload-interactive
+  (fn [_ _]
+    {:fx [[:dispatch [:echo/message
+                      "unload-package: Not yet fully implemented. Use (loader/unload-package :package-name) from REPL."]]]}))
+
+(rf/reg-event-fx
+  :packages/reload-interactive
+  (fn [_ _]
+    {:fx [[:dispatch [:echo/message
+                      "reload-package: Not yet fully implemented. Use (loader/reload-package \"path\") from REPL."]]]}))
+
+(rf/reg-event-fx
+  :packages/list-interactive
+  (fn [_ _]
+    (let [loaded-packages @(rf/subscribe [:packages/list-loaded])]
+      (if (seq loaded-packages)
+        {:fx [[:dispatch [:echo/message
+                          (str "Loaded packages: "
+                               (str/join ", " (map name loaded-packages)))]]]}
+        {:fx [[:dispatch [:echo/message "No packages loaded"]]]}))))
+
+(rf/reg-event-fx
+  :packages/describe-interactive
+  (fn [_ _]
+    {:fx [[:dispatch [:echo/message "describe-package: Not yet implemented"]]]}))
 
 ;; -- Command Registration --
 
 (defn register-package-commands!
-  "Register all package management commands.
-
-  Called during editor initialization."
+  "Register all package management commands."
   []
-
-  ;; load-package
   (rf/dispatch
-    [:command/register
-     :load-package
+    [:register-command :load-package
      {:interactive true
       :doc "Load a package from local directory"
-      :handler (fn []
-                 ;; TODO: Prompt for directory path via minibuffer
-                 ;; For now, log that command was invoked
-                 (rf/dispatch [:echo/message
-                              "load-package: Not yet fully implemented. Use (loader/load-package-from-dir \"path\") from REPL."]))}])
+      :handler [:packages/load-interactive]}])
 
-  ;; unload-package
   (rf/dispatch
-    [:command/register
-     :unload-package
+    [:register-command :unload-package
      {:interactive true
       :doc "Unload a currently loaded package"
-      :handler (fn []
-                 ;; TODO: Prompt for package name via completing-read
-                 ;; For now, log that command was invoked
-                 (rf/dispatch [:echo/message
-                              "unload-package: Not yet fully implemented. Use (loader/unload-package :package-name) from REPL."]))}])
+      :handler [:packages/unload-interactive]}])
 
-  ;; reload-package
   (rf/dispatch
-    [:command/register
-     :reload-package
+    [:register-command :reload-package
      {:interactive true
       :doc "Reload a package (unload + load)"
-      :handler (fn []
-                 ;; TODO: Prompt for package path via minibuffer
-                 (rf/dispatch [:echo/message
-                              "reload-package: Not yet fully implemented. Use (loader/reload-package \"path\") from REPL."]))}])
+      :handler [:packages/reload-interactive]}])
 
-  ;; list-packages
   (rf/dispatch
-    [:command/register
-     :list-packages
+    [:register-command :list-packages
      {:interactive true
       :doc "Show all loaded packages"
-      :handler (fn []
-                 (let [loaded-packages @(rf/subscribe [:packages/list-loaded])]
-                   (if (seq loaded-packages)
-                     (rf/dispatch [:echo/message
-                                  (str "Loaded packages: "
-                                       (clojure.string/join ", " (map name loaded-packages)))])
-                     (rf/dispatch [:echo/message "No packages loaded"]))))}])
+      :handler [:packages/list-interactive]}])
 
-  ;; package-info (future)
   (rf/dispatch
-    [:command/register
-     :describe-package
+    [:register-command :describe-package
      {:interactive true
       :doc "Show information about a package"
-      :handler (fn []
-                 (rf/dispatch [:echo/message
-                              "describe-package: Not yet implemented"]))}]))
+      :handler [:packages/describe-interactive]}]))
 
-(comment
-  ;; Register commands during editor init
-  (register-package-commands!)
-
-  ;; Invoke commands
-  (rf/dispatch [:load-package])
-  (rf/dispatch [:list-packages]))
+;; Auto-register commands on namespace load
+(register-package-commands!)

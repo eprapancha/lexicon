@@ -710,20 +710,20 @@
     (h/setup-test*)
     (h/clear-buffer)
 
-    ;; Press M-x package-list
+    ;; Press M-x list-packages (correct command name)
     (h/press-meta "x")
     (Thread/sleep 50)
-    (h/type-text "package-list")
+    (h/type-text "list-packages")
     (Thread/sleep 20)
     (h/press-key "Enter")
     (Thread/sleep 100)
 
-    ;; Package list buffer should appear
-    (let [editor-text (h/get-buffer-text*)]
-      (is (or (.contains editor-text "*Packages*")
-              (.contains editor-text "package")
-              (.contains editor-text "evil"))
-          (str "Package list should appear. Got: " editor-text)))))
+    ;; list-packages outputs to echo area, not a buffer
+    (let [echo-text (h/get-echo-area-text)]
+      (is (or (.contains echo-text "packages")
+              (.contains echo-text "Loaded")
+              (.contains echo-text "No packages"))
+          (str "Package list should show in echo area. Got: " echo-text)))))
 
 (deftest test-p6b-01-theme-loading
   (testing "P6B-01: Verify theme loading"

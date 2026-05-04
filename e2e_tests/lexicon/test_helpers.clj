@@ -268,15 +268,28 @@
     ;; Type each character with keyboard events
     (doseq [ch text]
       (let [char-str (str ch)
+            ;; Escape special characters for JS string literal
+            js-char-str (case ch
+                          \newline "\\n"
+                          \return "\\r"
+                          \tab "\\t"
+                          \' "\\'"
+                          \\ "\\\\"
+                          char-str)
             script (str "
               const input = document.querySelector('" target-selector "');
               if (input) {
                 input.focus();
-                const char = '" char-str "';
+                const char = '" js-char-str "';
+                // Compute correct key code for special characters
+                const codeMap = {'\\n': 'Enter', '\\r': 'Enter', '\\t': 'Tab', ' ': 'Space',
+                                 '-': 'Minus', '=': 'Equal', '[': 'BracketLeft', ']': 'BracketRight',
+                                 ';': 'Semicolon', ',': 'Comma', '.': 'Period', '/': 'Slash'};
+                const code = codeMap[char] || ('Key' + char.toUpperCase());
                 // Dispatch keydown event
                 const keydownEvent = new KeyboardEvent('keydown', {
-                  key: char,
-                  code: 'Key' + char.toUpperCase(),
+                  key: char === '\\n' ? 'Enter' : char,
+                  code: code,
                   bubbles: true,
                   cancelable: true
                 });
@@ -294,8 +307,8 @@
                 input.dispatchEvent(new Event('input', {bubbles: true}));
                 // Dispatch keyup event
                 const keyupEvent = new KeyboardEvent('keyup', {
-                  key: char,
-                  code: 'Key' + char.toUpperCase(),
+                  key: char === '\\n' ? 'Enter' : char,
+                  code: code,
                   bubbles: true,
                   cancelable: true
                 });

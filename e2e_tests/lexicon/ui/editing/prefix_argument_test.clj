@@ -34,11 +34,10 @@
       });
       input.dispatchEvent(keydownEvent);
       // Update input value and dispatch input event
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype, 'value'
-      ).set || Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, 'value'
-      ).set;
+      // Choose setter based on actual element type (hidden-input is a textarea)
+      const isTextArea = input.tagName === 'TEXTAREA';
+      const prototype = isTextArea ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
       if (nativeInputValueSetter) {
         nativeInputValueSetter.call(input, input.value + '-');
       } else {

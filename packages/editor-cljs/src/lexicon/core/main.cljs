@@ -82,6 +82,7 @@
             [lexicon.core.init]                ; Load init file system (Phase 6.5 Week 7-8)
             [lexicon.core.views :as views]
             [lexicon.core.custom :as custom]  ; Load customization system (defcustom/defgroup)
+            [lexicon.core.packages.commands]  ; Load package management commands (list-packages, etc.)
             [lexicon.core.packages.loader]  ; Load HTTP package loader (events + subscriptions)
             [lexicon.core.package-loader]   ; Load all packages
             ;; Re-export core API functions
