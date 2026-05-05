@@ -11,7 +11,8 @@
             [lexicon.core.modes.whitespace :as whitespace]
             [lexicon.core.modes.display-line-numbers]
             [lexicon.core.faces :as faces]
-            [lexicon.core.ui.mode-line :as mode-line]))
+            [lexicon.core.ui.mode-line :as mode-line]
+            [lexicon.packages.tab-bar :as tab-bar]))
 
 ;; -- Input Event Handling --
 
@@ -1262,7 +1263,9 @@
               (when element
                 (reset! scroller-ref element)
                 (.addEventListener element "scroll" handle-scroll)))
-       :style {:height "calc(100vh - 24px)"  ; Account for status bar only
+       :style {:height (if @tab-bar/tab-bar-mode-enabled?
+                         "calc(100vh - 53px)"   ; 24px minibuffer + 29px tab-bar (28px + 1px border)
+                         "calc(100vh - 24px)")  ; 24px minibuffer only
                :overflow-y "hidden"  ; No scrollbar - Emacs-style (scroll via commands)
                :overflow-x "hidden"  ; Prevent horizontal scrollbar
                :position "relative"
@@ -1841,6 +1844,8 @@
 
       editor-ready?
       [:<>
+       (when @tab-bar/tab-bar-mode-enabled?
+         [tab-bar/tab-bar-strip])
        [editor-view]
        ;; status-bar removed - now per-window mode-lines (Issue #63)
        [echo-area]

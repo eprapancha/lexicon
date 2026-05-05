@@ -15,6 +15,7 @@
 
   This package uses only lisp.cljs primitives."
   (:require [clojure.string :as str]
+            [reagent.core :as r]
             [lexicon.lisp :as lisp]))
 
 ;; =============================================================================
@@ -22,16 +23,16 @@
 ;; =============================================================================
 
 ;; Whether tab-bar-mode is enabled
-(defonce tab-bar-mode-enabled? (atom false))
+(defonce tab-bar-mode-enabled? (r/atom false))
 
 ;; List of tabs: [{:name "tab1" :window-tree {...} :active-window-id id} ...]
-(defonce tabs (atom []))
+(defonce tabs (r/atom []))
 
 ;; Current tab index
-(defonce current-tab-index (atom 0))
+(defonce current-tab-index (r/atom 0))
 
 ;; Tab counter for naming
-(defonce tab-counter (atom 0))
+(defonce tab-counter (r/atom 0))
 
 ;; =============================================================================
 ;; Helper Functions
@@ -166,6 +167,84 @@
         (reset! tabs [])
         (reset! current-tab-index 0)
         (lisp/message "Tab bar mode disabled")))))
+
+;; =============================================================================
+;; Visual Component
+;; =============================================================================
+
+(defn tab-bar-tab
+  "Render a single tab in the tab bar strip."
+  [index tab]
+  (let [active? (= index @current-tab-index)
+        multiple-tabs? (> (count @tabs) 1)]
+    [:div.tab-bar-tab
+     {:style    {:display          "inline-flex"
+                 :align-items      "center"
+                 :padding          "0 12px"
+                 :height           "100%"
+                 :cursor           "pointer"
+                 :font-family      "monospace"
+                 :font-size        "12px"
+                 :white-space      "nowrap"
+                 :border-bottom    (if active?
+                                     "2px solid var(--lexicon-fg-default, #d4d4d4)"
+                                     "2px solid transparent")
+                 :background-color (if active?
+                                     "var(--lexicon-bg-mode-line, #2d2d2d)"
+                                     "transparent")
+                 :color            (if active?
+                                     "var(--lexicon-fg-default, #d4d4d4)"
+                                     "var(--lexicon-fg-shadow, #888)")}
+      :on-click (fn [_e]
+                  (tab-switch-to! index))}
+     [:span (:name tab)]
+     (when multiple-tabs?
+       [:button
+        {:style    {:margin-left      "6px"
+                    :background       "none"
+                    :border           "none"
+                    :color            "inherit"
+                    :cursor           "pointer"
+                    :font-size        "12px"
+                    :padding          "0 2px"
+                    :line-height      "1"
+                    :opacity          "0.6"}
+         :on-click (fn [e]
+                     (.stopPropagation e)
+                     (tab-close!))}
+        "\u00d7"])]))
+
+(defn tab-bar-strip
+  "Render the tab bar strip at the top of the editor."
+  []
+  [:div.tab-bar-strip
+   {:style {:display          "flex"
+            :flex-direction   "row"
+            :align-items      "stretch"
+            :height           "28px"
+            :background-color "var(--lexicon-bg-dim, #1a1a1a)"
+            :border-bottom    "1px solid var(--lexicon-bg-mode-line, #2d2d2d)"
+            :font-family      "monospace"
+            :font-size        "12px"
+            :user-select      "none"
+            :flex-shrink      "0"}}
+   (doall
+     (map-indexed
+       (fn [i tab]
+         ^{:key (str "tab-" i)}
+         [tab-bar-tab i tab])
+       @tabs))
+   [:button.tab-bar-new
+    {:style    {:background  "none"
+                :border      "none"
+                :color       "var(--lexicon-fg-shadow, #888)"
+                :cursor      "pointer"
+                :font-size   "16px"
+                :padding     "0 10px"
+                :line-height "28px"}
+     :on-click (fn [_e]
+                 (tab-bar-new-tab!))}
+    "+"]])
 
 ;; =============================================================================
 ;; Initialization
