@@ -1,0 +1,50 @@
+;; Vendor Manifest — provenance tracking for vendored external code.
+;; This file records where vendored code comes from, enabling reproducible
+;; updates and auditability. See `.claude/skills/vendor-update/SKILL.md` for policy.
+;;
+;; Run `bb vendor:check` to verify status against upstream.
+;; Run `bb vendor:sync` to pull updates from fork.
+
+{:vendor-schema-version 1
+
+ :upstream
+ {:repo "BurntSushi/ripgrep"
+  :url "https://github.com/BurntSushi/ripgrep"
+  :tag "14.1.1"
+  :sha "eb24281"
+  :license "MIT OR Unlicense"}
+
+ :fork
+ {:repo "TBD-pending-fork-creation"
+  :url "TBD-pending-fork-creation"
+  :branch "lexicon-wasm-patches"
+  :sha "TBD-pending-fork-creation"}
+
+ :vendored-date "2025-01-01"
+
+ :crates
+ [{:name "grep-matcher"
+   :version "0.1.8"
+   :path "grep-matcher"
+   :upstream-path "crates/matcher"
+   :patches []}
+
+  {:name "grep-regex"
+   :version "0.1.14"
+   :path "grep-regex"
+   :upstream-path "crates/regex"
+   :patches []}
+
+  {:name "grep-searcher"
+   :version "0.1.16"
+   :path "grep-searcher"
+   :upstream-path "crates/searcher"
+   :patches
+   [{:file "src/searcher/mmap.rs"
+     :description "Disable mmap searcher for WASM target (no mmap in browser)"
+     :reason "wasm32 has no mmap support; compile-gates the mmap code path"}]}]
+
+ :notes
+ "Vendored from BurntSushi/ripgrep commit eb24281. The grep-searcher crate
+  has a WASM patch that disables mmap-based searching since wasm32 targets
+  lack mmap support. All other crates are unmodified from upstream."}

@@ -459,6 +459,147 @@
            (lint-browser-tests!)
            (lint-fill!))}
 
+  ;; Vendor management tasks
+  vendor:check
+  {:doc "Check vendored crate status and upstream updates"
+   :task
+   (do
+     (print-step "🔍" "Checking vendored crate status...")
+     (let [manifest-path "packages/lexicon-engine/vendor/MANIFEST.edn"
+           vendor-dir "packages/lexicon-engine/vendor"]
+       (when-not (fs/exists? manifest-path)
+         (print-step "❌" "MANIFEST.edn not found at packages/lexicon-engine/vendor/MANIFEST.edn")
+         (System/exit 1))
+       (let [manifest (clojure.edn/read-string (slurp manifest-path))
+             upstream (:upstream manifest)
+             fork (:fork manifest)
+             crates (:crates manifest)]
+
+         (println "")
+         (println "Vendor Manifest Status")
+         (println "======================")
+         (println "")
+         (println (str "  Upstream:  " (:repo upstream)))
+         (println (str "  Tag:       " (:tag upstream)))
+         (println (str "  SHA:       " (:sha upstream)))
+         (println (str "  License:   " (:license upstream)))
+         (println "")
+         (println (str "  Fork:      " (:repo fork)))
+         (println (str "  Branch:    " (:branch fork)))
+         (println (str "  Fork SHA:  " (:sha fork)))
+         (println "")
+         (println (str "  Vendored:  " (:vendored-date manifest)))
+         (println "")
+
+         ;; Check each crate
+         (println "Crates:")
+         (println "-------")
+         (doseq [crate crates]
+           (let [crate-path (str vendor-dir "/" (:path crate))
+                 exists? (fs/exists? crate-path)
+                 patch-count (count (:patches crate))]
+             (println (str "  " (if exists? "✓" "✗") " " (:name crate)
+                          " v" (:version crate)
+                          " [" (:path crate) "]"
+                          (when (pos? patch-count)
+                            (str " (" patch-count " patch" (when (> patch-count 1) "es") ")"))
+                          (when-not exists? " — MISSING!")))
+             (doseq [patch (:patches crate)]
+               (println (str "      patch: " (:file patch) " — " (:description patch))))))
+         (println "")
+
+         ;; Check for upstream updates via gh api
+         (print-step "🌐" "Checking upstream for newer releases...")
+         (try
+           (let [result (proc/shell {:out :string :err :string :continue true}
+                                    "gh api repos/BurntSushi/ripgrep/releases/latest --jq .tag_name")
+                 latest-tag (str/trim (:out result))]
+             (if (zero? (:exit result))
+               (if (= latest-tag (:tag upstream))
+                 (print-step "✅" (str "Up to date with latest release: " latest-tag))
+                 (do
+                   (print-step "⚠️" (str "Newer release available: " latest-tag " (vendored: " (:tag upstream) ")"))
+                   (println "   Run `bb vendor:sync` to update")))
+               (do
+                 (print-step "⚠️" "Could not check upstream (gh CLI not available or not authenticated)")
+                 (println "   Install gh CLI and run `gh auth login` to enable update checks"))))
+           (catch Exception _
+             (print-step "⚠️" "Could not check upstream (gh CLI error)"))))))}
+
+  vendor:sync
+  {:doc "Sync vendored crates from fork (guided update)
+         Usage: bb vendor:sync [tag]
+         Examples:
+           bb vendor:sync              # Sync from fork HEAD
+           bb vendor:sync 14.2.0       # Target specific upstream tag"
+   :task
+   (do
+     (let [manifest-path "packages/lexicon-engine/vendor/MANIFEST.edn"
+           vendor-dir "packages/lexicon-engine/vendor"
+           target-tag (first *command-line-args*)]
+       (when-not (fs/exists? manifest-path)
+         (print-step "❌" "MANIFEST.edn not found")
+         (System/exit 1))
+       (let [manifest (clojure.edn/read-string (slurp manifest-path))
+             fork (:fork manifest)
+             fork-url (:url fork)
+             fork-branch (:branch fork)]
+
+         (when (= fork-url "TBD-pending-fork-creation")
+           (print-step "❌" "Fork not configured yet in MANIFEST.edn")
+           (println "   Update :fork :url and :fork :repo in MANIFEST.edn first")
+           (println "   See .claude/skills/vendor-update/SKILL.md for instructions")
+           (System/exit 1))
+
+         (print-step "📦" "Vendor Sync")
+         (println "")
+         (println (str "  Fork:   " fork-url))
+         (println (str "  Branch: " fork-branch))
+         (when target-tag
+           (println (str "  Target: " target-tag)))
+         (println "")
+
+         ;; Clone fork to temp directory
+         (let [tmp-dir (str "/tmp/lexicon-vendor-sync-" (System/currentTimeMillis))]
+           (print-step "📥" (str "Cloning fork to " tmp-dir "..."))
+           (run-cmd (str "git clone --branch " fork-branch " --depth 50 " fork-url " " tmp-dir))
+
+           ;; Show HEAD SHA
+           (let [head-result (proc/shell {:out :string :dir tmp-dir} "git rev-parse HEAD")
+                 head-sha (str/trim (:out head-result))]
+             (println "")
+             (print-step "📋" (str "Fork HEAD: " head-sha))
+             (println ""))
+
+           ;; Copy crates
+           (doseq [crate (:crates manifest)]
+             (let [src (str tmp-dir "/" (:upstream-path crate))
+                   dest (str vendor-dir "/" (:path crate))]
+               (if (fs/exists? src)
+                 (do
+                   (print-step "📁" (str "Copying " (:name crate) " -> " (:path crate)))
+                   (when (fs/exists? dest)
+                     (fs/delete-tree dest))
+                   (fs/copy-tree src dest))
+                 (print-step "⚠️" (str "Source not found: " src)))))
+
+           ;; Clean up
+           (print-step "🧹" "Cleaning up temp directory...")
+           (fs/delete-tree tmp-dir)
+           (println "")
+
+           ;; Run cargo test
+           (print-step "🧪" "Running cargo test to verify...")
+           (run-cmd "cargo test" :dir "packages/lexicon-engine")
+
+           (println "")
+           (print-step "✅" "Vendor sync complete!")
+           (println "")
+           (println "Next steps:")
+           (println "  1. Update MANIFEST.edn with new fork SHA and date")
+           (println "  2. Run `bb vendor:check` to verify")
+           (println "  3. Commit with: deps(vendor): update ripgrep crates")))))}
+
   ;; Individual build tasks
   build-wasm
   {:doc "Build the Rust WASM module (release)"

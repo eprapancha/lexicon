@@ -26,6 +26,7 @@
 | `docs/ROADMAP.org` | Development tracking |
 | `.claude/DEBUGGING_E2E_TESTS.md` | E2E test debugging guide |
 | `.claude/skills/write-test/SKILL.md` | E2E test authoring templates |
+| `packages/lexicon-engine/vendor/MANIFEST.edn` | Vendored crate provenance manifest |
 
 ### Skills (invoke with `/skill-name`)
 
@@ -38,6 +39,7 @@
 | `/gap-analysis` | Compare Emacs vs Lexicon for a feature |
 | `/design-spec` | Design implementation spec for a feature |
 | `/qa-check` | Run tests, lint, and validate quality |
+| `/vendor-update` | Manage vendored Rust crates (update process, policy) |
 
 ### Research (survives compaction)
 
@@ -214,6 +216,8 @@ bb test                  # All tests
 bb test:e2e              # E2E tests
 bb test:e2e <pattern>    # Specific E2E tests
 cargo test               # Rust tests
+bb vendor:check          # Check vendored crate status and upstream updates
+bb vendor:sync           # Sync vendored crates from fork
 bb clean                 # Clean artifacts
 ```
 
