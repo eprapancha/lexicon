@@ -123,7 +123,7 @@ This is critical. Taking shortcuts here undermines the entire architecture.
 
 ## Available API in SCI
 
-All ~200+ functions from `lexicon.lisp/sci-namespace` are available. Key categories:
+All ~250+ functions from `lexicon.lisp/sci-namespace` are available. Key categories:
 - **Buffer ops:** `insert`, `delete-region`, `buffer-string`, `point`, `goto-char`
 - **Commands:** `define-command`, `call-interactively`, `commandp`
 - **Keymaps:** `global-set-key`, `local-set-key`, `define-key`, `define-key-for-mode`

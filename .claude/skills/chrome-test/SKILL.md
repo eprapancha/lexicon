@@ -139,6 +139,16 @@ Console errors: [NONE / list]
 - M-x "^forward" forces prefix match (only commands starting with "forward")
 - M-x ",stb" forces initialism match (switch-to-buffer)
 
+### tab-bar
+- M-x tab-bar-mode: tab bar strip appears at top of editor, shows "Tab 1"
+- C-x t 2: new tab appears ("Tab 2"), becomes active, original tab dims
+- Click tab name: switches to that tab, restores window configuration
+- C-x t o: switches to next tab (wraps around)
+- C-x t 0: closes current tab (if more than one)
+- M-x tab-bar-mode again: tab bar disappears, editor height restores
+- "+" button: creates new tab (same as C-x t 2)
+- "×" button: closes that tab (hidden when only one tab remains)
+
 ---
 
 ## Rules

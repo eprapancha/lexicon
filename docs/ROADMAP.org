@@ -20,7 +20,7 @@ Source of truth: [[https://github.com/eprapancha/lexicon/issues][GitHub Issues]]
 The core editor is substantial:
 
 - Full editing: kill ring, yank, undo, prefix arguments, rectangle operations, keyboard macros
-- Buffer/window/frame management with splitting, navigation, tabs
+- Buffer/window/frame management with splitting, navigation, tabs (visual tab-bar strip)
 - Minibuffer completion system with styles (basic, substring, flex, orderless) and icomplete
 - Major/minor modes with hierarchical keymaps and buffer-local state
 - File operations via FS Access API (find-file, save, dired)
@@ -37,7 +37,7 @@ The core editor is substantial:
 - Package registry (lexpa): recipe-based, decoupled from editor and packages
 - defcustom/defgroup/custom-set-variables with localStorage persistence
 - Unified variable stores (:global-vars canonical, atom mirror)
-- SCI sandbox with 230+ API functions
+- SCI sandbox with 250+ API functions
 - Dependency resolution and lifecycle management
 
 ** Completed Packages
@@ -76,6 +76,15 @@ Compile C/Rust tools to WASM to reduce backend dependencies:
 - Emacs regexp engine (=src/regex-emacs.c=)
 - Emscripten virtual filesystem as shared substrate
 - Selected Emacs C primitives (buffer internals, intervals)
+
+** Package Ecosystem Maturity
+
+Evolve lexpa from a local dev registry to a full public package ecosystem (Issues [[https://github.com/eprapancha/lexicon/issues/37][#37]], [[https://github.com/eprapancha/lexicon/issues/38][#38]], [[https://github.com/eprapancha/lexicon/issues/39][#39]], [[https://github.com/eprapancha/lexicon/issues/40][#40]]):
+
+- *Public package index* -- Git-based package index (MELPA equivalent) with =package-install=, =package-list-packages=, index refresh, and dependency resolution (#37)
+- *Developer experience* -- Package author guide, =bb validate-package= tooling, project templates, hot-reload workflow (#38)
+- *Observability* -- Package health dashboard, performance profiling, keymap conflict detection, =package-lint= (#39)
+- *Governance* -- Submission guidelines, review process, security verification, trusted maintainer system (#40)
 
 ** Package Security
 

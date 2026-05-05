@@ -134,7 +134,7 @@ This mirrors Emacs: Elisp packages are source files loaded at runtime by the Lis
 | SCI evaluation engine | `core/eval.cljs` | Working |
 | Package SCI sandbox | `core/packages/sci.cljs` | Working |
 | Package loader | `core/packages/loader.cljs` | Working |
-| Lisp API → SCI bindings | `lisp.cljs` `sci-namespace` (~230+ functions) | Working |
+| Lisp API → SCI bindings | `lisp.cljs` `sci-namespace` (~250+ functions) | Working |
 | Trust levels | `core/packages/sci.cljs` | Working |
 | Test package | `packages/lexicon-test-package/` | Working |
 | Package registry (`lexpa`) | `/home/nixos/projects/lexpa/` | Working |
@@ -158,7 +158,7 @@ This mirrors Emacs: Elisp packages are source files loaded at runtime by the Lis
 
 ### What Packages CAN Call (via SCI)
 
-All ~200+ functions in `lexicon.lisp/sci-namespace`: buffer ops, point/mark, insert/delete, commands, keymaps, modes, hooks, minibuffer, completion, windows, text properties, overlays, filesystem, variables, messages.
+All ~250+ functions in `lexicon.lisp/sci-namespace`: buffer ops, point/mark, insert/delete, commands, keymaps, modes, hooks, minibuffer, completion, windows, text properties, overlays, filesystem, variables, messages.
 
 ### What Packages CANNOT Call (denied by SCI sandbox)
 

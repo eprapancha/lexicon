@@ -20,7 +20,7 @@ Lexicon is GNU Emacs running in the browser -- not Emacs-inspired, not Emacs-lik
 
 * Current Status
 
-The core editor is functional with 230+ API functions exposed to packages via SCI (Small Clojure Interpreter). The package ecosystem is actively growing -- Vertico, Marginalia, and Orderless are working. Backend-dependent features (shell, VC, LSP) have command stubs and UI infrastructure but require a server bridge.
+The core editor is functional with 250+ API functions exposed to packages via SCI (Small Clojure Interpreter). The package ecosystem is actively growing -- Vertico, Marginalia, and Orderless are working. Backend-dependent features (shell, VC, LSP) have command stubs and UI infrastructure but require a server bridge.
 
 * Working Features
 
@@ -81,7 +81,7 @@ The completion system supports external packages (Vertico, Marginalia, Orderless
 
 ** Package System
 
-Emacs-style package loading: ClojureScript source files interpreted at runtime by SCI (Small Clojure Interpreter) with a sandboxed API of 230+ functions.
+Emacs-style package loading: ClojureScript source files interpreted at runtime by SCI (Small Clojure Interpreter) with a sandboxed API of 250+ functions.
 
 - *Install:* =(install-package "vertico")= or =(install-package "http://url")=
 - *Registry:* lexpa -- recipe-based package archive (like MELPA)
@@ -160,7 +160,7 @@ These features have command registration and UI framework in place. They produce
 |  External Packages (lexpkgs/)       |
 |  - Vertico, Marginalia, Orderless   |
 |  - ClojureScript source, not JS     |
-|  - Sandboxed: 230+ API functions    |
+|  - Sandboxed: 250+ API functions    |
 +-------------------------------------+
          ^
          | recipes
@@ -253,4 +253,4 @@ GNU General Public License v3.0 -- See [[file:LICENSE][LICENSE]]
 
 -----
 
-*Last Updated:* 2026-05-03
+*Last Updated:* 2026-05-05
