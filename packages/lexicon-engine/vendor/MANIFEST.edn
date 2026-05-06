@@ -10,41 +10,57 @@
  :upstream
  {:repo "BurntSushi/ripgrep"
   :url "https://github.com/BurntSushi/ripgrep"
-  :tag "14.1.1"
-  :sha "eb24281"
+  :tag "15.1.0"
+  :sha "af60c2de9d85e7f3d81c78601669468cf02dabab"
   :license "MIT OR Unlicense"}
 
  :fork
- {:repo "TBD-pending-fork-creation"
-  :url "TBD-pending-fork-creation"
+ {:repo "eprapancha/ripgrep"
+  :url "https://github.com/eprapancha/ripgrep"
   :branch "lexicon-wasm-patches"
-  :sha "TBD-pending-fork-creation"}
+  :sha "96421cc"}
 
- :vendored-date "2025-01-01"
+ :vendored-date "2026-05-05"
 
  :crates
  [{:name "grep-matcher"
    :version "0.1.8"
    :path "grep-matcher"
    :upstream-path "crates/matcher"
-   :patches []}
+   :patches
+   [{:file "Cargo.toml"
+     :description "Remove dev-dependencies and test section not needed in vendor context"
+     :reason "Vendored crate is a library dependency only; tests live upstream"}]}
 
   {:name "grep-regex"
    :version "0.1.14"
    :path "grep-regex"
    :upstream-path "crates/regex"
-   :patches []}
+   :patches
+   [{:file "Cargo.toml"
+     :description "Fix crate path reference (../matcher -> ../grep-matcher)"
+     :reason "Vendored directory uses crate names as directory names"}]}
 
   {:name "grep-searcher"
    :version "0.1.16"
    :path "grep-searcher"
    :upstream-path "crates/searcher"
    :patches
-   [{:file "src/searcher/mmap.rs"
-     :description "Disable mmap searcher for WASM target (no mmap in browser)"
-     :reason "wasm32 has no mmap support; compile-gates the mmap code path"}]}]
+   [{:file "Cargo.toml"
+     :description "Make memmap2 optional behind 'mmap' feature flag; fix crate path references"
+     :reason "wasm32 has no mmap support; vendored directory layout differs from upstream"}
+    {:file "src/searcher/mmap.rs"
+     :description "Feature-gate mmap module; provide stub MmapChoice when mmap disabled"
+     :reason "wasm32 has no mmap support; compile-gates the mmap code path"}
+    {:file "src/searcher/mod.rs"
+     :description "Gate mmap-dependent imports and methods with #[cfg(feature = \"mmap\")]"
+     :reason "File/Path imports and mmap methods unavailable without mmap feature"}
+    {:file "src/lib.rs"
+     :description "Fix doc-test attribute (``` -> ```no_run)"
+     :reason "Doc-test example requires filesystem access unavailable in vendor context"}]}]
 
  :notes
- "Vendored from BurntSushi/ripgrep commit eb24281. The grep-searcher crate
-  has a WASM patch that disables mmap-based searching since wasm32 targets
-  lack mmap support. All other crates are unmodified from upstream."}
+ "Vendored from BurntSushi/ripgrep tag 15.1.0. The primary patch makes memmap2
+  optional via a feature flag so grep-searcher compiles for wasm32-unknown-unknown.
+  Path references are adjusted for the vendored directory layout (crate names as
+  directory names instead of upstream short names)."}

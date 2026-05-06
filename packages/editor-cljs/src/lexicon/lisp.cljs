@@ -1709,7 +1709,9 @@
     (nil? tree) nil
     (and (= (:type tree) :leaf)
          (= (:id tree) active-window-id))
-    (assoc tree :buffer-id buffer-id)
+    (assoc tree
+           :buffer-id buffer-id
+           :cursor-position {:line 0 :column 0})
     ;; Split nodes can be :split, :hsplit, or :vsplit
     (or (= (:type tree) :split)
         (= (:type tree) :hsplit)
@@ -2969,8 +2971,27 @@
                  :default def
                  :hist hist
                  :on-confirm [:minibuffer/deactivate]
-                 :on-cancel [:minibuffer/deactivate]}]
-     (rf/dispatch-sync [:minibuffer/activate config])
+                 :on-cancel [:minibuffer/deactivate]
+                 :replace? true}]
+     ;; Use direct swap! to avoid dispatch-sync-within-event-handler error.
+     ;; This matches the pattern used by update-minibuffer-frame and
+     ;; set-completion-display for the same reason.
+     (swap! rfdb/app-db
+            (fn [db]
+              (let [already-active? (minibuffer/minibuffer-active? db)]
+                (if already-active?
+                  ;; Replace current minibuffer frame (e.g., M-x → consult-line)
+                  (-> db
+                      (minibuffer/replace-current-frame config)
+                      (assoc :cursor-owner :minibuffer))
+                  ;; Push new frame
+                  (-> db
+                      (minibuffer/push-frame config)
+                      (assoc :cursor-owner :minibuffer))))))
+     ;; Run setup hook and focus asynchronously
+     (rf/dispatch [:hook/run :minibuffer-setup-hook {:config config}])
+     (when-let [el (js/document.getElementById "minibuffer-input")]
+       (.focus el))
      ;; Return empty string - event-driven Approach C
      "")))
 
@@ -5051,7 +5072,12 @@
                        (:id buf))
                      :else buffer-or-name)]
      (when buffer-id
-       (rf/dispatch-sync [:window/set-buffer window buffer-id]))
+       ;; Use direct swap! to avoid dispatch-sync-within-event-handler error.
+       ;; This can be called from preview state functions inside event handlers.
+       (swap! rfdb/app-db
+              (fn [current-db]
+                (let [new-tree (update-window-buffer (:window-tree current-db) window buffer-id)]
+                  (assoc current-db :window-tree new-tree)))))
      nil)))
 
 (defn window-point
@@ -5415,6 +5441,7 @@
    'set-transient-map set-transient-map
    'exit-transient-map exit-transient-map
    ;; Commands
+   'define-command define-command
    'call-interactively call-interactively
    'commandp commandp
    ;; Type predicates (#106)
