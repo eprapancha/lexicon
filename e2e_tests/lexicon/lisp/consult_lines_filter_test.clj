@@ -84,19 +84,15 @@
       (is (.contains text "TODO") "Buffer should contain TODO lines")
       (is (.contains text "DONE") "Buffer should contain DONE lines"))
 
-    ;; Simulate keep-lines: filter to only TODO lines
-    (lh/eval-lisp! "(do
-      (let [text (buffer-string)
-            lines (.split text \"\\n\")
-            re (js/RegExp. \"TODO\" \"i\")
-            kept (filterv (fn [line]
-                            (let [match? (.test re line)]
-                              (set! (.-lastIndex re) 0)
-                              match?))
-                          lines)
-            new-text (.join (to-array kept) \"\\n\")]
-        (erase-buffer)
-        (insert new-text)))")
+    ;; Simulate keep-lines: filter to only TODO lines using SCI-compatible functions
+    (lh/eval-lisp! "(let [text (buffer-string)
+                          lines (clojure.string/split-lines text)
+                          kept (filterv (fn [line]
+                                          (clojure.string/includes? line \"TODO\"))
+                                        lines)
+                          new-text (clojure.string/join \"\\n\" kept)]
+                      (erase-buffer)
+                      (insert new-text))")
     (Thread/sleep 100)
 
     ;; Verify only TODO lines remain
@@ -115,19 +111,15 @@
     (setup-lines-buffer!)
     (Thread/sleep 100)
 
-    ;; Keep DONE lines
-    (lh/eval-lisp! "(do
-      (let [text (buffer-string)
-            lines (.split text \"\\n\")
-            re (js/RegExp. \"DONE\" \"i\")
-            kept (filterv (fn [line]
-                            (let [match? (.test re line)]
-                              (set! (.-lastIndex re) 0)
-                              match?))
-                          lines)
-            new-text (.join (to-array kept) \"\\n\")]
-        (erase-buffer)
-        (insert new-text)))")
+    ;; Keep DONE lines using SCI-compatible functions
+    (lh/eval-lisp! "(let [text (buffer-string)
+                          lines (clojure.string/split-lines text)
+                          kept (filterv (fn [line]
+                                          (clojure.string/includes? line \"DONE\"))
+                                        lines)
+                          new-text (clojure.string/join \"\\n\" kept)]
+                      (erase-buffer)
+                      (insert new-text))")
     (Thread/sleep 100)
 
     (let [text (lh/eval-lisp! "(buffer-string)")

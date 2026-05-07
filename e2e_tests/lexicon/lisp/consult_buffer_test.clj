@@ -5,7 +5,7 @@
   - Shows buffer list as candidates
   - Selecting a buffer switches to it
   - Multi-source: modified buffers in separate group
-  - Tofu encoding preserves source disambiguation
+  - Source-map lookup preserves source disambiguation
 
   JUSTIFICATION: Tests call consult multi-source functions via eval-lisp
   to exercise the multi-source completing-read pipeline. This is a Lisp
@@ -73,12 +73,12 @@
   (testing "consult-buffer opens minibuffer with buffer list candidates"
     (setup-buffers!)
 
-    ;; Build buffer list and start completing-read
+    ;; Build buffer list and start completing-read (using SCI-compatible functions)
     (lh/eval-lisp! "(let [bufs (buffer-list)
                           current (current-buffer)
                           candidates (filterv (fn [name]
                                                 (and (not= name current)
-                                                     (not (.startsWith name \" \"))))
+                                                     (not (clojure.string/starts-with? name \" \"))))
                                               bufs)
                           metadata {:category :buffer}
                           collection (with-meta (vec candidates)
@@ -112,7 +112,7 @@
     ;; We're in test-gamma. Switch to test-alpha via completing-read
     (lh/eval-lisp! "(let [bufs (filterv (fn [name]
                                            (and (not= name (current-buffer))
-                                                (not (.startsWith name \" \"))))
+                                                (not (clojure.string/starts-with? name \" \"))))
                                          (buffer-list))]
                       (completing-read \"Switch: \" bufs))")
     (Thread/sleep 300)
@@ -132,38 +132,37 @@
     (Thread/sleep 100)
 
     ;; Verify we're in test-alpha
-    (let [current (lh/eval-lisp! "(current-buffer)")]
+    (let [current (lh/eval-lisp! "(buffer-name)")]
       (is (= "test-alpha" current)
           "Should have switched to test-alpha"))))
 
 ;; =============================================================================
-;; Test 4: Tofu encoding/decoding roundtrip
+;; Test 4: Source-map lookup disambiguates candidates
 ;; =============================================================================
 
-(deftest test-tofu-encoding-roundtrip
-  (testing "Tofu encoding preserves candidate text through encode/decode cycle"
+(deftest test-source-map-lookup
+  (testing "Source-map lookup correctly maps candidates to sources"
     (lh/setup-test)
 
-    (let [result (lh/eval-lisp! "(do
-                    (let [sep \"\\u200B\"
-                          encode (fn [cand idx] (str cand sep (char (+ 48 idx))))
-                          decode (fn [cand]
-                                   (let [idx (.lastIndexOf cand sep)]
-                                     (if (>= idx 0)
-                                       [(subs cand 0 idx)
-                                        (- (.charCodeAt (subs cand (inc idx)) 0) 48)]
-                                       [cand nil])))
-                          encoded (encode \"test-buffer\" 2)
-                          [decoded idx] (decode encoded)]
-                      {:encoded-length (count encoded)
-                       :decoded decoded
-                       :source-idx idx}))")]
-      (is (= "test-buffer" (:decoded result))
-          "Decoded candidate should match original")
-      (is (= 2 (:source-idx result))
-          "Source index should survive roundtrip")
-      (is (> (:encoded-length result) (count "test-buffer"))
-          "Encoded string should be longer than original"))))
+    ;; Test that a simple map-based lookup works for candidate→source mapping
+    ;; This tests the pattern used by consult--multi instead of tofu encoding
+    (let [result (lh/eval-lisp! "(let [source-map {\"buf-a\" {:name \"Buffer\" :idx 0}
+                                                    \"buf-b\" {:name \"Modified\" :idx 1}
+                                                    \"buf-c\" {:name \"Buffer\" :idx 0}}
+                                       lookup-a (get source-map \"buf-a\")
+                                       lookup-b (get source-map \"buf-b\")]
+                                   {:a-name (:name lookup-a)
+                                    :a-idx (:idx lookup-a)
+                                    :b-name (:name lookup-b)
+                                    :b-idx (:idx lookup-b)})")]
+      (is (= "Buffer" (:a-name result))
+          "buf-a should map to Buffer source")
+      (is (= 0 (:a-idx result))
+          "buf-a source index should be 0")
+      (is (= "Modified" (:b-name result))
+          "buf-b should map to Modified source")
+      (is (= 1 (:b-idx result))
+          "buf-b source index should be 1"))))
 
 ;; =============================================================================
 ;; Test 5: Modified buffer detection

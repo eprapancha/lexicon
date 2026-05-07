@@ -560,15 +560,15 @@
   (buf/line-end-position @rfdb/app-db))
 
 (defn current-line
-  "Return current line number (0-indexed).
+  "Return current line number (1-indexed, like Emacs).
 
   Usage: (current-line)
-  Returns: Integer line number"
+  Returns: Integer line number (1 = first line)"
   []
   (let [db @rfdb/app-db
         active-window (db/find-window-in-tree (:window-tree db) (:active-window-id db))
         cursor-pos (:cursor-position active-window)]
-    (or (:line cursor-pos) 0)))
+    (inc (or (:line cursor-pos) 0))))
 
 (defn line-count
   "Return total number of lines in buffer.
@@ -590,9 +590,9 @@
   Returns: Integer (0 if moved all lines, positive if hit buffer boundary)"
   ([] (forward-line 1))
   ([n]
-   (let [current (current-line)
+   (let [current-0 (dec (current-line)) ; convert 1-based to 0-based
          total (line-count)
-         target (+ current n)
+         target (+ current-0 n)
          ;; Clamp to valid range
          clamped (max 0 (min (dec total) target))
          ;; Calculate how many lines we couldn't move

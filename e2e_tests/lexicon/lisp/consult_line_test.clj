@@ -53,33 +53,26 @@
     (setup-consult!)
     (Thread/sleep 100)
 
-    ;; Invoke consult-line via Lisp API
-    ;; First, define the consult functions inline for testing
-    (lh/eval-lisp! "(do
-      (defn consult--format-line [n text] (str n \":\" text))
-      (defn consult--buffer-lines []
-        (let [text (buffer-string)
-              lines (.split text \"\\n\")]
-          (into [] (map-indexed (fn [idx line]
-                                  (consult--format-line (inc idx) line)))
-                lines)))
-      (let [candidates (consult--buffer-lines)
-            metadata {:category :consult-line}
-            collection (with-meta (vec candidates)
-                         {:completion-metadata metadata})]
-        (completing-read \"Go to line: \" collection)))")
+    ;; Build line candidates using SCI-compatible functions and open completing-read
+    (lh/eval-lisp! "(let [text (buffer-string)
+                          lines (clojure.string/split-lines text)
+                          candidates (into [] (map-indexed
+                                               (fn [idx line] (str (inc idx) \":\" line)))
+                                           lines)
+                          metadata {:category :consult-line}
+                          collection (with-meta (vec candidates)
+                                       {:completion-metadata metadata})]
+                      (completing-read \"Go to line: \" collection))")
     (Thread/sleep 300)
 
     ;; Minibuffer should be active
     (is (h/minibuffer-visible?) "Minibuffer should be visible after consult-line")
 
     ;; If vertico is loaded, candidates should appear
-    ;; (vertico handles rendering via minibuffer-setup-hook)
     (when (vertico-candidates-visible?)
       (let [candidates (get-vertico-candidate-texts)]
         (is (pos? (count candidates))
             "Should show line candidates")
-        ;; First candidate should contain "alpha"
         (when (seq candidates)
           (is (some #(.contains % "alpha") candidates)
               "Candidates should include line with 'alpha'"))))
@@ -97,16 +90,11 @@
     (setup-consult!)
     (Thread/sleep 100)
 
-    ;; Use completing-read with on-confirm that jumps to line
-    (lh/eval-lisp! "(do
-      (defn consult--parse-line [cand]
-        (let [idx (.indexOf cand \":\")]
-          (when (>= idx 0)
-            (js/parseInt (subs cand 0 idx) 10))))
-      (let [candidates [\"1:alpha first line\" \"2:beta second line\"
-                        \"3:gamma third line\" \"4:delta fourth line\"
-                        \"5:epsilon fifth line\"]]
-        (completing-read \"Go to line: \" candidates)))")
+    ;; Open completing-read with pre-built line candidates
+    (lh/eval-lisp! "(let [candidates [\"1:alpha first line\" \"2:beta second line\"
+                                      \"3:gamma third line\" \"4:delta fourth line\"
+                                      \"5:epsilon fifth line\"]]
+                      (completing-read \"Go to line: \" candidates))")
     (Thread/sleep 300)
 
     ;; Type to filter to line 3
@@ -119,7 +107,7 @@
     (h/press-minibuffer-enter)
     (Thread/sleep 300)
 
-    ;; After confirm + deactivate, parse the selected text and goto-line
+    ;; After confirm + deactivate, navigate to line 3
     (lh/eval-lisp! "(goto-line 3)")
     (Thread/sleep 100)
 
@@ -136,13 +124,12 @@
     (setup-consult!)
     (Thread/sleep 100)
 
-    ;; Test the line scanning function directly
-    (let [result (lh/eval-lisp! "(do
-                    (let [text (buffer-string)
-                          lines (.split text \"\\n\")]
-                      (into [] (map-indexed (fn [idx line]
-                                              (str (inc idx) \":\" line)))
-                            lines)))")]
+    ;; Test the line scanning function directly using SCI-compatible split-lines
+    (let [result (lh/eval-lisp! "(let [text (buffer-string)
+                                       lines (clojure.string/split-lines text)]
+                                   (into [] (map-indexed (fn [idx line]
+                                                           (str (inc idx) \":\" line)))
+                                         lines))")]
       (is (vector? result) "Should return a vector")
       (is (= 5 (count result)) "Should have 5 lines")
       (is (.startsWith (first result) "1:") "First line should start with '1:'")
